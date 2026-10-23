@@ -3487,6 +3487,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "albumType": {
               "type": "string"
             },
@@ -3505,6 +3510,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "artistType": {
+              "type": "string"
+            },
             "artworkPaths": {
               "items": {
                 "type": "string"
@@ -3519,6 +3527,71 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
             },
             "contentRating": {
               "type": "string"
@@ -3539,15 +3612,24 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "displayTitle": {
+              "type": "string"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
             },
+            "edition": {
+              "type": "string"
+            },
             "episodeNumber": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
             },
             "genres": {
               "items": {
@@ -3751,6 +3833,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "language": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -3824,6 +3909,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -3842,6 +3932,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -3856,6 +3949,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -3876,15 +4034,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -4084,6 +4251,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -4120,6 +4290,12 @@ export const schemas = {
                 },
                 "missing": {
                   "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "navigation": {
                   "properties": {
@@ -4182,8 +4358,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -4203,6 +4390,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -4294,6 +4498,12 @@ export const schemas = {
             "missing": {
               "type": "boolean"
             },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "navigation": {
               "properties": {
                 "category": {
@@ -4355,8 +4565,19 @@ export const schemas = {
               "minimum": 0,
               "type": "integer"
             },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
             "rating": {
               "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
             },
             "removed": {
               "type": "boolean"
@@ -4376,6 +4597,23 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "show": {
               "properties": {
@@ -4880,6 +5118,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "albumType": {
               "type": "string"
             },
@@ -4898,6 +5141,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "artistType": {
+              "type": "string"
+            },
             "artworkPaths": {
               "items": {
                 "type": "string"
@@ -4912,6 +5158,71 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
             },
             "contentRating": {
               "type": "string"
@@ -4932,15 +5243,24 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "displayTitle": {
+              "type": "string"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
             },
+            "edition": {
+              "type": "string"
+            },
             "episodeNumber": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
             },
             "genres": {
               "items": {
@@ -5144,6 +5464,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "language": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -5217,6 +5540,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -5235,6 +5563,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -5249,6 +5580,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -5269,15 +5665,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -5477,6 +5882,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -5513,6 +5921,12 @@ export const schemas = {
                 },
                 "missing": {
                   "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "navigation": {
                   "properties": {
@@ -5575,8 +5989,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -5596,6 +6021,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -5687,6 +6129,12 @@ export const schemas = {
             "missing": {
               "type": "boolean"
             },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "navigation": {
               "properties": {
                 "category": {
@@ -5748,8 +6196,19 @@ export const schemas = {
               "minimum": 0,
               "type": "integer"
             },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
             "rating": {
               "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
             },
             "removed": {
               "type": "boolean"
@@ -5769,6 +6228,23 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "show": {
               "properties": {
@@ -25881,6 +26357,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -25910,6 +26389,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -26506,6 +26990,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -26535,6 +27022,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -26837,6 +27329,214 @@ export const schemas = {
     "required": [
       "files",
       "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetBooksIdTimelineRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetBooksIdTimelineResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "bookId": {
+            "type": "string"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "parts": {
+            "items": {
+              "properties": {
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "offsetMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "partNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "itemId",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "progress": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "chapter": {
+                "properties": {
+                  "endMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "index": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "title",
+                  "startMs",
+                  "endMs"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "partPositionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remainingMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bookId",
+              "itemId",
+              "partPositionMs"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          },
+          "seek": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "startMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "startMs"
+            ],
+            "type": "object"
+          },
+          "totalCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bookId",
+          "libraryId",
+          "revision",
+          "parts",
+          "totalCount",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "authority",
+          "accountId",
+          "profileId"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },
@@ -28160,6 +28860,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -28189,6 +28892,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -38608,6 +39316,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -38626,6 +39339,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -38640,6 +39356,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -38660,15 +39441,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -38872,6 +39662,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -38945,6 +39738,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -38963,6 +39761,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -38977,6 +39778,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -38997,15 +39863,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -39205,6 +40080,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -39241,6 +40119,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -39303,8 +40187,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -39324,6 +40219,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -39415,6 +40327,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -39476,8 +40394,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -39497,6 +40426,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -39668,6 +40614,11 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "albumCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "albumType": {
                           "type": "string"
                         },
@@ -39686,6 +40637,9 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "artistType": {
+                          "type": "string"
+                        },
                         "artworkPaths": {
                           "items": {
                             "type": "string"
@@ -39700,6 +40654,71 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "bookProgress": {
+                          "properties": {
+                            "bookId": {
+                              "type": "string"
+                            },
+                            "chapter": {
+                              "properties": {
+                                "endMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "index": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "index",
+                                "title",
+                                "startMs",
+                                "endMs"
+                              ],
+                              "type": "object"
+                            },
+                            "durationMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "partPositionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "positionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "remainingMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "bookId",
+                            "itemId",
+                            "partPositionMs"
+                          ],
+                          "type": "object"
                         },
                         "contentRating": {
                           "type": "string"
@@ -39720,15 +40739,24 @@ export const schemas = {
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "displayTitle": {
+                          "type": "string"
+                        },
                         "durationMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "edition": {
+                          "type": "string"
+                        },
                         "episodeNumber": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
                         },
                         "genres": {
                           "items": {
@@ -39932,6 +40960,9 @@ export const schemas = {
                         "label": {
                           "type": "string"
                         },
+                        "language": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -40005,6 +41036,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -40023,6 +41059,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -40037,6 +41076,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -40057,15 +41161,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -40265,6 +41378,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -40301,6 +41417,12 @@ export const schemas = {
                             },
                             "missing": {
                               "type": "boolean"
+                            },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "navigation": {
                               "properties": {
@@ -40363,8 +41485,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -40384,6 +41517,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -40475,6 +41625,12 @@ export const schemas = {
                         "missing": {
                           "type": "boolean"
                         },
+                        "narrators": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "navigation": {
                           "properties": {
                             "category": {
@@ -40536,8 +41692,19 @@ export const schemas = {
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "publishedYear": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "publisher": {
+                          "type": "string"
+                        },
                         "rating": {
                           "type": "number"
+                        },
+                        "releaseDate": {
+                          "type": "string"
                         },
                         "removed": {
                           "type": "boolean"
@@ -40557,6 +41724,23 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "series": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         },
                         "show": {
                           "properties": {
@@ -41186,6 +42370,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -41204,6 +42393,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -41218,6 +42410,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -41238,15 +42495,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -41450,6 +42716,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -41523,6 +42792,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -41541,6 +42815,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -41555,6 +42832,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -41575,15 +42917,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -41783,6 +43134,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -41819,6 +43173,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -41881,8 +43241,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -41902,6 +43273,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -41993,6 +43381,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -42054,8 +43448,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -42075,6 +43480,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -42799,6 +44221,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -42817,6 +44244,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -42831,6 +44261,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -42851,15 +44346,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -43063,6 +44567,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -43136,6 +44643,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -43154,6 +44666,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -43168,6 +44683,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -43188,15 +44768,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -43396,6 +44985,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -43432,6 +45024,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -43494,8 +45092,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -43515,6 +45124,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -43606,6 +45232,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -43667,8 +45299,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -43688,6 +45331,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -43856,6 +45516,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -43874,6 +45539,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -43888,6 +45556,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -43908,15 +45641,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -44120,6 +45862,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -44193,6 +45938,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -44211,6 +45961,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -44225,6 +45978,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -44245,15 +46063,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -44453,6 +46280,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -44489,6 +46319,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -44551,8 +46387,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -44572,6 +46419,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -44663,6 +46527,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -44724,8 +46594,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -44745,6 +46626,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -45374,6 +47272,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -45392,6 +47295,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -45406,6 +47312,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -45426,15 +47397,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -45638,6 +47618,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -45711,6 +47694,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -45729,6 +47717,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -45743,6 +47734,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -45763,15 +47819,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -45971,6 +48036,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -46007,6 +48075,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -46069,8 +48143,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -46090,6 +48175,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -46181,6 +48283,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -46242,8 +48350,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -46263,6 +48382,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -46786,6 +48922,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -46804,6 +48945,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -46818,6 +48962,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -46838,15 +49047,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -47050,6 +49268,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -47123,6 +49344,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -47141,6 +49367,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -47155,6 +49384,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -47175,15 +49469,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -47383,6 +49686,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -47419,6 +49725,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -47481,8 +49793,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -47502,6 +49825,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -47593,6 +49933,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -47654,8 +50000,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -47675,6 +50032,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -47851,6 +50225,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -47869,6 +50248,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -47883,6 +50265,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -47903,15 +50350,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -48115,6 +50571,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -48188,6 +50647,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -48206,6 +50670,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -48220,6 +50687,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -48240,15 +50772,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -48448,6 +50989,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -48484,6 +51028,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -48546,8 +51096,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -48567,6 +51128,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -48658,6 +51236,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -48719,8 +51303,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -48740,6 +51335,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -49129,6 +51741,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -49147,6 +51764,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -49161,6 +51781,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -49181,15 +51866,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -49393,6 +52087,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -49466,6 +52163,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -49484,6 +52186,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -49498,6 +52203,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -49518,15 +52288,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -49726,6 +52505,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -49762,6 +52544,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -49824,8 +52612,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -49845,6 +52644,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -49936,6 +52752,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -49997,8 +52819,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -50018,6 +52851,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -50189,6 +53039,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -50207,6 +53062,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -50221,6 +53079,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -50241,15 +53164,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -50453,6 +53385,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -50526,6 +53461,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -50544,6 +53484,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -50558,6 +53501,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -50578,15 +53586,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -50786,6 +53803,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -50822,6 +53842,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -50884,8 +53910,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -50905,6 +53942,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -50996,6 +54050,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -51057,8 +54117,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -51078,6 +54149,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -51707,6 +54795,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -51725,6 +54818,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -51739,6 +54835,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -51759,15 +54920,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -51971,6 +55141,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -52044,6 +55217,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -52062,6 +55240,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -52076,6 +55257,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -52096,15 +55342,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -52304,6 +55559,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -52340,6 +55598,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -52402,8 +55666,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -52423,6 +55698,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -52514,6 +55806,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -52575,8 +55873,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -52596,6 +55905,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -53320,6 +56646,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -53338,6 +56669,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -53352,6 +56686,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -53372,15 +56771,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -53584,6 +56992,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -53657,6 +57068,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -53675,6 +57091,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -53689,6 +57108,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -53709,15 +57193,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -53917,6 +57410,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -53953,6 +57449,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -54015,8 +57517,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -54036,6 +57549,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -54127,6 +57657,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -54188,8 +57724,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -54209,6 +57756,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -54377,6 +57941,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "albumType": {
               "type": "string"
             },
@@ -54395,6 +57964,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "artistType": {
+              "type": "string"
+            },
             "artworkPaths": {
               "items": {
                 "type": "string"
@@ -54409,6 +57981,71 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
             },
             "contentRating": {
               "type": "string"
@@ -54429,15 +58066,24 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "displayTitle": {
+              "type": "string"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
             },
+            "edition": {
+              "type": "string"
+            },
             "episodeNumber": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
             },
             "genres": {
               "items": {
@@ -54641,6 +58287,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "language": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -54714,6 +58363,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -54732,6 +58386,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -54746,6 +58403,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -54766,15 +58488,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -54974,6 +58705,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -55010,6 +58744,12 @@ export const schemas = {
                 },
                 "missing": {
                   "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "navigation": {
                   "properties": {
@@ -55072,8 +58812,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -55093,6 +58844,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -55184,6 +58952,12 @@ export const schemas = {
             "missing": {
               "type": "boolean"
             },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "navigation": {
               "properties": {
                 "category": {
@@ -55245,8 +59019,19 @@ export const schemas = {
               "minimum": 0,
               "type": "integer"
             },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
             "rating": {
               "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
             },
             "removed": {
               "type": "boolean"
@@ -55266,6 +59051,23 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "show": {
               "properties": {
@@ -55895,6 +59697,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -55913,6 +59720,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -55927,6 +59737,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -55947,15 +59822,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -56159,6 +60043,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -56232,6 +60119,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -56250,6 +60142,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -56264,6 +60159,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -56284,15 +60244,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -56492,6 +60461,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -56528,6 +60500,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -56590,8 +60568,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -56611,6 +60600,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -56702,6 +60708,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -56763,8 +60775,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -56784,6 +60807,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -58044,6 +62084,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -58062,6 +62107,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -58076,6 +62124,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -58096,15 +62209,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -58308,6 +62430,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -58381,6 +62506,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -58399,6 +62529,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -58413,6 +62546,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -58433,15 +62631,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -58641,6 +62848,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -58677,6 +62887,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -58739,8 +62955,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -58760,6 +62987,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -58851,6 +63095,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -58912,8 +63162,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -58933,6 +63194,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -59102,6 +63380,9 @@ export const schemas = {
                     },
                     "type": "array"
                   },
+                  "description": {
+                    "type": "string"
+                  },
                   "edition": {
                     "type": "string"
                   },
@@ -59131,6 +63412,11 @@ export const schemas = {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "publisher": {
                     "type": "string"
@@ -59795,6 +64081,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -59813,6 +64104,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -59827,6 +64121,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -59847,15 +64206,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -60059,6 +64427,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -60132,6 +64503,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -60150,6 +64526,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -60164,6 +64543,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -60184,15 +64628,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -60392,6 +64845,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -60428,6 +64884,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -60490,8 +64952,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -60511,6 +64984,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -60602,6 +65092,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -60663,8 +65159,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -60684,6 +65191,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -64589,6 +69113,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -64607,6 +69136,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -64621,6 +69153,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -64641,15 +69238,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -64853,6 +69459,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -64926,6 +69535,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -64944,6 +69558,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -64958,6 +69575,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -64978,15 +69660,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -65186,6 +69877,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -65222,6 +69916,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -65284,8 +69984,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -65305,6 +70016,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -65396,6 +70124,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -65457,8 +70191,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -65478,6 +70223,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -65649,6 +70411,11 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "albumCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "albumType": {
                           "type": "string"
                         },
@@ -65667,6 +70434,9 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "artistType": {
+                          "type": "string"
+                        },
                         "artworkPaths": {
                           "items": {
                             "type": "string"
@@ -65681,6 +70451,71 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "bookProgress": {
+                          "properties": {
+                            "bookId": {
+                              "type": "string"
+                            },
+                            "chapter": {
+                              "properties": {
+                                "endMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "index": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "index",
+                                "title",
+                                "startMs",
+                                "endMs"
+                              ],
+                              "type": "object"
+                            },
+                            "durationMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "partPositionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "positionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "remainingMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "bookId",
+                            "itemId",
+                            "partPositionMs"
+                          ],
+                          "type": "object"
                         },
                         "contentRating": {
                           "type": "string"
@@ -65701,15 +70536,24 @@ export const schemas = {
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "displayTitle": {
+                          "type": "string"
+                        },
                         "durationMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "edition": {
+                          "type": "string"
+                        },
                         "episodeNumber": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
                         },
                         "genres": {
                           "items": {
@@ -65913,6 +70757,9 @@ export const schemas = {
                         "label": {
                           "type": "string"
                         },
+                        "language": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -65986,6 +70833,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -66004,6 +70856,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -66018,6 +70873,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -66038,15 +70958,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -66246,6 +71175,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -66282,6 +71214,12 @@ export const schemas = {
                             },
                             "missing": {
                               "type": "boolean"
+                            },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "navigation": {
                               "properties": {
@@ -66344,8 +71282,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -66365,6 +71314,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -66456,6 +71422,12 @@ export const schemas = {
                         "missing": {
                           "type": "boolean"
                         },
+                        "narrators": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "navigation": {
                           "properties": {
                             "category": {
@@ -66517,8 +71489,19 @@ export const schemas = {
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "publishedYear": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "publisher": {
+                          "type": "string"
+                        },
                         "rating": {
                           "type": "number"
+                        },
+                        "releaseDate": {
+                          "type": "string"
                         },
                         "removed": {
                           "type": "boolean"
@@ -66538,6 +71521,23 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "series": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         },
                         "show": {
                           "properties": {
@@ -67167,6 +72167,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -67185,6 +72190,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -67199,6 +72207,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -67219,15 +72292,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -67431,6 +72513,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -67504,6 +72589,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -67522,6 +72612,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -67536,6 +72629,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -67556,15 +72714,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -67764,6 +72931,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -67800,6 +72970,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -67862,8 +73038,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -67883,6 +73070,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -67974,6 +73178,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -68035,8 +73245,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -68056,6 +73277,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -68780,6 +74018,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -68798,6 +74041,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -68812,6 +74058,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -68832,15 +74143,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -69044,6 +74364,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -69117,6 +74440,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -69135,6 +74463,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -69149,6 +74480,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -69169,15 +74565,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -69377,6 +74782,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -69413,6 +74821,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -69475,8 +74889,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -69496,6 +74921,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -69587,6 +75029,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -69648,8 +75096,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -69669,6 +75128,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -69837,6 +75313,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -69855,6 +75336,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -69869,6 +75353,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -69889,15 +75438,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -70101,6 +75659,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -70174,6 +75735,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -70192,6 +75758,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -70206,6 +75775,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -70226,15 +75860,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -70434,6 +76077,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -70470,6 +76116,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -70532,8 +76184,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -70553,6 +76216,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -70644,6 +76324,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -70705,8 +76391,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -70726,6 +76423,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -71355,6 +77069,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -71373,6 +77092,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -71387,6 +77109,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -71407,15 +77194,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -71619,6 +77415,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -71692,6 +77491,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -71710,6 +77514,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -71724,6 +77531,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -71744,15 +77616,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -71952,6 +77833,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -71988,6 +77872,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -72050,8 +77940,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -72071,6 +77972,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -72162,6 +78080,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -72223,8 +78147,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -72244,6 +78179,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -73007,6 +78959,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -73025,6 +78982,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -73039,6 +78999,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -73059,15 +79084,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -73271,6 +79305,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -73344,6 +79381,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -73362,6 +79404,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -73376,6 +79421,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -73396,15 +79506,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -73604,6 +79723,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -73640,6 +79762,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -73702,8 +79830,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -73723,6 +79862,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -73814,6 +79970,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -73875,8 +80037,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -73896,6 +80069,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -74067,6 +80257,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -74085,6 +80280,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -74099,6 +80297,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -74119,15 +80382,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -74331,6 +80603,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -74404,6 +80679,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -74422,6 +80702,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -74436,6 +80719,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -74456,15 +80804,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -74664,6 +81021,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -74700,6 +81060,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -74762,8 +81128,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -74783,6 +81160,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -74874,6 +81268,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -74935,8 +81335,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -74956,6 +81367,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -75585,6 +82013,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -75603,6 +82036,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -75617,6 +82053,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -75637,15 +82138,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -75849,6 +82359,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -75922,6 +82435,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -75940,6 +82458,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -75954,6 +82475,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -75974,15 +82560,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -76182,6 +82777,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -76218,6 +82816,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -76280,8 +82884,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -76301,6 +82916,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -76392,6 +83024,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -76453,8 +83091,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -76474,6 +83123,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -77198,6 +83864,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -77216,6 +83887,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -77230,6 +83904,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -77250,15 +83989,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -77462,6 +84210,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -77535,6 +84286,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -77553,6 +84309,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -77567,6 +84326,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -77587,15 +84411,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -77795,6 +84628,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -77831,6 +84667,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -77893,8 +84735,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -77914,6 +84767,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -78005,6 +84875,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -78066,8 +84942,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -78087,6 +84974,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -78255,6 +85159,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "albumType": {
               "type": "string"
             },
@@ -78273,6 +85182,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "artistType": {
+              "type": "string"
+            },
             "artworkPaths": {
               "items": {
                 "type": "string"
@@ -78287,6 +85199,71 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
             },
             "contentRating": {
               "type": "string"
@@ -78307,15 +85284,24 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "displayTitle": {
+              "type": "string"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
             },
+            "edition": {
+              "type": "string"
+            },
             "episodeNumber": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
             },
             "genres": {
               "items": {
@@ -78519,6 +85505,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "language": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -78592,6 +85581,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -78610,6 +85604,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -78624,6 +85621,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -78644,15 +85706,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -78852,6 +85923,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -78888,6 +85962,12 @@ export const schemas = {
                 },
                 "missing": {
                   "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "navigation": {
                   "properties": {
@@ -78950,8 +86030,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -78971,6 +86062,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -79062,6 +86170,12 @@ export const schemas = {
             "missing": {
               "type": "boolean"
             },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "navigation": {
               "properties": {
                 "category": {
@@ -79123,8 +86237,19 @@ export const schemas = {
               "minimum": 0,
               "type": "integer"
             },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
             "rating": {
               "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
             },
             "removed": {
               "type": "boolean"
@@ -79144,6 +86269,23 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "show": {
               "properties": {
@@ -79773,6 +86915,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -79791,6 +86938,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -79805,6 +86955,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -79825,15 +87040,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -80037,6 +87261,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -80110,6 +87337,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -80128,6 +87360,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -80142,6 +87377,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -80162,15 +87462,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -80370,6 +87679,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -80406,6 +87718,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -80468,8 +87786,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -80489,6 +87818,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -80580,6 +87926,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -80641,8 +87993,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -80662,6 +88025,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -81174,6 +88554,9 @@ export const schemas = {
                 },
                 "type": "array"
               },
+              "description": {
+                "type": "string"
+              },
               "edition": {
                 "type": "string"
               },
@@ -81203,6 +88586,11 @@ export const schemas = {
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "publisher": {
                 "type": "string"
@@ -81496,6 +88884,1334 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetItemsIdSimilarRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsIdSimilarResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "entries": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "absoluteNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeBeginYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeEndYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "addedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "airDate": {
+                  "type": "string"
+                },
+                "album": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "albumType": {
+                  "type": "string"
+                },
+                "artist": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "artistType": {
+                  "type": "string"
+                },
+                "artworkPaths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "backdropUrl": {
+                  "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "contentRating": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "country": {
+                  "type": "string"
+                },
+                "dateBased": {
+                  "type": "boolean"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "displayTitle": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "edition": {
+                  "type": "string"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "hidden": {
+                  "nullable": true,
+                  "type": "boolean"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "latestEpisode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "airDate",
+                    "episodeNumber",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "media": {
+                  "properties": {
+                    "absoluteNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeBeginYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "activeEndYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "addedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "album": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "albumType": {
+                      "type": "string"
+                    },
+                    "artist": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "artistType": {
+                      "type": "string"
+                    },
+                    "artworkPaths": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "author": {
+                      "type": "string"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "backdropUrl": {
+                      "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "contentRating": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "country": {
+                      "type": "string"
+                    },
+                    "dateBased": {
+                      "type": "boolean"
+                    },
+                    "discNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "displayTitle": {
+                      "type": "string"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "edition": {
+                      "type": "string"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "homeActions": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "details": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "editMetadata": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "played": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "rating": {
+                          "type": "boolean"
+                        },
+                        "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
+                        "selection": {
+                          "properties": {
+                            "collection": {
+                              "type": "boolean"
+                            },
+                            "delete": {
+                              "type": "boolean"
+                            },
+                            "download": {
+                              "type": "boolean"
+                            },
+                            "edit": {
+                              "type": "boolean"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "myList": {
+                              "type": "boolean"
+                            },
+                            "play": {
+                              "type": "boolean"
+                            },
+                            "playlist": {
+                              "type": "boolean"
+                            },
+                            "queue": {
+                              "type": "boolean"
+                            },
+                            "refresh": {
+                              "type": "boolean"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "play",
+                            "queue",
+                            "playlist",
+                            "collection",
+                            "myList",
+                            "favorite",
+                            "watched",
+                            "download",
+                            "edit",
+                            "refresh",
+                            "delete"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "properties": {
+                            "containerRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
+                            },
+                            "personalRevision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "rating": {
+                              "nullable": true,
+                              "type": "number"
+                            },
+                            "watched": {
+                              "type": "boolean"
+                            },
+                            "watchlisted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "watchlisted",
+                            "favorite",
+                            "watched",
+                            "rating",
+                            "personalRevision",
+                            "containerRevision"
+                          ],
+                          "type": "object"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "played",
+                        "rating",
+                        "editMetadata",
+                        "refreshMetadata",
+                        "delete",
+                        "download",
+                        "details",
+                        "state",
+                        "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "latestEpisode": {
+                      "properties": {
+                        "airDate": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "episodeNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "seasonNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "airDate",
+                        "episodeNumber",
+                        "count"
+                      ],
+                      "type": "object"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "missing": {
+                      "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "navigation": {
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "entityId": {
+                          "type": "string"
+                        },
+                        "view": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "view"
+                      ],
+                      "type": "object"
+                    },
+                    "new": {
+                      "type": "boolean"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "overview": {
+                      "type": "string"
+                    },
+                    "overviewSource": {
+                      "type": "string"
+                    },
+                    "overviewSourceUrl": {
+                      "type": "string"
+                    },
+                    "playback": {
+                      "properties": {
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId"
+                      ],
+                      "type": "object"
+                    },
+                    "plays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "posterUrl": {
+                      "type": "string"
+                    },
+                    "progressMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
+                    "rating": {
+                      "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
+                    },
+                    "removed": {
+                      "type": "boolean"
+                    },
+                    "resolution": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "show": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "sortLetter": {
+                      "type": "string"
+                    },
+                    "special": {
+                      "type": "boolean"
+                    },
+                    "stillUrl": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "totalAtLeast": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "trackNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unwatchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "userRating": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "missing",
+                    "id",
+                    "kind",
+                    "title",
+                    "addedAt"
+                  ],
+                  "type": "object"
+                },
+                "missing": {
+                  "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "navigation": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "entityId": {
+                      "type": "string"
+                    },
+                    "view": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "view"
+                  ],
+                  "type": "object"
+                },
+                "new": {
+                  "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
+                },
+                "overview": {
+                  "type": "string"
+                },
+                "overviewSource": {
+                  "type": "string"
+                },
+                "overviewSourceUrl": {
+                  "type": "string"
+                },
+                "playback": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId"
+                  ],
+                  "type": "object"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "progressMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
+                "rating": {
+                  "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
+                },
+                "removed": {
+                  "type": "boolean"
+                },
+                "resolution": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "show": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sortLetter": {
+                  "type": "string"
+                },
+                "special": {
+                  "type": "boolean"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "totalAtLeast": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "trackNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unwatchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "userRating": {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "watched": {
+                  "type": "boolean"
+                },
+                "watchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "watchlisted": {
+                  "type": "boolean"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "revision": {
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "itemId",
+          "libraryId",
+          "revision",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "authority",
+          "accountId",
+          "profileId"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
+    ],
+    "type": "object"
+  },
   "GetItemsIdSourceAvailabilityRequest": {
     "properties": {},
     "required": [],
@@ -81717,6 +90433,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -81746,6 +90465,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -83561,6 +92285,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -83590,6 +92317,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -84067,6 +92799,11 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "albumCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "albumType": {
             "type": "string"
           },
@@ -84085,6 +92822,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "artistType": {
+            "type": "string"
+          },
           "artworkPaths": {
             "items": {
               "type": "string"
@@ -84099,6 +92839,71 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "bookProgress": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "chapter": {
+                "properties": {
+                  "endMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "index": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "title",
+                  "startMs",
+                  "endMs"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "partPositionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remainingMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bookId",
+              "itemId",
+              "partPositionMs"
+            ],
+            "type": "object"
           },
           "contentRating": {
             "type": "string"
@@ -84119,15 +92924,24 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "displayTitle": {
+            "type": "string"
+          },
           "durationMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "edition": {
+            "type": "string"
+          },
           "episodeNumber": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "favorite": {
+            "type": "boolean"
           },
           "genres": {
             "items": {
@@ -84331,6 +93145,9 @@ export const schemas = {
           "label": {
             "type": "string"
           },
+          "language": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -84404,6 +93221,11 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "albumType": {
                 "type": "string"
               },
@@ -84422,6 +93244,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "artistType": {
+                "type": "string"
+              },
               "artworkPaths": {
                 "items": {
                   "type": "string"
@@ -84436,6 +93261,71 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
               },
               "contentRating": {
                 "type": "string"
@@ -84456,15 +93346,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "displayTitle": {
+                "type": "string"
+              },
               "durationMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
               },
+              "edition": {
+                "type": "string"
+              },
               "episodeNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
               },
               "genres": {
                 "items": {
@@ -84664,6 +93563,9 @@ export const schemas = {
               "label": {
                 "type": "string"
               },
+              "language": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -84700,6 +93602,12 @@ export const schemas = {
               },
               "missing": {
                 "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "navigation": {
                 "properties": {
@@ -84762,8 +93670,19 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
               "rating": {
                 "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
               },
               "removed": {
                 "type": "boolean"
@@ -84783,6 +93702,23 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "show": {
                 "properties": {
@@ -84874,6 +93810,12 @@ export const schemas = {
           "missing": {
             "type": "boolean"
           },
+          "narrators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "navigation": {
             "properties": {
               "category": {
@@ -84935,8 +93877,19 @@ export const schemas = {
             "minimum": 0,
             "type": "integer"
           },
+          "publishedYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "publisher": {
+            "type": "string"
+          },
           "rating": {
             "type": "number"
+          },
+          "releaseDate": {
+            "type": "string"
           },
           "removed": {
             "type": "boolean"
@@ -84956,6 +93909,23 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "series": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "show": {
             "properties": {
@@ -85314,6 +94284,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -85332,6 +94307,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -85346,6 +94324,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -85366,15 +94409,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -85578,6 +94630,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -85651,6 +94706,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -85669,6 +94729,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -85683,6 +94746,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -85703,15 +94831,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -85911,6 +95048,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -85947,6 +95087,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -86009,8 +95155,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -86030,6 +95187,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -86121,6 +95295,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -86182,8 +95362,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -86203,6 +95394,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -86578,6 +95786,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -86596,6 +95809,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -86610,6 +95826,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -86630,15 +95911,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -86842,6 +96132,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -86915,6 +96208,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -86933,6 +96231,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -86947,6 +96248,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -86967,15 +96333,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -87175,6 +96550,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -87211,6 +96589,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -87273,8 +96657,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -87294,6 +96689,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -87385,6 +96797,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -87446,8 +96864,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -87467,6 +96896,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -88223,6 +97669,11 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "albumType": {
                 "type": "string"
               },
@@ -88241,6 +97692,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "artistType": {
+                "type": "string"
+              },
               "artworkPaths": {
                 "items": {
                   "type": "string"
@@ -88255,6 +97709,71 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
               },
               "contentRating": {
                 "type": "string"
@@ -88275,15 +97794,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "displayTitle": {
+                "type": "string"
+              },
               "durationMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
               },
+              "edition": {
+                "type": "string"
+              },
               "episodeNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
               },
               "genres": {
                 "items": {
@@ -88487,6 +98015,9 @@ export const schemas = {
               "label": {
                 "type": "string"
               },
+              "language": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -88560,6 +98091,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -88578,6 +98114,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -88592,6 +98131,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -88612,15 +98216,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -88820,6 +98433,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -88856,6 +98472,12 @@ export const schemas = {
                   },
                   "missing": {
                     "type": "boolean"
+                  },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "navigation": {
                     "properties": {
@@ -88918,8 +98540,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -88939,6 +98572,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -89030,6 +98680,12 @@ export const schemas = {
               "missing": {
                 "type": "boolean"
               },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "navigation": {
                 "properties": {
                   "category": {
@@ -89091,8 +98747,19 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
               "rating": {
                 "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
               },
               "removed": {
                 "type": "boolean"
@@ -89112,6 +98779,23 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "show": {
                 "properties": {
@@ -89470,6 +99154,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -89488,6 +99177,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -89502,6 +99194,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -89522,15 +99279,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -89734,6 +99500,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -89807,6 +99576,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -89825,6 +99599,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -89839,6 +99616,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -89859,15 +99701,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -90067,6 +99918,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -90103,6 +99957,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -90165,8 +100025,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -90186,6 +100057,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -90277,6 +100165,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -90338,8 +100232,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -90359,6 +100264,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -90665,6 +100587,11 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "albumCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "albumType": {
             "type": "string"
           },
@@ -90683,6 +100610,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "artistType": {
+            "type": "string"
+          },
           "artworkPaths": {
             "items": {
               "type": "string"
@@ -90697,6 +100627,71 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "bookProgress": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "chapter": {
+                "properties": {
+                  "endMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "index": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "title",
+                  "startMs",
+                  "endMs"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "partPositionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remainingMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bookId",
+              "itemId",
+              "partPositionMs"
+            ],
+            "type": "object"
           },
           "contentRating": {
             "type": "string"
@@ -90717,15 +100712,24 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "displayTitle": {
+            "type": "string"
+          },
           "durationMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "edition": {
+            "type": "string"
+          },
           "episodeNumber": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "favorite": {
+            "type": "boolean"
           },
           "genres": {
             "items": {
@@ -90929,6 +100933,9 @@ export const schemas = {
           "label": {
             "type": "string"
           },
+          "language": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -91002,6 +101009,11 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "albumType": {
                 "type": "string"
               },
@@ -91020,6 +101032,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "artistType": {
+                "type": "string"
+              },
               "artworkPaths": {
                 "items": {
                   "type": "string"
@@ -91034,6 +101049,71 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
               },
               "contentRating": {
                 "type": "string"
@@ -91054,15 +101134,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "displayTitle": {
+                "type": "string"
+              },
               "durationMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
               },
+              "edition": {
+                "type": "string"
+              },
               "episodeNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
               },
               "genres": {
                 "items": {
@@ -91262,6 +101351,9 @@ export const schemas = {
               "label": {
                 "type": "string"
               },
+              "language": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -91298,6 +101390,12 @@ export const schemas = {
               },
               "missing": {
                 "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "navigation": {
                 "properties": {
@@ -91360,8 +101458,19 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
               "rating": {
                 "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
               },
               "removed": {
                 "type": "boolean"
@@ -91381,6 +101490,23 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "show": {
                 "properties": {
@@ -91472,6 +101598,12 @@ export const schemas = {
           "missing": {
             "type": "boolean"
           },
+          "narrators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "navigation": {
             "properties": {
               "category": {
@@ -91533,8 +101665,19 @@ export const schemas = {
             "minimum": 0,
             "type": "integer"
           },
+          "publishedYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "publisher": {
+            "type": "string"
+          },
           "rating": {
             "type": "number"
+          },
+          "releaseDate": {
+            "type": "string"
           },
           "removed": {
             "type": "boolean"
@@ -91554,6 +101697,23 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "series": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "show": {
             "properties": {
@@ -95711,6 +105871,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -95729,6 +105894,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -95743,6 +105911,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -95763,15 +105996,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -95975,6 +106217,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -96048,6 +106293,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -96066,6 +106316,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -96080,6 +106333,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -96100,15 +106418,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -96308,6 +106635,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -96344,6 +106674,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -96406,8 +106742,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -96427,6 +106774,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -96518,6 +106882,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -96579,8 +106949,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -96600,6 +106981,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -96823,6 +107221,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -96841,6 +107244,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -96855,6 +107261,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -96875,15 +107346,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -97087,6 +107567,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -97160,6 +107643,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -97178,6 +107666,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -97192,6 +107683,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -97212,15 +107768,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -97420,6 +107985,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -97456,6 +108024,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -97518,8 +108092,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -97539,6 +108124,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -97630,6 +108232,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -97691,8 +108299,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -97712,6 +108331,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -98017,6 +108653,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -98035,6 +108676,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -98049,6 +108693,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -98069,15 +108778,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -98281,6 +108999,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -98354,6 +109075,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -98372,6 +109098,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -98386,6 +109115,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -98406,15 +109200,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -98614,6 +109417,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -98650,6 +109456,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -98712,8 +109524,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -98733,6 +109556,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -98824,6 +109664,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -98885,8 +109731,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -98906,6 +109763,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -100672,6 +111546,11 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "albumCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "albumType": {
             "type": "string"
           },
@@ -100690,6 +111569,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "artistType": {
+            "type": "string"
+          },
           "artworkPaths": {
             "items": {
               "type": "string"
@@ -100704,6 +111586,71 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "bookProgress": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "chapter": {
+                "properties": {
+                  "endMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "index": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "title",
+                  "startMs",
+                  "endMs"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "partPositionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remainingMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bookId",
+              "itemId",
+              "partPositionMs"
+            ],
+            "type": "object"
           },
           "contentRating": {
             "type": "string"
@@ -100724,15 +111671,24 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "displayTitle": {
+            "type": "string"
+          },
           "durationMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "edition": {
+            "type": "string"
+          },
           "episodeNumber": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "favorite": {
+            "type": "boolean"
           },
           "genres": {
             "items": {
@@ -100936,6 +111892,9 @@ export const schemas = {
           "label": {
             "type": "string"
           },
+          "language": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -101009,6 +111968,11 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "albumType": {
                 "type": "string"
               },
@@ -101027,6 +111991,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "artistType": {
+                "type": "string"
+              },
               "artworkPaths": {
                 "items": {
                   "type": "string"
@@ -101041,6 +112008,71 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
               },
               "contentRating": {
                 "type": "string"
@@ -101061,15 +112093,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "displayTitle": {
+                "type": "string"
+              },
               "durationMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
               },
+              "edition": {
+                "type": "string"
+              },
               "episodeNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
               },
               "genres": {
                 "items": {
@@ -101269,6 +112310,9 @@ export const schemas = {
               "label": {
                 "type": "string"
               },
+              "language": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -101305,6 +112349,12 @@ export const schemas = {
               },
               "missing": {
                 "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "navigation": {
                 "properties": {
@@ -101367,8 +112417,19 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
               "rating": {
                 "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
               },
               "removed": {
                 "type": "boolean"
@@ -101388,6 +112449,23 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "show": {
                 "properties": {
@@ -101479,6 +112557,12 @@ export const schemas = {
           "missing": {
             "type": "boolean"
           },
+          "narrators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "navigation": {
             "properties": {
               "category": {
@@ -101540,8 +112624,19 @@ export const schemas = {
             "minimum": 0,
             "type": "integer"
           },
+          "publishedYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "publisher": {
+            "type": "string"
+          },
           "rating": {
             "type": "number"
+          },
+          "releaseDate": {
+            "type": "string"
           },
           "removed": {
             "type": "boolean"
@@ -101561,6 +112656,23 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "series": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "show": {
             "properties": {
@@ -101919,6 +113031,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -101937,6 +113054,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -101951,6 +113071,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -101971,15 +113156,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -102183,6 +113377,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -102256,6 +113453,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -102274,6 +113476,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -102288,6 +113493,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -102308,15 +113578,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -102516,6 +113795,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -102552,6 +113834,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -102614,8 +113902,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -102635,6 +113934,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -102726,6 +114042,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -102787,8 +114109,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -102808,6 +114141,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -104218,6 +115568,11 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "albumCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "albumType": {
             "type": "string"
           },
@@ -104236,6 +115591,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "artistType": {
+            "type": "string"
+          },
           "artworkPaths": {
             "items": {
               "type": "string"
@@ -104250,6 +115608,71 @@ export const schemas = {
           },
           "backdropUrl": {
             "type": "string"
+          },
+          "bookProgress": {
+            "properties": {
+              "bookId": {
+                "type": "string"
+              },
+              "chapter": {
+                "properties": {
+                  "endMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "index": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "title",
+                  "startMs",
+                  "endMs"
+                ],
+                "type": "object"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "partPositionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remainingMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bookId",
+              "itemId",
+              "partPositionMs"
+            ],
+            "type": "object"
           },
           "contentRating": {
             "type": "string"
@@ -104270,15 +115693,24 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "displayTitle": {
+            "type": "string"
+          },
           "durationMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "edition": {
+            "type": "string"
+          },
           "episodeNumber": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "favorite": {
+            "type": "boolean"
           },
           "genres": {
             "items": {
@@ -104482,6 +115914,9 @@ export const schemas = {
           "label": {
             "type": "string"
           },
+          "language": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -104555,6 +115990,11 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "albumType": {
                 "type": "string"
               },
@@ -104573,6 +116013,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "artistType": {
+                "type": "string"
+              },
               "artworkPaths": {
                 "items": {
                   "type": "string"
@@ -104587,6 +116030,71 @@ export const schemas = {
               },
               "backdropUrl": {
                 "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
               },
               "contentRating": {
                 "type": "string"
@@ -104607,15 +116115,24 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "displayTitle": {
+                "type": "string"
+              },
               "durationMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
                 "type": "integer"
               },
+              "edition": {
+                "type": "string"
+              },
               "episodeNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
               },
               "genres": {
                 "items": {
@@ -104815,6 +116332,9 @@ export const schemas = {
               "label": {
                 "type": "string"
               },
+              "language": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -104851,6 +116371,12 @@ export const schemas = {
               },
               "missing": {
                 "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "navigation": {
                 "properties": {
@@ -104913,8 +116439,19 @@ export const schemas = {
                 "minimum": 0,
                 "type": "integer"
               },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
               "rating": {
                 "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
               },
               "removed": {
                 "type": "boolean"
@@ -104934,6 +116471,23 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "show": {
                 "properties": {
@@ -105025,6 +116579,12 @@ export const schemas = {
           "missing": {
             "type": "boolean"
           },
+          "narrators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "navigation": {
             "properties": {
               "category": {
@@ -105086,8 +116646,19 @@ export const schemas = {
             "minimum": 0,
             "type": "integer"
           },
+          "publishedYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "publisher": {
+            "type": "string"
+          },
           "rating": {
             "type": "number"
+          },
+          "releaseDate": {
+            "type": "string"
           },
           "removed": {
             "type": "boolean"
@@ -105107,6 +116678,23 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "series": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "show": {
             "properties": {
@@ -105465,6 +117053,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -105483,6 +117076,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -105497,6 +117093,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -105517,15 +117178,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -105729,6 +117399,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -105802,6 +117475,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -105820,6 +117498,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -105834,6 +117515,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -105854,15 +117600,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -106062,6 +117817,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -106098,6 +117856,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -106160,8 +117924,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -106181,6 +117956,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -106272,6 +118064,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -106333,8 +118131,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -106354,6 +118163,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -106803,6 +118629,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -106821,6 +118652,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -106835,6 +118669,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -106855,15 +118754,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -107067,6 +118975,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -107140,6 +119051,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -107158,6 +119074,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -107172,6 +119091,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -107192,15 +119176,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -107400,6 +119393,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -107436,6 +119432,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -107498,8 +119500,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -107519,6 +119532,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -107610,6 +119640,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -107671,8 +119707,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -107692,6 +119739,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -107906,6 +119970,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -107924,6 +119993,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -107938,6 +120010,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -107958,15 +120095,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -108170,6 +120316,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -108243,6 +120392,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -108261,6 +120415,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -108275,6 +120432,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -108295,15 +120517,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -108503,6 +120734,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -108539,6 +120773,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -108601,8 +120841,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -108622,6 +120873,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -108713,6 +120981,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -108774,8 +121048,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -108795,6 +121080,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -109557,6 +121859,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -109575,6 +121882,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -109589,6 +121899,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -109609,15 +121984,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -109821,6 +122205,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -109894,6 +122281,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -109912,6 +122304,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -109926,6 +122321,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -109946,15 +122406,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -110154,6 +122623,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -110190,6 +122662,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -110252,8 +122730,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -110273,6 +122762,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -110364,6 +122870,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -110425,8 +122937,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -110446,6 +122969,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -110802,6 +123342,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -110831,6 +123374,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -111435,6 +123983,9 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "description": {
+                      "type": "string"
+                    },
                     "edition": {
                       "type": "string"
                     },
@@ -111464,6 +124015,11 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "publisher": {
                       "type": "string"
@@ -112195,6 +124751,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -112213,6 +124774,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -112227,6 +124791,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -112247,15 +124876,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -112459,6 +125097,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -112532,6 +125173,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -112550,6 +125196,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -112564,6 +125213,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -112584,15 +125298,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -112792,6 +125515,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -112828,6 +125554,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -112890,8 +125622,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -112911,6 +125654,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -113002,6 +125762,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -113063,8 +125829,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -113084,6 +125861,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -113255,6 +126049,11 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "albumCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "albumType": {
                           "type": "string"
                         },
@@ -113273,6 +126072,9 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "artistType": {
+                          "type": "string"
+                        },
                         "artworkPaths": {
                           "items": {
                             "type": "string"
@@ -113287,6 +126089,71 @@ export const schemas = {
                         },
                         "backdropUrl": {
                           "type": "string"
+                        },
+                        "bookProgress": {
+                          "properties": {
+                            "bookId": {
+                              "type": "string"
+                            },
+                            "chapter": {
+                              "properties": {
+                                "endMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "index": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "index",
+                                "title",
+                                "startMs",
+                                "endMs"
+                              ],
+                              "type": "object"
+                            },
+                            "durationMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "partPositionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "positionMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "remainingMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "bookId",
+                            "itemId",
+                            "partPositionMs"
+                          ],
+                          "type": "object"
                         },
                         "contentRating": {
                           "type": "string"
@@ -113307,15 +126174,24 @@ export const schemas = {
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "displayTitle": {
+                          "type": "string"
+                        },
                         "durationMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "edition": {
+                          "type": "string"
+                        },
                         "episodeNumber": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
                         },
                         "genres": {
                           "items": {
@@ -113519,6 +126395,9 @@ export const schemas = {
                         "label": {
                           "type": "string"
                         },
+                        "language": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -113592,6 +126471,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -113610,6 +126494,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -113624,6 +126511,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -113644,15 +126596,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -113852,6 +126813,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -113888,6 +126852,12 @@ export const schemas = {
                             },
                             "missing": {
                               "type": "boolean"
+                            },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "navigation": {
                               "properties": {
@@ -113950,8 +126920,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -113971,6 +126952,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -114062,6 +127060,12 @@ export const schemas = {
                         "missing": {
                           "type": "boolean"
                         },
+                        "narrators": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "navigation": {
                           "properties": {
                             "category": {
@@ -114123,8 +127127,19 @@ export const schemas = {
                           "minimum": 0,
                           "type": "integer"
                         },
+                        "publishedYear": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "publisher": {
+                          "type": "string"
+                        },
                         "rating": {
                           "type": "number"
+                        },
+                        "releaseDate": {
+                          "type": "string"
                         },
                         "removed": {
                           "type": "boolean"
@@ -114144,6 +127159,23 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "series": {
+                          "items": {
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         },
                         "show": {
                           "properties": {
@@ -114773,6 +127805,11 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "albumCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "albumType": {
                               "type": "string"
                             },
@@ -114791,6 +127828,9 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "artistType": {
+                              "type": "string"
+                            },
                             "artworkPaths": {
                               "items": {
                                 "type": "string"
@@ -114805,6 +127845,71 @@ export const schemas = {
                             },
                             "backdropUrl": {
                               "type": "string"
+                            },
+                            "bookProgress": {
+                              "properties": {
+                                "bookId": {
+                                  "type": "string"
+                                },
+                                "chapter": {
+                                  "properties": {
+                                    "endMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "index": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "index",
+                                    "title",
+                                    "startMs",
+                                    "endMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "durationMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "itemId": {
+                                  "type": "string"
+                                },
+                                "partPositionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "positionMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "remainingMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "bookId",
+                                "itemId",
+                                "partPositionMs"
+                              ],
+                              "type": "object"
                             },
                             "contentRating": {
                               "type": "string"
@@ -114825,15 +127930,24 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "displayTitle": {
+                              "type": "string"
+                            },
                             "durationMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "edition": {
+                              "type": "string"
+                            },
                             "episodeNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "favorite": {
+                              "type": "boolean"
                             },
                             "genres": {
                               "items": {
@@ -115037,6 +128151,9 @@ export const schemas = {
                             "label": {
                               "type": "string"
                             },
+                            "language": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -115110,6 +128227,11 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "albumCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "albumType": {
                                   "type": "string"
                                 },
@@ -115128,6 +128250,9 @@ export const schemas = {
                                   ],
                                   "type": "object"
                                 },
+                                "artistType": {
+                                  "type": "string"
+                                },
                                 "artworkPaths": {
                                   "items": {
                                     "type": "string"
@@ -115142,6 +128267,71 @@ export const schemas = {
                                 },
                                 "backdropUrl": {
                                   "type": "string"
+                                },
+                                "bookProgress": {
+                                  "properties": {
+                                    "bookId": {
+                                      "type": "string"
+                                    },
+                                    "chapter": {
+                                      "properties": {
+                                        "endMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "index": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "startMs": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "index",
+                                        "title",
+                                        "startMs",
+                                        "endMs"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "durationMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "partPositionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "positionMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "remainingMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bookId",
+                                    "itemId",
+                                    "partPositionMs"
+                                  ],
+                                  "type": "object"
                                 },
                                 "contentRating": {
                                   "type": "string"
@@ -115162,15 +128352,24 @@ export const schemas = {
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "displayTitle": {
+                                  "type": "string"
+                                },
                                 "durationMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "edition": {
+                                  "type": "string"
+                                },
                                 "episodeNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "favorite": {
+                                  "type": "boolean"
                                 },
                                 "genres": {
                                   "items": {
@@ -115370,6 +128569,9 @@ export const schemas = {
                                 "label": {
                                   "type": "string"
                                 },
+                                "language": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -115406,6 +128608,12 @@ export const schemas = {
                                 },
                                 "missing": {
                                   "type": "boolean"
+                                },
+                                "narrators": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "navigation": {
                                   "properties": {
@@ -115468,8 +128676,19 @@ export const schemas = {
                                   "minimum": 0,
                                   "type": "integer"
                                 },
+                                "publishedYear": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "publisher": {
+                                  "type": "string"
+                                },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "releaseDate": {
+                                  "type": "string"
                                 },
                                 "removed": {
                                   "type": "boolean"
@@ -115489,6 +128708,23 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "series": {
+                                  "items": {
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "position": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "show": {
                                   "properties": {
@@ -115580,6 +128816,12 @@ export const schemas = {
                             "missing": {
                               "type": "boolean"
                             },
+                            "narrators": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "navigation": {
                               "properties": {
                                 "category": {
@@ -115641,8 +128883,19 @@ export const schemas = {
                               "minimum": 0,
                               "type": "integer"
                             },
+                            "publishedYear": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "publisher": {
+                              "type": "string"
+                            },
                             "rating": {
                               "type": "number"
+                            },
+                            "releaseDate": {
+                              "type": "string"
                             },
                             "removed": {
                               "type": "boolean"
@@ -115662,6 +128915,23 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "series": {
+                              "items": {
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "position": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "show": {
                               "properties": {
@@ -116386,6 +129656,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -116404,6 +129679,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -116418,6 +129696,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -116438,15 +129781,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -116650,6 +130002,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -116723,6 +130078,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -116741,6 +130101,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -116755,6 +130118,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -116775,15 +130203,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -116983,6 +130420,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -117019,6 +130459,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -117081,8 +130527,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -117102,6 +130559,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -117193,6 +130667,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -117254,8 +130734,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -117275,6 +130766,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -117443,6 +130951,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -117461,6 +130974,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -117475,6 +130991,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -117495,15 +131076,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -117707,6 +131297,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -117780,6 +131373,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -117798,6 +131396,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -117812,6 +131413,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -117832,15 +131498,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -118040,6 +131715,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -118076,6 +131754,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -118138,8 +131822,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -118159,6 +131854,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -118250,6 +131962,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -118311,8 +132029,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -118332,6 +132061,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -118961,6 +132707,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -118979,6 +132730,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -118993,6 +132747,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -119013,15 +132832,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -119225,6 +133053,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -119298,6 +133129,11 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "albumCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "albumType": {
                             "type": "string"
                           },
@@ -119316,6 +133152,9 @@ export const schemas = {
                             ],
                             "type": "object"
                           },
+                          "artistType": {
+                            "type": "string"
+                          },
                           "artworkPaths": {
                             "items": {
                               "type": "string"
@@ -119330,6 +133169,71 @@ export const schemas = {
                           },
                           "backdropUrl": {
                             "type": "string"
+                          },
+                          "bookProgress": {
+                            "properties": {
+                              "bookId": {
+                                "type": "string"
+                              },
+                              "chapter": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "index": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "title",
+                                  "startMs",
+                                  "endMs"
+                                ],
+                                "type": "object"
+                              },
+                              "durationMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "partPositionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "positionMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "remainingMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bookId",
+                              "itemId",
+                              "partPositionMs"
+                            ],
+                            "type": "object"
                           },
                           "contentRating": {
                             "type": "string"
@@ -119350,15 +133254,24 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "displayTitle": {
+                            "type": "string"
+                          },
                           "durationMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "edition": {
+                            "type": "string"
+                          },
                           "episodeNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
                           },
                           "genres": {
                             "items": {
@@ -119558,6 +133471,9 @@ export const schemas = {
                           "label": {
                             "type": "string"
                           },
+                          "language": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -119594,6 +133510,12 @@ export const schemas = {
                           },
                           "missing": {
                             "type": "boolean"
+                          },
+                          "narrators": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "navigation": {
                             "properties": {
@@ -119656,8 +133578,19 @@ export const schemas = {
                             "minimum": 0,
                             "type": "integer"
                           },
+                          "publishedYear": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "publisher": {
+                            "type": "string"
+                          },
                           "rating": {
                             "type": "number"
+                          },
+                          "releaseDate": {
+                            "type": "string"
                           },
                           "removed": {
                             "type": "boolean"
@@ -119677,6 +133610,23 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "series": {
+                            "items": {
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "position": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           },
                           "show": {
                             "properties": {
@@ -119768,6 +133718,12 @@ export const schemas = {
                       "missing": {
                         "type": "boolean"
                       },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
                       "navigation": {
                         "properties": {
                           "category": {
@@ -119829,8 +133785,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -119850,6 +133817,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -121723,6 +135707,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -121741,6 +135730,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -121755,6 +135747,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -121775,15 +135832,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -121987,6 +136053,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -122060,6 +136129,11 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "albumCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "albumType": {
                       "type": "string"
                     },
@@ -122078,6 +136152,9 @@ export const schemas = {
                       ],
                       "type": "object"
                     },
+                    "artistType": {
+                      "type": "string"
+                    },
                     "artworkPaths": {
                       "items": {
                         "type": "string"
@@ -122092,6 +136169,71 @@ export const schemas = {
                     },
                     "backdropUrl": {
                       "type": "string"
+                    },
+                    "bookProgress": {
+                      "properties": {
+                        "bookId": {
+                          "type": "string"
+                        },
+                        "chapter": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "index": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "title",
+                            "startMs",
+                            "endMs"
+                          ],
+                          "type": "object"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "partPositionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "positionMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "bookId",
+                        "itemId",
+                        "partPositionMs"
+                      ],
+                      "type": "object"
                     },
                     "contentRating": {
                       "type": "string"
@@ -122112,15 +136254,24 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "displayTitle": {
+                      "type": "string"
+                    },
                     "durationMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "edition": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
                     },
                     "genres": {
                       "items": {
@@ -122320,6 +136471,9 @@ export const schemas = {
                     "label": {
                       "type": "string"
                     },
+                    "language": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -122356,6 +136510,12 @@ export const schemas = {
                     },
                     "missing": {
                       "type": "boolean"
+                    },
+                    "narrators": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "navigation": {
                       "properties": {
@@ -122418,8 +136578,19 @@ export const schemas = {
                       "minimum": 0,
                       "type": "integer"
                     },
+                    "publishedYear": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "publisher": {
+                      "type": "string"
+                    },
                     "rating": {
                       "type": "number"
+                    },
+                    "releaseDate": {
+                      "type": "string"
                     },
                     "removed": {
                       "type": "boolean"
@@ -122439,6 +136610,23 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "series": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "show": {
                       "properties": {
@@ -122530,6 +136718,12 @@ export const schemas = {
                 "missing": {
                   "type": "boolean"
                 },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "navigation": {
                   "properties": {
                     "category": {
@@ -122591,8 +136785,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -122612,6 +136817,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -140256,6 +154478,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -140274,6 +154501,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -140288,6 +154518,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -140308,15 +154603,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -140520,6 +154824,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -140593,6 +154900,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -140611,6 +154923,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -140625,6 +154940,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -140645,15 +155025,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -140853,6 +155242,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -140889,6 +155281,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -140951,8 +155349,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -140972,6 +155381,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -141063,6 +155489,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -141124,8 +155556,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -141145,6 +155588,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {
@@ -141372,6 +155832,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "albumType": {
               "type": "string"
             },
@@ -141390,6 +155855,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "artistType": {
+              "type": "string"
+            },
             "artworkPaths": {
               "items": {
                 "type": "string"
@@ -141404,6 +155872,71 @@ export const schemas = {
             },
             "backdropUrl": {
               "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
             },
             "contentRating": {
               "type": "string"
@@ -141424,15 +155957,24 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "displayTitle": {
+              "type": "string"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
             },
+            "edition": {
+              "type": "string"
+            },
             "episodeNumber": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
             },
             "genres": {
               "items": {
@@ -141636,6 +156178,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "language": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -141709,6 +156254,11 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "albumType": {
                   "type": "string"
                 },
@@ -141727,6 +156277,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "artistType": {
+                  "type": "string"
+                },
                 "artworkPaths": {
                   "items": {
                     "type": "string"
@@ -141741,6 +156294,71 @@ export const schemas = {
                 },
                 "backdropUrl": {
                   "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
                 },
                 "contentRating": {
                   "type": "string"
@@ -141761,15 +156379,24 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "displayTitle": {
+                  "type": "string"
+                },
                 "durationMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
                   "type": "integer"
                 },
+                "edition": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
                 },
                 "genres": {
                   "items": {
@@ -141969,6 +156596,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "language": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -142005,6 +156635,12 @@ export const schemas = {
                 },
                 "missing": {
                   "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "navigation": {
                   "properties": {
@@ -142067,8 +156703,19 @@ export const schemas = {
                   "minimum": 0,
                   "type": "integer"
                 },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
                 "rating": {
                   "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
                 },
                 "removed": {
                   "type": "boolean"
@@ -142088,6 +156735,23 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 },
                 "show": {
                   "properties": {
@@ -142179,6 +156843,12 @@ export const schemas = {
             "missing": {
               "type": "boolean"
             },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "navigation": {
               "properties": {
                 "category": {
@@ -142240,8 +156910,19 @@ export const schemas = {
               "minimum": 0,
               "type": "integer"
             },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
             "rating": {
               "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
             },
             "removed": {
               "type": "boolean"
@@ -142261,6 +156942,23 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
             },
             "show": {
               "properties": {
@@ -162994,6 +177692,11 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "albumType": {
                     "type": "string"
                   },
@@ -163012,6 +177715,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "artistType": {
+                    "type": "string"
+                  },
                   "artworkPaths": {
                     "items": {
                       "type": "string"
@@ -163026,6 +177732,71 @@ export const schemas = {
                   },
                   "backdropUrl": {
                     "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
                   },
                   "contentRating": {
                     "type": "string"
@@ -163046,15 +177817,24 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "displayTitle": {
+                    "type": "string"
+                  },
                   "durationMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "edition": {
+                    "type": "string"
+                  },
                   "episodeNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
                   },
                   "genres": {
                     "items": {
@@ -163258,6 +178038,9 @@ export const schemas = {
                   "label": {
                     "type": "string"
                   },
+                  "language": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -163331,6 +178114,11 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "albumCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "albumType": {
                         "type": "string"
                       },
@@ -163349,6 +178137,9 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "artistType": {
+                        "type": "string"
+                      },
                       "artworkPaths": {
                         "items": {
                           "type": "string"
@@ -163363,6 +178154,71 @@ export const schemas = {
                       },
                       "backdropUrl": {
                         "type": "string"
+                      },
+                      "bookProgress": {
+                        "properties": {
+                          "bookId": {
+                            "type": "string"
+                          },
+                          "chapter": {
+                            "properties": {
+                              "endMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "index": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "startMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "title",
+                              "startMs",
+                              "endMs"
+                            ],
+                            "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "partPositionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "remainingMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bookId",
+                          "itemId",
+                          "partPositionMs"
+                        ],
+                        "type": "object"
                       },
                       "contentRating": {
                         "type": "string"
@@ -163383,15 +178239,24 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "displayTitle": {
+                        "type": "string"
+                      },
                       "durationMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "edition": {
+                        "type": "string"
+                      },
                       "episodeNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
                       },
                       "genres": {
                         "items": {
@@ -163591,6 +178456,9 @@ export const schemas = {
                       "label": {
                         "type": "string"
                       },
+                      "language": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -163627,6 +178495,12 @@ export const schemas = {
                       },
                       "missing": {
                         "type": "boolean"
+                      },
+                      "narrators": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "navigation": {
                         "properties": {
@@ -163689,8 +178563,19 @@ export const schemas = {
                         "minimum": 0,
                         "type": "integer"
                       },
+                      "publishedYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "publisher": {
+                        "type": "string"
+                      },
                       "rating": {
                         "type": "number"
+                      },
+                      "releaseDate": {
+                        "type": "string"
                       },
                       "removed": {
                         "type": "boolean"
@@ -163710,6 +178595,23 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "series": {
+                        "items": {
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "position": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
                       },
                       "show": {
                         "properties": {
@@ -163801,6 +178703,12 @@ export const schemas = {
                   "missing": {
                     "type": "boolean"
                   },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "navigation": {
                     "properties": {
                       "category": {
@@ -163862,8 +178770,19 @@ export const schemas = {
                     "minimum": 0,
                     "type": "integer"
                   },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
                   "rating": {
                     "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
                   },
                   "removed": {
                     "type": "boolean"
@@ -163883,6 +178802,23 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "show": {
                     "properties": {

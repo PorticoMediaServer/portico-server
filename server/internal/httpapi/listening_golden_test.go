@@ -35,6 +35,29 @@ func goldenListeningExtension(t *testing.T, f *goldenFixture, c goldenCase, want
 				case "song":
 					// These two newly issued golden profiles have no favorite events.
 					v["favorite"] = false
+				case "album":
+					// Tiny has only seeded local genre terms, three songs and
+					// two distinct terms per song. Read those source facts directly.
+					rows, err := f.db.Query(`SELECT DISTINCT g.source_name FROM catalog_term_sources g JOIN catalog_terms term ON term.id=g.term_id JOIN catalog_songs song ON song.entity_id=g.entity_id JOIN catalog_entities album ON album.id=song.album_id WHERE album.public_id=pid_blob(?) AND term.vocab=1 ORDER BY g.source_name COLLATE NOCASE`, f.public[id])
+					if err != nil {
+						t.Fatal(err)
+					}
+					genres := []string{}
+					for rows.Next() {
+						var genre string
+						if err = rows.Scan(&genre); err != nil {
+							t.Fatal(err)
+						}
+						genres = append(genres, genre)
+					}
+					if err = rows.Err(); err != nil {
+						t.Fatal(err)
+					}
+					rows.Close()
+					if len(genres) != fixture.Tiny().SongsPerAlbum*fixture.Tiny().GenresPerItem {
+						t.Fatal("Tiny album genre facts", id, genres)
+					}
+					v["genres"] = genres
 				case "artist":
 					v["albumCount"] = fixture.Tiny().AlbumsPerArtist
 				case "book":

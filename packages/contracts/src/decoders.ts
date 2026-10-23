@@ -139,6 +139,7 @@ export function decodeGetAttributionResponse(input: unknown): types.GetAttributi
 export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuthCapabilitiesResponse { return decode("GetAuthCapabilitiesResponse", input) as types.GetAuthCapabilitiesResponse; }
 export function decodeGetBooksIdChaptersResponse(input: unknown): types.GetBooksIdChaptersResponse { return decode("GetBooksIdChaptersResponse", input) as types.GetBooksIdChaptersResponse; }
 export function decodeGetBooksIdFilesResponse(input: unknown): types.GetBooksIdFilesResponse { return decode("GetBooksIdFilesResponse", input) as types.GetBooksIdFilesResponse; }
+export function decodeGetBooksIdTimelineResponse(input: unknown): types.GetBooksIdTimelineResponse { return decode("GetBooksIdTimelineResponse", input) as types.GetBooksIdTimelineResponse; }
 export function decodeGetBootstrapResponse(input: unknown): types.GetBootstrapResponse { return decode("GetBootstrapResponse", input) as types.GetBootstrapResponse; }
 export function decodeGetBrowseCapabilitiesResponse(input: unknown): types.GetBrowseCapabilitiesResponse { return decode("GetBrowseCapabilitiesResponse", input) as types.GetBrowseCapabilitiesResponse; }
 export function decodeGetBrowseFacetsResponse(input: unknown): types.GetBrowseFacetsResponse { return decode("GetBrowseFacetsResponse", input) as types.GetBrowseFacetsResponse; }
@@ -227,6 +228,7 @@ export function decodeGetItemsIdPlaybackOffersResponse(input: unknown): types.Ge
 export function decodeGetItemsIdPreparedVersionsResponse(input: unknown): types.GetItemsIdPreparedVersionsResponse { return decode("GetItemsIdPreparedVersionsResponse", input) as types.GetItemsIdPreparedVersionsResponse; }
 export function decodeGetItemsIdRecommendationsResponse(input: unknown): types.GetItemsIdRecommendationsResponse { return decode("GetItemsIdRecommendationsResponse", input) as types.GetItemsIdRecommendationsResponse; }
 export function decodeGetItemsIdRecommendationsRowResponse(input: unknown): types.GetItemsIdRecommendationsRowResponse { return decode("GetItemsIdRecommendationsRowResponse", input) as types.GetItemsIdRecommendationsRowResponse; }
+export function decodeGetItemsIdSimilarResponse(input: unknown): types.GetItemsIdSimilarResponse { return decode("GetItemsIdSimilarResponse", input) as types.GetItemsIdSimilarResponse; }
 export function decodeGetItemsIdSourceAvailabilityResponse(input: unknown): types.GetItemsIdSourceAvailabilityResponse { return decode("GetItemsIdSourceAvailabilityResponse", input) as types.GetItemsIdSourceAvailabilityResponse; }
 export function decodeGetItemsIdTrickplayResponse(input: unknown): types.GetItemsIdTrickplayResponse { return decode("GetItemsIdTrickplayResponse", input) as types.GetItemsIdTrickplayResponse; }
 export function decodeGetItemsIdTrickplaySetThumbnailsVttResponse(input: unknown): types.GetItemsIdTrickplaySetThumbnailsVttResponse { return decode("GetItemsIdTrickplaySetThumbnailsVttResponse", input) as types.GetItemsIdTrickplaySetThumbnailsVttResponse; }
