@@ -94,10 +94,12 @@ cast.getportico.tv {
 	}
 	# CAF 3.0.0156 loads Google's Shaka 4.15.56 itself. This exception is
 	# only for the receiver documents; assets and other Services keep their CSP.
+	# Section 22.2 also admits CAF's empty caption style and later CSSOM rules.
+	# The empty-text hash permits any empty style element, not a particular ID.
 	# https://developers.google.com/cast/docs/release-notes
 	# https://developers.google.com/speed/libraries/#shaka-player
 	@receiver_page path / /index.html
-	header @receiver_page Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/ https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+	header @receiver_page Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/ https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/; style-src-elem 'self' https://www.gstatic.com 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 	@receiver_asset not path / /index.html
 	header @receiver_asset Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 	root * /opt/portico-cast-receiver/current

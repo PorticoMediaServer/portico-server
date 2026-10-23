@@ -128,16 +128,23 @@ def main():
               ("www.getportico.tv", "/", "GET"), ("unknown.invalid", "/", "GET")]
     before = run(args.caddy, baseline, "before", args.scratch, repository, cases)
     after = run(args.caddy, current, "after", args.scratch, repository, cases)
-    addition = " https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/"
+    shaka = "https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/"
+    caption_style = "style-src-elem 'self' https://www.gstatic.com 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='; "
     changed = 0
     for old, new in zip(before["responses"], after["responses"]):
         document = new["host"] == "cast.getportico.tv" and urlsplit(new["path"]).path in ["/", "/index.html"]
-        expected = old["csp"].replace("script-src 'self' https://www.gstatic.com/cast/;",
-                                      "script-src 'self' https://www.gstatic.com/cast/" + addition + ";") if document else old["csp"]
+        expected = old["csp"].replace("connect-src https:;", caption_style + "connect-src https:;") if document else old["csp"]
         assert new["csp"] == expected, (new["host"], new["path"], "unexpected policy change")
-        assert (addition.strip() in new["csp"]) == document, (new["host"], new["path"], "exception escaped receiver documents")
+        assert (shaka in new["csp"]) == document, (new["host"], new["path"], "script exception escaped receiver documents")
+        assert (caption_style in new["csp"]) == document, (new["host"], new["path"], "style exception escaped receiver documents")
         assert new["status"] == old["status"], (new["host"], new["path"], "route status changed")
+        security_headers = {"strict-transport-security", "x-content-type-options", "referrer-policy", "x-frame-options", "permissions-policy", "cache-control"}
+        for name in security_headers:
+            previous = [v for k, v in old["headers"] if k.lower() == name]
+            current = [v for k, v in new["headers"] if k.lower() == name]
+            assert current == previous, (new["host"], new["path"], name, "unrelated header changed")
         changed += old["csp"] != new["csp"]
+    assert changed == 8, (changed, "expected only receiver GET/HEAD documents, including query variants")
     report = {"result": "PASS", "baselineRef": args.baseline_ref, "casesPerRevision": len(cases),
               "changedReceiverDocumentResponses": changed, "before": before, "after": after,
               "pythonOrChildMaxRSSBytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024,
