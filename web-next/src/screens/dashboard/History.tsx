@@ -14,20 +14,28 @@ export function HistoryScreen({bindings: b, embedded = false}: {bindings: Dashbo
 }
 function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   const [query, setQuery] = useState<TableQuery>({search: '', filters: {media: 'all', person: 'all', range: 'all'}, sort: {by: 'played', direction: 'desc'}});
-  const [settledQuery, settle] = useState(query), [cursor, setCursor] = useState(''), [rows, setRows] = useState<readonly PlayHistoryEntry[]>([]), [total, setTotal] = useState<number | undefined>();
+  const [settledQuery, settle] = useState(query);
+  type Results = {context: DashboardBindings['context']; query: TableQuery; cursor: string; rows: readonly PlayHistoryEntry[]; total?: number};
+  const [results, setResults] = useState<Results>({context: b.context, query: settledQuery, cursor: '', rows: []});
+  // A new context or settled query must never reuse a previous continuation,
+  // count or row. Keep the controls mounted so typing and filters survive.
+  const {cursor, rows, total} = results.context === b.context && results.query === settledQuery ? results : {cursor: '', rows: [], total: undefined};
+  const setCursor = useCallback((cursor: string) => setResults(previous => ({...(previous.context === b.context && previous.query === settledQuery ? previous : {context: b.context, query: settledQuery, rows: []}), cursor})), [b.context, settledQuery]);
   const seen = useRef<unknown>(undefined);
-  useEffect(() => {if (query === settledQuery) return; const timer = setTimeout(() => {settle(query); setCursor(''); setRows([]); setTotal(undefined);}, query.search === settledQuery.search ? 0 : 250); return () => clearTimeout(timer);}, [query, settledQuery]);
+  useEffect(() => {if (query === settledQuery) return; const timer = setTimeout(() => settle(query), query.search === settledQuery.search ? 0 : 250); return () => clearTimeout(timer);}, [query, settledQuery]);
   const filters: DashboardFilters = useMemo(() => ({period: settledQuery.filters.range as PlayHistoryPeriod, ...(settledQuery.filters.media === 'all' ? {} : {media: settledQuery.filters.media}), ...(settledQuery.filters.person === 'all' ? {} : {accountId: settledQuery.filters.person}), search: settledQuery.search, sort: ({played: 'started', for: 'watched', where: 'location'} as Record<string,string>)[settledQuery.sort.by] ?? settledQuery.sort.by, direction: settledQuery.sort.direction}), [settledQuery]);
   const load = useCallback((signal: AbortSignal) => b.read.plays(filters, cursor, signal), [b, filters, cursor]);
   const state = useDashboardRead(b, load, true, cursor ? 0 : 30000);
   useEffect(() => {
     const page = state.value; if (!page || page === seen.current) return; seen.current = page;
-    setRows(old => cursor ? [...old, ...page.entries.filter(entry => !old.some(previous => previous.id === entry.id))] : page.entries);
-    if (page.total !== undefined) setTotal(page.total);
-  }, [state.value, cursor]);
+    setResults(previous => {
+      const old = previous.context === b.context && previous.query === settledQuery ? previous : {rows: [], total: undefined};
+      return {context: b.context, query: settledQuery, cursor, rows: cursor ? [...old.rows, ...page.entries.filter(entry => !old.rows.some(previous => previous.id === entry.id))] : page.entries, total: page.total ?? old.total};
+    });
+  }, [state.value, cursor, b.context, settledQuery]);
   const people = useDashboardAccounts(b);
   const failed = state.failed || people.failed;
-  useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b]);
+  useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b, setCursor]);
   const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {
