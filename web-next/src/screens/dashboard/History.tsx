@@ -60,7 +60,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       {id: 'media', label: t('next.dashboard.media'), options: ['all', ...mediaKinds].map(kind => ({value: kind, label: mediaLabel(kind)}))},
       {id: 'person', label: t('next.dashboard.person'), options: [{value: 'all', label: t('next.dashboard.everyone')}, ...people.items.map(p => ({value: p.accountId, label: p.username}))]},
       {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
-    ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
+    ]} height={640} countLabel={total === undefined ? undefined : t('next.dashboard.plays', {count: total})} matchedCount={total}
     emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />}
   </SettingsGroup>;
 }
