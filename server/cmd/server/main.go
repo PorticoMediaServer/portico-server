@@ -657,7 +657,7 @@ func run() (runErr error) {
 		return sources.Acquire(ctx, path, purpose)
 	}}
 	doneAnalysis := reporter.step("analysis", "Open media analysis storage")
-	analysisService, e := initializeAnalysis(db, state, subtitleRenderer, ffmpegTool)
+	analysisService, e := initializeAnalysis(db, state, subtitleRenderer, ffmpegTool, storeIO.Supervisor)
 	doneAnalysis(e)
 	if e != nil {
 		return e

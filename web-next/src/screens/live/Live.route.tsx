@@ -6,6 +6,8 @@ import {dayPrimeTime} from '@core/channel-guide.ts';
 import type {GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
 import {programmeFactParts} from '@portico/client-core/kit-model';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useQuietRefresh} from '../../platform/freshness';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -15,17 +17,21 @@ import {BottomSheet, SidePanel} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {useScreenAppearance} from '../browse/screen-preferences';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveListPrograms, liveProgramWindow} from './program-window';
+import {LiveOnNow} from './OnNow';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
+const liveDependencies = [dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.list('myRecordings'), dependsOn.personal(), dependsOn.event('stream.resync')];
 const nowStart = () => Math.floor(Date.now() / halfHour) * halfHour;
 type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme?: GuideProgram}>;
 function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const context = useLibraryScreenContext(captured), search = parseLiveScreenSearch(useSearch({from: '/live'})), width = useShellWidth();
+  const appearance = useScreenAppearance(captured.context)!;
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const key = JSON.stringify({kind: search.kind ?? 'all', sourceId: search.sourceId ?? '', timezone, group: search.group, favorites: search.favorites,
     search: search.q, sort: search.sort ?? 'number'} satisfies LegacyGuideOptions);
@@ -91,6 +97,12 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   }, [owner, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now]);
   const drag = useRef<Readonly<{x: number; y: number; start: number}> | undefined>(undefined), moved = useRef(false);
   const currentSelection = selected?.owner === owner ? selected : undefined;
+  useQuietRefresh('live-guide', async refresh => {
+    await refresh.settle();
+    if (refresh.signal.aborted || !owner.life.current()) return;
+    const value = await owner.refresh(refresh.signal);
+    if (!refresh.signal.aborted && owner.life.current()) {setSelected(undefined);setSummary({owner, value});setFailed(undefined);}
+  }, () => summary?.owner === owner, {dependencies: liveDependencies, everyMs: 0});
   const facts = (programme: GuideProgram) => programmeFactParts({startMs: programme.start, endMs: programme.end,
     episode: programme.episode ? {mode: 'seasonal', season: programme.episode.season, episode: programme.episode.number} : undefined,
     subtitle: programme.subtitle, categories: programme.categories, year: programme.year, rating: programme.rating, flags: programme.flags, recording: programme.recording?.state === 'recording'},
@@ -135,6 +147,9 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
             {groups.length > 6 && <Select aria-label={t('next.live.moreGroups')} placeholder={t('next.live.moreGroups')} value={groups.slice(6).some(([group]) => group === search.group) ? search.group : undefined}
               options={groups.slice(6).map(([group, count]) => ({value: group, label: group, description: defaultI18n.number(count)}))} onValueChange={group => navigate({group, favorites: undefined})}/>}
           </div>
+          {width >= 1024 && hasSources && <LiveOnNow owner={owner} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
+            onOpen={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, programme});}}
+            onPlay={captured.binding.playback ? play : undefined}/>}
           <div className={styles.controls}><div className={styles.stepper}><Button variant="icon" size="small" icon="i-left" iconOnly aria-label={t('guide.earlier')} onClick={() => setStart(value => value - 2 * 60 * 60_000)}/><Button variant="text" size="small" onClick={() => setStart(nowStart())}>{t('guide.now')}</Button><Button variant="icon" size="small" icon="i-right" iconOnly aria-label={t('guide.later')} onClick={() => setStart(value => value + 2 * 60 * 60_000)}/></div>
             {days.length > 0 && <Select aria-label={t('guide.day')} value={String(localDayStart(start, timezone))}
               options={days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)}))}

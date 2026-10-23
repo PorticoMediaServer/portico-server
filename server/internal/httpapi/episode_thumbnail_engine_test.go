@@ -181,7 +181,7 @@ func TestEpisodeThumbnailRepairHTTPPublishesOneFrameUnderEveryStoredMode(t *test
 				t.Fatalf("wrong retained HTTP lifecycle: source=%+v decoded=%d", f.source, f.decoded)
 			}
 			inv := f.source.invocation
-			if inv.Owner.AccountID != "owner" || inv.Owner.Authority != "local" || inv.Owner.Hash == "" || inv.JobID != "" || inv.Target != (metadata.EpisodeThumbnailTarget{"episodes", "episodes", f.target, "revision-a", f.target}) {
+			if inv.Owner.AccountID != "owner" || inv.Owner.Authority != "local" || inv.Owner.Hash == "" || inv.JobID != "" || inv.Target != (metadata.EpisodeThumbnailTarget{LibraryID: "episodes", LibrarySourceID: "episodes", ObjectID: f.target, SourceRevision: "revision-a", EpisodeID: f.target}) {
 				t.Fatalf("lost actual HTTP principal/target: %+v", inv)
 			}
 			var stored, tier string

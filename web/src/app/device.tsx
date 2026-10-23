@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo} from 'react';
 import {useI18n} from './i18n';
 import {IdentityClient, announceDevice} from '@core/index.ts';
 import {keepBrowserProfilePublished} from '../bridge/client-profile';
@@ -19,29 +19,23 @@ export function describeBrowser(): string {
 export type DeviceAccess = Readonly<{state: 'pending' | 'denied'; checking: boolean; recheck: () => void}>;
 
 /**
- * After any sign-in, tells the server which device this is, so it appears by name under
- * Devices, can be signed out from elsewhere, and is held for the owner's approval when the
- * server asks for that. A device list that is briefly incomplete never costs anyone their
- * sign-in: only an explicit "waiting for approval" or "refused" from the server stops the app
- * here, and that is shown inside the shell (`blocked`, INT gate 3), never as a page of its own.
+ * After sign-in, publishes the device name and binds it to the issued session. Device
+ * registration is bookkeeping, not admission: the canonical sign-in result already owns
+ * authority, and an unavailable device list never changes it. `blocked` remains a legacy
+ * caller compatibility prop; device approval is no longer a protocol outcome.
  */
-export function DeviceGate({children, blocked}: {children: React.ReactNode; blocked: (access: DeviceAccess) => React.ReactNode}) {
+export function DeviceGate({children}: {children: React.ReactNode; blocked: (access: DeviceAccess) => React.ReactNode}) {
   const {api, session, local: account} = useSession();
   const identity = useMemo(() => new IdentityClient(api), [api]);
-  const [state, setState] = useState<'ok' | DeviceAccess['state']>('ok');
-  const [checking, setChecking] = useState(false);
   // Every sign-in is a device on its server, however the viewer proved who they are: the record
   // lives on the server alone, and a Portico Account sign-in never asks Hosted Services about it.
   const family = session?.sessionFamilyId ?? '';
   const rememberAccount = session?.viewer.authority === 'local' && !!account?.canManage && account.managementFamily === family;
   const announce = useCallback(async () => {
-    if (!family) { setState('ok'); return; }
+    if (!family) return;
     const token = currentAccessToken();
     const installationId = browserInstallation();
-    setChecking(true);
     const outcome = await announceDevice(identity, {installationId, name: describeBrowser(), platform: 'web', app: 'Portico Web', appVersion: import.meta.env.VITE_APP_VERSION ?? ''}, family);
-    setChecking(false);
-    setState(outcome === 'pending' || outcome === 'denied' ? outcome : 'ok');
     // The sign-in screen can then offer this account by name; nothing stored there signs anyone in.
     if (outcome === 'bound' && rememberAccount && currentAccessToken() === token) void identity.rememberAccount(installationId, false).catch(() => {});
   }, [identity, family, rememberAccount]);
@@ -50,7 +44,6 @@ export function DeviceGate({children, blocked}: {children: React.ReactNode; bloc
   // server stops converting what would have played as it is.
   // Keyed on the sign-in (session family), not the access token, which rotates every ~13 minutes.
   useEffect(() => (family ? keepBrowserProfilePublished(api, family) : undefined), [api, family]);
-  if (state !== 'ok') return <>{blocked({state, checking, recheck: () => void announce()})}</>;
   return <>{children}</>;
 }
 
