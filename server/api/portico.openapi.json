@@ -1066,6 +1066,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -1074,6 +1082,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -1955,6 +1965,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -1963,6 +1981,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -3044,6 +3064,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -3052,6 +3080,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -8509,6 +8539,14 @@
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -8517,6 +8555,8 @@
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -9346,6 +9386,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -9354,6 +9402,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -13509,6 +13559,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -13517,6 +13575,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -31489,6 +31549,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -31624,6 +31687,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -34679,6 +34743,12 @@
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "variants": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             }
                           },
                           "required": [
@@ -34706,6 +34776,12 @@
                               "type": "integer"
                             },
                             "objectAudio": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "variants": {
                               "items": {
                                 "type": "string"
                               },
@@ -34791,6 +34867,12 @@
                               },
                               "type": "array"
                             },
+                            "chromaSubsampling": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "codec": {
                               "type": "string"
                             },
@@ -34816,6 +34898,12 @@
                             },
                             "evidence": {
                               "type": "string"
+                            },
+                            "frameRateModes": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "interlaced": {
                               "type": "boolean"
@@ -34952,6 +35040,12 @@
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "variants": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 }
                               },
                               "required": [
@@ -34979,6 +35073,12 @@
                                   "type": "integer"
                                 },
                                 "objectAudio": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "variants": {
                                   "items": {
                                     "type": "string"
                                   },
@@ -35064,6 +35164,12 @@
                                   },
                                   "type": "array"
                                 },
+                                "chromaSubsampling": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "codec": {
                                   "type": "string"
                                 },
@@ -35089,6 +35195,12 @@
                                 },
                                 "evidence": {
                                   "type": "string"
+                                },
+                                "frameRateModes": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "interlaced": {
                                   "type": "boolean"
@@ -108500,13 +108612,7 @@
         "properties": {
           "data": {
             "properties": {
-              "autoplayNext": {
-                "type": "boolean"
-              },
               "bookRate": {
-                "type": "number"
-              },
-              "musicRate": {
                 "type": "number"
               },
               "passoutMinutes": {
@@ -108522,9 +108628,7 @@
             },
             "required": [
               "revision",
-              "musicRate",
               "bookRate",
-              "autoplayNext",
               "passoutMinutes"
             ],
             "type": "object"
@@ -116137,6 +116241,9 @@
                       "default": {
                         "type": "boolean"
                       },
+                      "dtsx": {
+                        "type": "boolean"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -116144,6 +116251,9 @@
                         "type": "string"
                       },
                       "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
                         "type": "string"
                       },
                       "sampleRate": {
@@ -116154,11 +116264,15 @@
                       "title": {
                         "type": "string"
                       },
+                      "variant": {
+                        "type": "string"
+                      },
                       "visualImpaired": {
                         "type": "boolean"
                       }
                     },
                     "required": [
+                      "dtsx",
                       "id",
                       "codec",
                       "atmos",
@@ -116309,14 +116423,55 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
                       "codec": {
                         "type": "string"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
                       },
                       "fps": {
                         "type": "number"
                       },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "hdr": {
                         "type": "string"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
                       },
                       "height": {
                         "maximum": 9007199254740991,
@@ -116331,6 +116486,12 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
                       "profile": {
                         "type": "string"
                       },
@@ -116341,6 +116502,9 @@
                       }
                     },
                     "required": [
+                      "dolbyVisionRpu",
+                      "dolbyVisionBaseLayer",
+                      "hdr10Plus",
                       "id",
                       "codec"
                     ],
@@ -116901,6 +117065,14 @@
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -116909,6 +117081,8 @@
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -120394,6 +120568,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -120529,6 +120706,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -158677,6 +158855,9 @@
                         "default": {
                           "type": "boolean"
                         },
+                        "dtsx": {
+                          "type": "boolean"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -158684,6 +158865,9 @@
                           "type": "string"
                         },
                         "layout": {
+                          "type": "string"
+                        },
+                        "objectAudio": {
                           "type": "string"
                         },
                         "sampleRate": {
@@ -158694,11 +158878,15 @@
                         "title": {
                           "type": "string"
                         },
+                        "variant": {
+                          "type": "string"
+                        },
                         "visualImpaired": {
                           "type": "boolean"
                         }
                       },
                       "required": [
+                        "dtsx",
                         "id",
                         "codec",
                         "atmos",
@@ -158738,14 +158926,55 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "chromaSubsampling": {
+                          "type": "string"
+                        },
                         "codec": {
                           "type": "string"
+                        },
+                        "dolbyVisionBaseLayer": {
+                          "type": "boolean"
+                        },
+                        "dolbyVisionCmVersion": {
+                          "type": "string"
+                        },
+                        "dolbyVisionCompatibility": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dolbyVisionEnhancementType": {
+                          "type": "string"
+                        },
+                        "dolbyVisionProfile": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dolbyVisionRpu": {
+                          "type": "boolean"
                         },
                         "fps": {
                           "type": "number"
                         },
+                        "frameRateDenominator": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "frameRateMode": {
+                          "type": "string"
+                        },
+                        "frameRateNumerator": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "hdr": {
                           "type": "string"
+                        },
+                        "hdr10Plus": {
+                          "type": "boolean"
                         },
                         "height": {
                           "maximum": 9007199254740991,
@@ -158760,6 +158989,12 @@
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
+                        "masterDisplay": {
+                          "type": "string"
+                        },
+                        "maxCll": {
+                          "type": "string"
+                        },
                         "profile": {
                           "type": "string"
                         },
@@ -158770,6 +159005,9 @@
                         }
                       },
                       "required": [
+                        "dolbyVisionRpu",
+                        "dolbyVisionBaseLayer",
+                        "hdr10Plus",
                         "id",
                         "codec"
                       ],
@@ -161050,6 +161288,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -161058,6 +161304,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -163337,6 +163585,9 @@
                 },
                 "type": "array"
               },
+              "deviceBound": {
+                "type": "boolean"
+              },
               "deviceClass": {
                 "type": "string"
               },
@@ -163472,6 +163723,7 @@
             "required": [
               "audioEffects",
               "deviceClass",
+              "deviceBound",
               "registry",
               "documents",
               "effective",
@@ -189720,6 +189972,14 @@
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -189728,6 +189988,8 @@
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -193459,6 +193721,12 @@
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "variants": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
@@ -193486,6 +193754,12 @@
                           "type": "integer"
                         },
                         "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "variants": {
                           "items": {
                             "type": "string"
                           },
@@ -193571,6 +193845,12 @@
                           },
                           "type": "array"
                         },
+                        "chromaSubsampling": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "codec": {
                           "type": "string"
                         },
@@ -193596,6 +193876,12 @@
                         },
                         "evidence": {
                           "type": "string"
+                        },
+                        "frameRateModes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "interlaced": {
                           "type": "boolean"
@@ -193732,6 +194018,12 @@
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "variants": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             }
                           },
                           "required": [
@@ -193759,6 +194051,12 @@
                               "type": "integer"
                             },
                             "objectAudio": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "variants": {
                               "items": {
                                 "type": "string"
                               },
@@ -193844,6 +194142,12 @@
                               },
                               "type": "array"
                             },
+                            "chromaSubsampling": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
                             "codec": {
                               "type": "string"
                             },
@@ -193869,6 +194173,12 @@
                             },
                             "evidence": {
                               "type": "string"
+                            },
+                            "frameRateModes": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "interlaced": {
                               "type": "boolean"
@@ -197622,27 +197932,7 @@
       },
       "PutListeningPreferencesRequest": {
         "properties": {
-          "autoplayNext": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "bookRate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "musicRate": {
             "anyOf": [
               {
                 "type": "number"
@@ -197679,9 +197969,7 @@
         },
         "required": [
           "revision",
-          "musicRate",
           "bookRate",
-          "autoplayNext",
           "passoutMinutes"
         ],
         "type": "object"
@@ -197690,13 +197978,7 @@
         "properties": {
           "data": {
             "properties": {
-              "autoplayNext": {
-                "type": "boolean"
-              },
               "bookRate": {
-                "type": "number"
-              },
-              "musicRate": {
                 "type": "number"
               },
               "passoutMinutes": {
@@ -197712,9 +197994,7 @@
             },
             "required": [
               "revision",
-              "musicRate",
               "bookRate",
-              "autoplayNext",
               "passoutMinutes"
             ],
             "type": "object"
@@ -199951,6 +200231,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -199959,6 +200247,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -212240,6 +212530,14 @@
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -212248,6 +212546,8 @@
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -213276,6 +213576,14 @@
                         "linesUrl": {
                           "type": "string"
                         },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "timeDomain": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -213284,6 +213592,8 @@
                         }
                       },
                       "required": [
+                        "timeDomain",
+                        "offsetMs",
                         "trackId",
                         "format",
                         "url"
@@ -255606,6 +255916,9 @@
                                   "default": {
                                     "type": "boolean"
                                   },
+                                  "dtsx": {
+                                    "type": "boolean"
+                                  },
                                   "id": {
                                     "type": "string"
                                   },
@@ -255613,6 +255926,9 @@
                                     "type": "string"
                                   },
                                   "layout": {
+                                    "type": "string"
+                                  },
+                                  "objectAudio": {
                                     "type": "string"
                                   },
                                   "sampleRate": {
@@ -255623,11 +255939,15 @@
                                   "title": {
                                     "type": "string"
                                   },
+                                  "variant": {
+                                    "type": "string"
+                                  },
                                   "visualImpaired": {
                                     "type": "boolean"
                                   }
                                 },
                                 "required": [
+                                  "dtsx",
                                   "id",
                                   "codec",
                                   "atmos",
@@ -255667,14 +255987,55 @@
                                     "minimum": -9007199254740991,
                                     "type": "integer"
                                   },
+                                  "chromaSubsampling": {
+                                    "type": "string"
+                                  },
                                   "codec": {
                                     "type": "string"
+                                  },
+                                  "dolbyVisionBaseLayer": {
+                                    "type": "boolean"
+                                  },
+                                  "dolbyVisionCmVersion": {
+                                    "type": "string"
+                                  },
+                                  "dolbyVisionCompatibility": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "dolbyVisionEnhancementType": {
+                                    "type": "string"
+                                  },
+                                  "dolbyVisionProfile": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "dolbyVisionRpu": {
+                                    "type": "boolean"
                                   },
                                   "fps": {
                                     "type": "number"
                                   },
+                                  "frameRateDenominator": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "frameRateMode": {
+                                    "type": "string"
+                                  },
+                                  "frameRateNumerator": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
                                   "hdr": {
                                     "type": "string"
+                                  },
+                                  "hdr10Plus": {
+                                    "type": "boolean"
                                   },
                                   "height": {
                                     "maximum": 9007199254740991,
@@ -255689,6 +256050,12 @@
                                     "minimum": -9007199254740991,
                                     "type": "integer"
                                   },
+                                  "masterDisplay": {
+                                    "type": "string"
+                                  },
+                                  "maxCll": {
+                                    "type": "string"
+                                  },
                                   "profile": {
                                     "type": "string"
                                   },
@@ -255699,6 +256066,9 @@
                                   }
                                 },
                                 "required": [
+                                  "dolbyVisionRpu",
+                                  "dolbyVisionBaseLayer",
+                                  "hdr10Plus",
                                   "id",
                                   "codec"
                                 ],
@@ -267301,6 +267671,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -267436,6 +267809,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",
@@ -373601,6 +373975,9 @@
                                 "default": {
                                   "type": "boolean"
                                 },
+                                "dtsx": {
+                                  "type": "boolean"
+                                },
                                 "id": {
                                   "type": "string"
                                 },
@@ -373608,6 +373985,9 @@
                                   "type": "string"
                                 },
                                 "layout": {
+                                  "type": "string"
+                                },
+                                "objectAudio": {
                                   "type": "string"
                                 },
                                 "sampleRate": {
@@ -373618,11 +373998,15 @@
                                 "title": {
                                   "type": "string"
                                 },
+                                "variant": {
+                                  "type": "string"
+                                },
                                 "visualImpaired": {
                                   "type": "boolean"
                                 }
                               },
                               "required": [
+                                "dtsx",
                                 "id",
                                 "codec",
                                 "atmos",
@@ -373773,14 +374157,55 @@
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "chromaSubsampling": {
+                                  "type": "string"
+                                },
                                 "codec": {
                                   "type": "string"
+                                },
+                                "dolbyVisionBaseLayer": {
+                                  "type": "boolean"
+                                },
+                                "dolbyVisionCmVersion": {
+                                  "type": "string"
+                                },
+                                "dolbyVisionCompatibility": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "dolbyVisionEnhancementType": {
+                                  "type": "string"
+                                },
+                                "dolbyVisionProfile": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "dolbyVisionRpu": {
+                                  "type": "boolean"
                                 },
                                 "fps": {
                                   "type": "number"
                                 },
+                                "frameRateDenominator": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "frameRateMode": {
+                                  "type": "string"
+                                },
+                                "frameRateNumerator": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "hdr": {
                                   "type": "string"
+                                },
+                                "hdr10Plus": {
+                                  "type": "boolean"
                                 },
                                 "height": {
                                   "maximum": 9007199254740991,
@@ -373795,6 +374220,12 @@
                                   "minimum": -9007199254740991,
                                   "type": "integer"
                                 },
+                                "masterDisplay": {
+                                  "type": "string"
+                                },
+                                "maxCll": {
+                                  "type": "string"
+                                },
                                 "profile": {
                                   "type": "string"
                                 },
@@ -373805,6 +374236,9 @@
                                 }
                               },
                               "required": [
+                                "dolbyVisionRpu",
+                                "dolbyVisionBaseLayer",
+                                "hdr10Plus",
                                 "id",
                                 "codec"
                               ],
@@ -394074,13 +394508,7 @@
                   "properties": {
                     "data": {
                       "properties": {
-                        "autoplayNext": {
-                          "type": "boolean"
-                        },
                         "bookRate": {
-                          "type": "number"
-                        },
-                        "musicRate": {
                           "type": "number"
                         },
                         "passoutMinutes": {
@@ -394096,9 +394524,7 @@
                       },
                       "required": [
                         "revision",
-                        "musicRate",
                         "bookRate",
-                        "autoplayNext",
                         "passoutMinutes"
                       ],
                       "type": "object"
@@ -394189,27 +394615,7 @@
             "application/json": {
               "schema": {
                 "properties": {
-                  "autoplayNext": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "bookRate": {
-                    "anyOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "musicRate": {
                     "anyOf": [
                       {
                         "type": "number"
@@ -394246,9 +394652,7 @@
                 },
                 "required": [
                   "revision",
-                  "musicRate",
                   "bookRate",
-                  "autoplayNext",
                   "passoutMinutes"
                 ],
                 "type": "object"
@@ -394265,13 +394669,7 @@
                   "properties": {
                     "data": {
                       "properties": {
-                        "autoplayNext": {
-                          "type": "boolean"
-                        },
                         "bookRate": {
-                          "type": "number"
-                        },
-                        "musicRate": {
                           "type": "number"
                         },
                         "passoutMinutes": {
@@ -394287,9 +394685,7 @@
                       },
                       "required": [
                         "revision",
-                        "musicRate",
                         "bookRate",
-                        "autoplayNext",
                         "passoutMinutes"
                       ],
                       "type": "object"
@@ -395493,6 +395889,12 @@
                                           "type": "string"
                                         },
                                         "type": "array"
+                                      },
+                                      "variants": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
                                       }
                                     },
                                     "required": [
@@ -395520,6 +395922,12 @@
                                         "type": "integer"
                                       },
                                       "objectAudio": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      },
+                                      "variants": {
                                         "items": {
                                           "type": "string"
                                         },
@@ -395605,6 +396013,12 @@
                                         },
                                         "type": "array"
                                       },
+                                      "chromaSubsampling": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      },
                                       "codec": {
                                         "type": "string"
                                       },
@@ -395630,6 +396044,12 @@
                                       },
                                       "evidence": {
                                         "type": "string"
+                                      },
+                                      "frameRateModes": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
                                       },
                                       "interlaced": {
                                         "type": "boolean"
@@ -395766,6 +396186,12 @@
                                               "type": "string"
                                             },
                                             "type": "array"
+                                          },
+                                          "variants": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
                                           }
                                         },
                                         "required": [
@@ -395793,6 +396219,12 @@
                                             "type": "integer"
                                           },
                                           "objectAudio": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          },
+                                          "variants": {
                                             "items": {
                                               "type": "string"
                                             },
@@ -395878,6 +396310,12 @@
                                             },
                                             "type": "array"
                                           },
+                                          "chromaSubsampling": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
+                                          },
                                           "codec": {
                                             "type": "string"
                                           },
@@ -395903,6 +396341,12 @@
                                           },
                                           "evidence": {
                                             "type": "string"
+                                          },
+                                          "frameRateModes": {
+                                            "items": {
+                                              "type": "string"
+                                            },
+                                            "type": "array"
                                           },
                                           "interlaced": {
                                             "type": "boolean"
@@ -396293,6 +396737,12 @@
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "variants": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 }
                               },
                               "required": [
@@ -396320,6 +396770,12 @@
                                   "type": "integer"
                                 },
                                 "objectAudio": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "variants": {
                                   "items": {
                                     "type": "string"
                                   },
@@ -396405,6 +396861,12 @@
                                   },
                                   "type": "array"
                                 },
+                                "chromaSubsampling": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "codec": {
                                   "type": "string"
                                 },
@@ -396430,6 +396892,12 @@
                                 },
                                 "evidence": {
                                   "type": "string"
+                                },
+                                "frameRateModes": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "interlaced": {
                                   "type": "boolean"
@@ -396566,6 +397034,12 @@
                                         "type": "string"
                                       },
                                       "type": "array"
+                                    },
+                                    "variants": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
                                     }
                                   },
                                   "required": [
@@ -396593,6 +397067,12 @@
                                       "type": "integer"
                                     },
                                     "objectAudio": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "variants": {
                                       "items": {
                                         "type": "string"
                                       },
@@ -396678,6 +397158,12 @@
                                       },
                                       "type": "array"
                                     },
+                                    "chromaSubsampling": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
                                     "codec": {
                                       "type": "string"
                                     },
@@ -396703,6 +397189,12 @@
                                     },
                                     "evidence": {
                                       "type": "string"
+                                    },
+                                    "frameRateModes": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
                                     },
                                     "interlaced": {
                                       "type": "boolean"
@@ -414598,6 +415090,14 @@
                               "linesUrl": {
                                 "type": "string"
                               },
+                              "offsetMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "timeDomain": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -414606,6 +415106,8 @@
                               }
                             },
                             "required": [
+                              "timeDomain",
+                              "offsetMs",
                               "trackId",
                               "format",
                               "url"
@@ -415354,6 +415856,14 @@
                               "linesUrl": {
                                 "type": "string"
                               },
+                              "offsetMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "timeDomain": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -415362,6 +415872,8 @@
                               }
                             },
                             "required": [
+                              "timeDomain",
+                              "offsetMs",
                               "trackId",
                               "format",
                               "url"
@@ -416155,6 +416667,14 @@
                               "linesUrl": {
                                 "type": "string"
                               },
+                              "offsetMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "timeDomain": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -416163,6 +416683,8 @@
                               }
                             },
                             "required": [
+                              "timeDomain",
+                              "offsetMs",
                               "trackId",
                               "format",
                               "url"
@@ -421628,6 +422150,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -421763,6 +422288,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",
@@ -421921,6 +422447,9 @@
                           },
                           "type": "array"
                         },
+                        "deviceBound": {
+                          "type": "boolean"
+                        },
                         "deviceClass": {
                           "type": "string"
                         },
@@ -422056,6 +422585,7 @@
                       "required": [
                         "audioEffects",
                         "deviceClass",
+                        "deviceBound",
                         "registry",
                         "documents",
                         "effective",
@@ -423483,6 +424013,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -423491,6 +424029,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -424751,6 +425291,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -424759,6 +425307,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -425842,6 +426392,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -425850,6 +426408,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -427027,6 +427587,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -427035,6 +427603,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -427999,6 +428569,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -428007,6 +428585,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -429287,6 +429867,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -429295,6 +429883,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -430485,6 +431075,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -430493,6 +431091,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -431454,6 +432054,14 @@
                                   "linesUrl": {
                                     "type": "string"
                                   },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "timeDomain": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -431462,6 +432070,8 @@
                                   }
                                 },
                                 "required": [
+                                  "timeDomain",
+                                  "offsetMs",
                                   "trackId",
                                   "format",
                                   "url"
@@ -432226,6 +432836,14 @@
                               "linesUrl": {
                                 "type": "string"
                               },
+                              "offsetMs": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "timeDomain": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -432234,6 +432852,8 @@
                               }
                             },
                             "required": [
+                              "timeDomain",
+                              "offsetMs",
                               "trackId",
                               "format",
                               "url"

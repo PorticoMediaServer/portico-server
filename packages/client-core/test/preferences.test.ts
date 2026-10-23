@@ -127,6 +127,8 @@ test('a patch is checked against the registry before it is sent',()=>{
  assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'playback.warpDrive':true}));
  assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'appearance.reduceMotion':true}));
  assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'playback.defaultSpeed':3.5}));
+ assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'playback.playedThresholdPercent':74}));
+ assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'playback.playedThresholdPercent':101}));
  assert.throws(()=>validatePreferencePatch(registry,'profile-server',{'search.rememberHistory':'yes' as never}));
 });
 

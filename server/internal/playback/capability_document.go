@@ -96,14 +96,16 @@ type ClientDisplay struct {
 
 // ClientVideoCodec is one video decoder of an engine.
 type ClientVideoCodec struct {
-	Codec         string   `json:"codec"`
-	Profiles      []string `json:"profiles"`
-	MaxLevel      int      `json:"maxLevel"`
-	BitDepths     []int    `json:"bitDepths"`
-	MaxWidth      int      `json:"maxWidth"`
-	MaxHeight     int      `json:"maxHeight"`
-	MaxFrameRate  float64  `json:"maxFrameRate"`
-	MaxBitrateBPS int      `json:"maxBitrateBps"`
+	ChromaSubsampling []string `json:"chromaSubsampling,omitempty"`
+	FrameRateModes    []string `json:"frameRateModes,omitempty"`
+	Codec             string   `json:"codec"`
+	Profiles          []string `json:"profiles"`
+	MaxLevel          int      `json:"maxLevel"`
+	BitDepths         []int    `json:"bitDepths"`
+	MaxWidth          int      `json:"maxWidth"`
+	MaxHeight         int      `json:"maxHeight"`
+	MaxFrameRate      float64  `json:"maxFrameRate"`
+	MaxBitrateBPS     int      `json:"maxBitrateBps"`
 	// DynamicRanges is what the decoder decodes. Whether the result can be shown
 	// is the display's list, or the engine's own tone mapping (toneMapsHdr).
 	DynamicRanges       []string `json:"dynamicRanges"`
@@ -123,6 +125,7 @@ type ClientVideoCodec struct {
 // ClientAudioCodec is one audio decoder of an engine: the device turns the
 // codec into sound itself.
 type ClientAudioCodec struct {
+	Variants      []string `json:"variants,omitempty"`
 	Codec         string   `json:"codec"`
 	MaxChannels   int      `json:"maxChannels"`
 	MaxSampleRate int      `json:"maxSampleRate"`
@@ -135,6 +138,7 @@ type ClientAudioCodec struct {
 // undecoded (a receiver or soundbar decodes it). It is used only while the
 // output route carries bitstreams and the viewer has not turned it off.
 type ClientAudioPassthrough struct {
+	Variants    []string `json:"variants,omitempty"`
 	Codec       string   `json:"codec"`
 	MaxChannels int      `json:"maxChannels"`
 	ObjectAudio []string `json:"objectAudio"`
@@ -483,6 +487,9 @@ func (e *EngineCapabilities) validate(path string) error {
 		if !validVideoLimits(v.Limits) {
 			return capabilityField(path + ".video.limits")
 		}
+		if !validChroma(v.ChromaSubsampling) || !validFrameRateModes(v.FrameRateModes) {
+			return capabilityField(path + ".video")
+		}
 		for _, dv := range v.DolbyVisionProfiles {
 			if dv < 1 || dv > 31 {
 				return capabilityField(path + ".video")
@@ -490,12 +497,12 @@ func (e *EngineCapabilities) validate(path string) error {
 		}
 	}
 	for _, a := range e.Audio {
-		if !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || a.MaxSampleRate < 0 || a.MaxSampleRate > 1<<22 || a.MaxBitDepth < 0 || a.MaxBitDepth > 64 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
+		if !validAudioVariants(a.Variants) || !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || a.MaxSampleRate < 0 || a.MaxSampleRate > 1<<22 || a.MaxBitDepth < 0 || a.MaxBitDepth > 64 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
 			return capabilityField(path + ".audio")
 		}
 	}
 	for _, a := range e.AudioPassthrough {
-		if !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
+		if !validAudioVariants(a.Variants) || !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
 			return capabilityField(path + ".audioPassthrough")
 		}
 	}
@@ -551,8 +558,8 @@ func deviceAudioName(codec string) string {
 		return "eac3"
 	case "ac-3":
 		return "ac3"
-	case "dts-hd", "dtshd", "dts_hd":
-		return "dts"
+	case "dts-hd", "dtshd":
+		return "dts_hd"
 	case "mlp":
 		return "truehd"
 	}

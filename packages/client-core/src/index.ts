@@ -315,8 +315,10 @@ export class HttpLocalApi {
   getTransportClass(): TransportClass { return this.transportClass; }
   /** The surface this client renders on, which scopes its device-class
    * preferences. Unset means the server applies no device-class document. */
-  setDeviceClass(value: 'web' | 'mobile' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
+  setDeviceClass(value: 'web' | 'mobile' | 'tablet' | 'television' | '') { this.deviceClass = value; setDeliveryContext({ deviceClass: value }); }
   getDeviceClass() { return this.deviceClass; }
+  /** The catalogue actually displayed by this app, after locale fallback. */
+  setAppLanguage(value: string) { setDeliveryContext({appLanguage: value}); }
   private deliveryHeaders(): Record<string, string> {
     return {
       ...deliveryContextHeaders(),
@@ -695,6 +697,9 @@ export interface PlaybackAdapter {
 }
 /** UI intent is the sole command authority. Native events report facts, never autoplay intent. */
 export class PlaybackService {
+  /** Device engine processing (for example device-local EQ), never an account preference. */
+  private deviceAudioProcessing = false;
+
   private channels?: ChannelPlayback;
   private channelWantedState:'playing'|'paused'='playing';
   private channelSeekId?: string;
@@ -869,7 +874,7 @@ export class PlaybackService {
     this.clearStartup();this.bookmarkProtected=true;this.hasObserved=false;
     const intentId=before.intentId;
     this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,selected:before.audioTracks.pending??before.audioTracks.selected,pending:undefined}):undefined,error:undefined,recovering:undefined,
-      audioEffects:{...before.audioEffects,rendering:renderable(next)&&audioEffectsEnabled(before.audioEffects.settings),prepared:undefined,committed:undefined,notice:renderNotice(next)}});
+      audioEffects:{...before.audioEffects,rendering:renderable(next)&&(audioEffectsEnabled(before.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined,notice:renderNotice(next)}});
     this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'Playback did not become ready. Check the server and try again.');});
     return true;
   }
@@ -1002,11 +1007,23 @@ export class PlaybackService {
   setAudioEffects(settings:AudioEffectsSettings){
     settings=parseAudioEffects(settings);if(!this.nativeV1){this.queue?.seekRetiringAudio?.(this.snapshot.positionSeconds);this.queue?.invalidateAudioPreparation?.();}
     const current=this.snapshot,effects=current.audioEffects;
-    const enable=renderable(current.session)&&audioEffectsEnabled(settings);
+    const enable=renderable(current.session)&&(audioEffectsEnabled(settings)||this.deviceAudioProcessing);
     this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,notice:''}});
     this.syncListeningPolicy();
     if(enable&&!effects.rendering&&current.session&&!this.nativeV1)this.requestSeek(current.positionSeconds);
     void this.queue?.saveAudioEffects(settings).catch(()=>this.audioEffectsNotice('These audio settings could not be saved on this device.'));
+  }
+  /** The platform engine selects local processing without rewriting the viewer's music settings. */
+  setDeviceAudioProcessing(enabled:boolean){
+    if(this.deviceAudioProcessing===enabled)return;
+    this.deviceAudioProcessing=enabled;
+    const current=this.snapshot,effects=current.audioEffects;
+    const rendering=renderable(current.session)&&(enabled||audioEffectsEnabled(effects.settings));
+    if(rendering===effects.rendering)return;
+    this.queue?.invalidateAudioPreparation?.();
+    const audioEffects={...effects,rendering,prepared:undefined,committed:undefined};
+    if(current.session)this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects});
+    else this.update({audioEffects});
   }
   audioRenderStatus(effectiveRate:number,waiting:boolean){
     if(!Number.isFinite(effectiveRate)||effectiveRate<0||effectiveRate>4)return;
@@ -1177,7 +1194,7 @@ export class PlaybackService {
     this.leave(false,true);this.sequence=0;this.lastProgress=0;
     const intentId=this.snapshot.intentId;
     this.update({phase:'starting',itemId,intent,error:undefined});
-    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&audioEffectsEnabled(this.snapshot.audioEffects.settings),prepared:undefined,committed:undefined,notice:renderNotice(session)}});
+    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&(audioEffectsEnabled(this.snapshot.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined,notice:renderNotice(session)}});
     if(this.snapshot.intentId===intentId&&this.snapshot.phase!=='ready'){
       this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'The selected queue item did not become ready. Retry playback or choose another item.');});
     }
@@ -1998,6 +2015,7 @@ export type {PlayerChapter,PlayerChaptersData,PlayerChaptersTarget,PlayerChapter
 export {PlayerSessionChoices,playerSessionChoices} from './player-session-choices.ts';
 export * from './listening.ts';
 export * from './preferences.ts';
+export * from './preference-effects.ts';
 export {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,type SegmentMarker,type SegmentMarkerKind,type SegmentMarkerSet} from './segment-markers.ts';
 export {activeSegment,skipsAutomatically,skipTarget,followedByScene,closingKind,SKIP_LEAD_SECONDS,UNDO_SECONDS,type SkipMode} from './segment-skip.ts';
 export {parseQueuePostPlay,passoutCheckRequired,type QueuePostPlay,type QueueAdvanceMode} from './post-play.ts';
