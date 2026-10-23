@@ -273,6 +273,14 @@ func failure(w http.ResponseWriter, e error) {
 		preparedFailure(w, e)
 		return
 	}
+	if errors.Is(e, identity.ErrSignInKindPortico) || errors.Is(e, identity.ErrSignInKindLocal) {
+		code := "sign_in_kind_portico"
+		if errors.Is(e, identity.ErrSignInKindLocal) {
+			code = "sign_in_kind_local"
+		}
+		write(w, 403, map[string]any{"error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
+		return
+	}
 	status, code := 500, "internal"
 	if requestinput.Is(e) {
 		status, code = 400, "invalid_request"
@@ -878,7 +886,12 @@ func New(d Dependencies) http.Handler {
 	// maintenance document; published here it tells a scanner which servers
 	// carry a known flaw.
 	d.httpHandle(mux, "GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
+		kind, err := d.Identity.SignInKind(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		write(w, 200, SystemInfo{ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)

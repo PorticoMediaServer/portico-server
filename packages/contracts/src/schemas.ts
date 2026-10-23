@@ -31804,6 +31804,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -31871,7 +31894,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -137150,6 +137174,13 @@ export const schemas = {
       "setupRequired": {
         "type": "boolean"
       },
+      "signIn": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
       "version": {
         "type": "string"
       }
@@ -137157,6 +137188,7 @@ export const schemas = {
     "required": [
       "id",
       "name",
+      "signIn",
       "setupRequired",
       "hostedConfigured",
       "hostedAttached",
@@ -142349,6 +142381,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -142416,7 +142471,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -143992,6 +144048,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -144150,6 +144229,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session"
         ],
         "type": "object"
@@ -144208,6 +144288,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -144239,6 +144342,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "challenge"
         ],
         "type": "object"
@@ -144297,6 +144401,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -144322,6 +144449,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "deviceApprovalPending",
           "deviceId",
           "installationId"
@@ -150792,6 +150920,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -150959,6 +151110,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session",
           "passwordChangeRequired"
         ],
@@ -151020,6 +151172,29 @@ export const schemas = {
           },
           "canManage": {
             "type": "boolean"
+          },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
           },
           "custodyPending": {
             "type": "boolean"
@@ -151188,6 +151363,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session",
           "resetFileOwnerSession"
         ],
@@ -151296,6 +151472,29 @@ export const schemas = {
       },
       "canManage": {
         "type": "boolean"
+      },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
       },
       "challenge": {
         "properties": {
@@ -151475,7 +151674,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -151654,6 +151854,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -151832,7 +152055,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -151966,6 +152190,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -152144,7 +152391,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -152957,6 +153205,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153124,6 +153395,7 @@ export const schemas = {
       "account",
       "profiles",
       "canManage",
+      "capabilities",
       "session",
       "passwordChangeRequired"
     ],
@@ -153235,6 +153507,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153302,7 +153597,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -153604,6 +153900,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153671,7 +153990,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -153874,6 +154194,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -154052,7 +154395,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -165533,6 +165877,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -165711,7 +166078,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -172030,6 +172398,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -172097,7 +172488,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
