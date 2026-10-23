@@ -1,3 +1,4 @@
+import {parseReportInterval,type ReportInterval} from './report-context.ts';
 /**
  * Owner telemetry and transcode capacity, as the selected server publishes
  * them. Every metric carries its own status, so a client renders "not
@@ -11,13 +12,13 @@
 import {keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 export type MetricStatus='available'|'limited'|'unavailable';
 export type Metric={status:MetricStatus;value:number;detail?:string};
-export type MetricName='cpu'|'memory'|'diskRead'|'diskWrite'|'netIn'|'netOut'|'gpuUsage'|'gpuMemory'|'gpuEncoder';
-export const METRIC_NAMES:MetricName[]=['cpu','memory','diskRead','diskWrite','netIn','netOut','gpuUsage','gpuMemory','gpuEncoder'];
-export type TelemetryWindow='10m'|'1h'|'24h';
-export const TELEMETRY_WINDOWS:TelemetryWindow[]=['10m','1h','24h'];
+export type MetricName='cpu'|'memory'|'diskRead'|'diskWrite'|'netIn'|'netOut'|'gpuUsage'|'gpuMemory'|'gpuEncoder'|'processCPU'|'processMemory'|'homeMbps'|'awayMbps'|'hardwareConversions'|'softwareConversions';
+export const METRIC_NAMES:MetricName[]=['cpu','memory','diskRead','diskWrite','netIn','netOut','gpuUsage','gpuMemory','gpuEncoder','processCPU','processMemory','homeMbps','awayMbps','hardwareConversions','softwareConversions'];
+export type TelemetryWindow='today'|'live'|'12h'|'24h'|'7d'|'30d'|'90d'|'1y'|'all'|'10m'|'1h';
+export const TELEMETRY_WINDOWS:TelemetryWindow[]=['today','live','12h','24h','7d','30d','90d','1y','all','10m','1h'];
 export type TelemetrySample={at:number;metrics:Record<MetricName,Metric>;memoryUsedBytes:number;memoryTotalBytes:number;gpuDevice?:string;gpuProvider?:string};
 export type TelemetryPoint={t:number;v:number};
-export type TelemetryReading={window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
+export type TelemetryReading=ReportInterval & {window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
 
 export type HardwareProbe={backend:string;supported:boolean;detail:string};
 export type HardwareStatus={configured:string;effective:string;device:string;probes:HardwareProbe[]};
@@ -66,21 +67,24 @@ export function parseTelemetrySample(value:unknown):TelemetrySample{
 const MAX_POINTS=1600;
 export function parseTelemetryReading(value:unknown):TelemetryReading{
  const r=base(value);
- if(!TELEMETRY_WINDOWS.includes(r.window)||!integer(r.observedAt))invalid();
+ if(!TELEMETRY_WINDOWS.includes(r.window)||!integer(r.observedAt)||r.period!==r.window)invalid();
+ const interval=parseReportInterval(r,r.window==='live'||r.window==='10m');
+ const bucketStarts=new Set(interval.buckets.map(b=>Date.parse(b.start)));
  const series=base(r.series);const out={} as Record<MetricName,TelemetryPoint[]>;
  for(const name of METRIC_NAMES){
-  const points=series[name];
+  const points=series[name] ?? (METRIC_NAMES.indexOf(name)>=9?[]:undefined);
   if(!Array.isArray(points)||points.length>MAX_POINTS)invalid();
   let previous=-1;
   // A point that is out of order, from the future or not a number is left out; the rest of the line is kept.
   out[name]=keepReadable('telemetry','series.points',points,point=>{
    const p=base(point);
-   if(!integer(p.t)||!finite(p.v)||p.t<previous||p.t>r.observedAt)invalid();
+   if(!integer(p.t)||!finite(p.v)||p.t<=previous||p.t>r.observedAt)invalid();
+   if(r.window!=='live'&&r.window!=='10m'&&(!bucketStarts.has(p.t)||p.t>=Date.parse(interval.until)))invalid();
    previous=p.t;
    return {t:p.t,v:p.v};
   });
  }
- return {window:r.window,series:out,status:metricMap(r.status),observedAt:r.observedAt};
+ return {...interval,window:r.window,series:out,status:metricMap(r.status),observedAt:r.observedAt};
 }
 
 export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{

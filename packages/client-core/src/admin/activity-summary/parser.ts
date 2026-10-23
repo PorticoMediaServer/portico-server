@@ -43,7 +43,7 @@ const art = record({id, kind: label, role: label, revision: id});
 const airDate: Reader = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && currentUTCTimestamp(v + 'T00:00:00Z') ? v : invalid();
 const item = record({id, title: words, kind: label, art: list(art, 4)}, {
   showId: id, showTitle: words, seasonNumber: count, episodeNumber: count,
-  episodeNumbering: label, airDate, year: integer(9999, 1), artist: words, album: words,
+  episodeNumbering: label, airDate, year: integer(9999, 1), artist: words, album: words, author:words, bookTitle:words,
 });
 const qualityShape = record({mode: label}, {id: label, maxHeight: integer(8640, 1), maxVideoBitrateKbps: integer(2_000_000, 1), maxAudioBitrateKbps: integer(10_000, 1)});
 const quality: Reader = v => {
@@ -149,8 +149,20 @@ function freshSession(item:ObjectValue,observedAt:string):void {
  if (item.transcode) {const stamp=Date.parse((item.transcode as {observedAt:string}).observedAt);if(stamp>at || at-stamp>5000)invalid();}
  if (item.problem==='buffering' && at-Date.parse(item.bufferingSince as string)<10000)invalid();
 }
+const sourceVideo=record({id,codec:label},{profile:label,level:count,bitDepth:count,width:count,height:count,fps:finite,hdr:label,bitrateKbps:count,chromaSubsampling:label,frameRateNumerator:count,frameRateDenominator:count,frameRateMode:label,dolbyVisionProfile:count,dolbyVisionCompatibility:count,dolbyVisionRpu:bool,dolbyVisionBaseLayer:bool,dolbyVisionEnhancementType:label,dolbyVisionCmVersion:label,hdr10Plus:bool,masterDisplay:text(1024),maxCll:text(128)});
+const sourceAudio=record({id,codec:label,atmos:bool,default:bool,commentary:bool,visualImpaired:bool},{channels:count,layout:label,language:label,title:words,bitDepth:count,sampleRate:count,variant:label,objectAudio:label,dtsx:bool});
+const sourceSubtitles=record({id,format:label},{language:label});
+const media=record({},{video:sourceVideo,audio:sourceAudio,subtitles:sourceSubtitles,videoHardware:bool});
+const delivery=record({streams:list(record({kind:label,inputCodec:text(128),outputCodec:text(128),action:label}),4)},{videoHeight:count,videoBitrateBps:count,audioBitrateBps:count,audioChannels:count});
+/** Whitelist display facts; never retain a producer's capability or path. */
+export function parseDashboardSessionFacts(value:unknown):Record<string,unknown>{
+ if(!object(value))invalid();
+ const fields={app:text(256),platform:label,address:text(256),currentBitrateKbps:(v:unknown)=>v===null?null:finite(v),rateWindowMs:integer(5000,5000),live:bool,media,delivery,item};
+ const chosen=Object.fromEntries(Object.keys(fields).filter(k=>Object.hasOwn(value,k) && (k!=='item' || object(value.item) && Array.isArray(value.item.art))).map(k=>[k,value[k]]));
+ return record({},fields)(chosen) as Record<string,unknown>;
+}
 const adminSession:Reader=v=>{
- const out=record({id,protocol:choice(['v1']),user:named,profile:named,device:named,kind:label,state:label,positionMs:count,decision:decisions,location:label,startedAt:timestamp},{item,durationMs:integer(Number.MAX_SAFE_INTEGER,1),bitrateKbps:integer(Number.MAX_SAFE_INTEGER,1),bandwidthKbps:integer(Number.MAX_SAFE_INTEGER,1),engine:label,quality,videoHeight:integer(Number.MAX_SAFE_INTEGER,1),problem:problemCode,bufferingSince:timestamp,transcode:conversion,channel,programme})(v) as ObjectValue;
+ const out=record({id,protocol:choice(['v1']),user:named,profile:named,device:named,kind:label,state:label,positionMs:count,decision:decisions,location:label,startedAt:timestamp},{item,durationMs:integer(Number.MAX_SAFE_INTEGER,1),bitrateKbps:integer(Number.MAX_SAFE_INTEGER,1),bandwidthKbps:integer(Number.MAX_SAFE_INTEGER,1),engine:label,quality,videoHeight:integer(Number.MAX_SAFE_INTEGER,1),problem:problemCode,bufferingSince:timestamp,transcode:conversion,channel,programme,app:text(256),platform:label,address:text(256),currentBitrateKbps:(v:unknown)=>v===null?null:finite(v),rateWindowMs:integer(5000,5000),live:bool,media,delivery})(v) as ObjectValue;
  const d=out.decision as {video?:{action:string};audio?:{action:string};subtitles?:{action:string}};
  qualifyProblem(out,['transcode','burn'].includes(d.video?.action??'') || d.audio?.action==='transcode' || d.subtitles?.action==='burn');
  return out;

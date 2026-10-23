@@ -631,6 +631,18 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "sign_in_kind_local",
+    "status": 403,
+    "message": "This server uses local accounts. Sign in with its username and password.",
+    "retry": "never"
+  },
+  {
+    "code": "sign_in_kind_portico",
+    "status": 403,
+    "message": "This server uses Portico Accounts. Sign in with your Portico Account.",
+    "retry": "never"
+  },
+  {
     "code": "source_credentials_required",
     "status": 422,
     "message": "The provider refused these credentials. Enter them again.",
