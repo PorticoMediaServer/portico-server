@@ -167,6 +167,9 @@ func effectiveRange(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) s
 // Vision: it decodes the profile, and the display shows Dolby Vision or the
 // engine maps it to what the display shows.
 func nativeDolbyVision(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) bool {
+	if v.DolbyVisionProfile == 8 && c != nil && len(c.DolbyVisionProfile8Compatibility) > 0 && !containsInt(c.DolbyVisionProfile8Compatibility, v.DolbyVisionCompatibility) {
+		return false
+	}
 	return v.DynamicRange == assets.RangeDolbyVision && (!v.DolbyVisionMetadataKnown || v.DolbyVisionRPU) && c != nil && containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile) && client.presents(assets.RangeDolbyVision)
 }
 

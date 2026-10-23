@@ -41,9 +41,14 @@ type ServerText struct {
 }
 
 type ContentNavigation struct {
-	View     string `json:"view"`
-	EntityID string `json:"entityId,omitempty"`
-	Category string `json:"category,omitempty"`
+	// Live channel anchors are the published mapping, not a source inferred
+	// from a channel id or a client-side scan of the lineup.
+	SourceID   string `json:"sourceId,omitempty"`
+	ChannelID  string `json:"channelId,omitempty"`
+	Provenance string `json:"provenance,omitempty"`
+	View       string `json:"view"`
+	EntityID   string `json:"entityId,omitempty"`
+	Category   string `json:"category,omitempty"`
 }
 type ContentTab struct {
 	ID       string `json:"id"`
