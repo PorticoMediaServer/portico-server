@@ -15,6 +15,8 @@ import {createWatchPlayOn, type WatchPlaybackContext, type WatchPlayOnBinding} f
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
 import {settingsPlatform} from '../../platform/settings-platform';
+import {feedbackAvailable, subscribeFeedback, openFeedback} from '../account/feedback';
+import {dispatchWatchFeedback, watchFeedbackTarget} from './feedback';
 import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
@@ -32,6 +34,8 @@ const noFullscreen = () => false;
 export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlaybackProps) {
   const runtime = binding?.runtime;
   const snapshot = useSyncExternalStore<WebPlaybackRuntimeSnapshot | undefined>(runtime?.subscribe ?? noSubscription, runtime?.getSnapshot ?? noSnapshot, runtime?.getSnapshot ?? noSnapshot);
+  const canReport = useSyncExternalStore(subscribeFeedback, feedbackAvailable, () => false);
+  const feedbackTarget = binding && snapshot ? watchFeedbackTarget(binding, snapshot) : undefined;
   const width = useShellWidth(), phone = width < 1024;
   const host = useRef<HTMLDivElement>(null), video = useRef<HTMLVideoElement>(null), dockSlot = useRef<HTMLSpanElement>(null), expandedSlot = useRef<HTMLDivElement>(null);
   const castAnchor = useRef<HTMLElement | null>(null);
@@ -132,6 +136,8 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     policyAction: runtime.policyAction.bind(runtime), reportError: binding.reportError} : undefined, [runtime, binding]);
   const layout = width < 1024 ? 'phone' : globalThis.matchMedia?.('(pointer: coarse)').matches ? 'tablet' : 'desktop';
   const drawnSurfaces: WatchSurfaces = {...surfaces, available: [...new Set([...(surfaces?.available ?? []), ...(castAvailable ? ['play-on' as const] : [])])], render: surfaces?.render ?? (() => null),
+    more: [...(surfaces?.more ?? []), ...(canReport && feedbackTarget ? [{id: 'report-problem', label: defaultI18n.t('web.player.error.report'),
+      action: () => {dispatchWatchFeedback(feedbackTarget, {available: feedbackAvailable, open: openFeedback});}}] : [])],
     playOn: cast && castAvailable ? {active: remoteState?.panel === 'play-on', open: anchor => {castAnchor.current = anchor ?? null;cast.controller.openPlayOn();}, close: () => cast.controller.closePanel()} : surfaces?.playOn,
     prompts: <>{surfaces?.prompts}{policy && snapshot && <><WatchSkipPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
       <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />

@@ -1,5 +1,10 @@
 package decoder
 
+import (
+	"sort"
+	"strconv"
+)
+
 // ConversionOutputs is the target inventory shared by playback and prepared
 // media. Transport names are the capability document's names.
 type ConversionVideoOutput struct {
@@ -7,6 +12,9 @@ type ConversionVideoOutput struct {
 	BitDepth   int      `json:"bitDepth"`
 	Ranges     []string `json:"ranges"`
 	Transports []string `json:"transports"`
+	// Hardware is a private planner hint from the selected device's actual
+	// codec/depth probe. It is never inferred from FFmpeg's encoder names.
+	Hardware bool `json:"-"`
 }
 type ConversionAudioOutput struct {
 	Codec      string      `json:"codec"`
@@ -43,7 +51,7 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 			if depth == 10 {
 				ranges = append(ranges, "hdr10", "hlg")
 			}
-			o.Video = append(o.Video, ConversionVideoOutput{codec, depth, ranges, transports})
+			o.Video = append(o.Video, ConversionVideoOutput{Codec: codec, BitDepth: depth, Ranges: ranges, Transports: transports})
 		}
 	}
 	for _, codec := range []string{"flac", "eac3", "ac3", "opus", "aac"} {
@@ -67,6 +75,24 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 		o.Audio = append(o.Audio, ConversionAudioOutput{codec, codec == "flac", rates, transports})
 	}
 	return o
+}
+
+// AvailableConversionOutputsForHardware keeps the software fallback inventory
+// and stably promotes only outputs measured on this selected device. It does
+// not advertise formats that would lose their software fallback, nor turn a
+// generic backend success into an unmeasured codec or bit-depth claim.
+func AvailableConversionOutputsForHardware(f *ToolchainFacts, probe HardwareProbe) ConversionOutputs {
+	out := AvailableConversionOutputs(f)
+	spec, known := backendSpecs[probe.Backend]
+	if !probe.Available || probe.Identity == "" || !known || !spec.supported() || probe.Backend == BackendSoftware {
+		return out
+	}
+	for i := range out.Video {
+		video := &out.Video[i]
+		video.Hardware = probe.OutputEncoders[video.Codec+":"+strconv.Itoa(video.BitDepth)]
+	}
+	sort.SliceStable(out.Video, func(i, j int) bool { return out.Video[i].Hardware && !out.Video[j].Hardware })
+	return out
 }
 
 func (o ConversionOutputs) AudioOutput(codec string) *ConversionAudioOutput {

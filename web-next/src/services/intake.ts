@@ -56,6 +56,9 @@ export async function restoreServicesLink(store: ServicesLinkStore, capture?: Li
 }
 
 export function servicesLinkStore(): ServicesLinkStore {
+  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1:' + servicesTab(), 8192, true);
+}
+export function servicesTab() {
   // Services has no plain-HTTP vault fallback. The existing account API allows only HTTPS or
   // a secure loopback context, and this continuation also requires authenticated encryption.
   if (!globalThis.isSecureContext || !globalThis.crypto?.subtle) throw Object.assign(new Error('secure_context_required'), {code: 'secure_context_required'});
@@ -66,7 +69,7 @@ export function servicesLinkStore(): ServicesLinkStore {
   if (tab === null) { tab = crypto.randomUUID(); sessionStorage.setItem(key, tab); }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(tab) || sessionStorage.getItem(key) !== tab)
     throw Object.assign(new Error('invalid_saved_continuation'), {code: 'invalid_saved_continuation'});
-  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1:' + tab, 8192, true);
+  return tab;
 }
 
 export async function forgetServicesLink(store: ServicesLinkStore, expected: ServicesLink) {

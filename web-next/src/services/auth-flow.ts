@@ -15,7 +15,7 @@ export class ServicesAuthFlow {
   private transaction?: IdentityTransaction;
   private readyIdentity?: AccountIdentity;
   private ids = new AccountAttemptIds(async () => crypto.randomUUID());
-  constructor(private readonly account: ServicesAccount, private readonly signedIn: () => void,
+  constructor(private readonly account: ServicesAccount, private readonly signedIn: (gesture?: boolean) => void,
     mode: 'signin' | 'create' | 'forgot' = 'signin', private readonly redirect = (url: string) => location.assign(url)) {
     this.state = {mode, busy: false, retryAt: 0, resends: 0};
   }
@@ -66,15 +66,15 @@ export class ServicesAuthFlow {
       }
     } finally { if (this.operation === controller) this.operation = undefined; if (!controller.signal.aborted) this.publish({busy: false}); }
   }
-  private async authenticate(work: Parameters<ServicesAccount['service']['authenticateIfSignedOut']>[0]) {
+  private async authenticate(work: Parameters<ServicesAccount['service']['authenticateIfSignedOut']>[0], gesture = false) {
     await this.account.service.authenticateIfSignedOut(work);
     this.ids.clear();
-    if (!this.disposed) this.signedIn();
+    if (!this.disposed) this.signedIn(gesture);
   }
   signIn(username: string, password: string, code: string) {
     return this.run(async signal => {
-      if (this.challenge) { const challenge = this.challenge; await this.authenticate(inner => this.account.client.mfa(challenge, code.trim(), AbortSignal.any([inner, signal]))); }
-      else { const id = await this.ids.for('login', {username, password}); await this.authenticate(inner => this.account.client.login(username.trim(), password, id, AbortSignal.any([inner, signal]))); }
+      if (this.challenge) { const challenge = this.challenge; await this.authenticate(inner => this.account.client.mfa(challenge, code.trim(), AbortSignal.any([inner, signal])), true); }
+      else { const id = await this.ids.for('login', {username, password}); await this.authenticate(inner => this.account.client.login(username.trim(), password, id, AbortSignal.any([inner, signal])), true); }
     });
   }
   provider(provider: IdentityProvider) {
@@ -98,7 +98,7 @@ export class ServicesAuthFlow {
       if (!signal.aborted) { this.ids.clear('registration'); this.publish({mode: 'verify', registration: value, resends: 0}); }
     });
   }
-  verify(code: string) { return this.run(async signal => { const registration = this.state.registration; if (registration) await this.authenticate(inner => this.account.client.verifyRegistration(registration.registrationId, {code: code.trim()}, AbortSignal.any([signal, inner]))); }); }
+  verify(code: string) { return this.run(async signal => { const registration = this.state.registration; if (registration) await this.authenticate(inner => this.account.client.verifyRegistration(registration.registrationId, {code: code.trim()}, AbortSignal.any([signal, inner])), true); }); }
   resend() {
     return this.run(async signal => {
       const registration = this.state.registration; if (!registration || this.state.resends >= 5) return;
@@ -124,7 +124,7 @@ export class ServicesAuthFlow {
     return this.run(async () => {
       if (this.state.mode !== 'ready' || !this.readyIdentity) return;
       await currentAccountWork(this.account, async () => undefined, this.readyIdentity);
-      if (!this.disposed) this.signedIn();
+      if (!this.disposed) this.signedIn(true);
     });
   }
 }
