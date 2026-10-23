@@ -9,6 +9,7 @@ import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeChannel} from '@core/home.ts';
+import type {GuideChannel} from '@core/channel-guide.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';
@@ -37,7 +38,8 @@ import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versio
 import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
 
-type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: HomeChannel; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number}>;
+type ChannelTarget = Readonly<{channel: GuideChannel}>;
+type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: ChannelTarget; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number}>;
 type OfferBinding = {
   readonly api: WebPlaybackSource['api']; readonly authority: WebPlaybackAuthority;
   readonly sessionKey: string; readonly libraryId: string; readonly itemId: string;
@@ -53,7 +55,7 @@ type Stack = {
   offerBinding?: OfferBinding;
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
   posterUrl?: string; backdropUrl?: string; expanded: boolean; retired: boolean;
-  channel?: HomeChannel;
+  channel?: ChannelTarget;
   confirmedEnd?: Readonly<{sessionId: string; generation: number; intentId: number; view: ReturnType<V1QueuePlayer['getSnapshot']>['view']}>;
 };
 const emptySubtitle: SubtitleSnapshot = {catalog: null, plan: null, busy: false, loading: false, suppressed: true, error: null, canRetry: false, candidates: []};
@@ -518,21 +520,33 @@ export class WebShellPlaybackRuntime {
     this.selectionCurrent(context, signal, current);
     const value = channel.channel, source = channel.source;
     if (!value.tuneAvailable || value.tuneUnavailableReason || value.sourceId !== source.id || value.generation !== source.generation || value.provenance !== source.provenance) problem('invalid_channel_target');
+    await this.playFromGuide(value, {signal, isCurrent: () => {this.selectionCurrent(context, signal, current);return true;}});
+  }
+
+  /** A genuine guide handle needs no Home entry or Home selection context. The channel
+   * generation goes unchanged to the server's current-source/access admission check. */
+  async playFromGuide(channel: GuideChannel, context: WebPlaybackScreenLifetime): Promise<void> {
+    const check = () => {this.assertCurrent();if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');};
+    check();
+    if (!channel.tuneAvailable || channel.tuneUnavailableReason || !['live-source', 'library-channel'].includes(channel.provenance)
+      || ![channel.id, channel.sourceId, channel.generation].every(value => typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\r\n]/.test(value))) problem('invalid_channel_target');
+    const value = Object.freeze({...channel}), reference = Object.freeze({kind: value.provenance, sourceId: value.sourceId, channelId: value.id, generation: value.generation});
     const serial = ++this.operation, stack = this.replace();
     stack.expanded = true;
-    stack.channel = channel;
-    stack.subject = {kind: 'channel', id: value.id, sourceId: source.id, channelName: value.name};
-    const cancel = () => { if (this.current(stack) && serial === this.operation) stack.service.leave(); };
-    signal.addEventListener('abort', cancel, {once: true});
+    stack.channel = {channel: value};
+    stack.subject = {kind: 'channel', id: value.id, sourceId: value.sourceId, channelName: value.name};
+    const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+    const current = () => {if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;try {check();return true;} catch {return false;}};
+    const cancel = () => {if (this.current(stack) && serial === this.operation) stack.service.leave();};
+    lifetime.addEventListener('abort', cancel, {once: true});
     try {
-      await stack.service.playChannel({kind: value.provenance, sourceId: source.id, channelId: value.id, generation: value.generation});
-      this.selectionCurrent(context, signal, current);
-      if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
+      await stack.service.playChannel(reference, {signal: lifetime, isCurrent: current});
+      if (!current()) problem('stale_selection_context');
       const state = stack.service.getSnapshot();
       if (state.phase === 'error' || !state.channel) problem('channel_playback_failed');
       this.sync();
     } catch (error) { cancel(); throw error; }
-    finally { signal.removeEventListener('abort', cancel); }
+    finally {lifetime.removeEventListener('abort', cancel);}
   }
 
   private offers(stack: Stack, playback: PlaybackSnapshot): PlayerOffersData | null {

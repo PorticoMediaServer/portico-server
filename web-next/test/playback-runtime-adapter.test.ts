@@ -2081,7 +2081,7 @@ test('captured resource queue playback delegates the complete selector and origi
   assert.deepEqual(body.segments, [{source: {container: {kind: 'playlist', id: 'ordered_release'}}, order: {mode: 'source'}}]);
   const snapshot = f.runtime.getSnapshot();
   assert.equal(snapshot.session!.itemId, 'ordered_release-0');
-  assert.equal(snapshot.queueView!.queue.total, 12, 'the engine retains the complete server container, not one visible item');
+  assert.equal(snapshot.queueView!.total, 12, 'the engine retains the complete server container, not one visible item');
   assert.ok(!f.log.some(value => value.method === 'POST' && value.path === '/v1/playback/sessions'), 'the actual queue creates and supplies its chosen current session');
 });
 
@@ -2100,5 +2100,41 @@ test('a canceled or retired captured resource start cannot adopt a late queue or
     else active = false;
     gate.resolve();await rejected;await settle();
     assert.equal(f.runtime.getSnapshot().session?.itemId, retire === 'new-play' ? 'newer_movie' : undefined);
+  }
+});
+
+
+test('a captured GuideChannel tunes its real source/generation without a Home action or catalogue placeholder', async t => {
+  const f = setup(t), life = new AbortController();
+  await f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => true});
+  await f.arriveLive();
+  const start = f.log.find(request => request.method === 'POST' && request.path === '/v1/playback/sessions')!;
+  assert.deepEqual(start.body, {channelId: 'live:source:channel', channelGeneration: 'g1', state: 'playing'});
+  assert.ok(start.signal && !start.signal.aborted);
+  const fence = f.runtime.getSnapshot().fence!;
+  assert.equal(fence.kind, 'channel');
+  if (fence.kind !== 'channel') return;
+  assert.equal(fence.channelGeneration, 'g1');assert.equal(fence.sourceId, 'source');assert.equal(fence.channelId, 'channel');
+  assert.ok(!f.log.some(request => request.path.startsWith('/v1/items/') || request.path === '/v1/queues'));
+  await assert.rejects(f.runtime.playFromGuide({...homeChannel.channel, tuneAvailable: false}, {signal: life.signal, isCurrent: () => true}), /invalid_channel_target/);
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence, 'an unavailable row does not retire the genuine current channel');
+});
+
+test('a guide tune cannot adopt a late channel after abort/navigation or stop a newer Play', async t => {
+  for (const retirement of ['abort', 'navigation', 'new-play'] as const) {
+    const f = setup(t), life = new AbortController(), gate = deferred();let active = true;
+    f.intercept(async (request, response) => {
+      if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {channelId?: string}).channelId) await gate.hold();
+      return response;
+    });
+    const rejected = assert.rejects(f.runtime.playFromGuide(homeChannel.channel, {signal: life.signal, isCurrent: () => active}));
+    await gate.started;
+    if (retirement === 'new-play') {await f.runtime.play('newer_movie');await f.arrive();life.abort();}
+    else if (retirement === 'abort') life.abort();
+    else active = false;
+    gate.resolve();await rejected;await settle();
+    assert.equal(f.runtime.getSnapshot().session?.itemId, retirement === 'new-play' ? 'newer_movie' : undefined);
+    assert.equal(f.runtime.getSnapshot().fence?.kind, retirement === 'new-play' ? 'queue' : undefined);
+    assert.ok(f.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/live_1'), 'the actual late channel session is abandoned');
   }
 });
