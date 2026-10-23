@@ -585,18 +585,18 @@
     }
   },
   "discHelper": {
-    "sourceCommit": "56401588f1000afee84b15ba9d234711b938da46",
+    "sourceCommit": "ce6f22116c8f3ddc11e7f0e7cc1d07da44fb5c65",
     "sourceFiles": {
-      "portico-disc.c": "104a3874a3ea83ca8ab12e8d31e36502b29637bc916fc9b71e3a96ae9e279a7c",
+      "portico-disc.c": "b64f58ba8f38e383cc787f308779b89fd91d26939ce9f537ba6dde95b5066d49",
       "mpegts_dovi.h": "82da52d0bcdf2ccb39a0a52e641ecdcb8df9ba2affb7f64249bb84256c93bf89"
     },
     "fixtureManifest": "fixtures/discs/manifest.json",
     "fixtureManifestSHA256": "d531e2332adb16261add1fca78f3670be0b4ec2385453018a45fa96c6add77fa",
     "supplementalFixtureManifest": "fixtures/discs/dovi/manifest.json",
-    "supplementalFixtureManifestSHA256": "bdb6a6b868439e77e66ac512ac3f7580d311596fb6f64de5d0797c6d1341f51c"
+    "supplementalFixtureManifestSHA256": "612295ebff638c4bb5454b98838cf36528b4eae6ddf3e31394b67dd5e28110dc"
   },
   "sourceAuthority": {
     "path": "third_party/ffmpeg/source-authority.v1.json",
-    "sha256": "5fc803d51b19ec991c72ca0c7964661b2a36c995e0112ea19948b13df9e48543"
+    "sha256": "6ff50f7c1c7b91bfa0904a082296f05ee2d8d15e0a6e5ed714e79ca1a40caef1"
   }
 }
