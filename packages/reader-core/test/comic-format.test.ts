@@ -36,7 +36,7 @@ test('offline deflated CBZ extraction does not require a native DecompressionStr
   Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:undefined});
   try {
     const archive=await openComicArchive(source(bytes),signal());
-    try{assert.deepEqual((await archive.page(0,{width:300,signal:signal()})).bytes,png);}finally{archive.dispose();}
+    try{assert.deepEqual((await archive.page(0,{width:300,signal:signal()})).bytes,new Uint8Array(png));}finally{archive.dispose();}
   }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
 });
 
@@ -46,10 +46,15 @@ test('bundled DEFLATE fallback retains CRC, expansion, exact-size and cancellati
   Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:class {constructor(){throw new TypeError('format unavailable');}}});
   try {
     const input=source(zip([{name:'page.png',bytes:png,deflate:true}])),[entry]=await readDirectory(input,signal());
-    assert.deepEqual(await readEntry(input,entry,signal()),png);assert.ok(input.reads.every(range=>range.endExclusive-range.start<=archiveLimits.rangeBytes));
+    assert.deepEqual(await readEntry(input,entry,signal()),new Uint8Array(png));assert.ok(input.reads.every(range=>range.endExclusive-range.start<=archiveLimits.rangeBytes));
     const lying=source(zip([{name:'page.png',bytes:Buffer.alloc(10000),deflate:true}])),[large]=await readDirectory(lying,signal());
     await assert.rejects(readEntry(lying,large,signal(),{...archiveLimits,pageBytes:100}),{code:'archive_limit'});
     await assert.rejects(readEntry(input,{...entry,crc:0},signal()),{code:'archive_invalid'});
+    const corrupted=zip([{name:'page.png',bytes:png,deflate:true}]),central=corrupted.length-22-46-8;
+    corrupted.writeUInt32LE(0,14);corrupted.writeUInt32LE(0,central+16);
+    const bad=source(corrupted),[badEntry]=await readDirectory(bad,signal());await assert.rejects(readEntry(bad,badEntry,signal()),{code:'archive_invalid'});
+    const tooSmall=zip([{name:'page.png',bytes:png,deflate:true}]);tooSmall.writeUInt32LE(1,22);tooSmall.writeUInt32LE(1,tooSmall.length-22-46-8+24);
+    const lyingSize=source(tooSmall),[smallEntry]=await readDirectory(lyingSize,signal());await assert.rejects(readEntry(lyingSize,smallEntry,signal()),{code:'archive_limit'});
     const abort=new AbortController();abort.abort();await assert.rejects(readEntry(input,entry,abort.signal),{name:'AbortError'});
   }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
 });
