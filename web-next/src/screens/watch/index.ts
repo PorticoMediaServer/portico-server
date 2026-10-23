@@ -8,3 +8,5 @@ export type {WatchPolicyBinding, WatchMarkerAction} from './policy';
 export {WatchVersionChooser} from './VersionChooser';
 export type {WatchVersionChooserProps} from './VersionChooser';
 export type {WatchVersionBinding, WatchVersionSelection, WatchVersionRow} from './versions';
+export {WatchPlayback} from './WatchPlayback';
+export type {WatchPlaybackProps} from './WatchPlayback';
