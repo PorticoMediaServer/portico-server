@@ -20,7 +20,7 @@ type ContinueWatchingSettings struct {
 
 func DefaultContinueWatchingSettings() ContinueWatchingSettings {
 	yes := true
-	return ContinueWatchingSettings{Weeks: 16, MaximumItems: 40, IncludeSeasonPremieres: &yes, VideoPlayedThreshold: 90, VideoCompletion: "earliest"}
+	return ContinueWatchingSettings{Weeks: 16, MaximumItems: 40, IncludeSeasonPremieres: &yes, VideoPlayedThreshold: 95, VideoCompletion: "earliest"}
 }
 
 func NormalizeContinueWatchingSettings(v *ContinueWatchingSettings) {

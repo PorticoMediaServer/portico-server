@@ -1634,6 +1634,24 @@ CREATE TABLE tvdb_series_candidates(show_id INTEGER NOT NULL REFERENCES catalog_
 CREATE TABLE tvdb_episode_evidence(show_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,generation INTEGER NOT NULL,provider_id INTEGER NOT NULL,season_number INTEGER,number INTEGER,absolute_number INTEGER,title TEXT NOT NULL,overview TEXT NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(show_id,generation,provider_id)) STRICT;
 CREATE TABLE tvdb_episode_links(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,provider_id INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL,observed_at TEXT NOT NULL) STRICT;
 CREATE TABLE admin_revision(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL) STRICT;
+-- Library presentation and local-evidence choices. Domain policies retain their own authority.
+CREATE TABLE library_preferences(
+ library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ group_collections INTEGER NOT NULL DEFAULT 1 CHECK(group_collections IN(0,1)),
+ local_tags TEXT NOT NULL DEFAULT 'prefer' CHECK(local_tags IN('prefer','off')),
+ lyrics_source TEXT NOT NULL DEFAULT 'files' CHECK(lyrics_source IN('files','lrclib')),
+ title_source TEXT NOT NULL DEFAULT 'tags' CHECK(title_source IN('tags','names')),
+ episode_numbering TEXT NOT NULL DEFAULT 'season' CHECK(episode_numbering IN('season','absolute')),
+ find_extras INTEGER NOT NULL DEFAULT 1 CHECK(find_extras IN(0,1)),
+ sort_ignore_articles INTEGER NOT NULL DEFAULT 1 CHECK(sort_ignore_articles IN(0,1))
+) STRICT;
+CREATE TRIGGER library_preferences_configuration AFTER UPDATE ON library_preferences BEGIN
+ UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
+ UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
+ UPDATE admin_revision SET revision=revision+1 WHERE id=1;
+END;
+CREATE INDEX libraries_admin_position ON libraries(position,name,id);
 CREATE TABLE library_configuration(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE job_observations(job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,updated_at TEXT NOT NULL,finished_at TEXT) STRICT;
 CREATE TABLE metadata_publication_heads(
