@@ -67,4 +67,7 @@ tar -cf "$2/web.tar" -C "$PORTICO_RUNNER_OUTPUT/web" .
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(error.returncode)
