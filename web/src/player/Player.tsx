@@ -459,7 +459,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     engine.leave();
   }
   // The error state card already says why playback stopped; the toast doesn't repeat it.
-  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? i18n.t('web.player.reconnecting') : null) || notice || state.audioEffects.notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
+  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? i18n.t('web.player.reconnecting') : null) || notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
   const linear = state.linear;
   const failed = playbackFailure(state.error);
   const ownerStop = ownerStopOf(state.ended);
