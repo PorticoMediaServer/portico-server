@@ -62,8 +62,23 @@ jobs:
           cd server
           go build -o ../.scratch/portico-server ./cmd/server
           echo "PORTICO_PLAYBACK_TEST_HELPER=$GITHUB_WORKSPACE/.scratch/portico-server" >> "$GITHUB_ENV"
-      - run: go test ./...
+      - name: Go test capacity
+        run: |
+          go version
+          printf 'Available processors: '; getconf _NPROCESSORS_ONLN
+          printf 'GOMAXPROCS: %s\n' "${GOMAXPROCS:-runtime default}"
+          for path in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /proc/loadavg; do
+            if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
+          done
+      - name: Test module
+        run: ../scripts/test-go-module.sh '${{ matrix.module }}'
         working-directory: ${{ matrix.module }}
+      - name: Go test capacity after tests
+        if: ${{ !cancelled() }}
+        run: |
+          for path in /sys/fs/cgroup/cpu.stat /proc/loadavg; do
+            if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
+          done
       - name: Check generated contracts
         if: matrix.module == 'server'
         run: |
