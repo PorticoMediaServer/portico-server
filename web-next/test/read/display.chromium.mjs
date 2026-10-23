@@ -137,7 +137,26 @@ try {
   await evaluate('window.disposeReaderDisplay()');
   const final = await evaluate('window.readerDisplayProof');
   assert.deepEqual(final.cleanup, {listeners: 0, DOM: 0, fontFaces: 0}); assert.deepEqual(errors, []);
+  let reference;
+  if (process.env.PORTICO_READER_FRAME_ORIGIN) {
+    const frame = new URL('/tablet-read.html?frame=6b', process.env.PORTICO_READER_FRAME_ORIGIN);
+    assert.equal(frame.hostname, '127.0.0.1');
+    await call('Network.enable');
+    await call('Network.setBlockedURLs', {urls: ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.avif']});
+    await call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1330, deviceScaleFactor: 1, mobile: false});
+    await call('Page.navigate', {url: frame.href});
+    await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('.aapanel.sidep'))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
+    await evaluate(`Promise.all([document.fonts.load('600 22px Literata', 'Aa'),document.fonts.load('700 13px Manrope', 'Page')]).then(()=>document.fonts.ready)`);
+    await paint();
+    reference = await evaluate(`(()=>{const p=document.querySelector('.aapanel.sidep');return{bounds:p.getBoundingClientRect().toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector('.th span')).font}})()`);
+    for (const family of ['Literata', 'Manrope']) assert.ok(reference.fonts.some(font => font.family.replaceAll('"', '') === family && font.status === 'loaded'), family);
+    assert.equal(reference.bounds.width, 360);
+    const frameImage = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
+      clip: {x: reference.bounds.x, y: reference.bounds.y, width: 360, height: 720, scale: 1}});
+    await writeFile(resolve(output, 'reference-controls.jpg'), Buffer.from(frameImage.data, 'base64'));
+  }
   result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds},
+    reference,
     scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
   console.log('READER_DISPLAY_BROWSER ' + JSON.stringify(result));
 } catch (error) {
