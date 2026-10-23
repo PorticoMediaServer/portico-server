@@ -9,6 +9,7 @@ import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
+import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
 import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
@@ -2031,4 +2032,39 @@ test('unsupported EQ renderer continues the same session and queue through ordin
   assert.equal(current.playback.audioEffects.rendering,false); assert.equal(current.playback.phase,'ready');
   assert.equal(f.runtime.audioEngineFacts(current.fence!),undefined);
   assert.equal(current.playback.error,undefined);
+});
+
+
+test('the retained Watch body uses only the actual current title and offered library, with stable identity across source replacement', async t => {
+  const f = setup(t);await f.runtime.play('movie', 0);await f.arrive();
+  const shown = f.runtime.getSnapshot(), target = watchBodyTarget(shown);
+  assert.deepEqual(target, {libraryId: 'library', itemId: 'movie', kind: 'movie'});
+  assert.equal(watchBodyTarget({...shown, offers: null}), undefined);
+  assert.equal(watchBodyTarget({...shown, offers: {...shown.offers!, scope: {...shown.offers!.scope, serverId: 'foreign'}}}), undefined);
+  assert.equal(watchBodyTarget({...shown, session: {...shown.session!, id: 'other-session'}}), undefined);
+  assert.equal(watchBodyTarget({...shown, offers: {...shown.offers!, current: {...shown.offers!.current!, generation: shown.offers!.current!.generation + 1}}}), undefined);
+  await f.runtime.play('movie', 20);await f.arrive();
+  assert.equal(watchBodyKey(watchBodyTarget(f.runtime.getSnapshot())!), watchBodyKey(target!));
+  await f.runtime.play('different', 0);await f.arrive();
+  assert.notEqual(watchBodyKey(watchBodyTarget(f.runtime.getSnapshot())!), watchBodyKey(target!));
+});
+
+
+test('the player EQ command preserves the injected app device port and refuses a retired fence', async t => {
+  const changes: import('../src/platform/playback/audio/equalizer.ts').EqualizerSettings[] = [];
+  const value = {enabled: true, preampDb: -3, bandsDb: Array(10).fill(1)};
+  const port: import('../src/kit/media/equalizer-port.ts').EqualizerPort = {
+    getSnapshot: () => value, subscribe: () => () => {}, start: () => () => {},
+    change: async settings => {changes.push(settings);}, reset: async () => {},
+  };
+  const f = setup(t, {}, {createRender: null, equalizerPort: port});
+  assert.equal(f.runtime.equalizerPort, port, 'Settings and the shortcut receive the original app singleton');
+  await f.runtime.play('song_device'); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!;
+  await f.runtime.setEqualizer(fence, value);
+  assert.deepEqual(changes, [value], 'the native port commits the change without a browser renderer/store');
+  await f.runtime.play('movie'); await f.arrive();
+  await assert.rejects(f.runtime.setEqualizer(fence, value));
+  await assert.rejects(f.runtime.setEqualizer(f.runtime.getSnapshot().fence!, value), /equalizer_unavailable/);
+  assert.equal(changes.length, 1);
 });

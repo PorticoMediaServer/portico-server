@@ -1,9 +1,9 @@
 import type {DownloadTitle} from '@core/downloads.ts';
-import type {SavedActor} from '@core/saved.ts';
+import type {SettingsViewerScope} from '../../platform/settings-platform';
 
 /** Structural subset of the Settings parent scope. Family fences this binding only;
  * the native store persists server, authority, account and profile independently. */
-export type SavedDownloadsScope = SavedActor & Readonly<{serverId: string; sessionFamilyId: string}>;
+export type SavedDownloadsScope = SettingsViewerScope;
 export type SavedDownloadRules = Readonly<{
   removeWatched: boolean;
   nextEpisode: boolean;
