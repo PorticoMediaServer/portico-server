@@ -8,9 +8,11 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
+import sys
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -116,9 +118,9 @@ def inference_graph(directory):
     return public
 
 
-def export(directory, output):
+def export(directory, output, check_only=False):
     lock = verify_checkpoint(directory)
-    if output.exists():
+    if output is not None and output.exists():
         raise ValueError("output already exists; never overwrite an installed model")
     import numpy as np
     import onnx
@@ -148,8 +150,6 @@ def export(directory, output):
     data = converted.SerializeToString(deterministic=True)
     if not 0 < len(data) <= 32 << 20:
         raise ValueError("unbounded ONNX model")
-    if version != lock["onnx"]["version"] or len(data) != lock["onnx"]["bytes"] or hashlib.sha256(data).hexdigest() != lock["onnx"]["sha256"]:
-        raise ValueError("ONNX bytes differ from the checked original-model conversion")
     options = ort.SessionOptions()
     options.intra_op_num_threads = options.inter_op_num_threads = 1
     runtime = ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
@@ -173,6 +173,13 @@ def export(directory, output):
                 errors[i] = max(errors[i], error)
                 if error > (5e-4 if i == 0 else 2e-5):
                     raise ValueError("ONNX parity failed: " + str(errors))
+    print(json.dumps({"status": "conversion_parity_validated", "modelId": lock["modelId"], "version": version,
+                      "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
+                      "patches": 4, "maxAbsoluteError": {"embedding": errors[0], "tags": errors[1]}}))
+    if check_only:
+        return
+    if version != lock["onnx"]["version"] or len(data) != lock["onnx"]["bytes"] or hashlib.sha256(data).hexdigest() != lock["onnx"]["sha256"]:
+        raise ValueError("ONNX bytes differ from the checked original-model conversion; no output published")
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="musicnn-onnx-", dir=output.parent))
     try:
@@ -194,23 +201,36 @@ def export(directory, output):
 
 
 def check_versions():
+    if sys.version_info[:3] != (3, 11, 11):
+        raise ValueError("export requires the checked CPython 3.11.11 toolchain")
     for name, expected in VERSIONS.items():
         if importlib.metadata.version(name) != expected:
             raise ValueError("export dependency version mismatch: " + name)
 
 
 def main():
+    # tf2onnx traverses sets while assigning internal tensor identifiers. Fix
+    # Python's hash seed before interpreter startup so published bytes do not
+    # depend on the build process's random seed. No runtime process is re-execed.
+    if os.environ.get("PYTHONHASHSEED") != "0":
+        env = dict(os.environ, PYTHONHASHSEED="0")
+        os.execve(sys.executable, [sys.executable, *sys.argv], env)
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+    os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+    os.environ["TF_NUM_INTEROP_THREADS"] = "1"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("output", nargs="?", type=Path)
+    parser.add_argument("--check-only", action="store_true",
+                        help="validate conversion parity and print its identity without publishing any model")
     parser.add_argument("--inspect", action="store_true",
                         help="inspect the verified graph's actual inference boundaries")
     args = parser.parse_args()
     check_versions()
     if args.inspect:
         inspect(args.checkpoint)
-    if args.output:
-        export(args.checkpoint, args.output)
+    if args.check_only or args.output:
+        export(args.checkpoint, args.output, args.check_only)
     elif not args.inspect:
         parser.error("an output directory or --inspect is required")
 
