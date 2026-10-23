@@ -35,7 +35,7 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 			t.Fatalf("local audiobook publicly listed: %+v %v", page, err)
 		}
 		all, err := s.Attention(ctx, "", "", 25)
-		if err != nil || all.Total != wantMusic || len(all.Entries) != wantMusic {
+		if err != nil || all.Total != int64(wantMusic) || len(all.Entries) != wantMusic {
 			t.Fatalf("global attention: %+v %v", all, err)
 		}
 		for _, entry := range all.Entries {
@@ -44,7 +44,7 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 			}
 		}
 		counts, err := s.AttentionCounts(ctx)
-		if err != nil || counts.Total != wantMusic {
+		if err != nil || counts.Total != int64(wantMusic) {
 			t.Fatalf("counts: %+v %v", counts, err)
 		}
 		found := false
@@ -55,7 +55,7 @@ func TestMusicAndBooksNeedAttention(t *testing.T) {
 					t.Fatalf("book count: %+v", count)
 				}
 			}
-			if count.LibraryID == "music" && count.Total != wantMusic {
+			if count.LibraryID == "music" && count.Total != int64(wantMusic) {
 				t.Fatalf("music count: %+v", count)
 			}
 		}
