@@ -112,7 +112,17 @@ PYLICENSE
     docker run --rm --name portico-hardware-r29-licenses --label portico.lane=hardware-r29 \
       --network none --cpus 1 --memory 512m --memory-swap 512m \
       -v "$WORK/linux-deps:/dependencies" -v "$ROOT/scripts/collect-ffmpeg-licenses.py:/collect.py:ro" \
-      -e TMPDIR=/dependencies/tmp "$(readlock linuxSourceBuild compilerImage)" python3 /collect.py /dependencies
+      -e TMPDIR=/dependencies/tmp "$(readlock linuxSourceBuild compilerImage)" bash -c '
+        set -euo pipefail
+        portico_output_owner="$(stat -c "%u:%g" /dependencies)"
+        portico_restore_owner() {
+          portico_stage_status=$?
+          trap - EXIT
+          chown -hRP "$portico_output_owner" /dependencies
+          exit "$portico_stage_status"
+        }
+        trap portico_restore_owner EXIT
+        python3 /collect.py /dependencies'
     if [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" == 1 ]]; then
       echo "Dependency source build completed: $WORK/linux-deps"
       exit 0
@@ -168,6 +178,7 @@ cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest
 cp "$ROOT/scripts/verify-ffmpeg-recipes.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-abi.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/check-ffmpeg-build-inputs.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/run-ffmpeg-runner-build.py" "$ROOT/scripts/repair-ffmpeg-runner-ownership.py" "$WORK/provenance/scripts/"
 cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
 if [[ "$TARGET" == linux-x64 ]]; then
   mkdir -p "$WORK/provenance/linux-dependencies"

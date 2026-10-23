@@ -98,6 +98,14 @@ def main():
     script = stage / 'run.sh'
     script.write_text('''#!/bin/bash
 set -euo pipefail
+portico_output_owner="$(stat -c '%u:%g' /gate)"
+portico_restore_owner() {
+    portico_stage_status=$?
+    trap - EXIT
+    chown -hRP "$portico_output_owner" /gate
+    exit "$portico_stage_status"
+}
+trap portico_restore_owner EXIT
 export TMPDIR=/gate/tmp LC_ALL=C.UTF-8 TZ=UTC
 export PKG_CONFIG_PATH=/opt/ffbuild/lib/pkgconfig:/opt/ffbuild/share/pkgconfig
 export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"

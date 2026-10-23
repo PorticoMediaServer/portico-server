@@ -184,6 +184,14 @@ def main():
         command = build / 'build.sh'
         shell = '''#!/bin/bash
 set -euo pipefail
+portico_output_owner="$(stat -c '%u:%g' /ffbuild)"
+portico_restore_owner() {
+    portico_stage_status=$?
+    trap - EXIT
+    chown -hRP "$portico_output_owner" /ffbuild
+    exit "$portico_stage_status"
+}
+trap portico_restore_owner EXIT
 export LC_ALL=C.UTF-8 TZ=UTC ZERO_AR_DATE=1
 mkdir -p /ffbuild/source
 tar -xf /source.tar.xz -C /ffbuild/source --strip-components=1

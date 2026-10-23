@@ -72,6 +72,14 @@ def container(recipe, work, config, stages, jobs):
     script = work / 'dependencies.sh'
     script.write_text('''#!/bin/bash
 set -euo pipefail
+portico_output_owner="$(stat -c '%u:%g' /portico)"
+portico_restore_owner() {
+    portico_stage_status=$?
+    trap - EXIT
+    chown -hRP "$portico_output_owner" /portico
+    exit "$portico_stage_status"
+}
+trap portico_restore_owner EXIT
 cd /recipe
 source util/vars.sh linux64 gpl 8.1
 export SOURCE_DATE_EPOCH="''' + str(config['sourceDateEpoch']) + '''"

@@ -4,6 +4,7 @@ import argparse
 import ctypes
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
     args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    if (root.name != 'source' or root.parent.parent.parent.name != 'jobs' or
+            root.parent.parent.name != 'hardware-r29'):
+        raise ValueError('Use only this lane in the published temporary exact-commit remote runner')
+    job_root, host_work = root.parent, root.parents[3]
+    lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
+    owner_spec = importlib.util.spec_from_file_location('ffmpeg_runner_output_owner',
+        root / 'scripts/repair-ffmpeg-runner-ownership.py')
+    owner = importlib.util.module_from_spec(owner_spec)
+    owner_spec.loader.exec_module(owner)
     def stop_owned_job(signum, _frame):
         # A dropped SSH/runner parent must not orphan a Docker compiler. Only
         # this existing lane's labelled containers are in our custody.
@@ -33,6 +44,7 @@ def main():
         ids = found.stdout.split()
         if ids:
             subprocess.run(['docker', 'stop', '-t', '15', *ids], timeout=35)
+        owner.restore_job_ownership(job_root, lock['linuxSourceBuild']['compilerImage'])
         raise SystemExit(128 + signum)
 
     for received in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -42,14 +54,9 @@ def main():
         raise OSError(ctypes.get_errno(), 'Cannot bind compiler custody to the remote runner parent')
     if os.getppid() != parent:
         stop_owned_job(signal.SIGTERM, None)
-    root = Path(__file__).resolve().parents[1]
     os.environ['PORTICO_RUNNER_SOURCE_COMMIT'] = args.source_commit
-    if root.name != 'source' or root.parent.parent.parent.name != 'jobs':
-        raise ValueError('Use only the published temporary exact-commit remote runner')
-    job_root, host_work = root.parent, root.parents[3]
     scratch = job_root / '.scratch/hardware-r29'
     scratch.mkdir(parents=True)
-    lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
     env = dict(os.environ, PORTICO_LANE_SCRATCH=str(scratch), PORTICO_BUILD_JOBS='2',
         PORTICO_DISC_SOURCE_COMMIT=lock['discHelper']['sourceCommit'],
         PORTICO_DISC_FIXTURES=str(root / lock['discHelper']['fixtureManifest']),
@@ -89,8 +96,11 @@ def main():
         '--cpus', '0.25', '--memory', '128m', '--memory-swap', '128m',
         lock['linuxSourceBuild']['compilerImage'], 'bash', '-c',
         'timeout 10 getent ahostsv4 github.com gitlab.freedesktop.org index.crates.io'], check=True)
-    subprocess.run(['bash', str(root / 'scripts/build-ffmpeg.sh'), 'linux-x64'],
-                   cwd=root, env=env, check=True)
+    try:
+        subprocess.run(['bash', str(root / 'scripts/build-ffmpeg.sh'), 'linux-x64'],
+                       cwd=root, env=env, check=True)
+    finally:
+        owner.restore_job_ownership(job_root, lock['linuxSourceBuild']['compilerImage'])
     work = scratch / 'ffmpeg-build/linux-x64'
     archive = work / 'portico-ffmpeg-linux-x64.tar.xz'
     manifest = work / 'bundle/toolchain-manifest.json'

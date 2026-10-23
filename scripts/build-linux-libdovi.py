@@ -124,6 +124,14 @@ def main():
     script = stage / 'build.sh'
     script.write_text('''#!/bin/bash
 set -euo pipefail
+portico_output_owner="$(stat -c '%u:%g' /dovi)"
+portico_restore_owner() {
+    portico_stage_status=$?
+    trap - EXIT
+    chown -hRP "$portico_output_owner" /dovi /opt/ffbuild
+    exit "$portico_stage_status"
+}
+trap portico_restore_owner EXIT
 export LC_ALL=C.UTF-8 TZ=UTC ZERO_AR_DATE=1
 export TMPDIR=/dovi/tmp CARGO_HOME=/dovi/cargo-home CARGO_TARGET_DIR=/dovi/build
 export CARGO_BUILD_JOBS=2 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$CC"
@@ -146,6 +154,14 @@ tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owne
     fetch = stage / 'fetch.sh'
     fetch.write_text('''#!/bin/bash
 set -euo pipefail
+portico_output_owner="$(stat -c '%u:%g' /dovi)"
+portico_restore_owner() {
+    portico_stage_status=$?
+    trap - EXIT
+    chown -hRP "$portico_output_owner" /dovi
+    exit "$portico_stage_status"
+}
+trap portico_restore_owner EXIT
 export TMPDIR=/dovi/tmp CARGO_HOME=/dovi/cargo-home LC_ALL=C.UTF-8 TZ=UTC
 cd /dovi/source
 mkdir -p .cargo
