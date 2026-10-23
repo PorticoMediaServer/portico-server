@@ -2,7 +2,7 @@ import {t, locale, environment as env} from './text';
 import {Fragment, useEffect, useState, useSyncExternalStore} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
 import type {ShowWorkspaceRoute, ShowWorkspaceData} from '@core/show-workspace.ts';
-import {titleFactParts} from '@core/presentation/kit-model';
+import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
 import {Button, Chip, Tabs, Segmented, Switch} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
 import {Lockup, HeroFacts} from '../../kit/layout';
@@ -12,7 +12,7 @@ import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {DetailLoading, ScreenFailure, TitleActions, TitleDetails, TitleRow} from './Detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
-import {entryCard, titlePageFacts} from './model';
+import {entryCard, entrySubject, titlePageFacts} from './model';
 import type {ShowBindings} from './show-bindings';
 import styles from './show.module.css';
 import detail from './detail.module.css';
@@ -80,7 +80,11 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         {episodes.map((episode, index) => {
           const expanded = snapshot.anchor.expandedEpisodeId === episode.id, rowEnd = episodeLayout === 'list' ? index : Math.min(episodes.length - 1, Math.floor(index / columns) * columns + columns - 1);
           const opened = episodes.slice(episodeLayout === 'list' ? index : Math.floor(index / columns) * columns, rowEnd + 1).find(entry => entry.id === snapshot.anchor.expandedEpisodeId);
-          return <Fragment key={episode.id}><EpisodeTile className={styles.episodeRow} model={entryCard(episode, env, 'in-show')} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={data.nextUp?.id === episode.id} description={episode.overview}
+          const subject = entrySubject(episode), model = cardText(subject, 'in-show', env), next = data.nextUp?.id === episode.id;
+          const date = subject.episode?.mode !== 'date' && subject.episode?.mode !== 'special' ? episodeLabel({mode: 'date', day: episode.airDate}, 'in-show', env) : undefined;
+          const continuing = !episode.watched && (episode.progressSeconds ?? 0) > 0;
+          const status: FactPart[] = continuing ? [{id: 'continue', text: t('title.continueEpisode'), role: 'status'}, ...cardText(subject, 'continuation', env).detail] : next ? [{id: 'up-next', text: t('title.nextUp'), role: 'status'}] : [];
+          return <Fragment key={episode.id}><EpisodeTile className={styles.episodeRow} model={model} length={model.detail.find(part => part.id === 'duration')?.text} airDate={date ? {...date, id: 'air-date'} : undefined} status={status} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={next} description={episode.overview}
             onNavigate={() => { void binding.expand(data, episode).catch(binding.context.effects.reportError); }} />
             {rowEnd === index && opened && <div className={styles.expanded}><EpisodeBody binding={binding} data={data} /></div>}
           </Fragment>;
