@@ -7,6 +7,9 @@
  * URL (a late `timeupdate` after a track switch) can be dropped (spec §2, §6; invariant 3).
  */
 
+import type {LocalPlayerSource, LocalPlayerLoadReceipt, LocalPlayerLoadContext} from './local-port.ts';
+export type {LocalPlayerSource, LocalPlayerLoadReceipt, LocalPlayerLoadContext} from './local-port.ts';
+
 export type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error';
 
 /** A sidecar subtitle delivered as its own capability URL (spec §5.5). */
@@ -66,6 +69,9 @@ export type PlayerEvent =
   | Readonly<{type: 'error'; observation: PlayerObservation; code: string; detail?: string}>;
 
 export interface MediaPlayer {
+  /** Absent in browsers. A local source never enters the URL-required load path.
+   * On retirement the adapter cleans only its exact accepted private load/journal. */
+  loadLocal?(source: LocalPlayerSource, context: LocalPlayerLoadContext): Promise<LocalPlayerLoadReceipt>;
   load(source: PlayerSource): void;
   play(): void;
   pause(): void;
