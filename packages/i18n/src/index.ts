@@ -26,6 +26,10 @@ export {formatMessage, parseMessage, messageArguments, MessageSyntaxError, type 
 export type RegionPreferences = Readonly<{
   locale?: string; // 'auto' | BCP 47
   hourCycle?: 'auto' | 'h12' | 'h23';
+  formats?: string;
+  dateOrder?: 'auto' | 'dmy' | 'mdy' | 'ymd';
+  firstDay?: 'auto' | 'mon' | 'sun' | 'sat';
+  sizeUnits?: 'binary' | 'decimal';
 }>;
 
 /**
@@ -40,6 +44,9 @@ export type ResolvedRegion = Readonly<{
   uiLocale: SupportedLocale;
   /** Locale for dates, times and numbers (any valid BCP 47 tag). */
   formatLocale: string;
+  dateOrder?: RegionPreferences['dateOrder'];
+  firstDay?: 'mon' | 'sun' | 'sat';
+  sizeUnits?: 'binary' | 'decimal';
   /** The device's zone. undefined = the runtime's own zone, which is the device's too. */
   timeZone?: string;
   /** undefined = the locale's default. */
@@ -99,13 +106,16 @@ function validTimeZone(zone: string | undefined): string | undefined {
 export function resolveRegion(preferences: RegionPreferences | undefined, device: DeviceRegion): ResolvedRegion {
   const preferred = canonical(preferences?.locale);
   const deviceLocales = device.locales.map(canonical).filter((x): x is string => !!x);
-  const formatLocale = preferred ?? deviceLocales[0] ?? sourceLocale;
+  const formatLocale = canonical(preferences?.formats) ?? preferred ?? deviceLocales[0] ?? sourceLocale;
   // Words follow the region like dates do: a device set to Canada or Britain reads its own spelling.
   const uiLocale = resolveLocale(preferred ? [preferred, ...deviceLocales] : deviceLocales);
   const hourCycle = preferences?.hourCycle;
   return Object.freeze({
     uiLocale,
     formatLocale,
+    dateOrder: preferences?.dateOrder ?? 'auto',
+    firstDay: preferences?.firstDay && preferences.firstDay !== 'auto' ? preferences.firstDay : undefined,
+    sizeUnits: preferences?.sizeUnits ?? 'binary',
     timeZone: validTimeZone(device.timeZone),
     hour12: hourCycle === 'h12' ? true : hourCycle === 'h23' ? false : device.hour12,
   });
@@ -192,10 +202,19 @@ export function createI18n(region: ResolvedRegion = resolveRegion(undefined, {lo
     if (!Number.isFinite(d.getTime())) return '';
     return safe(() => dateFormat(options).format(d), fallback(d));
   };
-  const date = (value: Date | number | string, style: DateStyle = 'medium') => formatDate(value, dateOptions(style), d => d.toDateString());
+  const date = (value: Date | number | string, style: DateStyle = 'medium') => {
+    if (!region.dateOrder || region.dateOrder === 'auto' || ['dayMonth', 'weekday', 'monthYear', 'year'].includes(style)) return formatDate(value, dateOptions(style), d => d.toDateString());
+    const d = toDate(value); if (!Number.isFinite(d.getTime())) return '';
+    return safe(() => {
+      const parts = dateFormat({day: 'numeric', month: style === 'short' || region.dateOrder === 'ymd' ? '2-digit' : 'short', year: 'numeric'}).formatToParts(d);
+      const get = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+      const order = region.dateOrder === 'dmy' ? ['day', 'month', 'year'] : region.dateOrder === 'mdy' ? ['month', 'day', 'year'] : ['year', 'month', 'day'];
+      return order.map(get).join(region.dateOrder === 'ymd' ? '-' : style === 'short' ? '/' : ' ');
+    }, d.toDateString());
+  };
   const time = (value: Date | number | string) => formatDate(value, {hour: 'numeric', minute: '2-digit'}, d => d.toTimeString().slice(0, 5));
   // One formatter for both halves, so the locale supplies what goes between them.
-  const dateTime = (value: Date | number | string) => formatDate(value, {dateStyle: 'medium', timeStyle: 'short'}, d => `${d.toDateString()} ${d.toTimeString().slice(0, 5)}`);
+  const dateTime = (value: Date | number | string) => region.dateOrder && region.dateOrder !== 'auto' ? `${date(value)} ${time(value)}` : formatDate(value, {dateStyle: 'medium', timeStyle: 'short'}, d => `${d.toDateString()} ${d.toTimeString().slice(0, 5)}`);
   let languageNames: {of(code: string): string | undefined} | null | undefined;
   const languageName = (code: string) => {
     if (languageNames === undefined) {
@@ -248,7 +267,8 @@ export function createI18n(region: ResolvedRegion = resolveRegion(undefined, {lo
   const bytes = (value: number | undefined) => {
     if (value == null || !Number.isFinite(value) || value < 0) return '—';
     let v = value, i = 0;
-    while (v >= 1024 && i < byteUnits.length - 1) { v /= 1024; i++; }
+    const step = region.sizeUnits === 'decimal' ? 1000 : 1024;
+    while (v >= step && i < byteUnits.length - 1) { v /= step; i++; }
     const maximumFractionDigits = v < 10 && i > 0 ? 1 : 0;
     const [unit, abbreviation] = byteUnits[i]!;
     if (localizedUnits !== false) {

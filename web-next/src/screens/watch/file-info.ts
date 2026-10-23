@@ -13,7 +13,7 @@ export type WatchFileInfoSource = Readonly<{
 }>;
 /** Distinct File info read for this playback. The parent owns open/close and aborts it on exit.
  * No title-details fallback, cached private facts, selected-version guess or raw-file count. */
-export async function readWatchFileInfo(source: WatchFileInfoSource, expected: PlaybackFence, target: DetailTarget, signal: AbortSignal): Promise<FileInfoProjection | null> {
+export async function readWatchFileInfo(source: WatchFileInfoSource, expected: PlaybackFence, target: DetailTarget, signal: AbortSignal, page: Readonly<{cursor?: string}> = {}): Promise<FileInfoProjection | null> {
   const captured = Object.freeze({...target});
   const current = () => {
     const snapshot = source.getSnapshot();
@@ -22,8 +22,36 @@ export async function readWatchFileInfo(source: WatchFileInfoSource, expected: P
       && snapshot.authority.serverId === source.scope.serverId && captured.itemId === expected.itemId;
   };
   if (!current()) return null;
-  const projection = await readFileInfo(source.api, source.scope, captured, {limit: 50}, signal);
-  return current() ? projection : null;
+  try {
+    const projection = await readFileInfo(source.api, source.scope, captured, {limit: 50, cursor: page.cursor}, signal);
+    return current() ? projection : null;
+  } catch (error) {
+    if (!current()) return null;
+    throw error;
+  }
+}
+
+export type WatchFiles = Readonly<{
+  fence: PlaybackFence;
+  projection: FileInfoProjection;
+  options: PlaybackOptions;
+  groups: readonly WatchFileGroup[];
+  availableVersionCount: number;
+  ungroupedFiles: FileInfoProjection['files'];
+  selectedVersionId?: string;
+}>;
+/** Capture the current runtime's offered groups with the separately authorized File info page.
+ * MAIN exposes a selected session version, but no selected physical part: no pickedFileId is
+ * produced from Version.ID, part order, the URL or the first matching physical row. */
+export async function readWatchFiles(source: WatchFileInfoSource, expected: PlaybackFence, target: DetailTarget, signal: AbortSignal, page: Readonly<{cursor?: string}> = {}): Promise<WatchFiles | null> {
+  const captured = source.getSnapshot(), options = captured.options, session = captured.session;
+  if (expected.kind !== 'queue' || !options || options.itemId !== expected.itemId || !session
+    || session.id !== expected.sessionId || session.itemId !== expected.itemId || session.presentation.generation !== expected.generation) return null;
+  const projection = await readWatchFileInfo(source, expected, target, signal, page);
+  const current = source.getSnapshot();
+  if (!projection || current.options !== options || current.session?.versionId !== session.versionId) return null;
+  const selectedVersionId = options.versions.some(version => version.id === session.versionId) ? session.versionId : undefined;
+  return Object.freeze({fence: expected, projection, options, ...watchFileGroups(projection, options), ...(selectedVersionId ? {selectedVersionId} : {})});
 }
 
 export type WatchFileGroup = Readonly<{
