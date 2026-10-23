@@ -197,7 +197,9 @@ func (s *Store) InitializeConfiguration(ctx context.Context, path string) error 
 		return err
 	}
 	if pending > 0 {
-		return s.FlushConfiguration(ctx)
+		if err := s.FlushConfiguration(ctx); err != nil {
+			return err
+		}
 	}
 	return s.ImportConfiguration(ctx)
 }

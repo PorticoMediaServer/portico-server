@@ -209,6 +209,44 @@ func TestSettingsConfigurationPreservesIndependentFileEditWhileAppProjectionPend
 	}
 }
 
+func TestSettingsConfigurationRestartImportsIndependentEditsAfterDrainingProjection(t *testing.T) {
+	s, owner, authorize := consoleFixture(t)
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "portico.toml")
+	if err := s.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := s.Settings(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := doc.Requested
+	values.Name = "Committed app name"
+	s.ConfigFile = nil // Process ended after the database commit, before projection.
+	if _, err = s.ApplySettings(ctx, owner, authorize, SettingsChange{doc.Revision, "restart-independent-edit", values}); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, []byte("[general]\nname='Older file name'\n[streaming]\nmusic_away_quality='96'\noutput_format='h264'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(s.DB)
+	if err = restarted.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Settings(ctx, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Requested.Name != "Committed app name" || current.Requested.MusicAwayQuality != "96" || current.Requested.OutputFormat != "h264" {
+		t.Fatal("restart failed to combine the committed app edit with independent file policy", current)
+	}
+	// The flushed loader already knows these exact bytes: a watcher won't produce
+	// another event to rescue a skipped startup import.
+	if changed, err := restarted.ConfigFile.Reload(); err != nil || changed {
+		t.Fatal(changed, err)
+	}
+}
+
 func TestSettingsConfigurationCanonicalVideoPolicyAndManualUploadRange(t *testing.T) {
 	s, owner, authorize := consoleFixture(t)
 	ctx := context.Background()
