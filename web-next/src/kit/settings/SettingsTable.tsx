@@ -9,8 +9,8 @@ import {nextTableSort, selectTableRows, settingsTableHeaderHeight, settingsTable
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
-export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; avatarKey?: string; image?: string; artwork?: ArtworkSource; tone?: 'ok' | 'warn' | 'bad' | 'quiet'}>;
-export type SettingsTableRow = Readonly<{id: string; label: string; cells: Readonly<Record<string, SettingsTableCell>>}>;
+export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; avatarKey?: string; image?: string; artwork?: ArtworkSource; tone?: 'ok' | 'accent' | 'warn' | 'bad' | 'quiet'}>;
+export type SettingsTableRow = Readonly<{id: string; label: string; selectable?: boolean; cells: Readonly<Record<string, SettingsTableCell>>}>;
 export type SettingsTableColumn = Readonly<{id: string; label: string; kind?: 'main' | 'text' | 'muted' | 'badge' | 'num'; sortable?: boolean; width?: string}>;
 export type SettingsTableFilter = Readonly<{id: string; label: string; options: readonly {value: string; label: string}[]}>;
 export type SettingsTableAction = Readonly<{id: string; label: string; destructive?: boolean; onAction: (ids: readonly string[], opener: HTMLElement) => void}>;
@@ -29,7 +29,7 @@ function Cell({value, kind}: {value?: SettingsTableCell; kind?: SettingsTableCol
   if (!cell) return null;
   return <div className={styles.cell} data-kind={kind} title={[cell.title, cell.meta].filter(Boolean).join('\n')}>
     {kind === 'main' && (cell.artwork ? <Artwork source={cell.artwork} alt="" className={styles.poster} /> : cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} style={cell.avatarKey !== undefined ? accountAvatarStyle(cell.avatarKey) : undefined} data-gradient={cell.avatarKey !== undefined || undefined} aria-hidden="true">{cell.avatar}</span> : null)}
-    <span className={kind === 'badge' ? styles.badge : styles.cellText} data-tone={cell.tone}><span>{cell.title}</span>{cell.meta && <small>{cell.meta}</small>}</span>
+    <span className={kind === 'badge' ? styles.badge : styles.cellText} data-tone={cell.tone}><b>{cell.title}</b>{cell.meta && <small>{cell.meta}</small>}</span>
   </div>;
 }
 
@@ -42,7 +42,8 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
   const restoreSearch = useRef(false), autoMore = useRef<string | undefined>(undefined);
   const range = settingsTableWindow(rows.length, viewport.top, viewport.height), selectable = !!onSelectionChange;
   const ids = useMemo(() => rows.map(row => row.id), [rows]), selectedCount = selected?.size ?? 0;
-  const allChecked = rows.length > 0 && rows.every(row => selected?.has(row.id)), anyChecked = rows.some(row => selected?.has(row.id));
+  const selectableIds = useMemo(() => rows.filter(row => row.selectable !== false).map(row => row.id), [rows]);
+  const allChecked = selectableIds.length > 0 && selectableIds.every(id => selected?.has(id)), anyChecked = selectableIds.some(id => selected?.has(id));
   const filtered = !!query.search || Object.values(query.filters).some(value => value !== 'all');
   const columnsCount = columns.length + Number(selectable) + Number(!!rowAction);
   const changeQuery = (value: TableQuery) => {
@@ -66,6 +67,10 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
     observer.observe(element); return () => observer.disconnect();
   }, []);
   useLayoutEffect(() => { if (all.current) all.current.indeterminate = anyChecked && !allChecked; }, [allChecked, anyChecked]);
+  useLayoutEffect(() => {
+    const denied = new Set(rows.filter(row => row.selectable === false).map(row => row.id));
+    if (selected && [...selected].some(id => denied.has(id))) onSelectionChange?.(new Set([...selected].filter(id => !denied.has(id))));
+  }, [rows, selected, onSelectionChange]);
   useLayoutEffect(() => {if (!selectedCount && restoreSearch.current) {search.current?.focus(); restoreSearch.current = false;}}, [selectedCount]);
   useLayoutEffect(() => {
     if (focused && !ids.includes(focused) && (document.activeElement === document.body || root.current?.contains(document.activeElement))) {
@@ -112,14 +117,14 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
       }}>
       <table className={styles.table} aria-label={label} aria-rowcount={matchedCount + 1} aria-colcount={columnsCount}>
         <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{rowAction && <col className={styles.actionColumn} />}</colgroup>
-        <thead><tr>{selectable && <th scope="col"><input ref={all} type="checkbox" checked={allChecked} disabled={!rows.length} aria-label={t('next.settings.selectLoaded')} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), ids, event.currentTarget.checked))} /></th>}
+        <thead><tr>{selectable && <th scope="col"><input ref={all} type="checkbox" checked={allChecked} disabled={!selectableIds.length} aria-label={t('next.settings.selectLoaded')} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), selectableIds, event.currentTarget.checked))} /></th>}
           {columns.map(column => <th key={column.id} scope="col" aria-sort={query.sort.by === column.id ? query.sort.direction === 'asc' ? 'ascending' : 'descending' : undefined} data-kind={column.kind}>
             {column.sortable ? <button type="button" onClick={() => changeQuery({...query, sort: nextTableSort(query.sort, column.id)})}>{column.label}<Icon name={query.sort.by === column.id && query.sort.direction === 'desc' ? 'i-arrow-down' : 'i-arrow-up'} size={14} className={query.sort.by === column.id ? undefined : styles.sortIdle} /></button> : column.label}
           </th>)}{rowAction && <th scope="col"><span className={styles.srOnly}>{t('next.settings.actions')}</span></th>}</tr></thead>
         <tbody>{range.before > 0 && <tr aria-hidden="true"><td colSpan={columnsCount} style={{height: range.before, padding: 0}} /></tr>}
           {rendered.map((row, index) => <tr key={row.id} data-table-row={row.id} aria-rowindex={offset + range.first + index + 2} data-selected={selected?.has(row.id) || undefined}
             onClick={event => {if (!(event.target as HTMLElement).closest('button,input,a')) rowAction?.onAction(row, event.currentTarget.querySelector<HTMLElement>('[data-table-action]') ?? event.currentTarget);}}>
-            {selectable && <td><input type="checkbox" checked={selected?.has(row.id) ?? false} aria-label={t('next.settings.selectRow', {name: row.label})} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), [row.id], event.currentTarget.checked))} /></td>}
+            {selectable && <td><input type="checkbox" checked={row.selectable !== false && (selected?.has(row.id) ?? false)} disabled={row.selectable === false} aria-label={t('next.settings.selectRow', {name: row.label})} onChange={event => {if (row.selectable !== false) onSelectionChange?.(selectTableRows(selected ?? new Set(), [row.id], event.currentTarget.checked));}} /></td>}
             {columns.map(column => <td key={column.id} data-kind={column.kind}><Cell value={row.cells[column.id]} kind={column.kind} /></td>)}
             {rowAction && <td><Button size="xs" data-table-action aria-label={t('next.settings.rowAction', {action: rowAction.label, name: row.label})} onClick={event => rowAction.onAction(row, event.currentTarget)}>{rowAction.label}</Button></td>}
           </tr>)}
@@ -128,7 +133,6 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
         </tbody>
       </table>
       {loading && <p className={styles.loading} role="status">{t('next.settings.loading')}</p>}
-      {hasMore && !loading && <Button className={styles.loadMore} size="xs" onClick={onLoadMore}>{t('next.settings.loadMore')}</Button>}
     </div>
   </section>;
 }
