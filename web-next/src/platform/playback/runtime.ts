@@ -697,9 +697,10 @@ export class WebShellPlaybackRuntime {
         const savedModes = this.source.settings.skipModes();
         // A member's unattended device preference cannot independently move the room clock.
         // Manual offered skips use the genuine room transport and its permission/revision.
+        const inGroup = !!this.group?.matches(fence);
         const modes: Record<string, SkipMode> = {...savedModes};
-        if (this.group?.matches(fence)) for (const kind of Object.keys(modes)) if (modes[kind] === 'auto') modes[kind] = 'ask';
-        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes, postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
+        if (inGroup) for (const kind of Object.keys(modes)) if (modes[kind] === 'auto') modes[kind] = 'ask';
+        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion && !inGroup, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes, postPlay: inGroup ? null : queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
         this.policyView = result?.view ?? null;
         for (const command of result?.commands ?? []) {
           if (command.kind === 'expand') { stack.expanded = true; this.dock.expand(fence); }
@@ -709,7 +710,7 @@ export class WebShellPlaybackRuntime {
             queueMicrotask(() => { if (this.matches(command.fence)) void this.advancePolicy(stack, command).catch(() => { if (this.current(stack)) { this.runtimeProblem = 'playback_advance_failed'; this.sync(); } }); });
           }
         }
-        const finished = !!(completion && !this.policyView?.attention && (!completion.nextAvailable || !completion.postPlay.autoplay || this.policyView?.replay) || listeningFinished);
+        const finished = !inGroup && !!(completion && !this.policyView?.attention && (!completion.nextAvailable || !completion.postPlay.autoplay || this.policyView?.replay) || listeningFinished);
         const controls: WebPlaybackPresentation['controls'][number][] = finished ? ['replay'] : playback.phase === 'ended' || playback.phase === 'error' ? [] : [playback.intent === 'playing' ? 'pause' : 'play'];
         if (!playback.ended && (finished || ['ready', 'starting'].includes(playback.phase))) controls.push('seek');
         if (fence.kind === 'queue' && queue?.next.available && !playback.ended) controls.push('next');
@@ -819,14 +820,18 @@ export class WebShellPlaybackRuntime {
     const post = this.snapshot?.queueView?.postPlay;
     // The dock deliberately hides the offer, but its explicit during-credits setting still
     // runs the same policy. Do not depend on a rendered card to advance that quiet queue.
-    const earlyCountdown = this.snapshot?.subject?.kind === 'video' && this.snapshot.presentation?.playing && post?.available && post.autoplay && post.startDuringCredits;
+    const inGroup = !!this.snapshot?.fence && !!this.group?.matches(this.snapshot.fence);
+    const earlyCountdown = !inGroup && this.snapshot?.subject?.kind === 'video' && this.snapshot.presentation?.playing && post?.available && post.autoplay && post.startDuringCredits;
     // Undo expires even while paused. Early credits count the same actual policy clock as the
     // end card, including when a media element has not emitted another timeupdate yet.
-    if (this.snapshot?.fence && (this.stack.queue.getSnapshot().completion || this.policyView?.undo || earlyCountdown) && !this.disposed) this.timer = this.setTimer(() => { this.timer = undefined; this.sync(); }, 250);
+    if (this.snapshot?.fence && (!inGroup && this.stack.queue.getSnapshot().completion || this.policyView?.undo || earlyCountdown) && !this.disposed) this.timer = this.setTimer(() => { this.timer = undefined; this.sync(); }, 250);
   }
   private async advancePolicy(stack: Stack, command: Extract<PolicyCommand, {kind: 'advance'}>): Promise<void> {
     const fence = command.fence;
     this.require(fence);
+    // The canonical group readiness/end report advances the room. A member's private
+    // queue must never advance independently of that authoritative occurrence.
+    if (this.group?.matches(fence)) problem('group_transport_required');
     const state = stack.queue.getSnapshot(), view = currentPolicyQueue(this.snapshot, fence);
     if (!view || !view.next.available || view.next.entryId !== command.nextEntryId || view.postPlay.nextEntryId !== command.nextEntryId) problem('playback_policy_unavailable');
     const held = state.completion, playback = stack.service.getSnapshot();

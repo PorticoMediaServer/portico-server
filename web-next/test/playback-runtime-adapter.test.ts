@@ -2202,7 +2202,7 @@ async function runtimeRoom(t: TestContext, playing = false, canControl = true, m
   })});
   const errors: unknown[] = [], unbind = f.runtime.bindGroup(service, () => true, error => errors.push(error));
   t.after(() => {unbind();service.dispose();});
-  assert.equal(await service.open(roomId), true);await settle();await f.arrive();
+  assert.equal(await service.open(roomId), true);await settle();await f.arrive();f.video.land();await settle();
   return {...f, service, errors, nextRoom: async () => {roomId = 'room_second';await service.open(roomId);await settle();await f.arrive();}};
 }
 
@@ -2236,7 +2236,8 @@ test('Together read-only members cannot issue local transport, and the same titl
 test('Together never executes an unattended member skip locally; a permitted manual skip uses the real room transport', async t => {
   const f = await runtimeRoom(t, true, true, true), fence = f.runtime.getSnapshot().fence!;
   if (fence.kind !== 'queue') assert.fail('actual queue fence');
-  f.video.advance(40);await settle();
+  await f.service.transport('seek', {positionUs: '40000000'});await settle();
+  f.video.land(40);f.video.advance(40);await settle();
   assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
   assert.equal(f.runtime.getSnapshot().playback.pendingSeek, undefined, 'device autoplay preferences cannot change the group clock');
   await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});await settle();
@@ -2244,4 +2245,19 @@ test('Together never executes an unattended member skip locally; a permitted man
   assert.ok(command);assert.equal((command.body as {positionUs: string}).positionUs, '79000000');
   assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79, 'the canonical follower applies the accepted room clock');
   assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
+});
+
+test('Together completion reports the actual room end without a private replay or queue advance', async t => {
+  const f = await runtimeRoom(t, true), fence = f.runtime.getSnapshot().fence!;
+  f.video.finish();await settle();
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false, 'the room owns its next occurrence');
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('replay'), false);
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.endCountdown, undefined);
+  f.clock.advance(60000);await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence);
+  assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 1);
+  assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
+  await f.service.transport('seek', {positionUs: String(f.video.duration * 1000000)});await settle();
+  assert.ok(f.log.some(request => request.path.endsWith('/readiness') && (request.body as {ended?: boolean}).ended === true), 'the canonical follower reports a genuine ended observation against the current room revision');
 });
