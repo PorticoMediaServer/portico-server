@@ -42,7 +42,8 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 		// A narrowed owner token is recognized on exactly these operation
 		// reads/continuation calls. It cannot prepare or approve another claim,
 		// cancel the installed central claim, or configure routes/certificates.
-		if e != nil && (r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" || r.Method == http.MethodPost && (r.URL.Path == "/v1/networking/claim/continue" || r.URL.Path == "/v1/networking/claim/await-approval")) {
+		// The existing cancel path has a distinct captured-continuation branch.
+		if e != nil && (r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" || r.Method == http.MethodPost && (r.URL.Path == "/v1/networking/claim/continue" || r.URL.Path == "/v1/networking/claim/await-approval" || r.URL.Path == "/v1/networking/claim/cancel")) {
 			p, e = id.OwnerClaimAuthority(r.Context(), secret)
 		}
 		if e != nil && (r.URL.Path == "/v1/networking/claim" || strings.HasPrefix(r.URL.Path, "/v1/networking/claim/")) {
@@ -59,13 +60,15 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
 		resume, _ := json.Marshal(claimResume{Digest: p.Hash, AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch})
-		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
+		actor := networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
 			e := id.CheckClaimRequestOwnerTx(ctx, tx, p)
 			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrForbidden) {
 				return networking.ErrClaimOwnerRequired
 			}
 			return e
-		}, Resume: string(resume), OwnerStart: &networking.OwnerStartAuthority{
+		}, Resume: string(resume), CancelOwnerReturnTx: func(ctx context.Context, tx *sql.Tx, operation string) error {
+			return networkingOwnerStartError(id.CancelOwnerReturnTx(ctx, tx, p, operation))
+		}, OwnerStart: &networking.OwnerStartAuthority{
 			ExpiresAt: p.ExpiresAt,
 			CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
 				return networkingOwnerStartError(id.CaptureOwnerClaimTx(ctx, tx, p, original, start, audience))
@@ -73,7 +76,14 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			BindTx: func(ctx context.Context, tx *sql.Tx, operation, transaction string) error {
 				return networkingOwnerStartError(id.BindOwnerClaimTransactionTx(ctx, tx, p, operation, transaction))
 			},
-		}}, nil
+		}}
+		if d.Hosted != nil && d.Networking != nil && actor.WebOrigin != "" {
+			actor.ResolveOwnerReturn = func(ctx context.Context) error {
+				_, err := d.Hosted.PrepareOwnerCompletion(ctx, d.Networking, secret, actor.WebOrigin)
+				return networkingOwnerStartError(err)
+			}
+		}
+		return actor, nil
 	}
 }
 

@@ -8,3 +8,15 @@ export * from './SettingsOrderedList';
 export * from './SettingsRows';
 export * from './SettingsWorkspace';
 export * from './search';
+export * from './SettingsAction';
+export * from './SettingsGrid';
+export * from './SettingsHours';
+export * from './SettingsPageFailure';
+export * from './SettingsSelectionList';
+export * from './SettingsStringList';
+
+export * from './BackupConfirmationDialog';
+
+export * from './BackupList';
+
+export * from './BackupPassphraseDialog';
