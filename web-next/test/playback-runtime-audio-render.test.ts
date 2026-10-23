@@ -83,6 +83,26 @@ const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r =>
  * never answers fails the test instead of keeping the process (and the whole suite) alive. */
 const bounded = {timeout: 30_000};
 
+test('current-song leveling facts follow the actual deck gain rather than the saved switch', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), render = new DecodeAudioRender(t.service, (path: string) => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  const settings = {...t.get().audioEffects.settings, normalization: 'track'};
+  render.apply(t.set({audioEffects: {settings}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, false, 'unknown gain is unchanged audio even with leveling selected');
+  render.apply(t.set({session: {id: 's2', generation: 2, audio: {...t.a, gain: {trackDb: 0, trackPeak: 0.5}}}}));
+  assert.equal(render.audioFacts(), undefined, 'previous-song facts cannot describe a new deck still decoding');
+  await settle(); assert.equal(render.audioFacts()!.levelingApplied, false, 'a measured zero dB gain is unchanged');
+  render.apply(t.set({session: {id: 's3', generation: 3, audio: {...t.a, gain: {trackDb: -6, trackPeak: 0.5}}}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, true);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's3', generation: 3}, {eqApplied: false, levelingApplied: true}]);
+  render.apply(t.set({audioEffects: {settings: {...settings, normalization: 'off'}}}));
+  assert.equal(render.audioFacts()!.levelingApplied, false);
+  render.apply(t.set({phase: 'ended'}));
+  assert.equal(render.audioFacts(), undefined);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1)!.at(-1), {eqApplied: false, levelingApplied: false});
+});
+
 test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const t = setup();

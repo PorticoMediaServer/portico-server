@@ -6,6 +6,8 @@ import type {PlayOnController, PlayOnSnapshot} from '../../platform/playback/pla
 
 /** Display artwork is resolved by the authority-owned shell, never sent as a media grant. */
 export type CastPlayerVisuals = Partial<Pick<DockPresentation, 'identity' | 'artwork' | 'ambient' | 'palette'>> & Pick<DockPresentation, 'skipBackSeconds' | 'skipForwardSeconds'> & Readonly<{
+  /** Only the actual receiver item's visuals may follow a queue advance. */
+  itemId?: string;
   onMore?: () => void; onMyList?: () => void;
 }>;
 export type CastPlayerProps = Readonly<{

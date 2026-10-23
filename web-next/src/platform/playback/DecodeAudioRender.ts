@@ -392,9 +392,10 @@ export class DecodeAudioRender {
     const plan = this.primary?.plan;
     const snapshot = this.service.getSnapshot();
     if (!plan || this.starting || this.primary?.deck.startFrame === undefined || this.primary.deck.failure || this.primary.key !== sessionKey(snapshot.session) || !snapshot.audioEffects.rendering || snapshot.phase === 'error' || snapshot.phase === 'ended') return undefined;
+    const levelingGain = this.primary.deck.norm.gain.value;
     return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
       resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
-      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:snapshot.audioEffects.settings.normalization !== 'off',clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:Number.isFinite(levelingGain) && levelingGain !== 1,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
   }
 
   private reportProcessing(): void {

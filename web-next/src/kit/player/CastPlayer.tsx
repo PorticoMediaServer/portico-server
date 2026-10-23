@@ -12,21 +12,22 @@ import styles from './cast-player.module.css';
 export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef, t = defaultI18n.t}: CastPlayerProps) {
   const remote = snapshot.remote;
   if (!remote || snapshot.disposed) return null;
+  const bound = remote.itemId && visuals.itemId === remote.itemId ? visuals : undefined;
   const open = snapshot.panel === 'remote' && remote.phase === 'playing';
   const position = remote.positionKnown ? clockText(remote.positionSeconds) ?? '' : '', remaining = clockText(Math.max(0, remote.durationSeconds - remote.positionSeconds)) ?? '';
   const back = visuals.skipBackSeconds, forward = visuals.skipForwardSeconds;
   return <Dialog open={open} onOpenChange={() => controller.closePanel()} title={t('next.dock.castControls')} showCloseButton={false} responsive={false}
     returnFocusRef={returnFocusRef} className={styles.remoteDialog} bodyClassName={styles.remoteBody}>
     <div className={styles.remote} data-phone={phone || undefined}>
-      <AmbientArt source={visuals?.ambient} palette={visuals?.palette} treatment="cover" className={styles.ambient} /><div className={styles.shade} />
+      <AmbientArt source={bound?.ambient} palette={bound?.palette} treatment="cover" className={styles.ambient} /><div className={styles.shade} />
       <div className={styles.remoteContent}><header className={styles.remoteHead}>
         <Control icon="i-down" label={t('next.dock.close')} onClick={() => controller.closePanel()} />
         <span><small>{t('next.cast.playingOn')}</small><b>{remote.deviceName}</b></span>
-        {visuals?.onMore && <Control icon="i-more" label={t('next.controls.more')} onClick={visuals.onMore} />}
+        {bound?.onMore && <Control icon="i-more" label={t('next.controls.more')} onClick={bound.onMore} />}
       </header>
-      <Artwork source={visuals?.artwork} alt={visuals.identity?.title ?? remote.title ?? ''} className={styles.remoteArt} />
-      <div className={styles.remoteIdentity}><div><b>{visuals.identity?.title ?? remote.title}</b>{visuals.identity?.subtitle && <span><Facts parts={visuals.identity!.subtitle} /></span>}</div>
-        {visuals?.onMyList && <Control icon="i-plus" label={t('entry.addToWatchlist')} onClick={visuals.onMyList} />}</div>
+      <Artwork source={bound?.artwork} alt={bound?.identity?.title ?? remote.title ?? ''} className={styles.remoteArt} />
+      <div className={styles.remoteIdentity}><div><b>{bound?.identity?.title ?? remote.title}</b>{bound?.identity?.subtitle && <span><Facts parts={bound.identity.subtitle} /></span>}</div>
+        {bound?.onMyList && <Control icon="i-plus" label={t('entry.addToWatchlist')} onClick={bound.onMyList} />}</div>
       <div className={styles.remoteScrub}><Slider variant="player" value={remote.positionSeconds} min={0} max={remote.durationSeconds || 1} step={1} disabled={!remote.durationSeconds}
         aria-label={t('next.dock.remotePosition')} aria-valuetext={t('next.dock.positionOf', {position, duration: clockText(remote.durationSeconds) ?? ''})} onValueChange={seconds => controller.seek(remote, seconds)} />
         <div className={styles.remoteTimes}><span>{position}</span><span>{remote.durationSeconds ? '-' + remaining : ''}</span></div></div>
