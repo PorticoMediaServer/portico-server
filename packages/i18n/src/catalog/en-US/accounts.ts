@@ -25,6 +25,7 @@ export const accountMessages = {
   'accounts.signIn.submit': 'Sign in',
   'accounts.signIn.username': 'Username',
   'accounts.signIn.password': 'Password',
+  'accounts.signIn.confirm': 'Confirm',
   'accounts.signIn.confirmPassword': 'Confirm password',
   'accounts.signIn.showPassword': 'Show',
   'accounts.signIn.continue': 'Continue',

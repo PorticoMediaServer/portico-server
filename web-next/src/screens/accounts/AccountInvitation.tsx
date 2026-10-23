@@ -28,10 +28,11 @@ export function AccountInvitationScreen({link, account, signedOutContent, onBack
 function InvitationInstance({link, account, signedOutContent, onBack, onDifferentAccount, onJoined}: AccountInvitationScreenProps) {
   const entry = useMemo(() => createBrowserAccountEntry({invitationDestination: 'server-origin'}), []);
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), delivered = useRef<unknown>(undefined);
+  const {server, id, code: invitationCode} = link;
   useEffect(() => {
-    void entry.inspectInvitation(link);
+    void entry.inspectInvitation({server, code: invitationCode, ...(id === undefined ? {} : {id})});
     return () => entry.cancel();
-  }, [entry, link.server, link.id, link.code]);
+  }, [entry, server, id, invitationCode]);
   useEffect(() => () => entry.dispose(), [entry]);
   useEffect(() => {
     if (state.phase !== 'joined' || !state.joined || delivered.current === state.joined) return;
