@@ -47,7 +47,8 @@ export function BrowseResults(props: BrowseResultsProps) {
   const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 1.9 : 1;
-  const height = cardWidth / ratio + (shape === 'collection' ? 0 : 58);
+  const musicGenres = state.capabilities?.library.kind === 'music' && controller.source.pivot === 'genres';
+  const height = musicGenres ? 152 : cardWidth / ratio + (shape === 'collection' ? 0 : 58);
   if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <div className={styles.results} ref={root} data-view={view}>
     {list && <div className={styles.listHead} role="row">{columns.map(column => {
@@ -58,7 +59,7 @@ export function BrowseResults(props: BrowseResultsProps) {
     })}<span aria-label={t('next.cards.watched')} role="columnheader"/><span/></div>}
     {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
       cardWidth={list ? Math.max(1, size.width) : cardWidth} rowHeight={list ? 70 : height} gap={list ? 0 : 20} rowGap={list ? 0 : 30} reducedMotion={props.reducedMotion}
-      onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : cardWidth / ratio} width={list ? '100%' : cardWidth}/>}
+      onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : cardWidth / ratio} width={list ? '100%' : cardWidth}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
         width={cardWidth} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
     {state.sort?.field === 'title' && anchors.length > 0 && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
