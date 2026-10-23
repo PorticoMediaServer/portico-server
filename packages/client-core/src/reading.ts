@@ -26,6 +26,7 @@ export class ReadingError extends Error {
 type Sender = (path: string, init: RequestInit) => Promise<Response>;
 type Capture = Readonly<{send: Sender; isCurrent: () => boolean; subscribe: (retire: () => void) => () => void}>;
 const fail = (code: string): never => { throw new ReadingError(code); };
+const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingError ? signal.reason : new ReadingError('cancelled');
 const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
 const id = (s: string) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
 const revision = (s: string) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
@@ -45,19 +46,19 @@ const query = (path: string, values: Readonly<Record<string, string | number | u
 // dependency, global polyfill or platform-specific bridge is introduced.
 function operation(signals: readonly (AbortSignal | undefined)[]) {
   const controller = new AbortController();
-  const abort = () => controller.abort();
+  const abort = () => controller.abort(signals.find(signal => signal?.aborted)?.reason);
   for (const signal of signals) { signal?.addEventListener('abort', abort, {once: true}); if (signal?.aborted) abort(); }
   return {signal: controller.signal, release() { for (const signal of signals) signal?.removeEventListener('abort', abort); }};
 }
 function discard(response: Response) { try { void response.body?.cancel().catch(() => {}); } catch { /* already retired */ } }
 async function received(pending: Promise<Response>, signal: AbortSignal): Promise<Response> {
   return new Promise<Response>((resolve, reject) => {
-    const abort = () => reject(new ReadingError('cancelled'));
+    const abort = () => reject(cancellation(signal));
     signal.addEventListener('abort', abort, {once: true});
     if (signal.aborted) abort();
     pending.then(response => {
       signal.removeEventListener('abort', abort);
-      if (signal.aborted) { discard(response); reject(new ReadingError('cancelled')); }
+      if (signal.aborted) { discard(response); reject(cancellation(signal)); }
       else resolve(response);
     }, error => { signal.removeEventListener('abort', abort); reject(error); });
   });
@@ -75,7 +76,7 @@ async function bytes(response: Response, max: number, signal: AbortSignal, check
   let total = 0, rejectAbort!: (e: ReadingError) => void;
   const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
   void aborted.catch(() => {});
-  const abort = () => { void reader.cancel().catch(() => {}); rejectAbort(new ReadingError('cancelled')); };
+  const abort = () => { void reader.cancel().catch(() => {}); rejectAbort(cancellation(signal)); };
   signal.addEventListener('abort', abort, {once: true});
   try {
     if (signal.aborted) abort();
@@ -135,18 +136,19 @@ export class ReadingClient {
   #abort: () => void;
   constructor(capture: Capture, scope: ReadingScope) {
     this.#capture = Object.freeze({...capture}); this.viewer = Object.freeze({...scope.viewer}); this.#scope = Object.freeze({...scope, viewer: this.viewer}); this.signal = this.#life.signal;
-    this.#abort = () => this.dispose(); this.#unsubscribe = capture.subscribe(this.#abort);
+    this.#abort = () => this.dispose(scope.signal?.reason); this.#unsubscribe = capture.subscribe(this.#abort);
     scope.signal?.addEventListener('abort', this.#abort, {once: true});
     if (scope.signal?.aborted || !capture.isCurrent() || !scope.isCurrent()) this.dispose();
     Object.freeze(this);
   }
   check(signal?: AbortSignal) {
     if (!this.#capture.isCurrent() || !this.#scope.isCurrent()) this.dispose();
-    if (this.signal.aborted || signal?.aborted) fail('cancelled');
+    if (this.signal.aborted) throw cancellation(this.signal);
+    if (signal?.aborted) throw cancellation(signal);
   }
-  dispose() {
+  dispose(reason: unknown = new ReadingError('cancelled')) {
     if (this.signal.aborted) return;
-    this.#life.abort(); this.#unsubscribe(); this.#scope.signal?.removeEventListener('abort', this.#abort);
+    this.#life.abort(reason); this.#unsubscribe(); this.#scope.signal?.removeEventListener('abort', this.#abort);
     for (const session of this.#sessions) session.retire(); this.#sessions.clear();
   }
   forget(session: ReadingSession) { this.#sessions.delete(session); }
@@ -215,10 +217,10 @@ export class ReadingSession {
   #retire: () => void;
   constructor(client: ReadingClient, manifest: ReadingManifest) {
     this.#client = client; this.manifest = frozen(manifest); this.signal = this.#life.signal;
-    this.#retire = () => this.retire(); client.signal.addEventListener('abort', this.#retire, {once: true});
+    this.#retire = () => this.retire(client.signal.reason); client.signal.addEventListener('abort', this.#retire, {once: true});
     Object.freeze(this);
   }
-  retire() { this.#life.abort(); this.#client.signal.removeEventListener('abort', this.#retire); this.#client.forget(this); }
+  retire(reason: unknown = new ReadingError('cancelled')) { this.#life.abort(reason); this.#client.signal.removeEventListener('abort', this.#retire); this.#client.forget(this); }
   #check = () => { this.#client.check(this.signal); };
   #headers() { return {'If-Match': '"' + this.manifest.revision + '"'}; }
   #etag(response: Response) { if (response.headers.get('ETag') !== '"' + this.manifest.revision + '"') fail('source_changed'); }
@@ -226,7 +228,7 @@ export class ReadingSession {
     this.#check();
     try { return await run(); }
     catch (error) {
-      if (error instanceof ReadingError && (['source_changed', 'invalid_document', 'invalid_progress'].includes(error.code) || [401, 403, 404].includes(error.status ?? 0) || (!cas && error.status === 412))) this.retire();
+      if (error instanceof ReadingError && (['source_changed', 'invalid_document', 'invalid_progress'].includes(error.code) || [401, 403, 404].includes(error.status ?? 0) || (!cas && error.status === 412))) this.retire(error);
       throw error;
     }
   }
@@ -234,7 +236,7 @@ export class ReadingSession {
     this.#check();
     try { return await this.#client.response(path, {...init, headers: {...this.#headers(), ...init.headers}}, signal, consume, this.signal); }
     catch (error) {
-      if (error instanceof ReadingError && (['source_changed', 'response_size', 'invalid_response'].includes(error.code) || [401, 403, 404, 412].includes(error.status ?? 0))) this.retire();
+      if (error instanceof ReadingError && (['source_changed', 'response_size', 'invalid_response'].includes(error.code) || [401, 403, 404, 412].includes(error.status ?? 0))) this.retire(error);
       throw error;
     }
   }

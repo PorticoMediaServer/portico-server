@@ -66,7 +66,7 @@ test('200, changed ETag, wrong total and short ranges are rejected, never whole-
     let cancelled = 0;
     f.hook(() => new Response(new ReadableStream<Uint8Array>({start(c) { c.enqueue(new Uint8Array(mismatch === 'short' ? 4 : 5)); c.close(); }, cancel() { cancelled++; }}), {status: mismatch === '200' ? 200 : 206, headers: {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Content-Range': `bytes 0-4/${mismatch === 'total' ? 99 : 131072}`, ETag: '"' + (mismatch === 'etag' ? 'b'.repeat(64) : rev) + '"'}}));
     await assert.rejects(session.readRange({start: 0, endExclusive: 5}), error => error instanceof ReadingError);
-    assert.equal(session.signal.aborted, true); if (mismatch !== 'short') assert.equal(cancelled, 1);
+    assert.equal(session.signal.aborted, true); assert.ok(session.signal.reason instanceof ReadingError); if (mismatch !== 'short') assert.equal(cancelled, 1);
     f.client.dispose();
   });
 });
