@@ -26,6 +26,10 @@ func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, 
 			return nil, e
 		}
 	}
+	managed, err := c.managedRecording(ctx, path)
+	if err != nil {
+		return nil, err
+	}
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -46,7 +50,7 @@ func (c *Client) OpenPlaybackDescriptor(ctx context.Context, path string, size, 
 	}
 	defer conn.Close()
 	socket := conn.(*net.UnixConn)
-	req := request{Operation: "playback-descriptor", Path: path, ManagedArtifact: c.managedRecording(path), Size: size, ModifiedNS: modified}
+	req := request{Operation: "playback-descriptor", Path: path, ManagedArtifact: managed, Size: size, ModifiedNS: modified}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}

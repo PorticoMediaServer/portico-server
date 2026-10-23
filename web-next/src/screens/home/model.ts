@@ -26,8 +26,8 @@ export function homeCardSubject(entry: ContentEntry): CardSubject {
     : entry.airDate && entry.episodeNumber === undefined ? {mode: 'date' as const, day: entry.airDate}
     : entry.seasonNumber === 0 ? {mode: 'special' as const}
     : {mode: 'seasonal' as const, season: entry.seasonNumber, episode: entry.episodeNumber};
-  return {id: entry.id, kind: entry.kind, title: entry.title,
-    year: entry.year, contentRating: entry.contentRating, durationSeconds: entry.duration,
+  return {id: entry.id, kind: entry.kind, title: entry.displayTitle ?? entry.title,
+    seasonNumber: entry.seasonNumber, year: entry.year, contentRating: entry.contentRating, durationSeconds: entry.duration,
     positionSeconds: entry.progressSeconds, genres: entry.genres, seasonCount: entry.seasonCount,
     artist: entry.artist?.name, album: entry.album?.name, author: entry.author,
     show: entry.show ? {id: entry.show.id, title: entry.show.name} : undefined, episode};
@@ -36,7 +36,7 @@ export function homeCardModel(entry: ContentEntry, continuing: boolean, env: Tex
   return cardText(homeCardSubject(entry), continuing ? 'continuation' : 'ordinary', env);
 }
 export function homeSpotlights(document: HomeDocument, env: TextEnvironment) {
-  return homeSpotlightModels(document).map(slide => ({...slide, id: slide.entry.id, title: slide.entry.title,
+  return homeSpotlightModels(document).map(slide => ({...slide, id: slide.entry.id, title: slide.entry.displayTitle ?? slide.entry.title,
     facts: homeTitleFactParts(slide.entry, env)}));
 }
 /** Expired live facts are withdrawn, never presented as current while refreshing. */
