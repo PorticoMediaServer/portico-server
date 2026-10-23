@@ -35,7 +35,7 @@ export async function openPdf(source:ReaderSource,signal:AbortSignal,options:Pdf
   const unchanged=()=>{if(source.id!==id||source.revision!==revision||source.size!==size)throw new PdfInputError('pdf_invalid');};
   const life=new AbortController(),combined=AbortSignal.any([signal,life.signal]);
   const firstEnd=Math.min(source.size,rangeBytes),initial=await source.read({start:0,endExclusive:firstEnd},combined);combined.throwIfAborted();unchanged();
-  if(initial.byteLength!==firstEnd||!new TextDecoder('latin1').decode(initial.subarray(0,1024)).includes('%PDF-'))throw new PdfInputError('pdf_invalid');
+  if(!(initial instanceof Uint8Array)||initial.byteLength!==firstEnd||!new TextDecoder('latin1').decode(initial.subarray(0,1024)).includes('%PDF-'))throw new PdfInputError('pdf_invalid');
   const library=await import('pdfjs-dist/legacy/build/pdf.mjs');combined.throwIfAborted();
   let nativeWorker:Worker|undefined,worker:PDFWorker|undefined;
   if(options.workerUrl){nativeWorker=(options.createWorker??((url)=>new Worker(url,{type:'module'})))(options.workerUrl);worker=library.PDFWorker.create({port:nativeWorker});}
@@ -78,4 +78,18 @@ export async function pdfText(engine:PdfEngine,page:PDFPageProxy,signal:AbortSig
       for(const item of next.value.items){if('str'in item){bytes+=item.str.length*2;if(bytes>2*1024*1024)throw new PdfInputError('pdf_limit');text+=item.str+(item.hasEOL?'\n':' ');}}
     }return text.trim();
   }finally{combined.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});reader.releaseLock();}
+}
+
+export function pdfTextStream(page:PDFPageProxy,signal:AbortSignal):ReadableStream {
+  const reader=page.streamTextContent().getReader();let bytes=0,items=0,ended=false;
+  const stop=async(reason?:unknown)=>{if(ended)return;ended=true;signal.removeEventListener('abort',abort);await reader.cancel(reason).catch(()=>{});reader.releaseLock();};
+  const abort=()=>{void stop(signal.reason);};signal.addEventListener('abort',abort,{once:true});
+  return new ReadableStream({
+    async pull(controller){
+      try{signal.throwIfAborted();const next=await reader.read();signal.throwIfAborted();if(next.done){await stop();controller.close();return;}
+        items+=next.value.items.length;for(const item of next.value.items)if('str'in item)bytes+=item.str.length*2;
+        if(bytes>2*1024*1024||items>50000)throw new PdfInputError('pdf_limit');controller.enqueue(next.value);
+      }catch(error){await stop(error);controller.error(error);}
+    },cancel(reason){return stop(reason);}
+  },{highWaterMark:1});
 }

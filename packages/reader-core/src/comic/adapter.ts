@@ -38,7 +38,7 @@ export function createComicAdapter<P extends FixedPreferences>(options:ComicAdap
           const bitmap=await bitmapFor(page,combined);let released=false;
           return {width:bitmap.width,height:bitmap.height,
             async mount(target,scale,renderSignal){checkAbort(renderSignal);const canvas=target.ownerDocument.createElement('canvas');
-              const ratio=Math.min(target.ownerDocument.defaultView?.devicePixelRatio??1,2,Math.sqrt(16_000_000/(bitmap.width*bitmap.height*scale*scale)));
+              const ratio=Math.min(target.ownerDocument.defaultView?.devicePixelRatio??1,2,8192/(bitmap.width*scale),8192/(bitmap.height*scale),Math.sqrt(16_000_000/(bitmap.width*bitmap.height*scale*scale)));
               canvas.width=Math.max(1,Math.ceil(bitmap.width*scale*ratio));canvas.height=Math.max(1,Math.ceil(bitmap.height*scale*ratio));Object.assign(canvas.style,{display:'block',width:'100%',height:'100%'});
               canvas.setAttribute('role','img');canvas.setAttribute('aria-label',page.name);
               const context=canvas.getContext('2d');if(!context)throw new ComicInputError('image_invalid');context.drawImage(bitmap,0,0,canvas.width,canvas.height);target.append(canvas);

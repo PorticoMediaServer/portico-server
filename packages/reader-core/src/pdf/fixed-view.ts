@@ -10,9 +10,10 @@ type Zoom={kind:'scale';value:number}|{kind:'fit';value:'page'|'width'|'height'|
 /** Both fixed formats use the common spread planner and their own real page renderer. */
 export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',pageCount:number,fileDirection:'ltr'|'rtl'|'vertical',load:FixedPageLoader,options:Parameters<ReaderDocument<P>['mount']>[0]):Promise<ReaderView<P>>{
   const document=options.container.ownerDocument,host=document.createElement('div');
+  host.tabIndex=0;host.setAttribute('role','document');
   host.dataset.readerFixed=format;Object.assign(host.style,{position:'relative',display:'flex',width:'100%',height:'100%',overflow:'auto',overscrollBehavior:'contain',touchAction:'none'});
-  let preferences=options.preferences,viewport=options.viewport,page=0,closed=false,version=0;
-  let zoom:Zoom|undefined,scale=1,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
+  let preferences=options.preferences,viewport=options.viewport,page=0,closed=false,version=0,mutation=0;
+  let zoom:Zoom|undefined,scale=1,fittedScale=1,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),signal=AbortSignal.any([lifetime.signal,options.signal]);
   const direction=()=>format==='cbz'&&preferences.comicDirection!=='file'?preferences.comicDirection:fileDirection;
@@ -42,31 +43,55 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
         releases.push(await surface.mount(target,requested,operation));operation.throwIfAborted();
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
-      clean();cleanup=releases;host.replaceChildren(next);page=at;scale=requested;
+      clean();cleanup=releases;host.replaceChildren(next);page=at;scale=requested;fittedScale=fitted;
       for(const [index,surface]of created)surfacesByPage.set(index,surface);
       for(const [index,surface]of surfacesByPage)if(!layout.visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
-      host.scrollLeft=0;host.scrollTop=0;
+      host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=0;
       location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
     }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}
   }
-  const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined;
+  const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean}|undefined;
+  let pendingTap:{timer:ReturnType<typeof setTimeout>;x:number;y:number;time:number}|undefined;
+  const clearTap=()=>{if(pendingTap){clearTimeout(pendingTap.timer);pendingTap=undefined;}};
   const distance=()=>{const a=[...pointers.values()];return a.length===2?Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y):undefined;};
   const onDown=(event:PointerEvent)=>{
+    options.onSurfaceInput?.({kind:'activity'});
+    if(!tap)tap={id:event.pointerId,x:event.clientX,y:event.clientY,multiple:false};else{tap.multiple=true;clearTap();}
     // PDF text selection must retain browser handles and native selection semantics.
-    if((event.target as Element)?.closest?.('[data-reader-text]'))return;
+    if(event.pointerType!=='touch'&&(event.target as Element)?.closest?.('[data-reader-text] span'))return;
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});host.setPointerCapture?.(event.pointerId);
     if(pointers.size===1)drag={x:event.clientX,y:event.clientY,left:host.scrollLeft,top:host.scrollTop};else{pinch=distance();drag=undefined;}
   };
   const onMove=(event:PointerEvent)=>{
+    options.onSurfaceInput?.({kind:'activity'});
     if(!pointers.has(event.pointerId))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
     if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;void view.setZoom!({kind:'scale',value:next},signal).catch(()=>{});}
     else if(drag){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
   };
-  const onUp=(event:PointerEvent)=>{pointers.delete(event.pointerId);pinch=undefined;drag=undefined;};
+  const onUp=(event:PointerEvent)=>{
+    pointers.delete(event.pointerId);pinch=undefined;drag=undefined;
+    if(tap?.id===event.pointerId){
+      const candidate=tap;tap=undefined;
+      if(!candidate.multiple&&event.type==='pointerup'&&Math.hypot(event.clientX-candidate.x,event.clientY-candidate.y)<8&&document.getSelection()?.isCollapsed!==false){
+        const rect=host.getBoundingClientRect();if(rect.width<=0)return;
+        if(pendingTap&&event.timeStamp-pendingTap.time<=300&&Math.hypot(event.clientX-pendingTap.x,event.clientY-pendingTap.y)<24){clearTap();onDouble();}
+        else{
+          clearTap();const fraction=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),atVersion=version;
+          const timer=setTimeout(()=>{pendingTap=undefined;if(!closed&&version===atVersion)options.onSurfaceInput?.({kind:'tap',fraction});},300);
+          pendingTap={timer,x:event.clientX,y:event.clientY,time:event.timeStamp};
+        }
+      }
+    }
+  };
+  const onKey=(event:KeyboardEvent)=>{
+    const target=event.target as HTMLElement;
+    options.onSurfaceInput?.({kind:'key',key:event.key,shift:event.shiftKey,alt:event.altKey,ctrl:event.ctrlKey,meta:event.metaKey,editable:!!target.closest?.('input,textarea,select,[contenteditable=true]')||document.getSelection()?.isCollapsed===false,preventDefault:()=>event.preventDefault()});
+  };
   const onWheel=(event:WheelEvent)=>{if(!event.ctrlKey)return;event.preventDefault();void view.setZoom!({kind:'scale',value:Math.max(.05,Math.min(8,scale*Math.exp(-event.deltaY*.002)))},signal).catch(()=>{});};
   const onDouble=()=>{void view.setZoom!(zoom?.kind==='scale'?{kind:'fit',value:'page'}:{kind:'scale',value:Math.min(8,scale*2)},signal).catch(()=>{});};
   const view:ReaderView<P>={
     async navigate(target,taskSignal){
+      mutation++;clearTap();
       let at=page;
       if(target.kind==='next')at=plan().nextPage??page;
       else if(target.kind==='previous')at=plan().previousPage??page;
@@ -74,15 +99,21 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       else{if(target.location.format==='epub'||target.location.format!==format)throw new Error('page_invalid');at=target.location.page;}
       await render(at,taskSignal);
     },
-    async applyPreferences(next,taskSignal){const previous=preferences,previousZoom=zoom;preferences=next;zoom=undefined;try{await render(page,taskSignal);}catch(error){preferences=previous;zoom=previousZoom;throw error;}},
-    async resize(next,taskSignal){const previous=viewport;viewport=next;try{await render(page,taskSignal);}catch(error){viewport=previous;throw error;}},
+    async applyPreferences(next,taskSignal){const own=++mutation,previous=preferences;preferences=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)preferences=previous;throw error;}},
+    async resize(next,taskSignal){const own=++mutation,previous=viewport;viewport=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)viewport=previous;throw error;}},
     getLocation(){return location;},
-    async setZoom(next,taskSignal){if(next.kind==='scale'&&(!Number.isFinite(next.value)||next.value<.05||next.value>8))throw new Error('zoom_invalid');const previous=zoom;zoom=next;try{await render(page,taskSignal);}catch(error){zoom=previous;throw error;}},
+    async setZoom(next,taskSignal){
+      if(next.kind==='scale'&&(!Number.isFinite(next.value)||next.value<.05||next.value>8)||next.kind==='fit'&&!['page','width','height','spread'].includes(next.value))throw new Error('zoom_invalid');
+      const own=++mutation,previous=zoom,x=(host.scrollLeft+viewport.width/2)/scale,y=(host.scrollTop+viewport.height/2)/scale;zoom=next;
+      try{await render(page,taskSignal);host.scrollLeft=Math.max(0,x*scale-viewport.width/2);host.scrollTop=Math.max(0,y*scale-viewport.height/2);}catch(error){if(own===mutation)zoom=previous;throw error;}
+    },
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
+    canTurnAtFit(){return scale<=fittedScale+1e-6;},
     async pan(position,taskSignal){taskSignal.throwIfAborted();if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');host.scrollLeft=Math.max(0,position.x);host.scrollTop=Math.max(0,position.y);},
-    dispose(){if(closed)return;closed=true;version++;pending?.abort();lifetime.abort();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
+    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
   };
-  host.addEventListener('pointerdown',onDown,{signal});host.addEventListener('pointermove',onMove,{signal});host.addEventListener('pointerup',onUp,{signal});host.addEventListener('pointercancel',onUp,{signal});host.addEventListener('wheel',onWheel,{passive:false,signal});host.addEventListener('dblclick',onDouble,{signal});
+  host.addEventListener('pointerdown',onDown,{signal});host.addEventListener('pointermove',onMove,{signal});host.addEventListener('pointerup',onUp,{signal});host.addEventListener('pointercancel',onUp,{signal});host.addEventListener('wheel',onWheel,{passive:false,signal});
+  host.addEventListener('keydown',onKey,{signal});host.addEventListener('focusin',()=>options.onSurfaceInput?.({kind:'activity'}),{signal});
   signal.addEventListener('abort',()=>{void view.dispose();},{once:true});
   try{await render(0,signal);signal.throwIfAborted();options.container.append(host);return view;}catch(error){await view.dispose();throw error;}
 }

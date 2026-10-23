@@ -1,11 +1,11 @@
 import type {ReaderAdapter,ReaderDocument,ReaderLocation} from '../ports.ts';
 import {mountFixed,type FixedPreferences} from './fixed-view.ts';
-import {openPdf,pdfText,PdfInputError,type PdfEngine,type PdfOptions} from './engine.ts';
+import {openPdf,pdfText,pdfTextStream,PdfInputError,type PdfEngine,type PdfOptions} from './engine.ts';
 
 // Necessary text-layer geometry, adapted from Mozilla PDF.js6.4.299,
 // Copyright Mozilla Foundation, Apache-2.0. No viewer chrome is included.
-const textCss=`[data-reader-text]{color-scheme:only light;position:absolute;inset:0;overflow:clip;line-height:1;letter-spacing:normal;word-spacing:normal;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;--min-font-size:1;--text-scale-factor:calc(var(--total-scale-factor)*var(--min-font-size));--min-font-size-inv:calc(1/var(--min-font-size))}
-[data-reader-text] :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0;user-select:text;-webkit-user-select:text}
+const textCss=`[data-reader-text]{color-scheme:only light;position:absolute;inset:0;overflow:clip;line-height:1;letter-spacing:normal;word-spacing:normal;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;pointer-events:none;--min-font-size:1;--text-scale-factor:calc(var(--total-scale-factor)*var(--min-font-size));--min-font-size-inv:calc(1/var(--min-font-size))}
+[data-reader-text] :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0;pointer-events:auto;user-select:text;-webkit-user-select:text}
 [data-reader-text]>:not(.markedContent),[data-reader-text] .markedContent span:not(.markedContent){z-index:1;--font-height:0;font-size:calc(var(--text-scale-factor)*var(--font-height));--scale-x:1;--rotate:0deg;transform:rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv))}
 [data-reader-text] .markedContent{display:contents}[data-reader-text] span[role=img]{user-select:none;cursor:default}[data-reader-text] ::selection{background:var(--reader-selection,Highlight);color:transparent}`;
 const position=(page:number,count:number):ReaderLocation=>({format:'pdf',page,progression:count===1?0:page/(count-1)});
@@ -61,10 +61,10 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
             return {width:original.width,height:original.height,
               async mount(target,scale,renderSignal){
                 renderSignal.throwIfAborted();const viewport=page.getViewport({scale}),canvas=owner.createElement('canvas');
-                const dpr=Math.min(owner.defaultView?.devicePixelRatio??1,2,Math.sqrt(16_000_000/(viewport.width*viewport.height)));
+                const dpr=Math.min(owner.defaultView?.devicePixelRatio??1,2,8192/viewport.width,8192/viewport.height,Math.sqrt(16_000_000/(viewport.width*viewport.height)));
                 canvas.width=Math.max(1,Math.ceil(viewport.width*dpr));canvas.height=Math.max(1,Math.ceil(viewport.height*dpr));Object.assign(canvas.style,{display:'block',width:'100%',height:'100%'});canvas.setAttribute('aria-hidden','true');target.append(canvas);
                 const layer=owner.createElement('div');layer.dataset.readerText=String(index);layer.style.setProperty('--total-scale-factor',String(viewport.scale));target.append(layer);
-                const text=new engine.library.TextLayer({textContentSource:page.streamTextContent(),container:layer,viewport});
+                const text=new engine.library.TextLayer({textContentSource:pdfTextStream(page,renderSignal),container:layer,viewport});
                 const render=page.render({canvas,viewport,...dpr!==1?{transform:[dpr,0,0,dpr,0,0]}:{},annotationMode:engine.library.AnnotationMode.DISABLE});
                 const abort=()=>{render.cancel();text.cancel();};renderSignal.addEventListener('abort',abort,{once:true});
                 try{await engine.run(Promise.all([render.promise,text.render()]),renderSignal);return ()=>{renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();};}
@@ -84,7 +84,8 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
         },
         async *search(query,searchOptions){
           if(closed)throw new PdfInputError('closed');const needle=query.trim().toLowerCase();if(!needle||needle.length>256)return;
-          const limit=Math.max(1,Math.min(1000,searchOptions.limit??100));let found=0;
+          if(searchOptions.limit!==undefined&&(!Number.isInteger(searchOptions.limit)||searchOptions.limit<1||searchOptions.limit>1000))throw new PdfInputError('pdf_limit');
+          const limit=searchOptions.limit??100;let found=0;
           for(let index=0;index<engine.document.numPages&&found<limit;index++){
             const page=await engine.page(index,searchOptions.signal);
             try{const text=await pdfText(engine,page,searchOptions.signal),folded=text.toLowerCase();let from=0,offset:number;
