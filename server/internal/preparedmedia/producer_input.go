@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/subtitles"
@@ -44,7 +45,32 @@ func (s *Service) probe(ctx context.Context, w work, custody *attemptCustody, p 
 	if e != nil {
 		return probed{}, e
 	}
-	return parseProbe(raw)
+	observed, err := parseProbeMode(raw, true)
+	if err != nil || observed.Duration > 0 {
+		return observed, err
+	}
+	var measured audiofacts.Facts
+	if p.file != nil {
+		measured, err = decoder.RunPreparedFileAudioFacts(ctx, s.supervisor, w.ID, s.sandbox, s.ffprobe, p.file, custody.sandbox, s.libraries...)
+	} else {
+		err = p.bridge.With(ctx, func(url string, r *decoder.EndpointReservation) error {
+			var e error
+			measured, e = decoder.RunPreparedAudioFacts(ctx, s.supervisor, w.ID, s.ffprobe, url, r, custody.file, s.libraries...)
+			return e
+		})
+	}
+	if err != nil {
+		return probed{}, err
+	}
+	return measuredMusicProbe(observed, measured)
+}
+
+func measuredMusicProbe(observed probed, measured audiofacts.Facts) (probed, error) {
+	if measured.DurationFrames <= 0 || measured.SampleRate != observed.AudioSampleRate || measured.Channels != observed.AudioChannelCount || measured.Codec != observed.AudioCodec || measured.BitDepth != observed.AudioBitDepth {
+		return probed{}, ErrOutput
+	}
+	observed.Duration = float64(measured.DurationFrames) / float64(measured.SampleRate)
+	return observed, nil
 }
 func (s *Service) encode(ctx context.Context, w work, custody *attemptCustody, p producerInput, r decoder.PreparedRecipe, out io.Writer) error {
 	if p.file != nil {

@@ -383,6 +383,9 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 	if (conv.Codec == "opus" || conv.Codec == "aac") && !isLossless(f.Codec) && !isDSD(f.Codec) && sourceBPS > 0 {
 		conv.BitrateBPS = min(conv.BitrateBPS, sourceBPS)
 	}
+	if conv.Codec == "opus" {
+		conv.BitrateBPS = min(conv.BitrateBPS, 256000*conv.Channels)
+	}
 	if isDSD(f.Codec) {
 		conv.GainDB = -6
 		if prefs := s.viewerPreferences(tx, principal, DeliveryContextFrom(ctx)); prefs != nil {

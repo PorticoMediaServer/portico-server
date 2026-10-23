@@ -632,6 +632,10 @@ func (f probed) recipeSource() decoder.PreparedSource {
 }
 
 func parseProbe(raw []byte) (probed, error) {
+	return parseProbeMode(raw, false)
+}
+
+func parseProbeMode(raw []byte, durationlessFLAC bool) (probed, error) {
 	var doc struct {
 		Format struct {
 			FormatName string `json:"format_name"`
@@ -662,7 +666,7 @@ func parseProbe(raw []byte) (probed, error) {
 		return p, ErrOutput
 	}
 	p.Duration, _ = strconv.ParseFloat(doc.Format.Duration, 64)
-	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration <= 0 {
+	if math.IsNaN(p.Duration) || math.IsInf(p.Duration, 0) || p.Duration < 0 || p.Duration == 0 && !durationlessFLAC {
 		return p, ErrOutput
 	}
 	p.Container = doc.Format.FormatName
@@ -726,6 +730,9 @@ func parseProbe(raw []byte) (probed, error) {
 		default:
 			p.OtherStreams++
 		}
+	}
+	if p.Duration == 0 && (p.Container != "flac" || p.AudioCodec != "flac" || p.AudioTracks != 1 || p.VideoStreams != 0 || p.OtherStreams != 0) {
+		return p, ErrOutput
 	}
 	return p, nil
 }

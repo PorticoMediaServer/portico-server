@@ -39,6 +39,11 @@ func ProbeCommand(executable, input string, reservation *EndpointReservation, li
 // probeFormatsCommand accepts only package-owned format lists; public callers retain
 // the ordinary probe list. Prepared music uses its separately closed suite.
 func probeFormatsCommand(executable, input string, reservation *EndpointReservation, formats string, libraries ...string) (*exec.Cmd, error) {
+	args := []string{"-v", "error", "-threads", "1", "-protocol_whitelist", "http,tcp", "-format_whitelist", formats, "-probesize", "8388608", "-analyzeduration", "10000000", "-show_format", "-show_streams", "-of", "json", input}
+	return confinedProbeCommand(executable, input, reservation, args, libraries...)
+}
+
+func confinedProbeCommand(executable, input string, reservation *EndpointReservation, args []string, libraries ...string) (*exec.Cmd, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable {
 		return nil, ErrInvalidConfiguration
 	}
@@ -57,7 +62,6 @@ func probeFormatsCommand(executable, input string, reservation *EndpointReservat
 	if !reservation.matches(endpoint) {
 		return nil, ErrInvalidConfiguration
 	}
-	args := []string{"-v", "error", "-threads", "1", "-protocol_whitelist", "http,tcp", "-format_whitelist", formats, "-probesize", "8388608", "-analyzeduration", "10000000", "-show_format", "-show_streams", "-of", "json", input}
 	return confinedCommand(executable, args, endpoint, libraries...)
 }
 

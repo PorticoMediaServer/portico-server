@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/audiotags"
 	"portico.local/server/internal/decoder"
 )
@@ -153,9 +154,12 @@ func TestMusicDownloadEncodedMediaR29(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			encoded, e := exec.Command(ff, args...).Output()
+			cmd := exec.Command(ff, args...)
+			var diagnostic bytes.Buffer
+			cmd.Stderr = &diagnostic
+			encoded, e := cmd.Output()
 			if e != nil {
-				t.Fatal(e)
+				t.Fatal(e, diagnostic.String())
 			}
 			var decorated bytes.Buffer
 			if e = copyMusicMetadata(&decorated, bytes.NewReader(encoded), r.MusicCodec, tags); e != nil {
@@ -169,9 +173,29 @@ func TestMusicDownloadEncodedMediaR29(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			observed, e := parseProbe(raw)
+			observed, e := parseProbeMode(raw, true)
 			if e != nil {
 				t.Fatal(e)
+			}
+			if observed.Duration == 0 {
+				args := audiofacts.Args(name)
+				for i := range args {
+					if args[i] == "-protocol_whitelist" {
+						args[i+1] = "file"
+					}
+				}
+				actual, err := exec.Command(probe, args...).Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+				measured, err := audiofacts.Parse(bytes.NewReader(actual))
+				if err != nil {
+					t.Fatal(err)
+				}
+				observed, e = measuredMusicProbe(observed, measured)
+				if e != nil {
+					t.Fatal(e)
+				}
 			}
 			if e = acceptOutput(original, observed, profile); e != nil {
 				t.Fatalf("output %+v: %v", observed, e)
