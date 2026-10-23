@@ -457,7 +457,14 @@ func (r *SourceRange) ReadAt(ctx context.Context, p []byte, offset int64) (int, 
 	defer release()
 	n, err := r.session.ReadAt(call, p, offset)
 	if err != nil && !errors.Is(err, io.EOF) {
+		closed := r.closed.Load()
 		r.Close()
+		if closed {
+			if current := r.lease.Check(r.lease.life); current != nil {
+				return n, current
+			}
+			return n, err
+		}
 		err = r.lease.childFailure(call, err)
 		r.lease.notifyChanged()
 	}
@@ -497,7 +504,14 @@ func (r *SourceSequential) Read(p []byte) (int, error) {
 	}
 	n, err := r.session.Read(r.ctx, p)
 	if err != nil && !errors.Is(err, io.EOF) {
+		closed := r.closed.Load()
 		r.Close()
+		if closed {
+			if current := r.lease.Check(r.lease.life); current != nil {
+				return n, current
+			}
+			return n, err
+		}
 		err = r.lease.childFailure(r.ctx, err)
 		r.lease.notifyChanged()
 	}
