@@ -10,12 +10,14 @@ import (
 // Paths and candidate backend families stay private; a selected device earns
 // each codec/depth through HardwareDetector's actual confined probes.
 type HardwareDevice struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Vendor   string            `json:"vendor"`
-	Driver   string            `json:"driver"`
-	Path     string            `json:"-"`
-	Backends []HardwareBackend `json:"-"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Vendor        string            `json:"vendor"`
+	Driver        string            `json:"driver"`
+	DriverVersion string            `json:"driverVersion,omitempty"`
+	PCIAddress    string            `json:"-"`
+	Path          string            `json:"-"`
+	Backends      []HardwareBackend `json:"-"`
 }
 
 var ErrUnknownHardwareDevice = errors.New("unknown hardware device selection")
@@ -83,7 +85,7 @@ func (d *HardwareDetector) SelectDevice(ctx context.Context, executable, selecti
 				if err := ctx.Err(); err != nil {
 					return HardwareProbe{}, err
 				}
-				if err != nil || current.Path != device.Path || current.Vendor != device.Vendor || current.Driver != device.Driver {
+				if err != nil || current.Path != device.Path || current.Vendor != device.Vendor || current.Driver != device.Driver || current.DriverVersion != device.DriverVersion {
 					return fallback, ErrUnknownHardwareDevice
 				}
 				probe.SelectedDeviceID = device.ID

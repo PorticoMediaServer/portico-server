@@ -4,4 +4,4 @@ package decoder
 
 import "context"
 
-func DiscoverHardwareDevices(context.Context) []HardwareDevice { return []HardwareDevice{} }
+func DiscoverHardwareDevices(ctx context.Context) []HardwareDevice { return discoverNVIDIADevices(ctx) }
