@@ -40,6 +40,11 @@ func TestHistorySnapshotCapturesOnlyAuthenticatedEventFacts(t *testing.T) {
 	if !year.Valid || year.Int64 != 2026 || !app.Valid || app.String != "Portico for Android" {
 		t.Fatal(year, app)
 	}
+	c.Exec(`UPDATE authorization_family_tokens SET retired=1 WHERE token_hash='hash'`)
+	_, retiredApp := read(v)
+	if !retiredApp.Valid || retiredApp.String != app.String {
+		t.Fatal("rotated token lost its original authenticated app fact", retiredApp)
+	}
 	for _, field := range []string{"account", "profile", "server", "authority"} {
 		actor := v
 		switch field {
@@ -70,12 +75,12 @@ func TestHistorySnapshotCapturesOnlyAuthenticatedEventFacts(t *testing.T) {
 			t.Fatal("unsafe/empty app published", actual)
 		}
 	}
-	c.Exec(`UPDATE identity_devices SET app='Portico',approval_state='denied' WHERE id='dev'`)
+	c.Exec(`UPDATE identity_devices SET app='Portico',account_id='other' WHERE id='dev'`)
 	_, actual := read(v)
 	if actual.Valid {
-		t.Fatal("unapproved device supplied identity", actual)
+		t.Fatal("another account's device supplied identity", actual)
 	}
-	c.Exec(`UPDATE identity_devices SET approval_state='approved' WHERE id='dev'`)
+	c.Exec(`UPDATE identity_devices SET account_id='a' WHERE id='dev'`)
 	c.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id='family'`)
 	_, actual = read(v)
 	if actual.Valid {

@@ -31,8 +31,7 @@ func capturePlayHistorySnapshot(tx *sql.Tx, v identity.Viewer, playbackID string
  JOIN identity_device_families df ON df.family_id=f.id
  JOIN identity_devices d ON d.id=df.device_id AND d.authority=f.authority AND d.account_id=f.account_id
  WHERE ps.id=? AND ps.item_id=? AND ps.account_id=? AND ps.profile_id=?
- AND f.server_id=? AND f.authority=? AND f.account_id=? AND f.profile_id=? AND f.revoked=0
- AND d.approval_state='approved'`,
+ AND f.server_id=? AND f.authority=? AND f.account_id=? AND f.profile_id=? AND f.revoked=0`,
 		playbackID, entityID, v.AccountID, v.ProfileID, v.ServerID, v.Authority, v.AccountID, v.ProfileID).Scan(&app)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
