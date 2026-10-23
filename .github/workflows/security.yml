@@ -26,7 +26,20 @@ jobs:
           curl --fail --location --retry 3 https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" git . --config .gitleaks.toml --redact --no-banner
+          "$RUNNER_TEMP/gitleaks" git . --config .gitleaks.toml --redact --no-banner --report-format=json --report-path="$RUNNER_TEMP/gitleaks-report.json"
+      - name: Report finding locations without secret values
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ['RUNNER_TEMP']) / 'gitleaks-report.json'
+          if report.exists():
+              fields = ('RuleID', 'File', 'StartLine', 'EndLine', 'Commit', 'Fingerprint')
+              print(json.dumps([{key: finding.get(key) for key in fields} for finding in json.loads(report.read_text())], indent=2))
+          else:
+              print('No finding report was produced; inspect the scanner setup failure.')
+          PY
 
   codeql:
     runs-on: ubuntu-24.04
