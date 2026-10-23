@@ -9,7 +9,7 @@ export function createShowBindings(context: ScreenContext) {
   const life = screenLifetime(context), service = new ShowWorkspaceService({api: life.api, scope: context.scope});
   const episode = createDetailBindings(context), primary = createDetailBindings(context);
   const recommendations = createRecommendations(context);
-  let personal: ContainerState | undefined;
+  let personal: ContainerState | undefined, busy = false;
   const listeners = new Set<() => void>(), publish = () => { for (const listener of listeners) listener(); };
   const current = (data: ShowWorkspaceData) => {
     life.assert();
@@ -17,7 +17,7 @@ export function createShowBindings(context: ScreenContext) {
   };
   return {
     context, service, episode, primary, current, recommendations,
-    personal: {getSnapshot: () => personal, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }},
+    personal: {getSnapshot: () => personal, getBusy: () => busy, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }},
     async select(route: ShowWorkspaceRoute) {
       life.assert(); recommendations.clear(); personal = undefined; publish(); episode.service.cancel(); primary.service.cancel();
       await service.select(route); life.assert();
@@ -34,9 +34,25 @@ export function createShowBindings(context: ScreenContext) {
       await episode.select({libraryId: data.scope.libraryId, itemId: entry.id});
     },
     closeEpisode() { life.assert(); service.updateAnchor({...service.getSnapshot().anchor, expandedEpisodeId: null}); episode.service.cancel(); },
-    async setMyList(data: ShowWorkspaceData, value: boolean) { current(data); const before = personal; if (!before) return; const result = await setContainerFlag(life.api, 'show', data.show.id, 'watchlisted', value, life.signal()); current(data); if (before !== personal) return; personal = result; publish(); },
-    async setWatched(data: ShowWorkspaceData, value: boolean) { current(data); const before = personal; if (!before) return; const result = await setContainerState(life.api, 'show', data.show.id, {expectedRevision: before.revision, watched: value}, life.signal()); current(data); if (before !== personal) return; personal = result; publish(); await service.refresh(); },
-    dispose() { life.dispose(); recommendations.dispose(); personal = undefined; publish(); listeners.clear(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
+    async revalidate(refresh?: Parameters<ShowWorkspaceService['revalidate']>[0]) {
+      life.assert(); await service.revalidate(refresh);
+      const data = service.getSnapshot().data; if (!data) return;
+      const value = await getContainerState(life.api, 'show', data.show.id, life.signal(refresh?.signal)); current(data); personal = value; publish();
+      const nextUp = data.nextUp;
+      if (nextUp?.libraryId && nextUp.playback && primary.service.getSnapshot().target?.itemId !== nextUp.playback.itemId) await primary.select({libraryId: nextUp.libraryId, itemId: nextUp.playback.itemId}, refresh?.signal);
+      else await primary.service.revalidate(refresh);
+    },
+    async setMyList(data: ShowWorkspaceData, value: boolean) {
+      current(data); const before = personal; if (!before || busy) return; busy = true; publish();
+      try { const result = await setContainerFlag(life.api, 'show', data.show.id, 'watchlisted', value, life.signal()); current(data); if (before === personal) { personal = result; publish(); } }
+      finally { busy = false; publish(); }
+    },
+    async setWatched(data: ShowWorkspaceData, value: boolean) {
+      current(data); const before = personal; if (!before || busy) return; busy = true; publish();
+      try { const result = await setContainerState(life.api, 'show', data.show.id, {expectedRevision: before.revision, watched: value}, life.signal()); current(data); if (before === personal) { personal = result; publish(); } await service.refresh(); }
+      finally { busy = false; publish(); }
+    },
+    dispose() { life.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;

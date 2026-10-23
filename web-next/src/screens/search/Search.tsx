@@ -1,5 +1,5 @@
+import {t, locale} from '../detail/text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
 import {preferenceValue} from '@core/preferences.ts';
 import {searchQueryProblem, type SearchEntry, type SearchGroup, type SearchGroupResult} from '@core/search.ts';
 import {SEARCH_CHIPS, orderedSearchGroups, searchGroupLabel, topSearchResult} from '@core/presentation/search-model.ts';
@@ -9,11 +9,13 @@ import {Artwork} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
 import {StateView} from '../../kit/states';
 import {entryCard} from '../detail/model';
+import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {useFreshDocument} from '../../platform/freshness';
+import {Icon} from '../../kit/Icon';
 import type {SearchBindings} from './bindings';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
 
-const t = defaultI18n.t;
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
 export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; onConsumeLinkedQuery?: () => void};
@@ -21,6 +23,7 @@ export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; 
 export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: SearchScreenProps) {
   const {service, context} = binding, initial = binding.session();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
+  useFreshDocument([dependsOn.libraries, ...titlesWithPersonalState(), dependsOn.settings('preferences'), dependsOn.event('stream.resync')], refresh => service.revalidate(refresh), () => service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(context.preferences.subscribe, context.preferences.getSnapshot, context.preferences.getSnapshot);
   const [text, setText] = useState(linkedQuery ?? initial.text), [chip, setChip] = useState<ChipId>(initial.group ?? 'all');
   const [recent, setRecent] = useState<readonly string[]>([]), [clearFailed, setClearFailed] = useState(false);
@@ -52,7 +55,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
   const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
-  return <div className={styles.search} style={{'--search-card-scale': size} as React.CSSProperties}>
+  return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
       <TextField ref={input} variant="large-search" type="search" autoComplete="off" spellCheck={false} value={text}
@@ -98,9 +101,10 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
 export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; binding: SearchBindings; onCommit: () => void}) {
   const {context} = binding, open = () => { binding.open(entry); onCommit(); };
   const art = context.artwork.foreground(entry.posterUrl, 380, 2 / 3);
+  if (entry.kind === 'channel') return <button className={styles.channel} type="button" onClick={open}><Icon name="i-tv" size={24} /><b>{entry.title}</b>{entry.subtitle && <small>{entry.subtitle}</small>}</button>;
   if (!('libraryId' in entry)) return <CircleCard context="search" model={{title: entry.title, caption: entry.subtitle ? [{id: 'caption', text: entry.subtitle, role: 'context'}] : []}} covers={art ? [art] : []}
     initials={entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} onNavigate={open} />;
-  const model = entryCard(entry, {t, locale: defaultI18n.locale}, 'search'), playable = entry.available === true && !!entry.playback;
+  const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
   const props = {model, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
     onPlay: playable ? () => { const task = binding.play(entry); onCommit(); void task.catch(context.effects.reportError); } : undefined};
   if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.title}</b><small>{entry.artist?.name}</small></span></button>;

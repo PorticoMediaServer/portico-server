@@ -1,5 +1,5 @@
+import {t, locale, environment as env} from './text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
-import {defaultI18n} from '@i18n';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
@@ -17,8 +17,11 @@ import {useShellWidth} from '../../shell/viewport';
 import {entryCard, fileFacts} from './model';
 import type {DetailBindings} from './bindings';
 import styles from './detail.module.css';
+import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {useFreshDocument} from '../../platform/freshness';
+import {TitleProse} from '../../kit/title/TitleParts';
+import {TitlePeople} from './People';
 
-const t = defaultI18n.t, env = {t, locale: defaultI18n.locale};
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
 export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
   const [failure, setFailure] = useState<unknown>();
@@ -29,6 +32,7 @@ export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
 /** Also mounted under the retained phone/tablet Watch surface. It owns no route or video. */
 export function TitleBody({binding, compact = false}: {binding: DetailBindings; compact?: boolean}) {
   const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
+  useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(binding.service.getSnapshot().target?.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
   const data = snapshot.data, [tab, setTab] = useState('related');
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
@@ -60,7 +64,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <HeroFacts parts={parts} platform={phone ? 'phone-web' : 'desktop'} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
-      {item.overview && <p className={styles.blurb}>{item.overview}</p>}
+      {item.overview && <TitleProse variant="hero" className={styles.blurb}>{item.overview}</TitleProse>}
       {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <span>{t('title.directedBy', {names: directed.join(', ')})}</span>}{starring.length > 0 && <span>{t('title.starring', {names: starring.join(', ')})}</span>}</div>}
       <TitleActions binding={binding} data={data} />
     </div>
@@ -88,14 +92,21 @@ export function TitleActions({binding, data, small = false}: {binding: DetailBin
 function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const [open, setOpen] = useState(false), [fileOpen, setFileOpen] = useState(false), [versionOpen, setVersionOpen] = useState(false);
   const [files, setFiles] = useState<FileInfoProjection>(), [versions, setVersions] = useState<PlaybackOptions>(), [failed, setFailed] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null), width = useShellWidth(), phone = width < 1024;
+  const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
   useEffect(() => { setOpen(false); setFileOpen(false); setVersionOpen(false); setFiles(undefined); setVersions(undefined); }, [data]);
   useEffect(() => {
     let active = true;
-    if (open) void binding.readVersions(data).then(value => { if (active) setVersions(value); }, () => {});
-    return () => { active = false; };
+    const controller = new AbortController();
+    if (open) void binding.readVersions(data, controller.signal).then(value => { if (active) setVersions(value); }, () => {});
+    return () => { active = false; controller.abort(); };
   }, [binding, data, open]);
-  const loadFiles = () => { setFileOpen(true); setFailed(false); void binding.readFileInfo(data).then(setFiles, error => { setFailed(true); binding.context.effects.reportError(error); }); };
+  useEffect(() => () => fileRead.current?.abort(), [data]);
+  const loadFiles = () => {
+    fileRead.current?.abort(); const controller = new AbortController(); fileRead.current = controller;
+    setFileOpen(true); setFailed(false);
+    void binding.readFileInfo(data, undefined, controller.signal).then(value => { if (!controller.signal.aborted) setFiles(value); }, error => { if (!controller.signal.aborted) { setFailed(true); binding.context.effects.reportError(error); } });
+  };
+  const closeFiles = (value: boolean) => { setFileOpen(value); if (!value) fileRead.current?.abort(); };
   const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path}))}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
   return <>
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
@@ -103,8 +114,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
       {versions && versions.versions.length >= 2 && <MenuItem icon="i-play" onSelect={() => setVersionOpen(true)}>{t('next.overlays.differentVersion')}</MenuItem>}
     </Menu>
-    {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={setFileOpen} returnFocusRef={trigger} onManage={() => {}} />}
-    {fileOpen && !model && <Dialog open onOpenChange={setFileOpen} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading />}</Dialog>}
+    {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={() => { throw new Error('No file management action was offered'); }} />}
+    {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading />}</Dialog>}
     <Dialog open={versionOpen} onOpenChange={setVersionOpen} title={t('next.overlays.differentVersion')} returnFocusRef={trigger}>
       {versions?.versions.map(version => <Button key={version.id} variant="text" size="compact" onClick={() => {
         const action = data.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
@@ -116,17 +127,15 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
 
 export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const {item, facts, metadata} = data;
-  const language = (code: string) => { try { return new Intl.DisplayNames(defaultI18n.locale, {type: 'language'}).of(code) ?? code; } catch { return code; } };
+  const language = (code: string) => { try { return new Intl.DisplayNames(locale(), {type: 'language'}).of(code) ?? code; } catch { return code; } };
   const rows = [
     [t('title.releaseDate'), facts?.releaseDate], [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country],
     [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined],
     [t('title.genres'), metadata.genres.map(value => value.name).join(', ')], [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
-    [t('title.added'), item.addedAt ? new Intl.DateTimeFormat(defaultI18n.locale, {dateStyle: 'long'}).format(new Date(item.addedAt)) : undefined],
+    [t('title.added'), item.addedAt ? new Intl.DateTimeFormat(locale(), {dateStyle: 'long'}).format(new Date(item.addedAt)) : undefined],
   ].filter((row): row is [string, string] => !!row[1]);
-  return <div className={styles.details}><section>{item.overview && <p className={styles.about}>{item.overview}</p>}<dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
-    {metadata.credits.length > 0 && <section><h2>{t('title.cast')}</h2><div className={styles.people}>{metadata.credits.slice(0, 6).map(person => <button key={person.id} type="button" disabled={!person.personId} onClick={() => {
-      binding.current(data); if (person.personId) binding.context.effects.openEntry({id: person.personId, kind: 'person', title: person.name, navigation: {view: 'person', entityId: person.personId}});
-    }}><PersonCircle covers={[]} initials={person.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} alt="" /><b>{person.name}</b>{person.role && <small>{person.role}</small>}</button>)}</div></section>}
+  return <div className={styles.details}><section>{item.overview && <TitleProse className={styles.about}>{item.overview}</TitleProse>}<dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
+    {metadata.credits.length > 0 && <TitlePeople binding={binding} data={data} />}
   </div>;
 }
 

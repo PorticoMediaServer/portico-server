@@ -1,5 +1,5 @@
+import {t, locale, environment as env} from './text';
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
 import type {PersonPage, PersonCredit} from '@core/people.ts';
 import {Chip, Button} from '../../kit/controls';
 import {AmbientArt, PersonCircle} from '../../kit/artwork';
@@ -11,9 +11,9 @@ import {DetailLoading, ScreenFailure} from './Detail';
 import {entryCard} from './model';
 import type {PersonBindings} from './person-bindings';
 import styles from './person.module.css';
+import {TitleProse} from '../../kit/title/TitleParts';
 
-const t = defaultI18n.t;
-const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat(defaultI18n.locale, {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}).format(new Date(`${value}T12:00:00Z`)) : undefined;
+const date = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat(locale(), {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}).format(new Date(`${value}T12:00:00Z`)) : undefined;
 export type PersonScreenProps = {binding: PersonBindings; personId: string};
 export function PersonScreen({binding, personId}: PersonScreenProps) {
   useEffect(() => { void binding.select(personId).catch(binding.context.effects.reportError); }, [binding, personId]);
@@ -30,7 +30,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
       <AmbientArt className={styles.wash} treatment="artist" sources={person.knownFor.slice(0, 3).flatMap(entry => { const source = art.ambient(entry.backdropUrl ?? entry.posterUrl); return source ? [source] : []; })} />
       <div className={styles.copy}>{person.roles.length > 0 && <p className={styles.roles}>{person.roles.join(', ')}</p>}<Lockup title={person.name} platform={phone ? 'phone-web' : 'desktop'} />
         {(born || person.birthPlace) && <p className={styles.birth}>{born && <span>{died ? t('web.person.lived', {born, died}) : t('web.person.born', {date: born})}</span>}{person.birthPlace && <span>{person.birthPlace}</span>}</p>}
-        {person.biography && <><p className={styles.biography} data-full={full || undefined}>{person.biography}</p><Button variant="text" size="small" onClick={() => setFull(value => !value)}>{t(full ? 'web.person.showLess' : 'web.person.readMore')}</Button></>}
+        {person.biography && <><TitleProse className={styles.biography} data-full={full || undefined}>{person.biography}</TitleProse><Button variant="text" size="small" onClick={() => setFull(value => !value)}>{t(full ? 'web.person.showLess' : 'web.person.readMore')}</Button></>}
         {person.biographySource && <small className={styles.source}>{person.biographySource}</small>}
       </div><div className={styles.portrait}><PersonCircle covers={covers} initials={initials} alt={person.name} /></div>
     </header>
@@ -43,7 +43,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
 function PersonCredits({binding, page, kind, heading}: {binding: PersonBindings; page: PersonPage; kind?: string; heading: string}) {
   const collection = useMemo(() => binding.credits(page, kind), [binding, page, kind]);
   return <section className={styles.group}><h2>{heading}</h2><WindowedGrid collection={collection} label={heading} cardWidth={190} rowHeight={350} height={kind ? 420 : 'calc(100vh - 240px)'} gap={20}
-    renderPlaceholder={index => <span className={styles.placeholder} key={index} />} renderItem={(credit: PersonCredit) => <PosterCard model={entryCard(credit.media, {t, locale: defaultI18n.locale})} context="detail"
+    renderPlaceholder={index => <span className={styles.placeholder} key={index} />} renderItem={(credit: PersonCredit) => <PosterCard model={entryCard(credit.media, {t, locale: locale()})} context="detail"
       artwork={binding.context.artwork.foreground(credit.media.posterUrl, 380, 2 / 3)} watched={credit.media.watched} extraCaption={[credit.roles.map((role, index) => ({id: String(index), text: role.role, role: 'context' as const}))]}
       onNavigate={() => binding.open(page, credit)} />} /></section>;
 }

@@ -30,14 +30,16 @@ export function screenLifetime(context: ScreenContext) {
   const api = {
     async request<T>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> {
       assert();
-      const value = await context.api.request<T>(path, method, body, signal(input));
-      assert(); return value;
+      const active = signal(input); active.throwIfAborted();
+      const value = await context.api.request<T>(path, method, body, active);
+      assert(); active.throwIfAborted(); return value;
     },
     async requestRaw(...args: Parameters<HttpLocalApi['requestRaw']>) {
       assert();
       const [path, method, options] = args;
-      const value = await context.api.requestRaw(path, method, {...options, signal: signal(options?.signal)});
-      assert(); return value;
+      const active = signal(options?.signal); active.throwIfAborted();
+      const value = await context.api.requestRaw(path, method, {...options, signal: active});
+      assert(); active.throwIfAborted(); return value;
     },
   };
   return {api, current, assert, signal, dispose: () => life.abort()};

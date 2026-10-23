@@ -5,3 +5,4 @@ export {type ScreenContext} from './context';
 export {DetailScreen, TitleBody, TitleActions, TitleDetails, type DetailScreenProps} from './Detail';
 export {ShowScreen, ShowBody, EpisodeBody, type ShowScreenProps} from './Show';
 export {PersonScreen, type PersonScreenProps} from './Person';
+export {createEntryDetailsBindings, type EntryDetailsBindings, type EntryDetailsAuthority} from './entry-details';

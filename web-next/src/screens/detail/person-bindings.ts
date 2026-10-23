@@ -28,16 +28,18 @@ export function createPersonBindings(context: ScreenContext) {
     const known = collections.get(key); if (known) return known;
     // Cursor addresses are retained; media pages belong only to the sparse collection.
     const cursors = new Map<number, string | null>([[0, null]]), pageSize = 40;
+    let total = kind ? header.groups.find(group => group.kind === kind)?.total ?? header.pageInfo.total : header.pageInfo.total;
     const pending = new Map<number, Promise<{items: readonly PersonCredit[]; total: number}>>();
     const fetch = async (page: number, signal: AbortSignal): Promise<{items: readonly PersonCredit[]; total: number}> => {
       const existing = pending.get(page); if (existing) return existing;
       const work = (async () => {
         if (!cursors.has(page)) await fetch(page - 1, signal);
-        if (cursors.get(page) === '') return {items: [], total: header.pageInfo.total};
+        if (cursors.get(page) === '') return {items: [], total};
         const value = await readPerson(life.api, context.scope, id, {...(kind ? {kind} : {role}), limit: pageSize, cursor: cursors.get(page), signal: life.signal(signal)});
         life.assert();
         if (request !== generation || state.page !== header || value.viewerFence !== header.viewerFence || value.revision.catalog !== header.revision.catalog || value.revision.viewer !== header.revision.viewer) throw new DOMException('Person credits changed', 'AbortError');
-        cursors.set(page + 1, value.pageInfo.nextCursor);
+        if (value.pageInfo.nextCursor && [...cursors.values()].includes(value.pageInfo.nextCursor)) throw new Error('Repeated person cursor');
+        total = value.pageInfo.total; cursors.set(page + 1, value.pageInfo.nextCursor);
         return {items: value.credits, total: value.pageInfo.total};
       })();
       pending.set(page, work);
