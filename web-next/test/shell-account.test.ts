@@ -20,11 +20,12 @@ const router = `
 const account = `
   import {createElement} from ${JSON.stringify(import.meta.resolve('react'))};
   export const AccountMenu = props => { globalThis.__shellAccountCapture.push(props); return props.trigger; };
+  export const ProfileAvatarFace = ({initial}) => createElement('span', {}, initial);
   export const ProfileAvatar = ({initial, name, art, size, notificationDot, ...props}) => createElement('button', props, initial);
 `;
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === '@tanstack/react-router' && context.parentURL?.endsWith('/src/shell/Shell.tsx')) return {url: 'shell-account:router', shortCircuit: true};
+    if (specifier === '@tanstack/react-router' && ['/src/shell/Shell.tsx', '/src/shell/DesktopNavigation.tsx'].some(path => context.parentURL?.endsWith(path))) return {url: 'shell-account:router', shortCircuit: true};
     if (specifier === '../kit/shell' && context.parentURL?.endsWith('/src/shell/Shell.tsx')) return {url: 'shell-account:account', shortCircuit: true};
     return next(specifier, context);
   },
@@ -39,7 +40,7 @@ registerHooks({
 });
 const {Shell} = await import('../src/shell/Shell.tsx');
 function identity(username?: string, profileName = 'Evening profile'): ShellIdentity {
-  return {username, profileName, profileArt: 'mint', primaryProfile: true,
+  return {username, profileName, serverName: 'Study server', profileArt: 'mint', primaryProfile: true,
     viewer: {serverId: 'server-a', accountId: 'account-a', profileId: 'profile-a', authority: 'local', role: 'owner'},
     profiles: [{id: 'profile-a', name: profileName, initial: 'E', art: 'mint'}, {id: 'profile-b', name: 'Kids', initial: 'K'}],
     canManageProfiles: true, accountFacts: [{id: 'server', text: 'Study server', role: 'context'}],
