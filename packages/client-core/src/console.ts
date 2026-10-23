@@ -1,3 +1,4 @@
+import {reportQuery,verifyReportInterval,type ReportContext} from './report-context.ts';
 import {routePath, routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
 import {wireInstants} from './wire-units.ts';
@@ -223,7 +224,7 @@ export class ConsoleClient {
  /** Transcoding capacity, probes and dependencies as this server reports them. */
  transcodeCapacity(){return this.call(routePath("get_admin_transcode_capacity"),'GET',undefined,parseTranscodeCapacity);}
  /** Charted host and GPU history. The server chooses the resolution per window. */
- telemetry(window:TelemetryWindow='10m'){return this.call(routePath("get_admin_telemetry") + "?window=" + (window),'GET',undefined,parseTelemetryReading);}
+ telemetry(window:TelemetryWindow,context:ReportContext){const q=reportQuery(context);q.set('window',window);return this.call(routePath('get_admin_telemetry')+'?'+q,'GET',undefined,v=>{const out=parseTelemetryReading(v);verifyReportInterval(out,context,window,window==='live'||window==='10m');return out;});}
  telemetryNow(){return this.call(routePath("get_admin_telemetry_now"),'GET',undefined,parseTelemetrySample);}
  attention(){return this.call(routePath("get_admin_attention"),'GET',undefined,parseAttention);}
  playbackHistory(period:PlaybackHistoryPeriod='24h',cursor='',limit=50){

@@ -1799,6 +1799,46 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_dashboard_report",
+    "method": "GET",
+    "path": "/v1/admin/dashboard/report",
+    "summary": "Read or update the selected projection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "timeZone",
+      "until",
+      "period",
+      "window",
+      "peoplePeriod",
+      "topPeriod",
+      "topKind",
+      "accountId",
+      "libraryId",
+      "media",
+      "q",
+      "sort",
+      "direction",
+      "topAccountId",
+      "peopleCursor",
+      "peopleLimit",
+      "tableCursor",
+      "tableLimit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_dashboard_status",
     "method": "GET",
     "path": "/v1/admin/dashboard/status",
@@ -2522,7 +2562,9 @@ export const routes = [
       "media",
       "q",
       "sort",
-      "direction"
+      "direction",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -2552,7 +2594,9 @@ export const routes = [
       "q",
       "cursor",
       "limit",
-      "topKind"
+      "topKind",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -2582,7 +2626,9 @@ export const routes = [
       "q",
       "cursor",
       "limit",
-      "topKind"
+      "topKind",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -2605,7 +2651,13 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 1048576,
     "query": [
-      "period"
+      "period",
+      "timeZone",
+      "until",
+      "accountId",
+      "libraryId",
+      "media",
+      "q"
     ],
     "errors": [
       "invalid_request",
@@ -2895,7 +2947,9 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "query": [
-      "window"
+      "window",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -17343,6 +17397,7 @@ export const routePaths = {
   "get_admin_console_panels_panel": "/v1/admin/console/panels/{panel}",
   "get_admin_console_schedules": "/v1/admin/console/schedules",
   "get_admin_console_stream_options": "/v1/admin/console/stream-options",
+  "get_admin_dashboard_report": "/v1/admin/dashboard/report",
   "get_admin_dashboard_status": "/v1/admin/dashboard/status",
   "get_admin_diagnostics_bundle": "/v1/admin/diagnostics/bundle",
   "get_admin_diagnostics_concurrency": "/v1/admin/diagnostics/concurrency",

@@ -5,27 +5,23 @@ import (
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/reportwindow"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const dashboardKind = `CASE h.kind WHEN 1 THEN 'movies' WHEN 4 THEN 'tv' WHEN 7 THEN 'music' WHEN 9 THEN 'audiobooks' WHEN 0 THEN 'live' ELSE 'other' END`
 
 // This filter is shared with the full history table. Person is always the
 // server account id, never a name or a profile id.
-func historyFilter(q PlayHistoryQuery, now time.Time) (string, []any, error) {
-	if q.Period == "" {
-		q.Period = "all"
-	}
-	span, ok := HistoryPeriods[q.Period]
-	if !ok || len(q.AccountID) > 128 || len(q.LibraryID) > 128 || len(q.Search) > 200 {
+func historyFilter(q PlayHistoryQuery, interval reportwindow.Interval) (string, []any, error) {
+	if len(q.AccountID) > 128 || len(q.LibraryID) > 128 || len(q.Search) > 200 {
 		return "", nil, ErrCursor
 	}
-	where, args := []string{"h.started_ms<=?"}, []any{now.UnixMilli()}
-	if span > 0 {
+	where, args := []string{"h.started_ms<?"}, []any{interval.UntilMS()}
+	if interval.Period != "all" {
 		where = append(where, "h.started_ms>=?")
-		args = append(args, now.Add(-span).UnixMilli())
+		args = append(args, interval.FromMS())
 	}
 	for _, f := range []struct{ key, value string }{{"h.account_id", q.AccountID}, {"h.library_id", q.LibraryID}} {
 		if f.value != "" {
@@ -47,6 +43,48 @@ func historyFilter(q PlayHistoryQuery, now time.Time) (string, []any, error) {
 	return " WHERE " + strings.Join(where, " AND "), args, nil
 }
 
+// Report composers borrow the request's one read transaction. Ordinary calls
+// still own a bounded read; they never create a persistent report snapshot.
+func historyRead(ctx context.Context, db *sql.DB) (*sql.Tx, func(), error) {
+	if tx := dbwork.Snapshot(ctx); tx != nil {
+		return tx, func() {}, nil
+	}
+	return dbwork.BeginRead(ctx, db)
+}
+func (s *Service) historyInterval(ctx context.Context, q PlayHistoryQuery) (reportwindow.Interval, error) {
+	period := q.Period
+	if period == "" {
+		period = "all"
+	}
+	switch period {
+	case "today", "12h", "24h", "7d", "30d", "90d", "1y", "all":
+	default:
+		return reportwindow.Interval{}, ErrCursor
+	}
+	r, e := reportwindow.Resolve(period, q.TimeZone, q.Until, -1)
+	if e != nil {
+		return r, ErrCursor
+	}
+	_, _, e = historyFilter(q, r)
+	if e != nil {
+		return r, e
+	}
+	if period == "all" {
+		first, e := reportwindow.FirstFact(ctx, s.db, r.UntilMS())
+		if e != nil {
+			return r, e
+		}
+		r, e = reportwindow.Resolve(period, q.TimeZone, q.Until, first)
+	}
+	return r, e
+}
+
+// Both numbers come only from the validated interval, never SQL input text.
+func historyWatched(r reportwindow.Interval) string {
+	from := r.FromMS() - r.FromMS()%reportwindow.Grain.Milliseconds()
+	return fmt.Sprintf(`COALESCE((SELECT sum(t.watched_ms) FROM play_history_time t WHERE t.history_id=h.id AND t.bucket_ms>=%d AND t.bucket_ms<%d),0)`, from, r.UntilMS())
+}
+
 type DashboardKindTime struct {
 	Kind      string `json:"kind"`
 	Plays     int64  `json:"plays"`
@@ -61,6 +99,7 @@ type DashboardPerson struct {
 	Kinds     []DashboardKindTime `json:"kinds"`
 }
 type DashboardPeople struct {
+	reportwindow.Interval
 	Items      []DashboardPerson `json:"items"`
 	NextCursor string            `json:"nextCursor"`
 }
@@ -80,11 +119,8 @@ type DashboardTop struct {
 	BackdropRevision string `json:"backdropRevision,omitempty"`
 }
 type DashboardHistory struct {
-	Period   string            `json:"period"`
-	From     string            `json:"from"`
-	Until    string            `json:"until"`
-	TimeZone string            `json:"timeZone"`
-	Buckets  []DashboardBucket `json:"buckets"`
+	reportwindow.Bounds
+	Buckets []DashboardBucket `json:"buckets"`
 	// Hours Monday..Sunday, 0..23, actual played milliseconds.
 	BusiestTimes      [][]int64      `json:"busiestTimes"`
 	QuietestStartHour *int           `json:"quietestStartHour"`
@@ -93,14 +129,24 @@ type DashboardHistory struct {
 }
 
 func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (DashboardPeople, error) {
-	out := DashboardPeople{Items: []DashboardPerson{}}
+	if dbwork.Snapshot(ctx) == nil {
+		var out DashboardPeople
+		e := dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error { var e error; out, e = s.DashboardPeople(snapshot, q); return e })
+		return out, e
+	}
+
+	r, e := s.historyInterval(ctx, q)
+	out := DashboardPeople{Interval: r, Items: []DashboardPerson{}}
+	if e != nil {
+		return out, e
+	}
 	if q.Limit == 0 {
 		q.Limit = 12
 	}
 	if q.Limit < 1 || q.Limit > 100 {
 		return out, ErrCursor
 	}
-	filter, args, e := historyFilter(q, s.recommendationNow(time.Time{}))
+	filter, args, e := historyFilter(q, r)
 	if e != nil {
 		return out, e
 	}
@@ -114,13 +160,13 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 		}
 		afterID = id
 	}
-	tx, done, e := dbwork.BeginRead(ctx, s.db)
+	tx, done, e := historyRead(ctx, s.db)
 	if e != nil {
 		return out, e
 	}
 	defer done()
 	rows, e := tx.QueryContext(ctx, `WITH ranked AS (
- SELECT account_id,COALESCE((SELECT a.username FROM accounts a WHERE a.id=h.account_id),max(user_name)) username,count(*) plays,sum(watched_ms) watched FROM play_history h`+filter+` GROUP BY account_id
+ SELECT account_id,COALESCE((SELECT a.username FROM accounts a WHERE a.id=h.account_id),max(user_name)) username,count(*) plays,sum(`+historyWatched(r)+`) watched FROM play_history h`+filter+` GROUP BY account_id
  ) SELECT account_id,username,plays,watched FROM ranked WHERE watched<? OR watched=? AND account_id>? ORDER BY watched DESC,account_id LIMIT ?`, append(args, afterTime, afterTime, afterID, q.Limit+1)...)
 	if e != nil {
 		return out, e
@@ -148,7 +194,7 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 	// Bounded account page. Kinds/profiles are read only for those accounts.
 	for i := range out.Items {
 		p := &out.Items[i]
-		rows, e = tx.QueryContext(ctx, `SELECT `+dashboardKind+`,count(*),sum(watched_ms) FROM play_history h`+filter+` AND account_id=? GROUP BY `+dashboardKind, append(append([]any{}, args...), p.AccountID)...)
+		rows, e = tx.QueryContext(ctx, `SELECT `+dashboardKind+`,count(*),sum(`+historyWatched(r)+`) FROM play_history h`+filter+` AND account_id=? GROUP BY `+dashboardKind, append(append([]any{}, args...), p.AccountID)...)
 		if e != nil {
 			return out, e
 		}
@@ -187,10 +233,21 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 }
 
 func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topKind string) (DashboardHistory, error) {
-	// Stored hour facts and day grouping use UTC consistently, including hosts
-	// configured with a non-UTC local timezone.
-	now := s.recommendationNow(time.Time{}).UTC()
-	out := DashboardHistory{Period: q.Period, Until: now.Format(time.RFC3339Nano), TimeZone: now.Location().String(), Buckets: []DashboardBucket{}, Top: []DashboardTop{}, TopKind: topKind, BusiestTimes: make([][]int64, 7)}
+	if dbwork.Snapshot(ctx) == nil {
+		var out DashboardHistory
+		e := dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error {
+			var e error
+			out, e = s.DashboardHistory(snapshot, q, topKind)
+			return e
+		})
+		return out, e
+	}
+
+	r, e := s.historyInterval(ctx, q)
+	out := DashboardHistory{Bounds: r.Bounds, Buckets: []DashboardBucket{}, Top: []DashboardTop{}, TopKind: topKind, BusiestTimes: make([][]int64, 7)}
+	if e != nil {
+		return out, e
+	}
 	for i := range out.BusiestTimes {
 		out.BusiestTimes[i] = make([]int64, 24)
 	}
@@ -201,69 +258,22 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 	if topKind != "movies" && topKind != "tv" && topKind != "music" {
 		return out, ErrCursor
 	}
-	filter, args, e := historyFilter(q, now)
+	filter, args, e := historyFilter(q, r)
 	if e != nil {
 		return out, e
 	}
-	tx, done, e := dbwork.BeginRead(ctx, s.db)
+	tx, done, e := historyRead(ctx, s.db)
 	if e != nil {
 		return out, e
 	}
 	defer done()
-	from := now
-	var earliest sql.NullInt64
-	if e = tx.QueryRowContext(ctx, `SELECT min(started_ms) FROM play_history h`+filter, args...).Scan(&earliest); e != nil {
-		return out, e
+	for _, b := range r.Buckets {
+		out.Buckets = append(out.Buckets, DashboardBucket{Start: b.Start, End: b.End, Partial: b.Partial, Kinds: []DashboardKindTime{}})
 	}
-	if earliest.Valid {
-		from = time.UnixMilli(earliest.Int64).In(now.Location())
-	}
-	span := HistoryPeriods[q.Period]
-	if span > 0 {
-		from = now.Add(-span)
-	}
-	out.From = from.Format(time.RFC3339Nano)
-	// Daily windows, or seven-day windows ending with today for a year.
-	// Keep the shared rolling range: clip its edges rather than discard facts
-	// to force a fixed bucket count. All-time retains calendar months.
-	weekEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
-	bucketStart := func(t time.Time) time.Time {
-		d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		switch q.Period {
-		case "1y":
-			// These boundaries are UTC, so every calendar day is 24 hours.
-			days := int(weekEnd.Sub(d) / (24 * time.Hour))
-			return weekEnd.AddDate(0, 0, -7*((days+6)/7))
-		case "all":
-			return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
-		}
-		return d
-	}
-	next := func(t time.Time) time.Time {
-		switch q.Period {
-		case "1y":
-			return t.AddDate(0, 0, 7)
-		case "all":
-			return t.AddDate(0, 1, 0)
-		}
-		return t.AddDate(0, 0, 1)
-	}
-	lookup := map[int64]int{}
-	for at := bucketStart(from); at.Before(now) && len(out.Buckets) < 1201; at = next(at) {
-		end := next(at)
-		a, b := at, end
-		if a.Before(from) {
-			a = from
-		}
-		if b.After(now) {
-			b = now
-		}
-		lookup[at.UnixMilli()] = len(out.Buckets)
-		out.Buckets = append(out.Buckets, DashboardBucket{Start: a.Format(time.RFC3339Nano), End: b.Format(time.RFC3339Nano), Partial: !a.Equal(at) || !b.Equal(end), Kinds: []DashboardKindTime{}})
-	}
-	// Read real hourly facts. Absent reports remain absent; no elapsed-session
+	from := r.FromMS() - r.FromMS()%reportwindow.Grain.Milliseconds()
+	// Read actual fifteen-minute event-time facts. Absent reports remain absent; no elapsed-session
 	// lifetime or completion percentage is substituted for watched time.
-	rows, e := tx.QueryContext(ctx, `SELECT t.hour_ms,`+dashboardKind+`,sum(t.watched_ms) FROM play_history_time t CROSS JOIN play_history h ON h.id=t.history_id`+filter+` AND t.hour_ms>=? AND t.hour_ms<? GROUP BY t.hour_ms,`+dashboardKind+` ORDER BY t.hour_ms`, append(append([]any{}, args...), from.UnixMilli()-3600000, now.UnixMilli())...)
+	rows, e := tx.QueryContext(ctx, `SELECT t.bucket_ms,`+dashboardKind+`,sum(t.watched_ms) FROM play_history_time t CROSS JOIN play_history h ON h.id=t.history_id`+filter+` AND t.bucket_ms>=? AND t.bucket_ms<? GROUP BY t.bucket_ms,`+dashboardKind+` ORDER BY t.bucket_ms`, append(append([]any{}, args...), from, r.UntilMS())...)
 	if e != nil {
 		return out, e
 	}
@@ -274,8 +284,8 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 			rows.Close()
 			return out, e
 		}
-		t := time.UnixMilli(at).In(now.Location())
-		index, ok := lookup[bucketStart(t).UnixMilli()]
+		t := r.Local(at)
+		index, ok := r.Index(max(at, r.FromMS()))
 		if !ok {
 			continue
 		}
@@ -297,7 +307,7 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 	if e != nil {
 		return out, e
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT (h.started_ms/86400000)*86400000,`+dashboardKind+`,count(*) FROM play_history h`+filter+` GROUP BY h.started_ms/86400000,`+dashboardKind, args...)
+	rows, e = tx.QueryContext(ctx, `SELECT (h.started_ms/900000)*900000,`+dashboardKind+`,count(*) FROM play_history h`+filter+` GROUP BY h.started_ms/900000,`+dashboardKind, args...)
 	if e != nil {
 		return out, e
 	}
@@ -308,7 +318,7 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 			rows.Close()
 			return out, e
 		}
-		index, ok := lookup[bucketStart(time.UnixMilli(at).In(now.Location())).UnixMilli()]
+		index, ok := r.Index(max(at, r.FromMS()))
 		if !ok {
 			continue
 		}

@@ -18,11 +18,15 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 				accessFailure(w, e)
 				return
 			}
-			if e := consoleQuery(r, "period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind"); e != nil {
+			if e := consoleQuery(r, "period", "accountId", "libraryId", "media", "q", "cursor", "limit", "topKind", "timeZone", "until"); e != nil {
 				consoleError(w, e)
 				return
 			}
 			query := r.URL.Query()
+			if e := validateReportContext(query.Get("timeZone"), query.Get("until")); e != nil {
+				failure(w, e)
+				return
+			}
 			limit := 12
 			if raw := query.Get("limit"); raw != "" {
 				n, e := strconv.Atoi(raw)
@@ -36,7 +40,7 @@ func (d Dependencies) dashboardHistoryRoutes(mux *http.ServeMux) {
 			if period == "" {
 				period = "30d"
 			}
-			q := catalog.PlayHistoryQuery{Period: period, AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Media: query.Get("media"), Search: query.Get("q"), Cursor: query.Get("cursor"), Limit: limit}
+			q := catalog.PlayHistoryQuery{TimeZone: query.Get("timeZone"), Until: query.Get("until"), Period: period, AccountID: query.Get("accountId"), LibraryID: query.Get("libraryId"), Media: query.Get("media"), Search: query.Get("q"), Cursor: query.Get("cursor"), Limit: limit}
 			var out any
 			var e error
 			if people {

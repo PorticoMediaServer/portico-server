@@ -20,9 +20,12 @@ func TestDashboardPeopleAccountPagingAndHistorySharedFilters(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		if _, e = db.Exec(`INSERT INTO play_history_time SELECT id,?,? FROM play_history WHERE playback_id=?`, now.Add(-time.Hour).UnixMilli(), 1000*(n+1), id); e != nil {
+			t.Fatal(e)
+		}
 	}
 	seen := map[string]bool{}
-	q := PlayHistoryQuery{Period: "7d", Limit: 12}
+	q := PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "7d", Limit: 12}
 	for {
 		page, e := s.DashboardPeople(context.Background(), q)
 		if e != nil {
@@ -48,7 +51,7 @@ func TestDashboardPeopleAccountPagingAndHistorySharedFilters(t *testing.T) {
 	if len(seen) != 137 {
 		t.Fatal(len(seen))
 	}
-	q = PlayHistoryQuery{Period: "7d", AccountID: "a002", Media: "movies", Search: "Movie", Limit: 100}
+	q = PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "7d", AccountID: "a002", Media: "movies", Search: "Movie", Limit: 100}
 	page, e := s.PlayHistory(context.Background(), q)
 	if e != nil || len(page.Entries) != 1 {
 		t.Fatal(page, e)
@@ -61,7 +64,7 @@ func TestDashboardPeopleAccountPagingAndHistorySharedFilters(t *testing.T) {
 		total := 0
 		cursor := ""
 		for {
-			p, e := s.PlayHistory(context.Background(), PlayHistoryQuery{Period: "7d", Limit: 17, Sort: sort, Direction: "asc", Cursor: cursor})
+			p, e := s.PlayHistory(context.Background(), PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "7d", Limit: 17, Sort: sort, Direction: "asc", Cursor: cursor})
 			if e != nil {
 				t.Fatal(sort, e)
 			}
@@ -92,7 +95,7 @@ func TestDashboardBucketsUseDailyWindowsWeeklyYearAndObservedTime(t *testing.T) 
 		t.Fatal(e)
 	}
 	for _, period := range []string{"7d", "30d", "90d", "1y", "all"} {
-		out, e := s.DashboardHistory(context.Background(), PlayHistoryQuery{Period: period}, "movies")
+		out, e := s.DashboardHistory(context.Background(), PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: period}, "movies")
 		if e != nil {
 			t.Fatal(period, e)
 		}
@@ -172,7 +175,7 @@ func TestDashboardHistoryWindowsKeepDailyFactsAndEndAnchoredWeeks(t *testing.T) 
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = db.Exec(`INSERT INTO play_history_time VALUES(?,?,?)`, id, at.Truncate(time.Hour).UnixMilli(), fact.watched); e != nil {
+		if _, e = db.Exec(`INSERT INTO play_history_time VALUES(?,?,?)`, id, at.Truncate(15*time.Minute).UnixMilli(), fact.watched); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -188,20 +191,20 @@ func TestDashboardHistoryWindowsKeepDailyFactsAndEndAnchoredWeeks(t *testing.T) 
 		total  totals
 		want   map[string]totals
 	}{
-		{"30d", 31, 24 * time.Hour, totals{5, 165000}, daily},
-		{"90d", 91, 24 * time.Hour, totals{5, 165000}, daily},
-		{"1y", 53, 7 * 24 * time.Hour, totals{6, 231000}, map[string]totals{
-			"2025-10-22": {1, 66000}, "2026-10-09": {1, 11000}, "2026-10-16": {4, 154000},
+		{"30d", 30, 24 * time.Hour, totals{5, 165000}, daily},
+		{"90d", 90, 24 * time.Hour, totals{5, 165000}, daily},
+		{"1y", 52, 7 * 24 * time.Hour, totals{5, 165000}, map[string]totals{
+			"2026-10-09": {1, 11000}, "2026-10-16": {4, 154000},
 		}},
 	} {
 		t.Run(tc.period, func(t *testing.T) {
-			q := PlayHistoryQuery{Period: tc.period, AccountID: "a", LibraryID: "movies", Media: "movies", Search: "Window"}
+			q := PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: tc.period, AccountID: "a", LibraryID: "movies", Media: "movies", Search: "Window"}
 			out, e := s.DashboardHistory(context.Background(), q, "movies")
 			if e != nil {
 				t.Fatal(e)
 			}
 			from, until := parse(t, out.From), parse(t, out.Until)
-			if !from.Equal(now.Add(-HistoryPeriods[tc.period])) || !until.Equal(now) || out.TimeZone != "UTC" || len(out.Buckets) != tc.count {
+			if from.Hour() != 0 || !until.Equal(now) || out.TimeZone != "UTC" || len(out.Buckets) != tc.count {
 				t.Fatal("range coverage changed", out)
 			}
 			previous := from
@@ -212,7 +215,7 @@ func TestDashboardHistoryWindowsKeepDailyFactsAndEndAnchoredWeeks(t *testing.T) 
 				if !start.Equal(previous) || !end.After(start) || end.After(until) {
 					t.Fatal("gap, overlap or inverted bucket", b)
 				}
-				edge := i == 0 || i == len(out.Buckets)-1
+				edge := i == len(out.Buckets)-1
 				if b.Partial != edge || !edge && end.Sub(start) != tc.width {
 					t.Fatal("incorrect bucket width or clipping", b)
 				}
@@ -288,9 +291,10 @@ func TestObservedPlayedTimeExcludesPauseSeekAndMissingReports(t *testing.T) {
 }
 
 func TestHistoryFiltersUseIndexedPersonRangeAndRejectSQLControls(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	db := homeFixture(t)
 	s := New(db)
-	if _, e := s.PlayHistory(context.Background(), PlayHistoryQuery{Period: "all", Sort: "title;DROP TABLE accounts", Limit: 10}); e == nil {
+	if _, e := s.PlayHistory(context.Background(), PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "all", Sort: "title;DROP TABLE accounts", Limit: 10}); e == nil {
 		t.Fatal("sort injection accepted")
 	}
 	rows, e := db.Query(`EXPLAIN QUERY PLAN SELECT h.id FROM play_history h WHERE h.account_id=? AND h.started_ms>=? ORDER BY h.started_ms DESC,h.id DESC LIMIT 101`, "a", 0)
@@ -333,7 +337,7 @@ func TestDashboardPeopleAndHistoryRetainAudiobooksAndLiveKinds(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	people, e := s.DashboardPeople(context.Background(), PlayHistoryQuery{Period: "7d"})
+	people, e := s.DashboardPeople(context.Background(), PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "7d"})
 	if e != nil || len(people.Items) != 1 {
 		t.Fatal(people, e)
 	}
@@ -345,7 +349,7 @@ func TestDashboardPeopleAndHistoryRetainAudiobooksAndLiveKinds(t *testing.T) {
 		t.Fatal(people)
 	}
 	for _, top := range []struct{ kind, target, unit string }{{"music", "album", "track_plays"}, {"tv", "show", "episode_plays"}} {
-		history, e := s.DashboardHistory(context.Background(), PlayHistoryQuery{Period: "7d"}, top.kind)
+		history, e := s.DashboardHistory(context.Background(), PlayHistoryQuery{TimeZone: "UTC", Until: now.UTC().Format(time.RFC3339Nano), Period: "7d"}, top.kind)
 		if e != nil || len(history.Top) != 1 {
 			t.Fatal(history, e)
 		}

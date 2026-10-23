@@ -464,7 +464,7 @@ index play_history_account
 index play_history_library
 index play_history_listen_profile
 index play_history_recent
-index play_history_time_hour
+index play_history_time_bucket
 index playback_admin_retention
 index playback_channel_sessions_live
 index playback_origin_associations_asset

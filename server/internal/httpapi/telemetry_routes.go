@@ -28,6 +28,7 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 		return
 	}
 	service := &telemetryService{d: d, capacity: d.capacityComposer()}
+	d.dashboardReportRoute(mux, service)
 	if d.TelemetryContext != nil {
 		service.collector()
 	}
@@ -45,12 +46,15 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 	service.register(mux, "GET /v1/admin/transcode/capacity", nil, func(r *http.Request, a operations.Authorize) (any, error) {
 		return service.capacityReport(r.Context(), a)
 	})
-	service.register(mux, "GET /v1/admin/telemetry", []string{"window"}, func(r *http.Request, a operations.Authorize) (any, error) {
+	service.register(mux, "GET /v1/admin/telemetry", []string{"window", "timeZone", "until"}, func(r *http.Request, a operations.Authorize) (any, error) {
+		if e := validateReportContext(r.URL.Query().Get("timeZone"), r.URL.Query().Get("until")); e != nil {
+			return nil, e
+		}
 		window := r.URL.Query().Get("window")
 		if window == "" {
 			window = "10m"
 		}
-		reading, ok := service.collector().Read(window)
+		reading, ok := service.collector().Read(window, r.URL.Query().Get("timeZone"), r.URL.Query().Get("until"))
 		if !ok {
 			return nil, operations.ErrInvalid
 		}

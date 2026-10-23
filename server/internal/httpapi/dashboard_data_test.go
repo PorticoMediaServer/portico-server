@@ -2,16 +2,25 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/telemetry"
+	"strings"
 	"testing"
 )
 
 func TestDashboardAnalyticsDoNotGrantAdministratorPeopleAuthority(t *testing.T) {
 	f := administrationFixtureNew(t)
 	for _, path := range []string{"/v1/admin/play-history", "/v1/admin/play-history/summary", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status", "/v1/admin/telemetry?window=live", "/v1/admin/telemetry/now"} {
+		if strings.HasPrefix(path, "/v1/admin/play-history") || strings.HasPrefix(path, "/v1/admin/telemetry?") {
+			sep := "?"
+			if strings.Contains(path, "?") {
+				sep = "&"
+			}
+			path += sep + "timeZone=Asia%2FKathmandu&until=2026-10-22T12%3A00%3A00Z"
+		}
 		for _, token := range []string{f.admin, f.member} {
 			w := f.call("GET", path, token, "")
 			if w.Code != 403 {
@@ -46,7 +55,7 @@ func TestDashboardManagementRequiresTheAccountsMainProfile(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		for _, path := range []string{"/v1/admin/sessions", "/v1/admin/access/members", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status"} {
+		for _, path := range []string{"/v1/admin/sessions", "/v1/admin/access/members", "/v1/admin/dashboard/report", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status"} {
 			w := f.call("GET", path, selected.Session.AccessToken, "")
 			if w.Code != 403 {
 				t.Fatal(account, path, w.Code, w.Body.String())
@@ -90,4 +99,32 @@ func TestMediaMeterCountsSuccessfulPartialWritesOnly(t *testing.T) {
 		t.Fatal("errors counted as streamed media", total)
 	}
 	var _ http.ResponseWriter = (*mediaTrafficWriter)(nil)
+}
+
+func TestCommonDashboardReportContextAuthorityAndIntervals(t *testing.T) {
+	f := administrationFixtureNew(t)
+	path := "/v1/admin/dashboard/report?period=today&window=24h&peoplePeriod=7d&topPeriod=30d&topKind=movies&timeZone=Asia%2FKathmandu&until=2026-10-22T12%3A00%3A00Z"
+	for _, token := range []string{f.admin, f.member} {
+		w := f.call("GET", path, token, "")
+		if w.Code != 403 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	w := f.call("GET", path, f.owner, "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var out DashboardReport
+	if e := json.Unmarshal(w.Body.Bytes(), &out); e != nil {
+		t.Fatal(e)
+	}
+	if out.Context.TimeZone != "Asia/Kathmandu" || len(out.History.Buckets) != 1 || len(out.Load.Buckets) != 24 || len(out.People.Buckets) != 7 || len(out.TopPlayed.Buckets) != 30 || out.History.Until != out.Table.Until || out.Summary.Plays != *out.Table.Total {
+		t.Fatal(out)
+	}
+	for _, bad := range []string{"/v1/admin/dashboard/report", "/v1/admin/dashboard/report?timeZone=Local&until=2026-10-22T12%3A00%3A00Z", "/v1/admin/dashboard/report?timeZone=UTC&until=2099-01-01T12%3A00%3A00Z", "/v1/admin/dashboard/report?timeZone=Asia%2FKathmandu&until=2026-10-22T12%3A01%3A00Z"} {
+		w = f.call("GET", bad, f.owner, "")
+		if w.Code != 400 {
+			t.Fatal("invalid context", bad, w.Code, w.Body.String())
+		}
+	}
 }

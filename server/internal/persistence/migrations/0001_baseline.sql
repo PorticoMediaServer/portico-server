@@ -2791,14 +2791,15 @@ CREATE TABLE item_extras(
 CREATE INDEX item_extras_owner ON item_extras(owner_id,kind,item_id);
 CREATE TABLE personal_batch_receipts(profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,operation_id)) STRICT;
 CREATE TABLE telemetry_rollups(
- resolution_ms INTEGER NOT NULL,
- bucket_ms INTEGER NOT NULL,
+ bucket_ms INTEGER NOT NULL CHECK(bucket_ms%900000=0),
  metric TEXT NOT NULL,
  samples INTEGER NOT NULL CHECK(samples>0),
  total REAL NOT NULL,
  status TEXT NOT NULL CHECK(status IN('available','limited')),
- detail TEXT NOT NULL DEFAULT '',
- PRIMARY KEY(resolution_ms,bucket_ms,metric)
+ detail TEXT NOT NULL,
+ first_event_ms INTEGER NOT NULL,
+ last_event_ms INTEGER NOT NULL,
+ PRIMARY KEY(bucket_ms,metric)
 ) STRICT, WITHOUT ROWID;
 CREATE TABLE social_groups(
   id TEXT PRIMARY KEY,
@@ -6910,11 +6911,11 @@ CREATE TABLE play_history(
 
 CREATE TABLE play_history_time(
  history_id INTEGER NOT NULL REFERENCES play_history(id) ON DELETE CASCADE,
- hour_ms INTEGER NOT NULL,
+ bucket_ms INTEGER NOT NULL CHECK(bucket_ms%900000=0),
  watched_ms INTEGER NOT NULL CHECK(watched_ms>=0),
- PRIMARY KEY(history_id,hour_ms)
+ PRIMARY KEY(history_id,bucket_ms)
 ) STRICT, WITHOUT ROWID;
-CREATE INDEX play_history_time_hour ON play_history_time(hour_ms,history_id);
+CREATE INDEX play_history_time_bucket ON play_history_time(bucket_ms,history_id);
 CREATE INDEX play_history_recent ON play_history(started_ms DESC,id DESC);
 
 CREATE INDEX play_history_listen_profile ON play_history(authority,account_id,profile_id,started_ms DESC,id DESC);
