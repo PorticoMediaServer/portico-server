@@ -348,9 +348,8 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
 		return c, err
 	}
-	// A screen paired as a Cast target plays and does nothing else: no account
-	// route is open to it, whichever profile paired it.
-	if record.principal.Grant == GrantCastTarget {
+	// Narrowed families have no ordinary account authority, regardless of role.
+	if record.principal.Grant != "" {
 		return c, ErrForbidden
 	}
 	c.account.ID = record.principal.AccountID

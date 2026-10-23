@@ -15,6 +15,9 @@ const (
 	// server, approve another device, pair another target, or choose another
 	// profile. It is always a member, whoever paired it.
 	GrantCastTarget = "cast_target"
+	// GrantOwnerClaimCompletion never carries ordinary account or owner rights.
+	// Its dedicated operation repository must authorize any completion action.
+	GrantOwnerClaimCompletion = "owner_claim_completion"
 )
 
 type castTargetIssueKey struct{}
@@ -32,10 +35,15 @@ func WithPlaybackRequest(ctx context.Context) context.Context {
 // The refusal is a 403, never a 401: the screen's session is fine, the request
 // is not one it may make.
 func (p Principal) PermitsRequest(ctx context.Context) error {
-	if p.Grant == GrantCastTarget && ctx.Value(playbackRequestKey{}) != true {
-		return ErrForbidden
+	switch p.Grant {
+	case "":
+		return nil
+	case GrantCastTarget:
+		if ctx.Value(playbackRequestKey{}) == true {
+			return nil
+		}
 	}
-	return nil
+	return ErrForbidden
 }
 
 // IssueCastTargetTx issues the session of a screen paired as a Cast target,

@@ -577,14 +577,7 @@ func twoFactorResetNoticeTx(ctx context.Context, tx *sql.Tx, account string) err
 
 // The server's selected method survives a deleted/unlinked Portico account.
 // Losing that link must never turn a reset-file proof into local password setup.
-func (s *Service) ownerResetPorticoTx(ctx context.Context, tx *sql.Tx, account string) (bool, error) {
-	var mode string
-	e := tx.QueryRowContext(ctx, `SELECT auth_mode FROM onboarding_state_v1 WHERE singleton=1`).Scan(&mode)
-	if e == nil {
-		return mode == "hosted", nil
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return false, e
-	}
-	return porticoLinkedTx(ctx, tx, account)
+func (s *Service) ownerResetPorticoTx(ctx context.Context, tx *sql.Tx, _ string) (bool, error) {
+	kind, err := SignInKindTx(ctx, tx)
+	return kind == SignInPortico, err
 }

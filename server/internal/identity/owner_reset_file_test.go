@@ -452,10 +452,11 @@ func TestResetFilePreservesAuthenticatorCodesProfilesMyListAndHistory(t *testing
 func TestResetFilePorticoMethodSurvivesLostAccountLinkWithoutInventingIdentity(t *testing.T) {
 	s, db, _ := directFixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,ready) VALUES(1,'hosted','fixture','hash','hash',0,1)`); e != nil {
+	selectPorticoFixture(t, s)
+	if _, e := db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,ready) VALUES(1,'local','fixture','hash','hash',0,1)`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrUnauthorized) {
+	if _, e := s.DirectLogin(ctx, "owner", "Testing1!"); !errors.Is(e, ErrSignInKindPortico) {
 		t.Fatal("Portico server fell back to retained local password", e)
 	}
 	out, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: requestResetFileCode(t, s)})
@@ -467,5 +468,23 @@ func TestResetFilePorticoMethodSurvivesLostAccountLinkWithoutInventingIdentity(t
 	}
 	if _, e = s.DirectMe(ctx, out.Session.AccessToken); e != nil {
 		t.Fatal("reset-file owner session depends on lost Hosted link", e)
+	}
+}
+
+func TestResetFileLocalMethodIgnoresStaleHostedOnboarding(t *testing.T) {
+	s, db, _ := directFixture(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,ready) VALUES(1,'hosted','fixture','hash','hash',0,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DirectLogin(ctx, "owner", "Testing1!"); err != nil {
+		t.Fatal("stale onboarding changed the selected Local sign-in authority", err)
+	}
+	out, err := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: requestResetFileCode(t, s)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ResetFileOwnerSession || !out.PasswordChangeRequired || out.Session == nil || out.Account.HostedAccountID != "" {
+		t.Fatal("stale onboarding changed Local reset authority or invented identity")
 	}
 }

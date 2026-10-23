@@ -65,6 +65,9 @@ type Dependencies struct {
 	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
+	// LocalHTTPURL comes solely from the actual bound loopback-capable listener.
+	// Empty means no localhost route is reported, never an inferred default.
+	LocalHTTPURL string
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)

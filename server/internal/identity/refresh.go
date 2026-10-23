@@ -59,10 +59,13 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	p.ServerID = s.serverID
 	var horizonRaw, currentHash string
 	var revoked int
-	err = tx.QueryRowContext(ctx, `SELECT f.account_id,f.profile_id,f.authority,f.role,f.epoch,f.authorization_horizon,f.revoked,t.token_hash FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=?`, family).
-		Scan(&p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &horizonRaw, &revoked, &currentHash)
+	err = tx.QueryRowContext(ctx, `SELECT f.account_id,f.profile_id,f.authority,f.role,f.epoch,f.authorization_horizon,f.revoked,t.token_hash,COALESCE((SELECT grant_kind FROM authorization_family_grants WHERE family_id=f.id),'') FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=?`, family).
+		Scan(&p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &horizonRaw, &revoked, &currentHash, &p.Grant)
 	if err != nil || revoked != 0 {
 		return Envelope{}, ErrUnauthorized
+	}
+	if p.Grant != "" {
+		return Envelope{}, ErrForbidden
 	}
 	p.Hash = currentHash
 	oldHorizon, err := familyTime(horizonRaw)
@@ -149,9 +152,12 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	// a recovery family that is usable only on the home network.
 	var p Principal
 	var knownFamily string
-	err := tx.QueryRowContext(ctx, `SELECT f.id,f.authority,f.account_id FROM authorization_session_families f WHERE f.id IN (SELECT family_id FROM identity_refresh_predecessors WHERE predecessor_hash=? UNION SELECT family_id FROM identity_refresh_receipts WHERE predecessor_hash=?)`, predecessor, predecessor).Scan(&knownFamily, &p.Authority, &p.AccountID)
+	err := tx.QueryRowContext(ctx, `SELECT f.id,f.authority,f.account_id,COALESCE((SELECT grant_kind FROM authorization_family_grants WHERE family_id=f.id),'') FROM authorization_session_families f WHERE f.id IN (SELECT family_id FROM identity_refresh_predecessors WHERE predecessor_hash=? UNION SELECT family_id FROM identity_refresh_receipts WHERE predecessor_hash=?)`, predecessor, predecessor).Scan(&knownFamily, &p.Authority, &p.AccountID, &p.Grant)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Envelope{}, "", err
+	}
+	if err == nil && p.Grant != "" {
+		return Envelope{}, "", ErrForbidden
 	}
 
 	var family, storedRequest, until string
