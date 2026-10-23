@@ -330,7 +330,7 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   let next:LocalSession;
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId});}
   catch{throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);}
-  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
+  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||(session.viewer.role==='account'&&next.viewer.role!=='account')||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
    throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);
   const connection=sessionRoute(session.accessToken);
   try{

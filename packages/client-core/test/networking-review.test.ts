@@ -338,3 +338,43 @@ test('live account denial is not a reason to probe viewer authority or select a 
  try{await assert.rejects(f.restore(),{code:'access_refused'});assert.deepEqual(f.calls,{proof:1,account:1,viewer:0,refresh:0,profile:0});assert.equal((await f.store.read())?.session.viewer.role,'account');}
  finally{f.initial.connection.dispose();}
 });
+
+test('account-only restoration rotates once within account scope and refuses an implicit viewer upgrade',async t=>{
+ const {setInstallationIdentity}=await import('../src/installation.ts');
+ setInstallationIdentity({installationId:'account_restore_installation_00000001',name:'Test browser',platform:'web',app:'portico',appVersion:'1'});
+ t.after(()=>setInstallationIdentity(undefined));
+ for(const mode of ['account','upgrade','refused','revoked'] as const){
+  const store=storage(),initial=await ready();
+  const base=session(),saved={...base,refreshToken:'account_refresh_original',viewer:{...base.viewer,role:'account'}};
+  const renewed={...saved,accessToken:'account_access_next',refreshToken:'account_refresh_next',tokenGeneration:'2',viewer:{...saved.viewer,role:mode==='upgrade'?'owner':'account'}};
+  const calls={account:0,refresh:0,viewer:0,profile:0};
+  const json=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
+  await rememberNativeSession(initial.api,saved,{storage:store});
+  const fetcher:typeof fetch=async(input,init)=>{
+   const path=new URL(String(input)).pathname;
+   if(path==='/v1/networking/identity-proof'){
+    const q=JSON.parse(String(init?.body));return json(200,signed({kind:'portico.route-proof',version:'1',...pin,...q,issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+29000).toISOString()}));
+   }
+   if(path==='/v1/auth/refresh'){calls.refresh++;return mode==='revoked'?json(401,{error:{code:'unauthorized'}}):json(200,renewed);}
+   if(path==='/v1/direct'){
+    calls.account++;
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer '+(calls.account===1?saved.accessToken:renewed.accessToken));
+    return calls.account===1||mode==='refused'?json(401,{error:{code:'unauthorized'}}):json(200,accountRestoreSnapshot());
+   }
+   if(path==='/v1/me')calls.viewer++;
+   if(path.endsWith('/select'))calls.profile++;
+   throw new Error('unexpected account rotation request');
+  };
+  let restored:Awaited<ReturnType<typeof restoreNativeSession>>;
+  try{
+   const pending=restoreNativeSession({storage:store,fetcher});
+   if(mode==='account'){restored=await pending;assert.equal(restored?.session.viewer.role,'account');assert.equal(restored?.session.tokenGeneration,'2');}
+   else await assert.rejects(pending,{code:mode==='upgrade'?'refresh_invalid':mode==='revoked'?'refresh_refused':'access_refused'});
+   assert.equal(calls.refresh,1);assert.equal(calls.viewer,0);assert.equal(calls.profile,0);
+   assert.equal(calls.account,mode==='upgrade'||mode==='revoked'?1:2);
+   const current=await store.read();
+   if(mode==='revoked')assert.equal(current,undefined);
+   else assert.equal(current?.session.viewer.role,'account');
+  }finally{restored?.api.getRouteConnection()?.dispose();initial.connection.dispose();}
+ }
+});
