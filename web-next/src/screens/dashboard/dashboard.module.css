@@ -14,6 +14,9 @@
 .sessionStack { display: flex; flex-direction: column; gap: 12px; }
 .session { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) 410px 188px; grid-template-rows: 34px auto; column-gap: 16px; align-items: center; min-height: 156px; padding: 12px 16px 16px; border-radius: var(--radius-overlay); background: var(--color-raised); }
 .session > * { position: relative; }
+.session { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+.session[data-leaving] { opacity: 0; transform: scale(.98); }
+.stopButton { background: var(--color-danger); color: var(--color-action-ink); }
 .ambient { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
 .ambient img { position: absolute; inset: -50px; width: calc(100% + 100px); height: calc(100% + 100px); object-fit: cover; filter: blur(30px) saturate(1.45); opacity: .45; mask-image: linear-gradient(100deg, black, transparent 80%); }
 .art { grid-row: 1 / span 2; width: 78px; height: 117px; border-radius: var(--radius-artwork); overflow: hidden; background: var(--color-raised-high); display: grid; place-items: center; color: var(--color-text-tertiary); }
@@ -102,6 +105,8 @@
 .chartTip:empty { display: none; }
 .chartTip > b { color: var(--color-text-tertiary); }
 .chartTip > span { display: flex; gap: 12px; margin-top: 4px; }
+.chartTip > span i { width: 8px; height: 8px; margin-top: 5px; border-radius: var(--radius-pill); flex: none; background: var(--series-color); }
+.chartTip .tipTotal { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-line-soft); }
 .chartTip strong { margin-left: auto; }
 .peopleCard { padding: 14px 8px 8px; }
 .peopleCard > .legend { margin: 0 12px 6px; }
@@ -139,6 +144,8 @@
 .alerts { border-radius: var(--radius-overlay); background: var(--color-raised); overflow: hidden; }
 .alert { display: flex; align-items: center; gap: 14px; padding: 12px 16px; min-height: 56px; border-top: 1px solid var(--color-line-soft); }
 .alert:first-child { border-top: 0; }
+.alert .alertIcon { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--color-amber) 14%, transparent); color: var(--color-amber); }
+.alert .alertIcon[data-info] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-accent-strong); }
 .alert > b { flex: 1; }
 .alert > span { color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
 .tasks { min-width: 0; }
@@ -188,7 +195,7 @@
   .alert > b { flex-basis: 100%; }
   .task { grid-template-columns: minmax(0, 1fr) 70px 36px; gap: 8px; }
 }
-@media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } .session { transition: none; } }
 
 .rankedShelf { position: relative; isolation: isolate; }
 .shelfAmbient { position: absolute; pointer-events: none; inset: -24px 0 -16px; overflow: hidden; mask-image: linear-gradient(transparent, black 30%, black 62%, transparent); opacity: .34; }

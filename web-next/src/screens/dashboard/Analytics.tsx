@@ -5,8 +5,8 @@ import type {PlayHistoryPeriod} from '@core/play-history.ts';
 import {Select, Button, Segmented} from '../../kit/controls';
 import type {DashboardBindings} from './bindings';
 import {useDashboardAccounts, useDashboardRead} from './use-read';
-import {fmtDur, fmtHrs, niceScale} from './format';
-import {curveSegments, plotLine, hours, mediaKinds, quietestHours} from './model';
+import {fmtDur, fmtHrs, formatHourOrdinal, formatQuietHours, niceScale} from './format';
+import {curveSegments, historyAxisTicks, plotLine, hours, mediaKinds, quietestHours} from './model';
 import {mediaLabel, Range, ReadFeedback, Section, t} from './shared';
 import styles from './dashboard.module.css';
 const historyKinds = mediaKinds;
@@ -52,10 +52,11 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
   const total = h.buckets.reduce((s, b) => s + b.kinds.reduce((sum, k) => sum + k.watchedMs, 0), 0), scale = niceScale(Math.max(.5, ...h.buckets.map(b => hours(b.kinds.reduce((sum, k) => sum + k.watchedMs, 0)))) * 1.06, 4), max = scale.top * 3_600_000;
   const kinds = historyKinds.filter(kind => media === 'all' || media === kind);
   const quiet = quietestHours(h.busiestTimes), heatMax = Math.max(1, ...h.busiestTimes.flat());
-  const hour = (hour: number) => new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 1, hour));
+  const hour = formatHourOrdinal;
   const date = (stamp: string) => new Intl.DateTimeFormat(defaultI18n.locale, {month: 'short', day: 'numeric', timeZone: h.timeZone}).format(Date.parse(stamp));
+  const bucketTitle = (bucket: DashboardHistory['buckets'][number]) => h.period === '1y' ? t('next.dashboard.quietWindow', {from: date(bucket.start), until: date(new Date(Math.max(Date.parse(bucket.start), Date.parse(bucket.end) - 1)).toISOString())}) : new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'short', month: 'short', day: 'numeric', timeZone: h.timeZone}).format(Date.parse(bucket.start));
   return <><div className={styles.card}><h4>{t('next.dashboard.timePlayed')}</h4>{total ? <div className={styles.plot} tabIndex={0} role="group" aria-label={t('next.dashboard.timePlayed')}
-    onBlur={() => setFocus(undefined)} onPointerLeave={() => setFocus(undefined)} onPointerMove={event => {const rect = event.currentTarget.getBoundingClientRect(); setFocus(Math.max(0, Math.min(h.buckets.length - 1, Math.floor((event.clientX - rect.left) / rect.width * h.buckets.length))));}}
+    onBlur={() => setFocus(undefined)} onPointerLeave={() => setFocus(undefined)} onPointerMove={event => {const rect = event.currentTarget.getBoundingClientRect(); setFocus(Math.max(0, Math.min(h.buckets.length - 1, Math.round(((event.clientX - rect.left) / rect.width * 912 - 50) / 854 * (h.buckets.length - 1)))));}}
     onKeyDown={event => {if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {event.preventDefault(); setFocus(old => event.key === 'Home' ? 0 : event.key === 'End' ? h.buckets.length - 1 : Math.max(0, Math.min(h.buckets.length - 1, (old ?? 0) + (event.key === 'ArrowLeft' ? -1 : 1))));}}}>
     <svg className={styles.chart} viewBox="0 0 912 240" role="img" aria-label={t('next.dashboard.timePlayed')}>
       {scale.ticks.map(value => <g key={value}><path className={styles.gridline} d={`M50,${Math.round(214 - value / scale.top * 206) + .5}H904`} /><text x="40" y={Math.round(214 - value / scale.top * 206) + 4.5} textAnchor="end">{value === 0 ? '0' : t('next.dashboard.hours', {value: String(value)})}</text></g>)}
@@ -65,18 +66,19 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
         const hi = h.buckets.map((_, i): [number, number] => [x(i), y(i, ki + 1)]), lo = h.buckets.map((_, i): [number, number] => [x(i), y(i, ki)]).reverse();
         return h.buckets.length > 1 && <g key={kind} data-series={kind}><path className={styles.area} d={`${plotLine(hi)}L${lo[0][0].toFixed(1)},${lo[0][1].toFixed(1)}${curveSegments(lo)}Z`} /><path className={styles.areaLine} d={plotLine(hi)} /></g>;
       })}
-      <text x="50" y="234">{date(h.from)}</text><text x="904" y="234" textAnchor="end">{date(h.until)}</text>
+      {historyAxisTicks(h).map(tick => <text key={tick.f} x={(50 + 854 * tick.f).toFixed(1)} y="234" textAnchor={tick.f < .02 ? 'start' : tick.f > .98 ? 'end' : 'middle'}>{tick.text}</text>)}
+      {focus !== undefined && <path className={styles.guide} d={`M${50 + (h.buckets.length === 1 ? .5 : focus / (h.buckets.length - 1)) * 854},8V214`} />}
     </svg>
-    <div className={styles.chartTip} aria-live="polite">{focus !== undefined && h.buckets[focus] && <><b>{date(h.buckets[focus].start)} – {date(h.buckets[focus].end)} {h.buckets[focus].partial && t('next.dashboard.partial')}</b>{h.buckets[focus].kinds.filter(k => mediaKinds.some(kind => kind === k.kind)).map(k => <span key={k.kind}>{mediaLabel(k.kind)}<strong>{duration(k.watchedMs)}</strong></span>)}</>}</div>
+    <div className={styles.chartTip} aria-live="polite">{focus !== undefined && h.buckets[focus] && <><b>{bucketTitle(h.buckets[focus])}</b>{[...kinds].reverse().map(kind => <span key={kind} data-series={kind}><i />{mediaLabel(kind)}<strong>{duration(h.buckets[focus].kinds.find(k => k.kind === kind)?.watchedMs ?? 0)}</strong></span>)}{kinds.length > 1 && <span className={styles.tipTotal}>{t('next.dashboard.total')}<strong>{duration(h.buckets[focus].kinds.reduce((sum, k) => sum + k.watchedMs, 0))}</strong></span>}</>}</div>
     </div> : <p className={styles.empty}>{t('next.dashboard.nothing')}</p>}
     <div className={styles.legend}>{kinds.map(kind => <span key={kind} data-series={kind}><i />{mediaLabel(kind)}<b>{duration(h.buckets.reduce((sum, b) => sum + (b.kinds.find(k => k.kind === kind)?.watchedMs ?? 0), 0))}</b></span>)}<small>{t('next.dashboard.total')} <b>{duration(total)}</b></small></div>
     </div>
-    <div className={styles.card}><div className={styles.heading}><h4>{t('next.dashboard.busiest')}</h4>{quiet !== undefined && <span className={styles.quiet}>{t('next.dashboard.quietest')} <b>{t('next.dashboard.quietWindow', {from: hour(quiet), until: hour(quiet + 3)})}</b></span>}</div>
+    <div className={styles.card}><div className={styles.heading}><h4>{t('next.dashboard.busiest')}</h4>{quiet !== undefined && <span className={styles.quiet}>{t('next.dashboard.quietest')} <b>{formatQuietHours(quiet)}</b></span>}</div>
       <div className={styles.heatScroll}><div className={styles.heat} style={{'--quiet-hour': quiet ?? 0} as CSSProperties} role="group" aria-label={t('next.dashboard.busiest')}>
         {h.busiestTimes.map((day, d) => <div className={styles.heatDay} key={d}><span>{new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'short', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))}</span>{day.map((ms, hour) => <button type="button" key={hour} className={styles.heatCell} data-quiet={quiet !== undefined && hour >= quiet && hour < quiet + 3 || undefined} style={{'--heat-intensity': `${(.06 + .94 * Math.pow(ms / heatMax, .8)) * 100}%`} as CSSProperties} aria-label={`${new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'long', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))} ${hour}:00: ${duration(ms)}`} onFocus={() => setCell({day: d, hour})} onBlur={() => setCell(undefined)} onPointerEnter={() => setCell({day: d, hour})} onPointerLeave={() => setCell(undefined)} />)}</div>)}
         {quiet !== undefined && <div className={styles.quietWindow} aria-hidden="true" />}
         <div className={styles.heatHours}><span />{[0, 3, 6, 9, 12, 15, 18, 21].map(h => <span key={h}>{hour(h)}</span>)}</div>
       </div></div>
-      <div className={styles.legend}><span role="status">{cell ? `${hour(cell.hour)}: ${duration(h.busiestTimes[cell.day][cell.hour])}` : ''}</span><small className={styles.heatLegend}>{t('next.dashboard.quieter')}{[.06, .22, .42, .68, 1].map(intensity => <i key={intensity} style={{'--heat-intensity': `${intensity * 100}%`} as CSSProperties} />)}{t('next.dashboard.busier')}</small></div>
+      <div className={styles.legend}><span role="status">{cell ? `${hour(cell.hour)}: ${duration(h.busiestTimes[cell.day][cell.hour])}` : ''}</span><small className={styles.heatLegend}>{t('next.dashboard.quieter')}{[.08, .28, .5, .75, 1].map(intensity => <i key={intensity} style={{'--heat-intensity': `${intensity * 100}%`} as CSSProperties} />)}{t('next.dashboard.busier')}</small></div>
     </div></>;
 }

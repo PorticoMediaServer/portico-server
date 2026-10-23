@@ -6,6 +6,7 @@ import type {TelemetryReading, TelemetryWindow} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
+import {Icon} from '../../kit/Icon';
 import type {DashboardAlert, DashboardBindings} from './bindings';
 import {fmtMbps, fmtPct} from './format';
 import {orderedSessions} from './model';
@@ -32,10 +33,17 @@ export function DashboardScreen({bindings: b, embedded = false, initialSection}:
 }
 function NowPlaying({bindings: b}: {bindings: DashboardBindings}) {
   const [cursor, setCursor] = useState(''), [expanded, setExpanded] = useState(false);
+  const stack = useRef<HTMLDivElement>(null), removed = useRef<{id: string; index: number} | undefined>(undefined);
   const load = useCallback((signal: AbortSignal) => b.read.sessions(cursor, signal), [b, cursor]);
   const state = useDashboardRead(b, load, true, 10000), sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
+  useEffect(() => {
+    const target = removed.current;
+    if (!target || state.loading || state.failed || !state.value || state.value.items.some(s => s.id === target.id)) return;
+    const buttons = stack.current?.querySelectorAll<HTMLButtonElement>('button[data-session-menu]');
+    (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
+  }, [state.value, state.loading, state.failed]);
   return <Section title={t('next.dashboard.now')} extra={totals && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>}>
-    <ReadFeedback state={state} />{state.value && <div className={styles.sessionStack}>{(expanded ? sessions : sessions.slice(0, 8)).map(s => <SessionCard key={s.id} session={s} bindings={b} refresh={state.refresh} />)}
+    <ReadFeedback state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{(expanded ? sessions : sessions.slice(0, 8)).map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) removed.current = {id, index}; state.refresh();}} />)}
       {!sessions.length && <p className={styles.empty}>{t('next.dashboard.nobody')}</p>}
       {sessions.length > 8 && <Button size="xs" variant="text" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>{expanded ? t('next.dashboard.fewer') : t('next.dashboard.showAll', {count: totals?.streams ?? sessions.length})}</Button>}
       {expanded && state.value.nextCursor && <Button size="xs" onClick={() => setCursor(state.value!.nextCursor!)}>{t('next.dashboard.more')}</Button>}
@@ -85,13 +93,13 @@ type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
 function Status({bindings: b, status}: {bindings: DashboardBindings; status: StatusState}) {
   const [confirm, setConfirm] = useState<DashboardAlert | undefined>(), [busy, setBusy] = useState(false), [updating, setUpdating] = useState(false);
   const run = async (alert: DashboardAlert) => {if (!b.effects.alert || busy) return; setBusy(true); try {await b.effects.alert(alert); if (b.isCurrent()) {setConfirm(undefined); if (alert.action.kind === 'update') setUpdating(true); status.refresh();}} catch (error) {b.effects.reportError(error);} finally {setBusy(false);}};
-  return <><div data-dashboard-section="updates"><ReadFeedback state={status} />{!!status.value?.alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{status.value.alerts.map((alert, index) => {
+  return <>{(status.loading || status.failed || !!status.value?.alerts.length) && <div data-dashboard-section="updates"><ReadFeedback state={status} />{!!status.value?.alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{status.value.alerts.map((alert, index) => {
     const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = update && updating ? t('next.dashboard.updating') : t(alertCopy[alert.code] ?? 'next.dashboard.serverAlert', {version: alert.params.latest ?? '', count: alert.count ?? 0});
-    return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
+    return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><span className={styles.alertIcon} data-info={update || undefined}><Icon name={update && updating ? 'i-refresh' : update ? 'i-arrow-up' : 'i-alert'} size={18} /></span><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
       {b.effects.alert && (update || alert.code === 'secure_renewal_failed') && !(update && updating) && <Button size="xs" variant={update ? 'primary' : 'glass'} disabled={busy} onClick={() => update ? setConfirm(alert) : void run(alert)}>{update ? t('next.dashboard.update') : t('next.dashboard.retry')}</Button>}
-      {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}</Button>}
+      {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}<Icon name="i-right" size={16} /></Button>}
     </div>;
-  })}</section>}</div>
+  })}</section>}</div>}
 
     <Dialog open={!!confirm} onOpenChange={open => {if (!open && !busy) setConfirm(undefined);}} title={t('next.dashboard.updateTitle')} description={t('next.dashboard.updateDetail')} footer={<><Button size="compact" onClick={() => setConfirm(undefined)} disabled={busy}>{t('next.dashboard.cancel')}</Button><Button size="compact" variant="primary" loading={busy} onClick={() => {if (confirm) void run(confirm);}}>{t('next.dashboard.update')}</Button></>}>{null}</Dialog>
   </>;

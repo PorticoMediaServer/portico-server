@@ -23,6 +23,7 @@ export const dashboardMessages = {
   'next.dashboard.format.todayAt': 'Today, {time}',
   'next.dashboard.finished': 'Finished',
   'next.dashboard.playsHeading': 'Plays',
+  'next.dashboard.format.dayDate': '{day} {date}',
   'next.dashboard.title': 'Dashboard',
   'next.dashboard.history': 'Play history',
   'next.dashboard.now': 'Now playing',

@@ -43,6 +43,16 @@ export function formatHistoryStarted(startedAt: string, timeZone: string, captur
   const time = new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', minute: '2-digit', timeZone}).format(stamp);
   return day.format(stamp) === day.format(captured) ? t('next.dashboard.format.todayAt', {time}) : new Intl.DateTimeFormat(defaultI18n.locale, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone}).format(stamp);
 }
+/** These are already-local heat-map column ordinals, never timestamps to convert to UTC. */
+export function formatHourOrdinal(hour: number): string {
+  return new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 1, hour));
+}
+export function formatQuietHours(start: number): string {
+  const format = new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', timeZone: 'UTC'});
+  const from = format.formatToParts(Date.UTC(2026, 0, 1, start)), until = format.formatToParts(Date.UTC(2026, 0, 1, start + 3));
+  const period = from.find(p => p.type === 'dayPeriod')?.value, same = period && period === until.find(p => p.type === 'dayPeriod')?.value;
+  return t('next.dashboard.quietWindow', {from: same ? from.filter(p => p.type !== 'dayPeriod').map(p => p.value).join('').trim() : formatHourOrdinal(start), until: formatHourOrdinal(start + 3)});
+}
 export function formatLoadAxis(value: number, kind: DashboardLoadKind): string {
   if (value === 0 || kind === 'conversions') return String(value);
   return t(kind === 'bandwidth' ? 'next.dashboard.mbps' : 'next.dashboard.percent', {value: String(value)});

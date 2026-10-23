@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
-import {fmtDur, fmtHrs, fmtMbps, fmtPct, formatAudioSource, formatDeliveryTarget, formatHistoryDuration, formatHistoryStarted, formatStreamRate, formatSubtitleSource, formatTrackRoute, formatVideoSource, loadScale, niceScale} from '../src/screens/dashboard/format.ts';
-import {curveSegments, plotLine, trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
+import {fmtDur, fmtHrs, fmtMbps, fmtPct, formatAudioSource, formatDeliveryTarget, formatHistoryDuration, formatHistoryStarted, formatQuietHours, formatStreamRate, formatSubtitleSource, formatTrackRoute, formatVideoSource, loadScale, niceScale} from '../src/screens/dashboard/format.ts';
+import {curveSegments, historyAxisTicks, plotLine, thinTicks, trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const referenceRepo = process.env.PORTICO_DASHBOARD_DESIGN_REPO;
 const reference = referenceRepo && execFileSync('git', ['-C', referenceRepo, 'show', '812dacacc70e296ac870ec36d1a37a485eaeb8ed:design/ui-v1/settings/dashboard.js'], {encoding: 'utf8'});
@@ -65,6 +65,13 @@ test('History lengths and local date presentation match the drawn cells without 
   assert.equal(formatHistoryStarted('2026-10-22T18:26:00Z', 'America/Halifax', '2026-10-22T19:15:00Z'), 'Today, 3:26 PM');
   assert.equal(formatHistoryStarted('2026-10-22T17:26:00Z', 'Asia/Kathmandu', '2026-10-22T19:15:00Z').startsWith('Today'), false);
 });
+test('axis labels use returned bucket starts in the viewer zone, and quiet hours copy the drawn meridiem suppression', () => {
+  const buckets = [{start: '2026-10-18T18:15:00Z', end: '2026-10-19T18:15:00Z', partial: false, kinds: []}, {start: '2026-10-19T18:15:00Z', end: '2026-10-20T18:15:00Z', partial: false, kinds: []}];
+  assert.deepEqual(historyAxisTicks({period: '30d', timeZone: 'Asia/Kathmandu', buckets}), [{f: 0, text: 'Oct 19'}]);
+  assert.deepEqual(historyAxisTicks({period: '7d', timeZone: 'Asia/Kathmandu', buckets}), [{f: 0, text: 'Mon 19'}, {f: 1, text: 'Tue 20'}]);
+  assert.equal(buckets[0].start, '2026-10-18T18:15:00Z');
+  assert.equal(formatQuietHours(3), '3 to 6 AM'); assert.equal(formatQuietHours(10), '10 AM to 1 PM'); assert.equal(formatQuietHours(21), '9 PM to 12 AM');
+});
 test('formatter functions agree with the checked drawing over boundary values', {skip: !reference}, () => {
   const scaleSource = reference!.slice(reference!.indexOf('  function niceScale('), reference!.indexOf('  const f1 ='));
   const referenceScale = vm.runInNewContext(scaleSource + '; niceScale');
@@ -82,4 +89,10 @@ test('chart curves copy the checked monotone helper including descending stack b
     assert.equal(plotLine(input), drawing.smooth(input));
     assert.equal(plotLine(input, true), drawing.stepped(input));
   }
+});
+test('axis label thinning matches the checked drawing', {skip: !reference}, () => {
+  const a = reference!.indexOf('  const thin ='), b = reference!.indexOf('  const MODELS =');
+  const drawing = vm.runInNewContext(reference!.slice(a, b) + '; thin');
+  const ticks = Array.from({length: 30}, (_, i) => ({f: i / 29, text: `Oct ${i + 1}`}));
+  assert.equal(JSON.stringify(thinTicks(ticks, 854)), JSON.stringify(drawing(ticks, 854)));
 });

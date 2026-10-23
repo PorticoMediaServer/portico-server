@@ -35,7 +35,7 @@ export function Chart({title, series, format, formatAverage = format, step = fal
       {!compact && <><text x={geometry.left} y="244">{time(from)}</text><text x="904" y="244" textAnchor="end">{time(until)}</text></>}
       {active !== undefined && <path className={styles.guide} d={`M${x(active)},8V224`} />}
     </svg>
-    {!compact && <><div id={id} className={styles.chartTip} aria-live="polite">{active !== undefined && <><b>{new Intl.DateTimeFormat(defaultI18n.locale, {dateStyle: 'medium', timeStyle: 'short'}).format(active)}</b>{series.map(s => {const point = s.points.find(p => p.t === active); return point && <span key={s.key} data-series={s.key}>{s.label}<strong>{format(point.v)}</strong></span>;})}</>}</div>
+    {!compact && <><div id={id} className={styles.chartTip} aria-live="polite">{active !== undefined && <><b>{new Intl.DateTimeFormat(defaultI18n.locale, {dateStyle: 'medium', timeStyle: 'short'}).format(active)}</b>{series.map(s => {const point = s.points.find(p => p.t === active); return point && <span key={s.key} data-series={s.key}><i />{s.label}<strong>{format(point.v)}</strong></span>;})}</>}</div>
       <div className={styles.legend}>{series.map(s => <span key={s.key} data-series={s.key}><i />{s.label}</span>)}<small className={styles.averages}>{t('next.dashboard.average')}{series.filter(s => s.points.length).map(s => <b key={s.key} data-series={s.key}>{s.label} {formatAverage(s.points.reduce((sum, p) => sum + p.v, 0) / s.points.length)}</b>)}</small></div></>}
   </div>;
 }

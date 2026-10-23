@@ -8,7 +8,7 @@ export function useDashboardRead<T>(bindings: DashboardBindings, load: (signal: 
   useEffect(() => {
     if (!enabled || !bindings.isCurrent()) return;
     const controller = new AbortController(); let running = false, queued = false;
-    setState({loader: load, loading: true, failed: false});
+    setState(previous => previous.loader === load ? {...previous, loading: true, failed: false} : {loader: load, loading: true, failed: false});
     const read = async () => {
       if (running) {queued = true; return;}
       if (controller.signal.aborted || !bindings.isCurrent() || document.hidden) return;
