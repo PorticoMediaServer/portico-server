@@ -1203,9 +1203,12 @@ func TestGrantsAreRefusedBeforeAClaimIsReady(t *testing.T) {
 	}
 }
 
-func TestAudioItemsPublishOneOptimizedOption(t *testing.T) {
+func TestAudiobookItemsPublishOneOptimizedOption(t *testing.T) {
 	h := newHarness(t)
-	song := filepath.Join(h.root, "Track.flac")
+	if _, err := h.db.Exec(`UPDATE libraries SET kind='audiobook' WHERE id='lib'`); err != nil {
+		t.Fatal(err)
+	}
+	song := filepath.Join(h.root, "Part.flac")
 	if e := os.WriteFile(song, []byte("flac"), 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -1213,7 +1216,8 @@ func TestAudioItemsPublishOneOptimizedOption(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	track, trackID := addCompactFixtureItem(t, h.db, "lib", compactcatalog.Track, "track", "Track", 0, "", nil)
+	_, bookID := addCompactFixtureItem(t, h.db, "lib", compactcatalog.Book, "book", "Book", 0, "", nil)
+	track, trackID := addCompactFixtureEntity(t, h.db, "lib", compactcatalog.Part, "part", "Part", 0, "", bookID, nil)
 	_, _ = addCompactFixtureAsset(t, h.db, trackID, song, info, "flac", "", "flac", 0, 0, 240)
 	settleDownloadsProjection(t, h.db)
 	view, e := h.service.Options(context.Background(), h.viewer, track, true)

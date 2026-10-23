@@ -15,10 +15,10 @@ import (
 func TestMusicDownloadLadderDefaultsAndReplayR29(t *testing.T) {
 	h := newHarness(t)
 	ctx := playback.WithDeliveryContext(context.Background(), playback.DeliveryContext{DeviceClass: "web"})
-	if _, e := h.db.Exec(`INSERT INTO libraries(id,name,kind,root) VALUES('music','Music','music',?)`, h.root); e != nil {
+	if _, e := h.db.Exec(`UPDATE libraries SET name='Music',kind='music' WHERE id='lib'`); e != nil {
 		t.Fatal(e)
 	}
-	song, id := addCompactFixtureItem(t, h.db, "music", compactcatalog.Track, "song", "Song", 0, "", nil)
+	song, id := addCompactFixtureItem(t, h.db, "lib", compactcatalog.Track, "song", "Song", 0, "", nil)
 	addCompactFixtureLink(t, h.db, id, h.assetID)
 	if _, e := h.db.Exec(`INSERT INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint) SELECT token,1,size,modified_ns,'music-r29' FROM catalog_assets WHERE token=?`, h.asset); e != nil {
 		t.Fatal(e)
@@ -27,6 +27,7 @@ func TestMusicDownloadLadderDefaultsAndReplayR29(t *testing.T) {
 		t.Fatal(e)
 	}
 	caps := playback.BaselineCapabilityDocument()
+	caps.Engines.Native.Evidence = playback.EvidenceDeclared
 	caps.Engines.Native.Audio = []playback.ClientAudioCodec{{Codec: "flac", MaxChannels: 2, MaxSampleRate: 192000, MaxBitDepth: 32}, {Codec: "opus", MaxChannels: 2, MaxSampleRate: 48000}, {Codec: "aac", MaxChannels: 2, MaxSampleRate: 96000}}
 	caps.Engines.Native.Transports = []playback.ClientTransport{{Transport: playback.TransportDirect, Containers: []string{"mp4", "flac", "ogg"}, Audio: []string{"flac", "opus", "aac"}}}
 	testauth.InsertSession(t, h.db, h.viewer.Hash, h.viewer.AccountID, h.viewer.ProfileID, h.viewer.Authority, h.viewer.Role, "2099-01-01T00:00:00Z")
