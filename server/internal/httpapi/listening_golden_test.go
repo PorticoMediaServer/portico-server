@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -91,6 +92,45 @@ func goldenListeningExtension(t *testing.T, f *goldenFixture, c goldenCase, want
 			for _, child := range v {
 				visit(child)
 			}
+		}
+	}
+	if root, ok := doc.(map[string]any); ok && strings.HasPrefix(c.Name, "content:music:") {
+		// MA removes unsupported Instant mix; every other offered action remains exact.
+		root["listening"].(map[string]any)["actions"] = []string{"play", "shuffle", "enqueue"}
+		if c.Name == "content:music:discover/open" {
+			// Tiny has no recent seven-day albums, personal plays or accessible playlists.
+			// The new Discover policy therefore contains only Artists and Genres, using
+			// the already recorded canonical memberships/orders/counts at the same limit8.
+			raw, err := os.ReadFile("testdata/readpath_golden.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var recorded []goldenCase
+			if err = json.Unmarshal(raw, &recorded); err != nil {
+				t.Fatal(err)
+			}
+			sections := []any{}
+			for _, spec := range []struct{ id, title string }{{"artists", "Artists"}, {"genres", "Genres"}} {
+				found := false
+				for _, old := range recorded {
+					if old.Name != "browse:fixture-music:"+spec.id+":title:asc/open" {
+						continue
+					}
+					found = true
+					response := goldenHomeCoverDecoration(t, f, old, old.Response)
+					response = goldenListeningExtension(t, f, old, response)
+					var page map[string]any
+					if err = json.Unmarshal([]byte(response), &page); err != nil {
+						t.Fatal(err)
+					}
+					info := page["pageInfo"].(map[string]any)
+					sections = append(sections, map[string]any{"id": spec.id, "type": "rail", "heading": map[string]any{"key": "section." + spec.id, "fallback": spec.title}, "entries": page["entries"], "totalCount": info["total"], "nextCursor": info["nextCursor"], "start": 0})
+				}
+				if !found {
+					t.Fatal("missing recorded canonical membership", spec.id)
+				}
+			}
+			root["sections"] = sections
 		}
 	}
 	visit(doc)
