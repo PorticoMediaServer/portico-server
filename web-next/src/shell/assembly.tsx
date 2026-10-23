@@ -22,7 +22,7 @@ import {HomeDocumentResources} from './home-resources';
 
 /** Concrete protected-session assembly. Every command uses the actual current service/engine. */
 export const assembleShellBindings: ShellAssembler = async context => {
-  const viewer = context.session().viewer, authority = viewer.authority;
+  const captured = context.session(), viewer = captured.viewer, authority = viewer.authority;
   if (authority !== 'local' && authority !== 'hosted') throw new Error('unsupported-shell-authority');
   let active = true;
   const current = () => active && context.isCurrent();
@@ -52,6 +52,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
     const owned: (() => void)[] = [], close = () => {for (const cleanup of owned.splice(0).reverse()) {try {cleanup();} catch { /* Retire every owned resource. */ }}};
     try {
       const runtime = new WebShellPlaybackRuntime({api: context.api, authority: {...viewer, authority, epoch: context.epoch, viewerFence: document.viewerFence},
+        localScope: {serverId: viewer.serverId, authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: captured.sessionFamilyId},
         contentScope: scope, events: context.events,
         isCurrent: () => current() && context.home.getSnapshot().document?.viewerFence === document.viewerFence, settings: shellPlaybackSettings(currentPreferences)});
       owned.push(() => runtime.dispose());
@@ -88,7 +89,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   }));
   const getBinding = (): ShellBindings => {
     const visibleDock = dockVisible();
-    return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, context.session().sessionFamilyId, context.epoch]),
+    return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, captured.sessionFamilyId, context.epoch]),
       playback: playerResources?.get()?.binding,
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible: visibleDock, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
         phoneSelection: playerResources?.get()?.selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={visibleDock} />},

@@ -17,6 +17,8 @@ import type {QueuePlaybackView} from '@core/queue-controller.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} from '../../../../packages/player-core/src/index.ts';
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
+import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
+import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -37,11 +39,15 @@ export type WebPlaybackSettings = Readonly<{
 /** The shell supplies an actual viewer-bound transport/feed, and destroys this runtime before
  * replacing that authority. isCurrent also fences an async callback during shell teardown. */
 export type WebPlaybackSource = Readonly<{
+  /** Same actual session as authority, including its independently captured family id. */
+  localScope?: LocalPlaybackScope;
   api: HttpLocalApi; authority: WebPlaybackAuthority; contentScope: ContentScope;
   events: Pick<EventsClient, 'on'>; isCurrent: () => boolean;
   settings: WebPlaybackSettings;
 }>;
 export type WebPlaybackEnvironment = Readonly<{
+  /** The app's one device store, shared by Settings and the player shortcut. */
+  equalizerPort?: EqualizerPort;
   /** Build-time platform injection. null disables the browser music engine. */
   createPlayer?: (video: VideoLike, options: WebMediaPlayerOptions) => PlaybackMediaPort;
   createRender?: ((service: PlaybackService, video: VideoLike) => RenderEngine) | null;

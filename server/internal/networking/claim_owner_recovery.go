@@ -59,7 +59,11 @@ func (c *Coordinator) ReconcilePreinstallCancellation(parent context.Context) (I
 	}
 	ctx, cancel := context.WithTimeout(parent, c.timeout)
 	defer cancel()
-	v, _, err := store.QueuePreinstallCancellation(ctx, c.operation)
+	v, item, err := store.QueuePreinstallCancellation(ctx, c.operation)
+	if err != nil {
+		return Intent{}, err
+	}
+	ctx, err = store.preinstallCancellationContext(ctx, v, item)
 	if err != nil {
 		return Intent{}, err
 	}
@@ -91,11 +95,21 @@ func (s *SQLiteStore) preinstallCancellationContext(ctx context.Context, v Inten
 			if id.generation != v.LocalGeneration+1 || !id.active.Valid || id.active.String != v.OperationID || id.pending.Valid {
 				return ErrStale
 			}
+		case Cancelled:
+			// Only the exact acknowledgement writer may reach this state. A
+			// successor pointer or generation fences even this deny-only guard.
+			if id.generation != v.LocalGeneration+1 || id.active.Valid || id.pending.Valid {
+				return ErrStale
+			}
 		default:
 			return ErrStale
 		}
+		state := "pending"
+		if current.Stage == Cancelled {
+			state = "acknowledged"
+		}
 		var exact bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_cancellations WHERE operation_id=? AND request_id=? AND payload=? AND signature=? AND state='pending')`, v.OperationID, item.RequestID, item.Proof.Payload, item.Proof.Signature).Scan(&exact); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_cancellations WHERE operation_id=? AND request_id=? AND payload=? AND signature=? AND state=?)`, v.OperationID, item.RequestID, item.Proof.Payload, item.Proof.Signature, state).Scan(&exact); err != nil {
 			return err
 		}
 		if !exact {
@@ -230,7 +244,32 @@ func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(strin
 	}
 	for {
 		h.ResumeWebClaims(ctx, guard)
-		rows, err := h.store.db.QueryContext(ctx, `SELECT i.operation_id FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent'`)
+		// A crash or failed pending POST can leave a complete typed capture with
+		// no watch/resume note. Expiry itself authorizes only its exact denial;
+		// it never reconstructs a positive owner guard or sends a fresh claim.
+		rows, err := h.store.db.QueryContext(ctx, `SELECT c.operation_id FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id WHERE c.phase='prepared' AND c.expires_ms<=? AND i.purpose='switch' AND i.current_owner_account_id='' AND i.stage IN('prepared','approved','finalizing','retrieving')`, time.Now().UnixMilli())
+		if err == nil {
+			var expired []string
+			for rows.Next() {
+				var operation string
+				if err = rows.Scan(&operation); err != nil {
+					break
+				}
+				expired = append(expired, operation)
+			}
+			if err == nil {
+				err = rows.Err()
+			}
+			rows.Close()
+			if err == nil {
+				for _, operation := range expired {
+					if err = h.reconcileWebClaim(ctx, operation, nil, true); err != nil && ctx.Err() == nil {
+						log.Printf("Expired owner claim could not be reconciled: %v", err)
+					}
+				}
+			}
+		}
+		rows, err = h.store.db.QueryContext(ctx, `SELECT i.operation_id FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent'`)
 		if err == nil {
 			var operations []string
 			for rows.Next() {
@@ -254,7 +293,7 @@ func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(strin
 		// work. Stay asleep until an actual claim action/watcher wakes it;
 		// permanently polling empty tables would consume the idle SQL budget.
 		var pending bool
-		err = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent')`).Scan(&pending)
+		err = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent') OR EXISTS(SELECT 1 FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id WHERE c.phase='prepared' AND i.stage IN('prepared','approved','finalizing','retrieving'))`).Scan(&pending)
 		if err == nil && !pending {
 			select {
 			case <-ctx.Done():

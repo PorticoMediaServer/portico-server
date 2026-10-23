@@ -1,5 +1,10 @@
 /** Wording shared by the new renderer-free kit models. */
 export const shared = {
+  'next.auth.tv.playPause': 'Play/Pause',
+  'next.auth.tv.deleteDigit': 'Delete a digit',
+  'next.auth.tv.requiredTwoStepBody': '{server} asks for two-step verification on this account. Turn it on from your phone or computer, then sign in again.',
+  'next.auth.tv.requiredPasswordBody': '{server} asks for a new password on this account. Choose one from your phone or computer, then sign in again.',
+  'next.auth.tv.handoffHint': 'Scan the code with your phone, or go to this address on a computer.',
   // Drawn playback clocks: desktop-player f1 and phone-player r4 (812dacac).
   'next.watch.remaining': '−{time}',
   'next.watch.clockDivider': '/ {time}',

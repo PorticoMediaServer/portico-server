@@ -40,11 +40,11 @@ export type SavedSelection = Readonly<{
 }>;
 export type SavedEffects = SavedDownloadEffects & Readonly<{
   openEntry(entry: ContentEntry): void;
-  playEntry(entry: ContentEntry): Promise<void>;
-  openMore(service: SavedService, sectionId: string, entry: SavedEntry, anchor: HTMLElement): void;
+  playEntry(entry: ContentEntry, signal: AbortSignal): Promise<void>;
+  openMore?: (service: SavedService, sectionId: string, entry: SavedEntry, anchor: HTMLElement) => void;
   selectRoute(route: SavedScreenRoute): void;
   /** Present only when the playback owner supports this complete server resource. */
-  playResource?: (target: Readonly<{kind: 'playlist' | 'collection' | 'view'; id: string; shuffle: boolean}>) => Promise<void>;
+  playResource?: (target: Readonly<{kind: 'playlist' | 'collection' | 'view'; id: string; shuffle: boolean}>, signal: AbortSignal) => Promise<void>;
 }>;
 export type SavedBindings = Readonly<{
   runtime: SavedRuntime;
@@ -55,7 +55,7 @@ export type SavedBindings = Readonly<{
   artwork: ShellArtwork;
   preparationArtwork: Parameters<typeof ServerDownloads>[0]['artwork'];
   presentation: SavedPresentation;
-  selection: SavedSelection;
+  selection?: SavedSelection;
   effects: SavedEffects;
 }>;
 export type SavedViewBindings = SavedBindings & Readonly<{operations: SavedOperations}>;
@@ -125,7 +125,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
       {projection?.filters.map(filter => <Select key={filter.id} aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}
         value={'filter' in route ? route.filter ?? 'all' : 'all'} options={filter.options.map(option => ({value: option.id, label: option.label}))}
         onValueChange={filter => { if (route.view === 'watchlist' || route.view === 'favorites' || route.view === 'playlists') effects.selectRoute({...route, filter: filter as 'all' | 'unwatched' | 'inProgress'}); }} />)}
-      {bindings.selection.toolbar}
+      {bindings.selection?.toolbar}
       <div className={styles.toolbarEnd}>
         {total !== undefined && <span>{t(list === 'playlists' ? 'web.saved.items' : 'lib.count', list === 'playlists' ? {count: total} : {count: total, pivot: 'other'})}</span>}
         {projection?.sorts.length ? <Select aria-label={t('saved.sort')} value={'sort' in route ? route.sort ?? projection.query.sort : projection.query.sort}
@@ -154,7 +154,7 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
     return () => observer.disconnect();
   }, []);
   useEffect(() => () => { cleanup.current?.(); cleanup.current = undefined; }, [collection]);
-  const onVisibleRange = useCallback((first: number, last: number) => { cleanup.current?.(); cleanup.current = selection.registerWindow(service, section.id, first, last); }, [selection, service, section.id]);
+  const onVisibleRange = useCallback((first: number, last: number) => { cleanup.current?.(); cleanup.current = selection?.registerWindow(service, section.id, first, last); }, [selection, service, section.id]);
   const first = section.entries[0], media = first && mediaEntry(first), square = first?.kind === 'playlist' || media && shapeFor(media.kind) === 'square';
   const ratio = square ? 1 : 2 / 3, rowHeight = presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
   const columns = presentation.view === 'list' ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
@@ -164,16 +164,17 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
     <WindowedGrid collection={collection} label={serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 30} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
       renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
-        const cardSelection = selection.card(service, section.id, entry), media = mediaEntry(entry);
+        const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
-          return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={anchor => effects.openMore(service, section.id, entry, anchor)} />;
+          return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
         const common = {model: homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), artwork: artwork.foreground(media.posterUrl, presentation.cardWidth * devicePixelRatio, ratio),
           selection: cardSelection, context: 'grid' as const, watched: media.watched, onNavigate: () => effects.openEntry(media),
-          onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => effects.playEntry(media)).catch(effects.reportError); } : undefined,
-          onMore: (anchor: HTMLButtonElement) => bindings.onMore ? bindings.onMore(entry, anchor) : effects.openMore(service, section.id, entry, anchor)};
+          onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(signal => effects.playEntry(media, signal)).catch(effects.reportError); } : undefined,
+          onMore: bindings.onMore ? (anchor: HTMLButtonElement) => bindings.onMore!(entry, anchor)
+            : effects.openMore ? (anchor: HTMLButtonElement) => effects.openMore!(service, section.id, entry, anchor) : undefined};
         if (presentation.view === 'list') return <div className={styles.mediaListRow}><PosterCard {...common} /></div>;
         return <BrowseEntryCard entry={media} artwork={artwork} env={{t, locale: defaultI18n.region.formatLocale}} width={presentation.cardWidth} mixed visible order={context.index} group={`saved:${section.id}`} backdrops={presentation.backdrops}
           actions={{onOpen: common.onNavigate, onPlay: common.onPlay, onMore: common.onMore, selection: cardSelection}} />;

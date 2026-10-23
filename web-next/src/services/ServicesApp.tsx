@@ -13,6 +13,8 @@ import {ServicesAuthForm} from './AuthForm';
 import {DevicePage} from './DevicePage';
 import {ResetPage, VerifyPage} from './LinkPages';
 import {AccountPage} from './AccountPage';
+import {JoinPage} from './JoinPage';
+import {ServicesHomePage} from './HomePage';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -25,12 +27,13 @@ const workspace = createRoute({getParentRoute: () => root, path: '/account', com
 const device = createRoute({getParentRoute: () => root, path: '/device', component: DeviceRoute});
 const reset = createRoute({getParentRoute: () => root, path: '/reset', component: ResetRoute});
 const verify = createRoute({getParentRoute: () => root, path: '/verify-email', component: VerifyRoute});
+const invitation = createRoute({getParentRoute: () => root, path: '/join', component: JoinRoute});
 // Owner continuation has no public browser handler in the consumed MAIN contract. A missing or
 // unrecognized claim is the drawn invalid-link state; it never starts an ordinary sign-in return.
 const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
 type ServicesRouter = ReturnType<typeof makeRouter>;
 function makeRouter(context: Context) {
-  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim]), context});
+  return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
 export function ServicesApp({capture, invalidContinuation, join}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink} = {}) {
@@ -65,7 +68,7 @@ function HomeRoute() {
   // Explicit recovery/create links do not resume a different transaction from the cookie.
   const mode = new URLSearchParams(location.search).get('mode');
   if (!session || authenticating) return <ServicesAuthForm account={account} initialMode={mode === 'forgot' || mode === 'create' ? mode : 'signin'} onSignedIn={() => setAuthenticating(false)} />;
-  return <AccountPage account={account} session={session} section="servers" />;
+  return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
@@ -85,6 +88,10 @@ function ResetRoute() {
 function VerifyRoute() {
   const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
   return <VerifyPage account={account} token={link?.kind === 'verify-email' ? link.value : undefined} />;
+}
+function JoinRoute() {
+  const {account, join} = root.useRouteContext<ServicesRouter>();
+  return join ? <JoinPage account={account} link={join} onBack={() => location.assign('/')} /> : <InvalidLink />;
 }
 function InvalidLink() {
   const {t} = servicesI18n();
