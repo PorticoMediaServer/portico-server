@@ -96,11 +96,13 @@ type Envelope struct {
 	AuthorizationHorizon string                `json:"authorizationHorizon"`
 }
 type Service struct {
-	db                  *sql.DB
-	serverID, setupPath string
-	hashSlots           chan struct{}
-	setupHashKey        []byte
-	SetupClaimReadyTx   func(context.Context, *sql.Tx) (bool, error)
+	resetData, resetDir, resetSystem string
+	resetIO                          *resetFileOperations
+	db                               *sql.DB
+	serverID, setupPath              string
+	hashSlots                        chan struct{}
+	setupHashKey                     []byte
+	SetupClaimReadyTx                func(context.Context, *sql.Tx) (bool, error)
 	// Integration must wire this before exposing descendant v2 authority.
 	OnFamilyRevokedTx func(context.Context, *sql.Tx, FamilyState) error
 	// Root installs this before exposing authentication. Tests without networking
@@ -161,10 +163,21 @@ func New(db *sql.DB, state string) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{db: db, serverID: id, setupPath: storagepaths.Path(state, "setup-token"), hashSlots: make(chan struct{}, 2)}
+	keys := storagepaths.At(state).Keys
+	if err := prepareResetDirectory(keys); err != nil {
+		return nil, err
+	}
+	if err := s.ConfigureResetFile(state, keys, false); err != nil {
+		return nil, err
+	}
 	if err := s.initSetupHashKey(state); err != nil {
 		return nil, err
 	}
-	if s.SetupRequired() {
+	var pendingSetup bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM onboarding_state_v1)`).Scan(&pendingSetup); err != nil {
+		return nil, err
+	}
+	if s.SetupRequired() && !pendingSetup {
 		// The setup secret only lets the browser that started setup resume it; it
 		// never expires and survives restarts (no setup code is shown to anyone).
 		_, e := os.Stat(s.setupPath)
@@ -194,7 +207,8 @@ func (s *Service) SetupRequired() bool {
 	return n == 0
 }
 func (s *Service) Setup(token, user, password, name string) (Envelope, error) {
-	return s.SetupWithOptions(context.Background(), SetupOptions{SetupToken: token, Username: user, Password: password, Name: name}, true)
+	result, err := s.SetupWithOptions(context.Background(), SetupOptions{SetupToken: token, Username: user, Password: password, Name: name, AuthMode: "local"}, true)
+	return result.Envelope, err
 }
 func (s *Service) Login(user, password string) (Envelope, error) {
 	return s.loginFrom(context.Background(), user, password, true)

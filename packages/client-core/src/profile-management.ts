@@ -30,7 +30,7 @@ export type DirectSnapshot=Readonly<{authority:'local';serverId:string;account:D
  * - `device-pending`: the owner must approve this device first; nothing was issued.
  */
 export type DirectSignIn=
- Readonly<{kind:'signed-in';snapshot:DirectSnapshot;session:LocalSession;accountScoped:boolean;passwordChangeRequired:boolean}>
+ Readonly<{kind:'signed-in';snapshot:DirectSnapshot;session:LocalSession;accountScoped:boolean;passwordChangeRequired:boolean;resetFileOwnerSession?:true}>
  |Readonly<{kind:'challenge';token:string;expiresAt:string}>
  |Readonly<{kind:'device-pending';deviceId:string;installationId:string}>;
 export type ProfileScope=Readonly<{authority:ProfileAuthority;accountId:string;serverId?:string}>;
@@ -82,9 +82,13 @@ export function parseDirectSignIn(raw:unknown):DirectSignIn{
  const passwordChangeRequired=raw.passwordChangeRequired===true;
  const session=parseLocalSession(raw.session,{authority:'local',accountId:snapshot.account.id,serverId:snapshot.serverId,profileId:snapshot.account.primaryProfileId});
  const accountScoped=session.viewer.role==='account';
+ if(raw.resetFileOwnerSession!==undefined&&raw.resetFileOwnerSession!==true)invalid();
+ const resetFileOwnerSession=raw.resetFileOwnerSession===true;
+ if(resetFileOwnerSession&&(accountScoped||passwordChangeRequired||snapshot.account.role!=='owner'||session.viewer.role!=='owner'||session.refreshToken))invalid();
+
  // A viewer session straight from sign-in only for one unprotected profile and no forced password change.
- if(!accountScoped&&(passwordChangeRequired||snapshot.profiles.length!==1||snapshot.profiles[0]!.pinRequired))invalid();
- return Object.freeze({kind:'signed-in',snapshot,session,accountScoped,passwordChangeRequired});
+ if(!accountScoped&&!resetFileOwnerSession&&(passwordChangeRequired||snapshot.profiles.length!==1||snapshot.profiles[0]!.pinRequired))invalid();
+ return Object.freeze({kind:'signed-in',snapshot,session,accountScoped,passwordChangeRequired,...(resetFileOwnerSession?{resetFileOwnerSession:true as const}:{})});
 }
 /** `POST /v1/direct/sign-in`. */
 export async function directSignIn(api:ProfileAPI,username:string,password:string,signal?:AbortSignal):Promise<DirectSignIn>{

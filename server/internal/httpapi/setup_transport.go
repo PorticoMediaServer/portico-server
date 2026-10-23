@@ -116,7 +116,7 @@ func (d Dependencies) setupStart(ctx context.Context, r *http.Request, bucket st
 }
 
 func registerSetupTransport(registry *apikit.Registry, d Dependencies) error {
-	err := apikit.RegisterRaw(registry, apikit.RawRoute[identity.SetupOptions, identity.Envelope]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "setup_server", Method: "POST", Path: "/v1/setup", Summary: "Create the first owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 201, BodyLimit: 65536, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Serve: d.serveSetup})
+	err := apikit.RegisterRaw(registry, apikit.RawRoute[identity.SetupOptions, identity.SetupResult]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "setup_server", Method: "POST", Path: "/v1/setup", Summary: "Create the first owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 201, BodyLimit: 65536, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Serve: d.serveSetup})
 	if err != nil {
 		return err
 	}

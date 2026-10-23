@@ -38,6 +38,7 @@ type ClaimIdentityExpected struct {
 	LocalGeneration int64  `json:"localGeneration,string"`
 }
 type ClaimApprovalRequest struct {
+	ClaimPurpose
 	OperationID      string `json:"operationId"`
 	ServerID         string `json:"serverId"`
 	PublicKey        string `json:"publicKey"`
@@ -70,6 +71,14 @@ type ClaimHandler struct {
 	name                func() string
 	endpoints           endpointRegistrations
 	failures            *failureLog
+}
+
+type ClaimPrepareRequest struct {
+	AccountID            string                `json:"accountId,omitempty"`
+	Purpose              string                `json:"purpose,omitempty"`
+	PreviousOwnerRole    string                `json:"previousOwnerRole,omitempty"`
+	ReturnRegistrationID string                `json:"returnRegistrationId,omitempty"`
+	Expected             ClaimIdentityExpected `json:"expected"`
 }
 
 func NewClaimHandler(store *SQLiteStore, runner *AuthorityRunner, transport Transport, signer Signer, authorize ClaimRequestAuthorizer, name func() string) (*ClaimHandler, error) {
@@ -168,10 +177,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		// accountId is optional (omitempty): the canonical decoder compares the
 		// request with its own re-encoding, so a body without one, which is what
 		// the web console's Plex-style Connect sends, must re-encode without one.
-		var body struct {
-			AccountID string                `json:"accountId,omitempty"`
-			Expected  ClaimIdentityExpected `json:"expected"`
-		}
+		var body ClaimPrepareRequest
 		if e := readClaimBody(w, r, &body); e != nil {
 			return ClaimStatus{}, e
 		}
@@ -193,7 +199,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		if e != nil {
 			return ClaimStatus{}, e
 		}
-		if active.Valid || installed.Valid || identity.ServerID != body.Expected.ServerID || identity.ResetGeneration != body.Expected.LocalGeneration {
+		if (active.Valid || installed.Valid) && body.Purpose != "change-owner" && body.Purpose != "switch" || identity.ServerID != body.Expected.ServerID || identity.ResetGeneration != body.Expected.LocalGeneration {
 			return ClaimStatus{}, ErrStale
 		}
 		nonce := make([]byte, 24)
@@ -201,7 +207,19 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			return ClaimStatus{}, e
 		}
 		binding := Binding{OperationID: base64.RawURLEncoding.EncodeToString(nonce), ServerID: identity.ServerID, AccountID: body.AccountID, PublicKey: identity.PublicKey, LocalGeneration: identity.ResetGeneration}
-		if _, e = h.store.Prepare(ctx, binding, owner); e != nil {
+		purpose := ClaimPurpose{Purpose: body.Purpose, PreviousOwnerRole: body.PreviousOwnerRole, ReturnRegistrationID: body.ReturnRegistrationID}
+		if purpose.Purpose == "" {
+			purpose.Purpose = "setup"
+		}
+		if purpose.Purpose != "setup" {
+			if purpose.Purpose == "change-owner" && purpose.PreviousOwnerRole == "" {
+				purpose.PreviousOwnerRole = "admin"
+			}
+			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil {
+				return ClaimStatus{}, ErrClaimOwnerRequired
+			}
+		}
+		if _, e = h.store.PreparePurpose(ctx, binding, owner, purpose); e != nil {
 			return ClaimStatus{}, e
 		}
 		return h.snapshot(ctx)
@@ -236,6 +254,9 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			return ClaimStatus{}, ErrInvalid
 		}
 		if _, e = h.store.Approve(ctx, expected, []byte(body.ApprovalEnvelope)); e != nil {
+			if errors.Is(e, ErrOwnerCollision) {
+				_, _, _ = h.store.WithdrawReplacement(ctx, expected)
+			}
 			return ClaimStatus{}, e
 		}
 		return h.snapshot(ctx)
@@ -267,11 +288,11 @@ func (h *ClaimHandler) expected(ctx context.Context, want ClaimExpected) (Intent
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	_, active, _, e := readCurrentIdentityTx(ctx, tx)
+	id, e := readIdentity(ctx, tx)
 	if e != nil {
 		return Intent{}, e
 	}
-	if !active.Valid || active.String != want.OperationID {
+	if (!id.active.Valid || id.active.String != want.OperationID) && (!id.pending.Valid || id.pending.String != want.OperationID) {
 		return Intent{}, ErrStale
 	}
 	v, e := loadIntentTx(ctx, tx, want.OperationID)
@@ -300,6 +321,13 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	result := ClaimStatus{State: "unconfigured", Identity: ClaimIdentityExpected{id.ServerID, id.ResetGeneration}, Actions: []string{"prepare"}}
 	if !active.Valid {
 		return result, nil
+	}
+	var pending sql.NullString
+	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
+		return ClaimStatus{}, e
+	}
+	if pending.Valid {
+		active = pending
 	}
 	stored, e := loadIntentTx(ctx, tx, active.String)
 	if e != nil {
@@ -337,11 +365,18 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 			return ClaimStatus{}, ErrInvalid
 		}
 		result.Actions = append(result.Actions, "approve")
-		result.ApprovalRequest = &ClaimApprovalRequest{v.OperationID, v.ServerID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, name, v.ApprovalRevision}
+		result.ApprovalRequest = &ClaimApprovalRequest{v.ClaimPurpose, v.OperationID, v.ServerID, base64.RawURLEncoding.EncodeToString(v.PublicKey), v.LocalGeneration, name, v.ApprovalRevision}
 	} else {
 		result.Actions = append(result.Actions, "continue")
 	}
 	return result, nil
+}
+
+func (s claimExpectedStore) WithdrawReplacement(ctx context.Context, v Intent) (Intent, bool, error) {
+	if store, ok := s.Store.(replacementWithdrawer); ok {
+		return store.WithdrawReplacement(ctx, v)
+	}
+	return Intent{}, false, nil
 }
 
 type claimExpectedStore struct {
@@ -370,6 +405,8 @@ func (h *ClaimHandler) failure(w http.ResponseWriter, r *http.Request, e error) 
 		writeClaimFailure(w, 401, "owner_required", "Sign in as this server’s current owner.", false)
 	case errors.Is(e, ErrInvalid):
 		writeClaimFailure(w, 400, "invalid_claim_request", "Check the claim request and try again.", false)
+	case errors.Is(e, ErrOwnerCollision):
+		writeClaimFailure(w, 409, "owner_target_exists", "This account is already represented on this server.", false)
 	case errors.Is(e, ErrStale):
 		writeClaimFailure(w, 409, "claim_stale", "Server setup changed. Refresh its status before continuing.", false)
 	case errors.Is(e, ErrApprovalRequired):
@@ -426,4 +463,12 @@ func (h *ClaimHandler) SetRequestAuthorizer(authorize ClaimRequestAuthorizer) {
 	if authorize != nil {
 		h.authorize = authorize
 	}
+}
+
+func (ClaimPrepareRequest) JSONSchema() map[string]any {
+	id := map[string]any{"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_-]*$"}
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"expected"}, "properties": map[string]any{
+		"accountId": id, "purpose": map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner"}},
+		"previousOwnerRole": map[string]any{"type": "string", "enum": []string{"admin", "member", "remove"}}, "returnRegistrationId": id,
+		"expected": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"serverId", "localGeneration"}, "properties": map[string]any{"serverId": map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}, "localGeneration": map[string]any{"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}}}}}
 }

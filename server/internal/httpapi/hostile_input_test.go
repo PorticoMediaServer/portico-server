@@ -145,7 +145,7 @@ func hostileFixture(t *testing.T) (http.Handler, string, func() string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Owner"})
+	body, _ := json.Marshal(map[string]string{"authMode": "local", "setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Owner"})
 	w := httptest.NewRecorder()
 	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body))
 	setup.Header.Set("Content-Type", "application/json")

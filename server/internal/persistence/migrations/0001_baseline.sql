@@ -3268,7 +3268,6 @@ CREATE TABLE quick_connect_v1(
 CREATE TABLE setup_rate_limits_v1(subject_hash TEXT NOT NULL,kind TEXT NOT NULL,window_start INTEGER NOT NULL,attempts INTEGER NOT NULL,PRIMARY KEY(subject_hash,kind)) STRICT;
 CREATE TABLE onboarding_state_v1(singleton INTEGER PRIMARY KEY CHECK(singleton=1),auth_mode TEXT NOT NULL CHECK(auth_mode IN ('hosted','local')),
  operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,setup_hash TEXT NOT NULL,receipt BLOB,receipt_until INTEGER NOT NULL,
- recovery_account TEXT NOT NULL DEFAULT '',recovery_confirmed INTEGER NOT NULL DEFAULT 0,remote_recovery INTEGER NOT NULL DEFAULT 0,
  ready INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE TABLE identity_account_attempt_budget(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
@@ -3344,6 +3343,7 @@ CREATE TABLE networking_claim_identity(
  reset_generation INTEGER NOT NULL CHECK(reset_generation>=0),
  active_operation_id TEXT,
  installed_operation_id TEXT,
+ pending_operation_id TEXT,
  FOREIGN KEY(server_id,public_key) REFERENCES networking_server_identities(server_id,public_key),
  CHECK(installed_operation_id IS NULL OR (active_operation_id IS NOT NULL AND installed_operation_id=active_operation_id))
 ) STRICT;
@@ -3355,8 +3355,15 @@ CREATE TABLE networking_claim_intents(
  local_generation INTEGER NOT NULL CHECK(local_generation>=0),
  revision INTEGER NOT NULL CHECK(revision>0),
  stage TEXT NOT NULL CHECK(stage IN('prepared','approved','finalizing','retrieving','installed','cancel_pending','cancelled')),
- owner_id TEXT NOT NULL CHECK(length(owner_id) BETWEEN 1 AND 128),
- owner_profile_id TEXT NOT NULL CHECK(length(owner_profile_id) BETWEEN 1 AND 128),
+ owner_id TEXT NOT NULL,
+ owner_profile_id TEXT NOT NULL,
+ setup_operation_id TEXT NOT NULL DEFAULT '',
+ purpose TEXT NOT NULL DEFAULT 'setup' CHECK(purpose IN('setup','switch','change-owner')),
+ current_owner_account_id TEXT NOT NULL DEFAULT '',
+ previous_owner_role TEXT NOT NULL DEFAULT '',
+ return_registration_id TEXT NOT NULL DEFAULT '',
+ approved_username TEXT NOT NULL DEFAULT '',
+ owner_change_reserved INTEGER NOT NULL DEFAULT 0 CHECK(owner_change_reserved IN(0,1)),
  owner_epoch INTEGER NOT NULL CHECK(owner_epoch>=0),
  approval_revision INTEGER NOT NULL DEFAULT 0 CHECK(approval_revision>=0),
  approval_issued_at TEXT NOT NULL DEFAULT '',
@@ -3367,6 +3374,7 @@ CREATE TABLE networking_claim_intents(
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
  FOREIGN KEY(server_id,public_key) REFERENCES networking_server_identities(server_id,public_key),
  UNIQUE(operation_id,server_id,account_id,local_generation,claim_generation,credential_generation),
+ CHECK((setup_operation_id='' AND length(owner_id) BETWEEN 1 AND 128 AND length(owner_profile_id) BETWEEN 1 AND 128) OR (length(setup_operation_id) BETWEEN 1 AND 128 AND owner_id='' AND owner_profile_id='' AND owner_epoch>0)),
  CHECK((claim_generation='')=(credential_generation='')),
  CHECK(stage NOT IN('retrieving','installed') OR claim_generation<>''),
  CHECK(installation_acknowledged=0 OR stage IN('installed','cancel_pending','cancelled'))
@@ -4458,7 +4466,8 @@ CREATE INDEX authorization_families_retention ON authorization_session_families(
 CREATE INDEX authorization_families_horizon ON authorization_session_families(authorization_horizon,id);
 CREATE INDEX networking_mappings_expiry ON networking_mappings(expires_at);
 CREATE INDEX networking_certificates_scope ON networking_certificates(scope_id,created_at);
-CREATE UNIQUE INDEX networking_claim_one_active ON networking_claim_intents(server_id) WHERE stage<>'cancelled';
+CREATE UNIQUE INDEX networking_claim_one_active ON networking_claim_intents(server_id) WHERE stage NOT IN('cancelled','installed');
+CREATE UNIQUE INDEX networking_claim_one_installed ON networking_claim_intents(server_id) WHERE stage='installed';
 CREATE INDEX identity_refresh_receipts_family ON identity_refresh_receipts(family_id);
 CREATE INDEX artwork_variants_digest ON artwork_variants(digest);
 CREATE INDEX playback_v1_sessions_lease ON playback_v1_sessions(lease_expires_ms) WHERE ended_ms=0;
@@ -8361,3 +8370,12 @@ CREATE TRIGGER library_metadata_agents_browse_delete AFTER DELETE ON library_met
 END;
 CREATE INDEX screen_metadata_attention_browse ON screen_metadata_attention(library_id,entity_id,generation) WHERE retired=0 AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
 CREATE INDEX listening_metadata_attention_browse ON listening_metadata_attention(library_id,entity_id) WHERE retired=0 AND kind IN('album','song') AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
+CREATE TABLE owner_reset_file(singleton INTEGER PRIMARY KEY CHECK(singleton=1),account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,epoch INTEGER NOT NULL,portico INTEGER NOT NULL CHECK(portico IN(0,1)),code_hash TEXT NOT NULL,issued_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK(failed_attempts BETWEEN 0 AND 5)) STRICT;
+CREATE TABLE member_password_resets(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,epoch INTEGER NOT NULL,expires_at INTEGER NOT NULL,failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK(failed_attempts BETWEEN 0 AND 5),turn_off_two_step INTEGER NOT NULL CHECK(turn_off_two_step IN(0,1)),membership_revision INTEGER NOT NULL,issuer_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,issuer_epoch INTEGER NOT NULL) STRICT;
+CREATE TABLE reset_file_sessions(family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN('owner','password'))) STRICT;
+
+-- A signed owner change reserves its identity before any remote finalize.
+CREATE TRIGGER owner_change_account_insert BEFORE INSERT ON accounts WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+CREATE TRIGGER owner_change_account_rename BEFORE UPDATE OF username ON accounts WHEN NEW.username<>OLD.username COLLATE NOCASE AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND approved_username=NEW.username COLLATE NOCASE) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+CREATE TRIGGER owner_change_link_insert BEFORE INSERT ON account_portico_links WHEN EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;
+CREATE TRIGGER owner_change_link_update BEFORE UPDATE OF hosted_account_id ON account_portico_links WHEN NEW.hosted_account_id<>OLD.hosted_account_id AND EXISTS(SELECT 1 FROM networking_claim_intents WHERE owner_change_reserved=1 AND account_id=NEW.hosted_account_id) BEGIN SELECT RAISE(ABORT,'owner_change_identity_reserved'); END;

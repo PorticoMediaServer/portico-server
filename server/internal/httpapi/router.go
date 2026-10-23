@@ -658,10 +658,10 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 		return identity.Principal{}, identity.ErrUnauthorized
 	}
 	token := strings.TrimPrefix(header, "Bearer ")
-	private := d.privateSetupPeer(r)
 	// The cache is keyed on the token's digest, never on the token, and it is
 	// consulted only on lanes where a few seconds of lag in a revocation is
 	// acceptable. Everything that touches authority or playback resolves live.
+	private := d.privateSetupPeer(r)
 	key := ""
 	strict := strictPrincipal(dbwork.ClassFrom(r.Context(), dbwork.ClassInteractive))
 	if !strict && !private {
@@ -681,9 +681,6 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	resolve := func(ctx context.Context) error {
 		var e error
 		if p, e = d.Identity.AuthenticateContext(ctx, token); e != nil {
-			return e
-		}
-		if e = d.Identity.CheckRecoveryRoute(ctx, p, private); e != nil {
 			return e
 		}
 		return d.allowedLibrary(ctx, p, "")

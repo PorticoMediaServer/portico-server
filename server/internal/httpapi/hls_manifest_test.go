@@ -84,7 +84,7 @@ func TestHLSManifestRepresentationRangeReloadAndGrantRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := json.Marshal(map[string]string{"setupToken": string(setupToken), "username": "owner", "password": "long-test-password", "name": "Test"})
+	body, err := json.Marshal(map[string]string{"authMode": "local", "setupToken": string(setupToken), "username": "owner", "password": "long-test-password", "name": "Test"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26892,6 +26892,29 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAuthServicesReachabilityRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAuthServicesReachabilityResponse": {
+    "properties": {
+      "checkedAt": {
+        "type": "string"
+      },
+      "configured": {
+        "type": "boolean"
+      },
+      "reachable": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "configured",
+      "reachable"
+    ],
+    "type": "object"
+  },
   "GetBooksIdChaptersRequest": {
     "properties": {},
     "required": [],
@@ -105023,6 +105046,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -105035,7 +105061,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -105043,6 +105078,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -123913,15 +123952,6 @@ export const schemas = {
       "ready": {
         "type": "boolean"
       },
-      "recoveryConfirmed": {
-        "type": "boolean"
-      },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
       "revision": {
         "type": "string"
       },
@@ -123933,9 +123963,6 @@ export const schemas = {
       "authMode",
       "phase",
       "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
       "claimInstalled",
       "revision",
       "sessionLabel"
@@ -141892,16 +141919,12 @@ export const schemas = {
       "name": {
         "type": "string"
       },
-      "password": {
-        "type": "string"
-      },
       "username": {
         "type": "string"
       }
     },
     "required": [
       "username",
-      "password",
       "name",
       "allowedLibraries",
       "expectedRevision",
@@ -150322,6 +150345,811 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAuthOwnerResetRequestRequest": {
+    "properties": {
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "PostAuthOwnerResetRequestResponse": {
+    "properties": {
+      "dataDirectory": {
+        "type": "string"
+      },
+      "fileDirectory": {
+        "type": "string"
+      },
+      "fileName": {
+        "const": "reset-code.txt",
+        "type": "string"
+      },
+      "retryAfterSeconds": {
+        "maximum": 60,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "systemKind": {
+        "enum": [
+          "linux",
+          "windows",
+          "macos",
+          "docker"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "systemKind",
+      "dataDirectory",
+      "fileDirectory",
+      "fileName",
+      "retryAfterSeconds"
+    ],
+    "type": "object"
+  },
+  "PostAuthOwnerResetVerifyRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "turnOffTwoStep": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "type": "object"
+  },
+  "PostAuthOwnerResetVerifyResponse": {
+    "oneOf": [
+      {
+        "properties": {
+          "account": {
+            "properties": {
+              "allowedLibraries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "disabledAt": {
+                "type": "string"
+              },
+              "disabledReason": {
+                "type": "string"
+              },
+              "hostedAccountId": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "primaryProfileId": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "role": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "primaryProfileId",
+              "role",
+              "revision",
+              "disabled",
+              "allowedLibraries"
+            ],
+            "type": "object"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean"
+          },
+          "custodyPending": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "passwordChangeRequired": {
+            "const": true,
+            "type": "boolean"
+          },
+          "profiles": {
+            "items": {
+              "properties": {
+                "allowedLibraries": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "art": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRequired": {
+                  "type": "boolean"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "primary": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "primary",
+                "position",
+                "art",
+                "revision",
+                "pinRevision",
+                "pinRequired",
+                "allowedLibraries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "resetFileOwnerSession": {
+            "const": false,
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "session": {
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "authorizationHorizon": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "installationId": {
+                "type": "string"
+              },
+              "refreshToken": {
+                "maxLength": 0,
+                "type": "string"
+              },
+              "serverIdentity": {
+                "properties": {
+                  "fingerprint": {
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "publicKey",
+                  "fingerprint"
+                ],
+                "type": "object"
+              },
+              "sessionFamilyId": {
+                "type": "string"
+              },
+              "tokenGeneration": {
+                "type": "string"
+              },
+              "viewer": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "account"
+                    ],
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "profileId",
+                  "serverId",
+                  "authority",
+                  "role"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "accessToken",
+              "deviceId",
+              "installationId",
+              "expiresAt",
+              "viewer",
+              "sessionFamilyId",
+              "tokenGeneration",
+              "authorizationHorizon"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "authority",
+          "serverId",
+          "account",
+          "profiles",
+          "canManage",
+          "session",
+          "passwordChangeRequired"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "account": {
+            "properties": {
+              "allowedLibraries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "disabledAt": {
+                "type": "string"
+              },
+              "disabledReason": {
+                "type": "string"
+              },
+              "hostedAccountId": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "primaryProfileId": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "role": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "primaryProfileId",
+              "role",
+              "revision",
+              "disabled",
+              "allowedLibraries"
+            ],
+            "type": "object"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean"
+          },
+          "custodyPending": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "passwordChangeRequired": {
+            "const": false,
+            "type": "boolean"
+          },
+          "profiles": {
+            "items": {
+              "properties": {
+                "allowedLibraries": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "art": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRequired": {
+                  "type": "boolean"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "primary": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "primary",
+                "position",
+                "art",
+                "revision",
+                "pinRevision",
+                "pinRequired",
+                "allowedLibraries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "resetFileOwnerSession": {
+            "const": true,
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "session": {
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "authorizationHorizon": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "installationId": {
+                "type": "string"
+              },
+              "refreshToken": {
+                "maxLength": 0,
+                "type": "string"
+              },
+              "serverIdentity": {
+                "properties": {
+                  "fingerprint": {
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "publicKey",
+                  "fingerprint"
+                ],
+                "type": "object"
+              },
+              "sessionFamilyId": {
+                "type": "string"
+              },
+              "tokenGeneration": {
+                "type": "string"
+              },
+              "viewer": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "owner"
+                    ],
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "profileId",
+                  "serverId",
+                  "authority",
+                  "role"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "accessToken",
+              "deviceId",
+              "installationId",
+              "expiresAt",
+              "viewer",
+              "sessionFamilyId",
+              "tokenGeneration",
+              "authorizationHorizon"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "authority",
+          "serverId",
+          "account",
+          "profiles",
+          "canManage",
+          "session",
+          "resetFileOwnerSession"
+        ],
+        "type": "object"
+      }
+    ]
+  },
+  "PostAuthPorticoReturnExchangeRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "purpose": {
+        "type": "string"
+      },
+      "registrationId": {
+        "type": "string"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "serverChallenge": {
+        "type": "string"
+      },
+      "setupToken": {
+        "type": "string"
+      },
+      "transactionId": {
+        "type": "string"
+      },
+      "verifier": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "transactionId",
+      "verifier",
+      "registrationId",
+      "serverChallenge",
+      "installationId",
+      "purpose",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostAuthPorticoReturnExchangeResponse": {
+    "properties": {
+      "account": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryProfileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "primaryProfileId",
+          "role",
+          "revision",
+          "disabled",
+          "allowedLibraries"
+        ],
+        "type": "object"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "canManage": {
+        "type": "boolean"
+      },
+      "challenge": {
+        "properties": {
+          "expiresAt": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "custodyPending": {
+        "type": "boolean"
+      },
+      "deviceApprovalPending": {
+        "type": "boolean"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "passwordChangeRequired": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "allowedLibraries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "art": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRequired": {
+              "type": "boolean"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "primary": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "primary",
+            "position",
+            "art",
+            "revision",
+            "pinRevision",
+            "pinRequired",
+            "allowedLibraries"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "authorizationHorizon": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "authority",
+      "serverId",
+      "account",
+      "profiles",
+      "canManage"
+    ],
+    "type": "object"
+  },
   "PostAuthRefreshRequest": {
     "properties": {
       "installationId": {
@@ -150581,6 +151409,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
       },
       "serverId": {
         "type": "string"
@@ -150890,6 +151721,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
       },
       "serverId": {
         "type": "string"
@@ -151427,6 +152261,37 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "PostDirectMembersIdResetCodeRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "turnOffTwoStep": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostDirectMembersIdResetCodeResponse": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
   "PostDirectMembersRequest": {
     "properties": {
       "allowedLibraries": {
@@ -151434,14 +152299,6 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
-      },
-      "disabled": {
-        "type": "boolean"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
       },
       "name": {
         "type": "string"
@@ -151457,9 +152314,7 @@ export const schemas = {
       "username",
       "password",
       "name",
-      "allowedLibraries",
-      "expectedRevision",
-      "disabled"
+      "allowedLibraries"
     ],
     "type": "object"
   },
@@ -151698,6 +152553,250 @@ export const schemas = {
       "currentPassword",
       "newPassword",
       "code"
+    ],
+    "type": "object"
+  },
+  "PostDirectPasswordResetRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "username",
+      "code"
+    ],
+    "type": "object"
+  },
+  "PostDirectPasswordResetResponse": {
+    "properties": {
+      "account": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryProfileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "primaryProfileId",
+          "role",
+          "revision",
+          "disabled",
+          "allowedLibraries"
+        ],
+        "type": "object"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "canManage": {
+        "type": "boolean"
+      },
+      "custodyPending": {
+        "type": "boolean"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "passwordChangeRequired": {
+        "const": true,
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "allowedLibraries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "art": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRequired": {
+              "type": "boolean"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "primary": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "primary",
+            "position",
+            "art",
+            "revision",
+            "pinRevision",
+            "pinRequired",
+            "allowedLibraries"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "const": false,
+        "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "authorizationHorizon": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "maxLength": 0,
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "enum": [
+                  "account"
+                ],
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "authority",
+      "serverId",
+      "account",
+      "profiles",
+      "canManage",
+      "session",
+      "passwordChangeRequired"
     ],
     "type": "object"
   },
@@ -152530,6 +153629,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
       },
       "serverId": {
         "type": "string"
@@ -161293,6 +162395,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -161305,7 +162410,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -161313,6 +162427,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -161421,6 +162539,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -161433,7 +162554,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -161441,6 +162571,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -161552,6 +162686,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -161564,7 +162701,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -161572,6 +162718,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -161683,6 +162833,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -161695,7 +162848,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -161703,6 +162865,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -161819,16 +162985,24 @@ export const schemas = {
     "type": "object"
   },
   "PostNetworkingClaimPrepareRequest": {
+    "additionalProperties": false,
     "properties": {
       "accountId": {
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]*$",
         "type": "string"
       },
       "expected": {
+        "additionalProperties": false,
         "properties": {
           "localGeneration": {
+            "pattern": "^(0|[1-9][0-9]*)$",
             "type": "string"
           },
           "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
             "type": "string"
           }
         },
@@ -161837,6 +163011,27 @@ export const schemas = {
           "localGeneration"
         ],
         "type": "object"
+      },
+      "previousOwnerRole": {
+        "enum": [
+          "admin",
+          "member",
+          "remove"
+        ],
+        "type": "string"
+      },
+      "purpose": {
+        "enum": [
+          "setup",
+          "switch",
+          "change-owner"
+        ],
+        "type": "string"
+      },
+      "returnRegistrationId": {
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]*$",
+        "type": "string"
       }
     },
     "required": [
@@ -161857,6 +163052,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -161869,7 +163067,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -161877,6 +163084,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -161988,6 +163199,9 @@ export const schemas = {
       },
       "approvalRequest": {
         "properties": {
+          "currentOwnerAccountId": {
+            "type": "string"
+          },
           "expectedRevision": {
             "type": "string"
           },
@@ -162000,7 +163214,16 @@ export const schemas = {
           "operationId": {
             "type": "string"
           },
+          "previousOwnerRole": {
+            "type": "string"
+          },
           "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "returnRegistrationId": {
             "type": "string"
           },
           "serverId": {
@@ -162008,6 +163231,10 @@ export const schemas = {
           }
         },
         "required": [
+          "purpose",
+          "currentOwnerAccountId",
+          "previousOwnerRole",
+          "returnRegistrationId",
           "operationId",
           "serverId",
           "publicKey",
@@ -163449,11 +164676,15 @@ export const schemas = {
       "requestId": {
         "type": "string"
       },
+      "serverName": {
+        "type": "string"
+      },
       "userCode": {
         "type": "string"
       }
     },
     "required": [
+      "serverName",
       "requestId",
       "userCode",
       "deviceName",
@@ -163829,22 +165060,335 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "PostSetupFinishRequest": {
+  "PostSetupAccountCompleteRequest": {
     "properties": {
-      "enabled": {
-        "type": "boolean"
+      "porticoIdentity": {
+        "nullable": true,
+        "properties": {
+          "certificate": {
+            "properties": {
+              "keyId": {
+                "type": "string"
+              },
+              "notAfter": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "notBefore": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revoked": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keyId",
+              "publicKey",
+              "purpose",
+              "notBefore",
+              "notAfter",
+              "revision",
+              "revoked",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature",
+          "keyId"
+        ],
+        "type": "object"
       },
-      "revision": {
+      "requestId": {
         "type": "string"
       },
-      "warningConfirmed": {
-        "type": "boolean"
+      "setupToken": {
+        "type": "string"
       }
     },
     "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
+      "requestId",
+      "setupToken",
+      "porticoIdentity"
+    ],
+    "type": "object"
+  },
+  "PostSetupAccountCompleteResponse": {
+    "properties": {
+      "account": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryProfileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "primaryProfileId",
+          "role",
+          "revision",
+          "disabled",
+          "allowedLibraries"
+        ],
+        "type": "object"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "canManage": {
+        "type": "boolean"
+      },
+      "challenge": {
+        "properties": {
+          "expiresAt": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "custodyPending": {
+        "type": "boolean"
+      },
+      "deviceApprovalPending": {
+        "type": "boolean"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "passwordChangeRequired": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "allowedLibraries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "art": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRequired": {
+              "type": "boolean"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "primary": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "primary",
+            "position",
+            "art",
+            "revision",
+            "pinRevision",
+            "pinRequired",
+            "allowedLibraries"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "authorizationHorizon": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "authority",
+      "serverId",
+      "account",
+      "profiles",
+      "canManage"
+    ],
+    "type": "object"
+  },
+  "PostSetupFinishRequest": {
+    "properties": {
+      "revision": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "revision"
     ],
     "type": "object"
   },
@@ -163862,15 +165406,6 @@ export const schemas = {
       "ready": {
         "type": "boolean"
       },
-      "recoveryConfirmed": {
-        "type": "boolean"
-      },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
       "revision": {
         "type": "string"
       },
@@ -163882,71 +165417,6 @@ export const schemas = {
       "authMode",
       "phase",
       "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
-      "claimInstalled",
-      "revision",
-      "sessionLabel"
-    ],
-    "type": "object"
-  },
-  "PostSetupRemoteRecoveryRequest": {
-    "properties": {
-      "enabled": {
-        "type": "boolean"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "warningConfirmed": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
-    ],
-    "type": "object"
-  },
-  "PostSetupRemoteRecoveryResponse": {
-    "properties": {
-      "authMode": {
-        "type": "string"
-      },
-      "claimInstalled": {
-        "type": "boolean"
-      },
-      "phase": {
-        "type": "string"
-      },
-      "ready": {
-        "type": "boolean"
-      },
-      "recoveryConfirmed": {
-        "type": "boolean"
-      },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "sessionLabel": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "authMode",
-      "phase",
-      "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
       "claimInstalled",
       "revision",
       "sessionLabel"
@@ -163969,58 +165439,104 @@ export const schemas = {
     "type": "object"
   },
   "PostSetupResumeResponse": {
-    "properties": {
-      "accessToken": {
-        "type": "string"
-      },
-      "authorizationHorizon": {
-        "type": "string"
-      },
-      "deviceId": {
-        "type": "string"
-      },
-      "expiresAt": {
-        "type": "string"
-      },
-      "installationId": {
-        "type": "string"
-      },
-      "refreshToken": {
-        "type": "string"
-      },
-      "serverIdentity": {
+    "oneOf": [
+      {
         "properties": {
-          "fingerprint": {
+          "accessToken": {
             "type": "string"
           },
-          "publicKey": {
+          "authorizationHorizon": {
             "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "publicKey",
-          "fingerprint"
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
         ],
         "type": "object"
       },
-      "sessionFamilyId": {
-        "type": "string"
-      },
-      "tokenGeneration": {
-        "type": "string"
-      },
-      "viewer": {
+      {
         "properties": {
-          "accountId": {
+          "authMode": {
+            "enum": [
+              "hosted"
+            ],
             "type": "string"
           },
-          "authority": {
+          "claimRequired": {
+            "const": true,
+            "type": "boolean"
+          },
+          "requestId": {
             "type": "string"
           },
-          "profileId": {
-            "type": "string"
-          },
-          "role": {
+          "revision": {
             "type": "string"
           },
           "serverId": {
@@ -164028,26 +165544,15 @@ export const schemas = {
           }
         },
         "required": [
-          "accountId",
-          "profileId",
           "serverId",
-          "authority",
-          "role"
+          "requestId",
+          "authMode",
+          "claimRequired",
+          "revision"
         ],
         "type": "object"
       }
-    },
-    "required": [
-      "accessToken",
-      "deviceId",
-      "installationId",
-      "expiresAt",
-      "viewer",
-      "sessionFamilyId",
-      "tokenGeneration",
-      "authorizationHorizon"
-    ],
-    "type": "object"
+    ]
   },
   "PostShowsIdMetadataScreenRetryRequest": {
     "properties": {
@@ -179850,9 +181355,6 @@ export const schemas = {
       "password": {
         "type": "string"
       },
-      "recoverySaved": {
-        "type": "boolean"
-      },
       "requestId": {
         "type": "string"
       },
@@ -179865,65 +181367,109 @@ export const schemas = {
     },
     "required": [
       "setupToken",
-      "username",
-      "password",
       "name"
     ],
     "type": "object"
   },
   "SetupServerResponse": {
-    "properties": {
-      "accessToken": {
-        "type": "string"
-      },
-      "authorizationHorizon": {
-        "type": "string"
-      },
-      "deviceId": {
-        "type": "string"
-      },
-      "expiresAt": {
-        "type": "string"
-      },
-      "installationId": {
-        "type": "string"
-      },
-      "refreshToken": {
-        "type": "string"
-      },
-      "serverIdentity": {
+    "oneOf": [
+      {
         "properties": {
-          "fingerprint": {
+          "accessToken": {
             "type": "string"
           },
-          "publicKey": {
+          "authorizationHorizon": {
             "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "publicKey",
-          "fingerprint"
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
         ],
         "type": "object"
       },
-      "sessionFamilyId": {
-        "type": "string"
-      },
-      "tokenGeneration": {
-        "type": "string"
-      },
-      "viewer": {
+      {
         "properties": {
-          "accountId": {
+          "authMode": {
+            "enum": [
+              "hosted"
+            ],
             "type": "string"
           },
-          "authority": {
+          "claimRequired": {
+            "const": true,
+            "type": "boolean"
+          },
+          "requestId": {
             "type": "string"
           },
-          "profileId": {
-            "type": "string"
-          },
-          "role": {
+          "revision": {
             "type": "string"
           },
           "serverId": {
@@ -179931,26 +181477,15 @@ export const schemas = {
           }
         },
         "required": [
-          "accountId",
-          "profileId",
           "serverId",
-          "authority",
-          "role"
+          "requestId",
+          "authMode",
+          "claimRequired",
+          "revision"
         ],
         "type": "object"
       }
-    },
-    "required": [
-      "accessToken",
-      "deviceId",
-      "installationId",
-      "expiresAt",
-      "viewer",
-      "sessionFamilyId",
-      "tokenGeneration",
-      "authorizationHorizon"
-    ],
-    "type": "object"
+    ]
   },
   "SocialDeleteV1CastDevicesIdRequest": {
     "properties": {},

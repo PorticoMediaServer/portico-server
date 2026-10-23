@@ -3011,6 +3011,23 @@ export const routes = [
     "admission": "auth"
   },
   {
+    "id": "get_auth_services_reachability",
+    "method": "GET",
+    "path": "/v1/auth/services-reachability",
+    "summary": "Check whether Portico Services answers",
+    "access": "public",
+    "requires": "open",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "get_books_id_chapters",
     "method": "GET",
     "path": "/v1/books/{id}/chapters",
@@ -10372,6 +10389,74 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "post_auth_owner_reset_request",
+    "method": "POST",
+    "path": "/v1/auth/owner-reset/request",
+    "summary": "Reset account access",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "rate_limited"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_owner_reset_verify",
+    "method": "POST",
+    "path": "/v1/auth/owner-reset/verify",
+    "summary": "Reset account access",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "rate_limited"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_portico_return_exchange",
+    "method": "POST",
+    "path": "/v1/auth/portico-return/exchange",
+    "summary": "Complete a registered Portico Account return",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 16384,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_auth_refresh",
     "method": "POST",
     "path": "/v1/auth/refresh",
@@ -10595,6 +10680,28 @@ export const routes = [
     "admission": "auth"
   },
   {
+    "id": "post_direct_members_id_reset_code",
+    "method": "POST",
+    "path": "/v1/direct/members/{id}/reset-code",
+    "summary": "Reset account access",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "rate_limited"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_direct_ownership",
     "method": "POST",
     "path": "/v1/direct/ownership",
@@ -10660,6 +10767,28 @@ export const routes = [
       "internal"
     ],
     "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_password_reset",
+    "method": "POST",
+    "path": "/v1/direct/password/reset",
+    "summary": "Reset account access",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "rate_limited"
+    ],
+    "status": 200,
     "http": true,
     "admission": "auth"
   },
@@ -12252,20 +12381,23 @@ export const routes = [
     "admission": "default"
   },
   {
-    "id": "post_setup_finish",
+    "id": "post_setup_account_complete",
     "method": "POST",
-    "path": "/v1/setup/finish",
-    "summary": "Run setup finish",
-    "access": "owner",
+    "path": "/v1/setup/account/complete",
+    "summary": "Complete account setup from its validated claim",
+    "access": "public",
     "requires": "session",
     "lane": "security",
     "cost": "constant",
-    "bodyLimit": 65536,
+    "bodyLimit": 16384,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
       "not_permitted",
-      "not_found",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -12273,10 +12405,10 @@ export const routes = [
     "admission": "auth"
   },
   {
-    "id": "post_setup_remote_recovery",
+    "id": "post_setup_finish",
     "method": "POST",
-    "path": "/v1/setup/remote-recovery",
-    "summary": "Run setup remote recovery",
+    "path": "/v1/setup/finish",
+    "summary": "Run setup finish",
     "access": "owner",
     "requires": "session",
     "lane": "security",
@@ -17183,6 +17315,7 @@ export const routePaths = {
   "get_artists_id_albums": "/v1/artists/{id}/albums",
   "get_attribution": "/v1/attribution",
   "get_auth_capabilities": "/v1/auth/capabilities",
+  "get_auth_services_reachability": "/v1/auth/services-reachability",
   "get_books_id_chapters": "/v1/books/{id}/chapters",
   "get_books_id_files": "/v1/books/{id}/files",
   "get_books_id_timeline": "/v1/books/{id}/timeline",
@@ -17488,6 +17621,9 @@ export const routePaths = {
   "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",
   "post_albums_id_metadata_musicbrainz_retry": "/v1/albums/{id}/metadata/musicbrainz/retry",
   "post_albums_id_metadata_musicbrainz_search": "/v1/albums/{id}/metadata/musicbrainz/search",
+  "post_auth_owner_reset_request": "/v1/auth/owner-reset/request",
+  "post_auth_owner_reset_verify": "/v1/auth/owner-reset/verify",
+  "post_auth_portico_return_exchange": "/v1/auth/portico-return/exchange",
   "post_auth_refresh": "/v1/auth/refresh",
   "post_auth_register": "/v1/auth/register",
   "post_auth_remembered_accounts": "/v1/auth/remembered-accounts",
@@ -17499,9 +17635,11 @@ export const routePaths = {
   "post_device_approval": "/v1/devices/{id}/approval",
   "post_device_session_binding": "/v1/devices/{id}/sessions/bind",
   "post_direct_members": "/v1/direct/members",
+  "post_direct_members_id_reset_code": "/v1/direct/members/{id}/reset-code",
   "post_direct_ownership": "/v1/direct/ownership",
   "post_direct_ownership_custody": "/v1/direct/ownership/custody",
   "post_direct_password": "/v1/direct/password",
+  "post_direct_password_reset": "/v1/direct/password/reset",
   "post_direct_portico_challenge": "/v1/direct/portico-challenge",
   "post_direct_profile_pin_reset": "/v1/direct/profiles/{id}/pin-reset",
   "post_direct_profile_switch": "/v1/direct/profile-switch",
@@ -17576,8 +17714,8 @@ export const routePaths = {
   "post_quick_connect_review": "/v1/quick-connect/review",
   "post_quick_connect_token": "/v1/quick-connect/token",
   "post_saved_resources": "/v1/saved-resources",
+  "post_setup_account_complete": "/v1/setup/account/complete",
   "post_setup_finish": "/v1/setup/finish",
-  "post_setup_remote_recovery": "/v1/setup/remote-recovery",
   "post_setup_resume": "/v1/setup/resume",
   "post_shows_id_metadata_screen_retry": "/v1/shows/{id}/metadata/screen/retry",
   "post_shows_id_metadata_screen_search": "/v1/shows/{id}/metadata/screen/search",

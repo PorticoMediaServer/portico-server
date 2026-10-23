@@ -502,6 +502,7 @@ export class HttpLocalApi {
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<RouteResponse<"setup_server">>(routePath("setup_server"), "POST", routeBody("setup_server", {
       setupToken,
+      authMode: "local",
       username,
       password,
       name,
@@ -2048,3 +2049,6 @@ export {libraryNavigationIcon} from './presentation/library-navigation.ts';
 export {PeopleInvitationsClient,parsePublicInvitation,privatePersonNotes,personIdentity} from './direct-account.ts';
 export type {ServerInvitation,PeopleMember,PublicInvitation} from './direct-account.ts';
 export {highestRatingChoices} from './profile-limits.ts';
+
+export * from './account-reset.ts';
+export * from './same-tab-return.ts';

@@ -57,6 +57,7 @@ type DirectSnapshot struct {
 	CustodyPending bool `json:"custodyPending,omitempty"`
 }
 type DirectSignIn struct {
+	ResetFileOwnerSession  bool   `json:"resetFileOwnerSession,omitempty"`
 	PasswordChangeRequired bool   `json:"passwordChangeRequired,omitempty"`
 	DeviceApprovalPending  bool   `json:"deviceApprovalPending,omitempty"`
 	DeviceID               string `json:"deviceId,omitempty"`
@@ -84,7 +85,7 @@ func directName(v string) bool {
 }
 
 // directPassword is the one password rule for every local account (owner,
-// recovery owner, members, invitations): at least 8 characters. Clients show a
+// members, invitations): at least 8 characters. Clients show a
 // strength hint, but a weak password is the user's choice. The 72-byte cap is
 // bcrypt's input limit, not a policy.
 func directPassword(v string) bool {
@@ -111,7 +112,8 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	var c directCaller
 	var hash []byte
 	var libs string
-	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs)
+	var linked bool
+	e := s.db.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,a.epoch,a.password_hash,m.role,m.revision,m.disabled,m.allowed_libraries,(EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id) OR EXISTS(SELECT 1 FROM onboarding_state_v1 WHERE singleton=1 AND auth_mode='hosted')) FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.username=?`, strings.ToLower(strings.TrimSpace(user))).Scan(&c.account.ID, &c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &hash, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs, &linked)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return directCaller{}, nil, e
 	}
@@ -129,7 +131,7 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	// A Portico Account member has no password here. It pays the same bcrypt
 	// cost as any other account, so the answer's timing does not tell a prober
 	// which usernames are linked (INT M15).
-	passwordless := e == nil && len(hash) == 0
+	passwordless := e == nil && (len(hash) == 0 || linked)
 	if passwordless {
 		hash = unknownAccountPasswordHash
 	}
@@ -233,9 +235,6 @@ func (s *Service) directLoginOnce(ctx context.Context, user, password string, pr
 	if !bytes.Equal(hash, stored) {
 		return DirectSignIn{}, true, nil
 	}
-	if e = s.recoveryPasswordAllowedTx(ctx, tx, c.account.ID, private); e != nil {
-		return DirectSignIn{}, false, e
-	}
 	// A confirmed second factor replaces the account session with a challenge. The
 	// password has been proven in this transaction; nothing else has.
 	required, e := s.accountFactorRequiredTx(ctx, tx, c.account.ID)
@@ -338,9 +337,6 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 		return c, ErrUnauthorized
 	}
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
-		return c, err
-	}
-	if err = s.checkRecoveryContextTx(ctx, tx, record.principal, record.ID); err != nil {
 		return c, err
 	}
 	// A screen paired as a Cast target plays and does nothing else: no account
@@ -596,9 +592,15 @@ func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, nex
 	return gated5.Commit()
 }
 
-type DirectMemberInput struct {
+type DirectMemberCreate struct {
 	Username         string   `json:"username"`
 	Password         string   `json:"password"`
+	Name             string   `json:"name"`
+	AllowedLibraries []string `json:"allowedLibraries"`
+}
+
+type DirectMemberInput struct {
+	Username         string   `json:"username"`
 	Name             string   `json:"name"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	ExpectedRevision int64    `json:"expectedRevision"`
@@ -642,7 +644,7 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	}
 	return out, rows.Err()
 }
-func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q DirectMemberInput) (DirectAccount, error) {
+func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q DirectMemberCreate) (DirectAccount, error) {
 	q.Username = strings.ToLower(strings.TrimSpace(q.Username))
 	q.Name = strings.TrimSpace(q.Name)
 	if len(q.Username) < 3 || len(q.Username) > 64 || strings.ContainsAny(q.Username, " \t\r\n@") || !directPassword(q.Password) || !directName(q.Name) || !directLibraries(q.AllowedLibraries) {
@@ -693,20 +695,8 @@ func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q Direc
 	return out, gated7.Commit()
 }
 func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q DirectMemberInput) error {
-	if !validFamilyID(id) || q.ExpectedRevision < 1 || !directLibraries(q.AllowedLibraries) || (q.Password != "" && !directPassword(q.Password)) {
+	if !validFamilyID(id) || q.ExpectedRevision < 1 || !directLibraries(q.AllowedLibraries) {
 		return ErrDirectInput
-	}
-	var passwordHash []byte
-	if q.Password != "" {
-		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
-			return slotErr
-		}
-		defer func() { <-s.hashSlots }()
-		var err error
-		passwordHash, err = bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
-		if err != nil {
-			return err
-		}
 	}
 	gated8, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
@@ -734,12 +724,6 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	if revision != q.ExpectedRevision {
 		return ErrProfileChanged
 	}
-	// A Portico Account member's password is its own, at Hosted.
-	if q.Password != "" {
-		if linked, err := porticoLinkedTx(ctx, tx, id); err != nil || linked {
-			return ErrDirectInput
-		}
-	}
 	if q.AllowedLibraries == nil {
 		q.AllowedLibraries = []string{}
 	}
@@ -748,7 +732,7 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	// account is turned off) or their password is replaced. Giving or taking a
 	// library applies to their next request and signs nobody out: every request
 	// reads the live library list.
-	if q.Disabled || q.Password != "" {
+	if q.Disabled {
 		reason := RevokedPasswordChange
 		if q.Disabled {
 			reason = RevokedMembershipRemoved
@@ -762,22 +746,6 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=?,allowed_libraries=?,revision=revision+1 WHERE account_id=?`, q.Disabled, string(raw), id); e != nil {
 		return e
-	}
-	if passwordHash != nil {
-		if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=? WHERE id=?`, passwordHash, id); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO identity_credential_state(account_id,must_change) VALUES(?,1) ON CONFLICT(account_id) DO UPDATE SET must_change=1`, id); e != nil {
-			return e
-		}
-		for _, table := range []string{"identity_credential_attempts", "identity_account_attempt_budget"} {
-			if _, e = tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE account_id=?`, id); e != nil {
-				return e
-			}
-		}
-		if e = s.securityNoticeTx(ctx, tx, id, "security.password_reset"); e != nil {
-			return e
-		}
 	}
 	return gated8.Commit()
 }

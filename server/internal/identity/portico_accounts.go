@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ var ErrSessionMigrated = errors.New("This sign-in moved to the server's own memb
 
 // PorticoIdentity is what a verified Hosted assertion establishes.
 type PorticoIdentity struct {
+	Return      *PorticoReturnBinding
 	AccountID   string
 	Username    string
 	DisplayName string
@@ -72,6 +74,11 @@ func (s *Service) PorticoSignIn(ctx context.Context, who PorticoIdentity) (Direc
 // PorticoSignInTx is PorticoSignIn inside the caller's transaction, so an
 // invitation acceptance creates the account and signs it in atomically.
 func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) (DirectSignIn, error) {
+	if who.Return != nil {
+		if e := CheckPorticoReturnTx(ctx, tx, who); e != nil {
+			return DirectSignIn{}, e
+		}
+	}
 	if err := admitPorticoSignerTx(ctx, tx, who.SignerKeyID); err != nil {
 		return DirectSignIn{}, err
 	}
@@ -156,6 +163,9 @@ func recordPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, family, signer st
 // profile, a quick-connect approver) to the family it issued. A session
 // derived from one that a key admitted is admitted by that key too.
 func inheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string) error {
+	if e := refuseResetDescendantTx(ctx, tx, from); e != nil {
+		return e
+	}
 	if from == "" || to == "" {
 		return nil
 	}
@@ -295,4 +305,147 @@ func (s *Service) AcceptPorticoCustody(ctx context.Context, bearer string, who P
 		return e
 	}
 	return gated.Commit()
+}
+
+// PorticoReturnBinding is verified signed producer data, never request authority.
+type PorticoReturnBinding struct {
+	Purpose, InstallationID, RegistrationID, OperationID string
+	ClaimGeneration, CredentialGeneration                int64
+	CurrentOwnerAccountID, PreviousOwnerRole             string
+	ExpiresAt                                            time.Time
+}
+
+// CheckPorticoReturnTx repeats the live installed tuple fence in the actual
+// setup/session/ownership writer, closing the gap after the network exchange.
+func CheckPorticoReturnTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) error {
+	r := who.Return
+	if r == nil || !r.ExpiresAt.After(time.Now()) || r.RegistrationID == "" || r.ClaimGeneration < 1 || r.CredentialGeneration < 1 {
+		return ErrUnauthorized
+	}
+	var valid bool
+	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_claim_identity c JOIN networking_claim_intents i ON i.operation_id=c.installed_operation_id AND i.operation_id=c.active_operation_id AND i.server_id=c.server_id AND i.public_key=c.public_key AND i.local_generation=c.reset_generation LEFT JOIN networking_claim_authority a ON a.operation_id=i.operation_id WHERE c.singleton=1 AND i.stage='installed' AND i.installation_acknowledged=1 AND i.operation_id=? AND i.account_id=? AND i.claim_generation=? AND i.credential_generation=? AND i.purpose=? AND i.current_owner_account_id=? AND i.previous_owner_role=? AND COALESCE(a.state,'active')='active' AND EXISTS(SELECT 1 FROM networking_claim_credentials k WHERE k.operation_id=i.operation_id AND k.server_id=i.server_id AND k.local_generation=i.local_generation AND k.claim_generation=i.claim_generation AND k.credential_generation=i.credential_generation))`, r.OperationID, who.AccountID, fmt.Sprint(r.ClaimGeneration), fmt.Sprint(r.CredentialGeneration), r.Purpose, r.CurrentOwnerAccountID, r.PreviousOwnerRole).Scan(&valid)
+	if e != nil {
+		return e
+	}
+	if !valid {
+		return ErrUnauthorized
+	}
+	return admitPorticoSignerTx(ctx, tx, who.SignerKeyID)
+}
+
+// CompletePorticoOwnerClaim commits the purpose-bound ownership decision. No
+// existing account/profile is merged: a target collision requires a separate
+// reviewed migration, and the previous owner's data keeps its original IDs.
+func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, expected int64, who PorticoIdentity) (DirectSignIn, error) {
+	if who.Return == nil || who.Return.Purpose == "setup" || who.Username == "" {
+		return DirectSignIn{}, ErrUnauthorized
+	}
+	var out DirectSignIn
+	e := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		c, e := s.directCallerTx(ctx, tx, bearer, true)
+		if e != nil {
+			return e
+		}
+		if c.account.Role != TierOwner {
+			return ErrForbidden
+		}
+		if c.account.Revision != expected {
+			return ErrProfileChanged
+		}
+		if e = CheckPorticoReturnTx(ctx, tx, who); e != nil {
+			return e
+		}
+		var current string
+		if e = tx.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, c.account.ID).Scan(&current); e != nil || current != who.Return.CurrentOwnerAccountID {
+			return ErrForbidden
+		}
+		if who.Return.Purpose == "switch" {
+			if current != who.AccountID {
+				return ErrForbidden
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',epoch=epoch+1 WHERE id=?`, c.account.ID); e != nil {
+				return e
+			}
+			if e = s.revokeCredentialsTx(ctx, tx, c.account.ID); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO identity_credential_state(account_id,must_change) VALUES(?,0) ON CONFLICT(account_id) DO UPDATE SET must_change=0`, c.account.ID); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET auth_mode='hosted',revision=revision+1 WHERE singleton=1 AND ready=1`); e != nil {
+				return e
+			}
+			out, e = s.PorticoSignInTx(ctx, tx, who)
+			if e == nil {
+				e = CheckPorticoReturnTx(ctx, tx, who)
+			}
+			return e
+		}
+		if who.Return.Purpose != "change-owner" || current == who.AccountID {
+			return ErrForbidden
+		}
+		var localUsername string
+		var reserved bool
+		if e = tx.QueryRowContext(ctx, `SELECT approved_username,owner_change_reserved FROM networking_claim_intents WHERE operation_id=? AND account_id=? AND purpose='change-owner' AND owner_id=? AND current_owner_account_id=? AND previous_owner_role=?`, who.Return.OperationID, who.AccountID, c.account.ID, current, who.Return.PreviousOwnerRole).Scan(&localUsername, &reserved); e != nil {
+			return e
+		}
+		if !reserved || localUsername == "" {
+			return ErrForbidden
+		}
+		var collision bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE)`, who.AccountID, localUsername).Scan(&collision); e != nil {
+			return e
+		}
+		if collision {
+			return ErrForbidden
+		}
+		// Release only inside the actual same writer that consumes this approval;
+		// any insert/session/final fence failure rolls this release back as well.
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET owner_change_reserved=0 WHERE operation_id=?`, who.Return.OperationID); e != nil {
+			return e
+		}
+		previous := who.Return.PreviousOwnerRole
+		if previous != "admin" && previous != "member" && previous != "remove" {
+			return ErrForbidden
+		}
+		tier := TierMember
+		if previous == "admin" {
+			tier = TierAdmin
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,disabled=?,revision=revision+1 WHERE account_id=?`, tier, previous == "remove", c.account.ID); e != nil {
+			return e
+		}
+		if previous == "remove" {
+			if e = s.revokeCredentialsWithReasonTx(ctx, tx, c.account.ID, RevokedMembershipRemoved); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, c.account.ID); e != nil {
+				return e
+			}
+		} else if e = RetierFamiliesTx(ctx, tx, c.account.ID, tier); e != nil {
+			return e
+		}
+		aid, pid := Token(), Token()
+		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'',?)`, aid, localUsername, pid); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='owner',revision=revision+1 WHERE account_id=?`, aid); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO account_portico_links(account_id,hosted_account_id,consent) VALUES(?,?,?)`, aid, who.AccountID, who.Consent); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, localUsername, pid); e != nil {
+			return e
+		}
+		out, e = s.PorticoSignInTx(ctx, tx, who)
+		if e == nil {
+			e = CheckPorticoReturnTx(ctx, tx, who)
+		}
+		return e
+	})
+	if e != nil {
+		return DirectSignIn{}, e
+	}
+	return out, nil
 }

@@ -13,9 +13,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/operations"
 )
 
 func recoveryRequest(f administrationFixture, peer, method, path, token, body string) *httptest.ResponseRecorder {
@@ -30,108 +28,6 @@ func recoveryRequest(f administrationFixture, peer, method, path, token, body st
 	w := httptest.NewRecorder()
 	f.handler.ServeHTTP(w, r)
 	return w
-}
-
-func TestLaunchRecoveryLocalityAcrossAccountAndRefreshRoutes(t *testing.T) {
-	for _, mode := range []string{"private-recovery", "remote-enabled", "hosted-admitted"} {
-		t.Run(mode, func(t *testing.T) {
-			f := administrationFixtureNew(t)
-			remote := mode == "remote-enabled"
-			if _, err := dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,recovery_account,recovery_confirmed,remote_recovery,ready) VALUES(1,'hosted','launch-recovery','hash','hash',0,'owner',1,?,1)`, remote); err != nil {
-				t.Fatal(err)
-			}
-			session, err := f.deps.Identity.Issue("owner", "owner-profile", "local", "owner", 1)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if mode == "hosted-admitted" {
-				if _, err = f.deps.DB.Exec(`INSERT INTO portico_admitted_families(family_id,signer_key_id) VALUES(?,'')`, session.SessionFamilyID); err != nil {
-					t.Fatal(err)
-				}
-			}
-			before := func() string {
-				var p, m, g int
-				if err := f.deps.DB.QueryRow(`SELECT (SELECT count(*) FROM direct_profiles),(SELECT count(*) FROM direct_memberships),(SELECT current_generation FROM authorization_session_families WHERE id=?)`, session.SessionFamilyID).Scan(&p, &m, &g); err != nil {
-					t.Fatal(err)
-				}
-				raw, _ := json.Marshal([]int{p, m, g})
-				return string(raw)
-			}
-			state := before()
-			routes := []struct {
-				method, path, body string
-				status             int
-			}{
-				{"GET", "/v1/me", "", 200},
-				{"GET", "/v1/direct/members", "", 200},
-				{"POST", "/v1/direct/profiles", `{"name":"Launch profile","art":"blue"}`, 201},
-				{"POST", "/v1/direct/members", `{"username":"launchmember","password":"launch-password-123","name":"Launch member","allowedLibraries":[]}`, 201},
-			}
-			for _, q := range routes {
-				w := recoveryRequest(f, remotePeer, q.method, q.path, session.AccessToken, q.body)
-				want := q.status
-				if mode == "private-recovery" {
-					want = 401
-				}
-				if w.Code != want {
-					t.Fatalf("remote %s %s: %d want %d: %s", q.method, q.path, w.Code, want, w.Body.String())
-				}
-			}
-			requestID := identity.Token()
-			refresh := func(peer, secret, id string) *httptest.ResponseRecorder {
-				raw, _ := json.Marshal(map[string]string{"refreshToken": secret, "installationId": session.InstallationID, "requestId": id})
-				return recoveryRequest(f, peer, "POST", "/v1/auth/refresh", "", string(raw))
-			}
-			if mode == "private-recovery" {
-				if w := refresh(remotePeer, session.RefreshToken, requestID); w.Code != 401 {
-					t.Fatalf("remote refresh: %d %s", w.Code, w.Body.String())
-				}
-				if before() != state {
-					t.Fatal("denied remote account/refresh request mutated state")
-				}
-				if _, err = f.deps.Identity.DirectMe(context.Background(), session.AccessToken); !errors.Is(err, identity.ErrUnauthorized) {
-					t.Fatalf("missing locality admitted recovery account: %v", err)
-				}
-				if _, err = f.deps.Identity.RefreshSession(context.Background(), session.RefreshToken, session.InstallationID, requestID); !errors.Is(err, identity.ErrUnauthorized) {
-					t.Fatalf("missing locality admitted recovery renewal: %v", err)
-				}
-				for _, q := range routes {
-					if w := recoveryRequest(f, homePeer, q.method, q.path, session.AccessToken, q.body); w.Code != q.status {
-						t.Fatalf("home control %s: %d %s", q.path, w.Code, w.Body.String())
-					}
-				}
-			}
-			peer := remotePeer
-			if mode == "private-recovery" {
-				peer = homePeer
-			}
-			w := refresh(peer, session.RefreshToken, requestID)
-			if w.Code != 200 {
-				t.Fatalf("allowed refresh: %d %s", w.Code, w.Body.String())
-			}
-			var rotated identity.Envelope
-			if err = json.Unmarshal(w.Body.Bytes(), &rotated); err != nil || rotated.AccessToken == "" {
-				t.Fatalf("refresh response: %v %s", err, w.Body.String())
-			}
-			replay := refresh(remotePeer, session.RefreshToken, requestID)
-			if mode == "private-recovery" {
-				if replay.Code != 401 {
-					t.Fatalf("remote replay: %d", replay.Code)
-				}
-				// Even a mismatched replay must not revoke a LAN-only family remotely.
-				if w = refresh(remotePeer, session.RefreshToken, identity.Token()); w.Code != 401 {
-					t.Fatalf("remote reuse: %d", w.Code)
-				}
-				replay = refresh(homePeer, session.RefreshToken, requestID)
-			}
-			if replay.Code != 200 || replay.Body.String() != string(mustRefreshBody(t, refresh(peer, session.RefreshToken, requestID))) {
-				t.Fatalf("exact replay not preserved: %d %s", replay.Code, replay.Body.String())
-			}
-			if w = refresh(peer, rotated.RefreshToken, identity.Token()); w.Code != 200 {
-				t.Fatalf("successor unavailable after denied replay: %d %s", w.Code, w.Body.String())
-			}
-		})
-	}
 }
 
 func mustRefreshBody(t *testing.T, w *httptest.ResponseRecorder) []byte {
@@ -333,48 +229,6 @@ func TestLaunchAdminVisibilityRetainsProfileAndRecordingPrivacy(t *testing.T) {
 	} {
 		if w := f.call(q.method, q.path, f.admin, q.body); w.Code != 404 {
 			t.Fatalf("narrowed admin mutation %s: %d %s", q.path, w.Code, w.Body.String())
-		}
-	}
-}
-
-func TestLaunchRecoveryUsesVerifiedProxyLocality(t *testing.T) {
-	f := administrationFixtureNew(t)
-	if _, err := f.deps.DB.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,recovery_account,recovery_confirmed,remote_recovery,ready) VALUES(1,'hosted','proxy-recovery','hash','hash',0,'owner',1,0,1)`); err != nil {
-		t.Fatal(err)
-	}
-	doc, err := f.deps.Console.Settings(context.Background(), operations.AllowServerScope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	values := doc.Requested
-	values.TrustedProxies = []string{"127.0.0.1/32"}
-	p, err := f.deps.Identity.Authenticate(f.owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = f.deps.Console.ApplySettings(context.Background(), p, operations.AllowServerScope, operations.SettingsChange{ExpectedRevision: doc.Revision, IdempotencyKey: "launch-proxy-settings", Values: values}); err != nil {
-		t.Fatal(err)
-	}
-	f.handler = New(f.deps)
-	for _, q := range []struct {
-		peer, forwarded string
-		status          int
-	}{
-		{"127.0.0.1:1234", "198.51.100.2", 401},
-		{"127.0.0.1:1234", "192.168.1.2", 200},
-		{"198.51.100.2:1234", "192.168.1.2", 401},
-		{"127.0.0.1:1234", "", 401},
-	} {
-		r := httptest.NewRequest("GET", "/v1/direct/members", nil)
-		r.RemoteAddr = q.peer
-		r.Header.Set("Authorization", "Bearer "+f.owner)
-		if q.forwarded != "" {
-			r.Header.Set("X-Forwarded-For", q.forwarded)
-		}
-		w := httptest.NewRecorder()
-		f.handler.ServeHTTP(w, r)
-		if w.Code != q.status {
-			t.Fatalf("peer=%s forwarded=%s: %d want %d: %s", q.peer, q.forwarded, w.Code, q.status, w.Body.String())
 		}
 	}
 }

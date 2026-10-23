@@ -290,7 +290,7 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 	}
 	switch kind.Kind {
 	case "portico.claim.nonce-request", "portico.claim.proof", "portico.claim.cancel":
-	case "portico.claim.web.v1":
+	case "portico.claim.web.v2":
 		var q struct {
 			OperationID     string `json:"operationId"`
 			ServerID        string `json:"serverId"`
@@ -327,8 +327,25 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 	if e != nil {
 		return nil, e
 	}
-	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || !active.Valid || active.String != b.OperationID {
+	var pending sql.NullString
+	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
+		return nil, e
+	}
+	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || ((!active.Valid || active.String != b.OperationID) && (!pending.Valid || pending.String != b.OperationID)) {
 		return nil, ErrStale
+	}
+	if kind.Kind == "portico.claim.web.v2" {
+		var purpose ClaimPurpose
+		if json.Unmarshal(payload, &purpose) != nil || !purpose.Valid() {
+			return nil, ErrInvalid
+		}
+		current, e := loadIntentTx(ctx, tx, b.OperationID)
+		if e != nil {
+			return nil, e
+		}
+		if current.ClaimPurpose != purpose {
+			return nil, ErrStale
+		}
 	}
 	if kind.Kind == "portico.server.endpoint.v1" {
 		var proof endpointChallenge

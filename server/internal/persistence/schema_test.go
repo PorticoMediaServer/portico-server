@@ -150,8 +150,8 @@ func TestFreshBaselineIncludesSegmentAndGatedSchema(t *testing.T) {
 	}
 	for _, column := range []string{"recovery_account", "recovery_confirmed", "remote_recovery"} {
 		var count int
-		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('onboarding_state_v1') WHERE name=?`, column).Scan(&count); err != nil || count != 1 {
-			t.Errorf("early owner-setup removal %s: %d %v", column, count, err)
+		if err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('onboarding_state_v1') WHERE name=?`, column).Scan(&count); err != nil || count != 0 {
+			t.Errorf("retired owner-setup column remains %s: %d %v", column, count, err)
 		}
 	}
 	if err = VerifySchemaObjects(context.Background(), db); err != nil {

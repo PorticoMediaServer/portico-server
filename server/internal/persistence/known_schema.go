@@ -423,6 +423,7 @@ index metadata_work_expiry
 index mount_operations_retention
 index networking_certificates_scope
 index networking_claim_one_active
+index networking_claim_one_installed
 index networking_mappings_expiry
 index notice_broadcast_work_expiry
 index notification_records_expiry
@@ -1020,6 +1021,7 @@ table media_analysis_dependencies
 table media_analysis_formats
 table media_analysis_item_mappings
 table media_analysis_streams
+table member_password_resets
 table metadata_details
 table metadata_discovery_items
 table metadata_discovery_refresh
@@ -1078,6 +1080,7 @@ table notification_inbox
 table notification_records
 table notification_revision
 table onboarding_state_v1
+table owner_reset_file
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
@@ -1197,6 +1200,7 @@ table remote_scan_cursors
 table remote_scan_generations
 table remote_source_operations
 table remote_sources
+table reset_file_sessions
 table restriction_outbox
 table restrictions
 table retained_title_identities
@@ -2155,6 +2159,10 @@ trigger networking_server_identities_bound_insert
 trigger notification_inbox_bound_check
 trigger notification_inbox_bound_delete
 trigger notification_inbox_bound_insert
+trigger owner_change_account_insert
+trigger owner_change_account_rename
+trigger owner_change_link_insert
+trigger owner_change_link_update
 trigger personal_activity_revisions_bound_check
 trigger personal_activity_revisions_bound_delete
 trigger personal_activity_revisions_bound_insert

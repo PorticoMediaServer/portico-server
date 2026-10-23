@@ -124,7 +124,7 @@ func newTL6V1Fixture(t *testing.T, films int) *tl6V1Fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := f.raw("POST", "/v1/setup", "", nil, map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
+	w := f.raw("POST", "/v1/setup", "", nil, map[string]string{"authMode": "local", "setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Test"})
 	if w.Code != 201 {
 		t.Fatalf("setup %d %s", w.Code, w.Body.String())
 	}

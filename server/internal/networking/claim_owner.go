@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-// GuardLocalOwner rechecks the current Direct Sign-In recovery-owner membership within the
+// GuardLocalOwner rechecks current owner membership or pending setup authority within the
 // same SQLite writer transaction as claim progression. It is intentionally not
 // the installed-credential guard: a password rotation invalidates pending
 // consent but must not revoke the server's already installed Hosted credential.
@@ -18,6 +18,17 @@ func GuardLocalOwner(ctx context.Context, tx *sql.Tx, owner LocalOwner) error {
 	}
 	if e := ctx.Err(); e != nil {
 		return e
+	}
+
+	if owner.SetupOperationID != "" {
+		var valid bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM onboarding_state_v1 WHERE singleton=1 AND operation_id=? AND revision=? AND auth_mode='hosted' AND ready=0) AND NOT EXISTS(SELECT 1 FROM accounts)`, owner.SetupOperationID, owner.Epoch).Scan(&valid); e != nil {
+			return e
+		}
+		if !valid {
+			return ErrStale
+		}
+		return nil
 	}
 	var profile string
 	var epoch int64

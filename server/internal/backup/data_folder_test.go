@@ -5,6 +5,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/storagepaths"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -57,5 +60,86 @@ func TestBackupContainsOnlyConfigDatabaseMetadataAndKeys(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(folder, name)); !os.IsNotExist(err) {
 			t.Errorf("excluded directory %s copied: %v", name, err)
 		}
+	}
+}
+
+// Exercise the authentication producers against the same portable Data root used
+// by main; passing Keys as the identity root would silently create Keys/Keys.
+func TestBackupPortableAuthenticationFiles(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		name := "setup"
+		if configured {
+			name = "owner-reset"
+		}
+		t.Run(name, func(t *testing.T) {
+			service, data, db := testService(t)
+			layout := storagepaths.At(data)
+			ident, err := identity.New(db, layout.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = ident.ConfigureResetFile(layout.Data, layout.Keys, true); err != nil {
+				t.Fatal(err)
+			}
+			setup, err := os.ReadFile(storagepaths.Path(data, "setup-token"))
+			if err != nil || len(setup) != 43 {
+				t.Fatal("actual setup token", err)
+			}
+			if err = access.New(db).LoadInvitationKey(layout.Keys); err != nil {
+				t.Fatal(err)
+			}
+			invitation, err := os.ReadFile(filepath.Join(layout.Keys, "invitation-link.key"))
+			if err != nil || len(invitation) != 32 {
+				t.Fatal("actual invitation key", err)
+			}
+			payload := map[string][]byte{"Keys/invitation-link.key": invitation}
+			if configured {
+				if _, err = ident.Setup(string(setup), "owner", "Portable-test-password1!", "Fixture"); err != nil {
+					t.Fatal(err)
+				}
+				location, err := ident.RequestOwnerReset(context.Background(), identity.OwnerResetRequest{Username: "unknown"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if location.DataDirectory != layout.Data || location.FileDirectory != layout.Keys || location.FileName != "reset-code.txt" || location.SystemKind != "docker" {
+					t.Fatalf("reset does not use the actual portable layout: %+v", location)
+				}
+				raw, err := os.ReadFile(filepath.Join(location.FileDirectory, location.FileName))
+				if err != nil || len(strings.Split(string(raw), "\n")) < 4 {
+					t.Fatal("actual reset file", err)
+				}
+				payload["Keys/reset-code.txt"] = raw
+				if _, err = os.Stat(storagepaths.Path(data, "setup-token")); !os.IsNotExist(err) {
+					t.Fatal("setup secret survived setup", err)
+				}
+			} else {
+				payload["Keys/setup-token"] = setup
+			}
+			for name := range payload {
+				info, err := os.Stat(filepath.Join(data, filepath.FromSlash(name)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+					t.Fatalf("non-private authentication file %s: %v", name, info.Mode())
+				}
+			}
+			for _, relative := range []string{"setup-token", "reset-code.txt", "invitation-link.key", "Keys/Keys"} {
+				if _, err = os.Stat(filepath.Join(data, relative)); !os.IsNotExist(err) {
+					t.Fatalf("unexpected flat or doubly nested private path %s: %v", relative, err)
+				}
+			}
+			id, err := service.Create(context.Background(), KindManual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			folder := filepath.Join(layout.Backups, id)
+			for name, want := range payload {
+				got, err := os.ReadFile(filepath.Join(folder, filepath.FromSlash(name)))
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("backup changed actual authentication payload %s: %v", name, err)
+				}
+			}
+		})
 	}
 }

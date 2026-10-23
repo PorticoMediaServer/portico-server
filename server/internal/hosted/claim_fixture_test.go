@@ -26,16 +26,17 @@ import (
 // all. Its Hosted origin is https://hosted.example, which resolves to nothing, so any attempt
 // to contact Hosted fails — which is exactly what makes "did this call Hosted?" observable.
 type claimFixture struct {
-	db        *sql.DB
-	state     string
-	id        *identity.Service
-	service   *Service
-	runner    *networking.AuthorityRunner
-	store     *networking.SQLiteStore
-	installed networking.Intent
-	hostedKey ed25519.PrivateKey
-	keys      *networking.ProtectedKeys
-	owner     identity.Envelope
+	setupOwner *networking.LocalOwner
+	db         *sql.DB
+	state      string
+	id         *identity.Service
+	service    *Service
+	runner     *networking.AuthorityRunner
+	store      *networking.SQLiteStore
+	installed  networking.Intent
+	hostedKey  ed25519.PrivateKey
+	keys       *networking.ProtectedKeys
+	owner      identity.Envelope
 }
 
 func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimFixture {
@@ -91,24 +92,32 @@ func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimF
 		configure(f)
 	}
 	e = runner.Do(context.Background(), func(ctx context.Context) error {
-		v, e := store.Prepare(ctx, networking.Binding{OperationID: "operation", ServerID: id.ID(), AccountID: "account", PublicKey: public}, networking.LocalOwner{AccountID: owner.Viewer.AccountID, ProfileID: owner.Viewer.ProfileID, Epoch: 1})
+		actor := networking.LocalOwner{AccountID: owner.Viewer.AccountID, ProfileID: owner.Viewer.ProfileID, Epoch: 1}
+		if f.setupOwner != nil {
+			actor = *f.setupOwner
+		}
+		v, e := store.Prepare(ctx, networking.Binding{OperationID: "operation", ServerID: id.ID(), AccountID: "account", PublicKey: public}, actor)
 		if e != nil {
 			return e
 		}
 		now := time.Now().UTC()
 		payload := struct {
-			Kind             string `json:"kind"`
-			Version          string `json:"version"`
-			Audience         string `json:"audience"`
-			OperationID      string `json:"operationId"`
-			ServerID         string `json:"serverId"`
-			AccountID        string `json:"accountId"`
-			PublicKey        string `json:"publicKey"`
-			LocalGeneration  string `json:"localGeneration"`
-			ApprovalRevision string `json:"approvalRevision"`
-			IssuedAt         string `json:"issuedAt"`
-			ExpiresAt        string `json:"expiresAt"`
-		}{"portico.claim.approval", "1", "https://hosted.example", v.OperationID, v.ServerID, v.AccountID, base64.RawURLEncoding.EncodeToString(public), "0", "1", now.Format(time.RFC3339Nano), now.Add(4 * time.Minute).Format(time.RFC3339Nano)}
+			Kind                  string `json:"kind"`
+			Version               string `json:"version"`
+			Audience              string `json:"audience"`
+			OperationID           string `json:"operationId"`
+			ServerID              string `json:"serverId"`
+			AccountID             string `json:"accountId"`
+			PublicKey             string `json:"publicKey"`
+			LocalGeneration       string `json:"localGeneration"`
+			ApprovalRevision      string `json:"approvalRevision"`
+			Purpose               string `json:"purpose"`
+			CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
+			PreviousOwnerRole     string `json:"previousOwnerRole"`
+			ReturnRegistrationID  string `json:"returnRegistrationId"`
+			IssuedAt              string `json:"issuedAt"`
+			ExpiresAt             string `json:"expiresAt"`
+		}{"portico.claim.approval", "2", "https://hosted.example", v.OperationID, v.ServerID, v.AccountID, base64.RawURLEncoding.EncodeToString(public), "0", "1", "setup", "", "", "", now.Format(time.RFC3339Nano), now.Add(4 * time.Minute).Format(time.RFC3339Nano)}
 		raw, _ := json.Marshal(payload)
 		proof, _ := json.Marshal(Signed{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, raw)), KeyID: "pin1", Certificate: testSigningCertificate(key, "pin1")})
 		v, e = store.Approve(ctx, v, proof)
