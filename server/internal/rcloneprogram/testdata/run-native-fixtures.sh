@@ -96,5 +96,5 @@ go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
     ./internal/rcloneprogram -run '^TestLocked(DAV|SFTP|SMB)MixedOperationBudget$'
 if test "${PORTICO_NATIVE_SAVE_TEST:-}" = 1; then
     go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
-        ./internal/remotesources -run '^TestNativeSavedNASConnectionAndForbiddenEdits$'
+        ./internal/remotesources -run '^Test(NativeSavedNASConnectionAndForbiddenEdits|SourceControllerRealSharedProcessAndScanPublication)$'
 fi
