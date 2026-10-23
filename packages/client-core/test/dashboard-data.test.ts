@@ -35,3 +35,16 @@ test('client requests the same server-account/media/range seam as the history ta
  assert.equal(url.pathname,'/v1/admin/play-history/people');
  assert.equal(url.searchParams.get('accountId'),'server-account');assert.equal(url.searchParams.get('media'),'music');assert.equal(url.searchParams.get('limit'),'100');
 });
+test('selected-source facts accept the checked normalized breadth DTO without retaining capabilities',()=>{
+ const video={id:'v0',codec:'hevc',profile:'main 10',height:2160,chromaSubsampling:'4:2:0',frameRateNumerator:24000,frameRateDenominator:1001,frameRateMode:'constant',dolbyVisionProfile:8,dolbyVisionCompatibility:1,dolbyVisionRpu:true,dolbyVisionBaseLayer:true,dolbyVisionEnhancementType:'mel',dolbyVisionCmVersion:'4.0',hdr10Plus:false,masterDisplay:'G(13250,34500)',maxCll:'1000,400'};
+ const audio={id:'a1',codec:'dts',variant:'dtsx',objectAudio:'dtsx',dtsx:true,channels:8,atmos:false,default:true,commentary:false,visualImpaired:true};
+ const raw={media:{video,audio},currentBitrateKbps:0,rateWindowMs:5000,live:false};
+ const out=parseDashboardSessionFacts(raw).media as {video:typeof video;audio:typeof audio};
+ assert.deepEqual(out.video,video);assert.deepEqual(out.audio,audio);
+ const {objectAudio,...ma}=audio;
+ const hdma={...ma,variant:'dts_hd_ma',dtsx:false};
+ assert.deepEqual((parseDashboardSessionFacts({...raw,media:{video,audio:hdma}}).media as any).audio,hdma);
+ assert.throws(()=>parseDashboardSessionFacts({...raw,media:{video:{...video,presentationUrl:'/private-grant'},audio}}));
+ assert.throws(()=>parseDashboardSessionFacts({...raw,media:{video,audio:{...audio,url:'/private-grant'}}}));
+ assert.throws(()=>parseDashboardSessionFacts({...raw,media:{video,audio:{...audio,visualImpaired:'yes'}}}));
+});
