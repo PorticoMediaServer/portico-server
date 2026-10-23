@@ -38,6 +38,19 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		}
 	}
 	key := PersonalKey(v)
+	// Reading positions and their removed-title copies are independently typed
+	// personal state. Erasing a profile must remove both before late callbacks
+	// are refused by the live identity fence.
+	if ok, e := exists("reading_progress"); e != nil {
+		return e
+	} else if ok {
+		if e = run(`DELETE FROM reading_progress WHERE owner_key=?`, key); e != nil {
+			return e
+		}
+		if e = run(`DELETE FROM retained_title_state WHERE profile_id=?`, key); e != nil {
+			return e
+		}
+	}
 	for _, table := range []string{"personal_jobs", "personal_completed_plays", "container_personal_state", "container_personal_undo", "personal_watched_intents", "queue_v1_saves"} {
 		if ok, e := exists(table); e != nil {
 			return e
