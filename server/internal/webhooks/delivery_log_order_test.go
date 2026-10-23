@@ -2,9 +2,12 @@ package webhooks
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 func deliveryLogFixture(t *testing.T) (*Store, string) {
@@ -68,5 +71,28 @@ func TestWebhookDeliveryLogPagesEqualTimestampsAfterBoundaryDeletion(t *testing.
 	last, err := s.Deliveries(ctx, nil, id, second.NextCursor, 2)
 	if err != nil || len(last.Items) != 2 || last.Items[0].ID != "row-4" || last.Items[1].ID != "row-5" || last.NextCursor != "" {
 		t.Fatalf("last sequence page: %#v, %v", last, err)
+	}
+}
+
+func TestWebhookDeliveryLogRetentionKeepsLatestSequenceAndPending(t *testing.T) {
+	s, id := deliveryLogFixture(t)
+	ctx := context.Background()
+	now := time.Now().UnixMilli()
+	for i := 0; i < 52; i++ {
+		if _, err := s.DB.Exec(`INSERT INTO webhook_deliveries(id,webhook_id,type,data,state,next_attempt_ms,created_ms) VALUES(?,?,?,'{}','delivered',?,?)`, fmt.Sprintf("row-%03d", 52-i), id, ServerStarted, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DB.Exec(`INSERT INTO webhook_deliveries(id,webhook_id,type,data,next_attempt_ms,created_ms) VALUES('pending',?,?,'{}',?,?)`, id, BackupFailed, now, now-1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		return pruneDeliveryLogTx(ctx, tx, id, 50)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var count, newest, oldest, pending int
+	if err := s.DB.QueryRow(`SELECT count(*),sum(id='row-001'),sum(id IN('row-051','row-052')),sum(id='pending' AND state='pending') FROM webhook_deliveries WHERE webhook_id=?`, id).Scan(&count, &newest, &oldest, &pending); err != nil || count != 51 || newest != 1 || oldest != 0 || pending != 1 {
+		t.Fatalf("retention lost latest or pending deliveries: count=%d newest=%d oldest=%d pending=%d, %v", count, newest, oldest, pending, err)
 	}
 }

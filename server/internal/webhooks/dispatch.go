@@ -321,8 +321,7 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 			}
 		}
 		// The log keeps the most recent finished deliveries and no more.
-		_, e := tx.ExecContext(ctx, `DELETE FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' AND id NOT IN(SELECT id FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' ORDER BY created_ms DESC,id DESC LIMIT ?)`, q.webhook, q.webhook, current.WebhookLogSize)
-		return e
+		return pruneDeliveryLogTx(ctx, tx, q.webhook, current.WebhookLogSize)
 	})
 	if err != nil {
 		return false

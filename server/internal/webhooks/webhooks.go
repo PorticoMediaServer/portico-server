@@ -561,10 +561,11 @@ func (s *Store) wake() {
 	}
 }
 
-func scanDelivery(row interface{ Scan(...any) error }) (Delivery, int64, error) {
+func scanDelivery(row interface{ Scan(...any) error }, tail ...any) (Delivery, int64, error) {
 	var d Delivery
 	var created, finished, next int64
-	if err := row.Scan(&d.ID, &d.Event, &d.State, &d.Attempts, &created, &finished, &next, &d.Status, &d.DurationMs, &d.Error); err != nil {
+	columns := []any{&d.ID, &d.Event, &d.State, &d.Attempts, &created, &finished, &next, &d.Status, &d.DurationMs, &d.Error}
+	if err := row.Scan(append(columns, tail...)...); err != nil {
 		return d, 0, err
 	}
 	d.CreatedAt, d.FinishedAt = stamp(created), stamp(finished)
@@ -587,17 +588,17 @@ func (s *Store) Deliveries(ctx context.Context, auth Authorize, id, cursor strin
 	}
 	out.Limit = limit
 	var beforeMs int64
-	beforeID := ""
+	var beforeSequence int64
 	if cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(cursor)
 		var at struct {
-			Created int64  `json:"c"`
-			ID      string `json:"i"`
+			Created  int64 `json:"c"`
+			Sequence int64 `json:"r"`
 		}
-		if err != nil || len(raw) > 256 || json.Unmarshal(raw, &at) != nil || at.Created <= 0 || at.ID == "" {
+		if err != nil || len(raw) > 256 || json.Unmarshal(raw, &at) != nil || at.Created <= 0 || at.Sequence <= 0 {
 			return out, &ValidationError{[]string{"cursor"}}
 		}
-		beforeMs, beforeID = at.Created, at.ID
+		beforeMs, beforeSequence = at.Created, at.Sequence
 	}
 	gated, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
@@ -614,23 +615,27 @@ func (s *Store) Deliveries(ctx context.Context, auth Authorize, id, cursor strin
 	if err = tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
 		return out, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT `+deliveryColumns+` FROM webhook_deliveries WHERE webhook_id=? AND (?=0 OR (created_ms,id)<(?,?)) ORDER BY created_ms DESC,id DESC LIMIT ?`, id, beforeMs, beforeMs, beforeID, limit+1)
+	// The queue already orders equal-time events by rowid. Random delivery IDs
+	// cannot order them chronologically; the log and its cursor use that same
+	// sequence, including when an earlier page's boundary has been pruned.
+	rows, err := tx.QueryContext(ctx, `SELECT `+deliveryColumns+`,rowid FROM webhook_deliveries WHERE webhook_id=? AND (?=0 OR (created_ms,rowid)<(?,?)) ORDER BY created_ms DESC,rowid DESC LIMIT ?`, id, beforeMs, beforeMs, beforeSequence, limit+1)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
-	var lastCreated int64
+	var lastCreated, lastSequence int64
 	for rows.Next() {
-		d, created, err := scanDelivery(rows)
+		var sequence int64
+		d, created, err := scanDelivery(rows, &sequence)
 		if err != nil {
 			return DeliveryPage{Items: []Delivery{}}, err
 		}
 		if len(out.Items) == limit {
-			raw, _ := json.Marshal(map[string]any{"c": lastCreated, "i": out.Items[limit-1].ID})
+			raw, _ := json.Marshal(map[string]any{"c": lastCreated, "r": lastSequence})
 			out.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
 			break
 		}
-		out.Items, lastCreated = append(out.Items, d), created
+		out.Items, lastCreated, lastSequence = append(out.Items, d), created, sequence
 	}
 	return out, rows.Err()
 }
