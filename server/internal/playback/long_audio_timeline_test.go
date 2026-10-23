@@ -66,7 +66,7 @@ func TestLongAudiobookFinalSegmentUsesSourceTimestamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	mustAudioExec(t, db, `INSERT INTO accounts VALUES('owner','owner',X'00','profile',1)`)
+	mustAudioExec(t, db, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',X'00','profile',1)`)
 	insertFixtureSession(t, db, "login", "owner", "profile", "owner", "2099-01-01T00:00:00Z")
 	_, item, _ := catalogFixture(t, db, "lib", root, compactcatalog.Part, "item", "Long book", compactcatalog.Asset{Path: path, Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Container: "wav", AudioCodec: "pcm_s16le", Duration: seconds})
 	h, err := NewHLS(ctx, db, filepath.Join(root, "hls"), ffmpeg)

@@ -307,6 +307,10 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 		if json.Unmarshal(payload, &q) != nil || q.OperationID != b.OperationID || q.ServerID != b.ServerID || q.AccountID != account || q.PublicKey != base64.RawURLEncoding.EncodeToString(b.PublicKey) || q.LocalGeneration != b.LocalGeneration {
 			return nil, ErrInvalid
 		}
+	case "portico.server.leave":
+		if !validDepartureSigningPayload(payload, b) {
+			return nil, ErrInvalid
+		}
 	case "portico.server.endpoint.v1":
 		if !validateEndpointSigningPayload(payload, b) {
 			return nil, ErrInvalid
@@ -323,7 +327,7 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 	if e = guardClaimRequestTx(ctx, tx); e != nil {
 		return nil, e
 	}
-	id, active, _, e := readCurrentIdentityTx(ctx, tx)
+	id, active, installed, e := readCurrentIdentityTx(ctx, tx)
 	if e != nil {
 		return nil, e
 	}
@@ -331,8 +335,24 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
 		return nil, e
 	}
-	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || ((!active.Valid || active.String != b.OperationID) && (!pending.Valid || pending.String != b.OperationID)) {
+	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || ((!active.Valid || active.String != b.OperationID) && (!pending.Valid || pending.String != b.OperationID) && (kind.Kind != "portico.server.leave" || !installed.Valid || installed.String != b.OperationID)) {
 		return nil, ErrStale
+	}
+	if kind.Kind == "portico.server.leave" {
+		var wire struct {
+			ClaimGeneration      string `json:"claimGeneration"`
+			CredentialGeneration string `json:"credentialGeneration"`
+		}
+		if json.Unmarshal(payload, &wire) != nil {
+			return nil, ErrInvalid
+		}
+		current, e := loadIntentTx(ctx, tx, b.OperationID)
+		if e != nil {
+			return nil, e
+		}
+		if current.ClaimGeneration != wire.ClaimGeneration || current.CredentialGeneration != wire.CredentialGeneration {
+			return nil, ErrStale
+		}
 	}
 	if kind.Kind == "portico.claim.web.v2" {
 		var purpose ClaimPurpose

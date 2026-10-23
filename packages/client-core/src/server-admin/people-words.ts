@@ -27,9 +27,6 @@ export function deviceFacts(t: Translate, device: Pick<AccessDevice, 'username' 
   ].filter(Boolean).join(' · ');
 }
 
-/** Whether approving or blocking still means anything for a device as it is now. */
-export const trustApplies = (now: Pick<AccessDevice, 'trust'>, next: 'approved' | 'blocked'): boolean | 'done' => (now.trust === next ? 'done' : true);
-
 // ── Viewing hours: the days of one window, as a choice an owner makes in one control ───────
 
 export type DayChoice = 'all' | 'weekdays' | 'weekends' | 'several' | '0' | '1' | '2' | '3' | '4' | '5' | '6';

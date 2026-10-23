@@ -25,7 +25,7 @@ func TestTVDBOwnerSelectionHTTPAndCAS(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-p',1),('member','member',x'00','member-p',1)`)
+	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-p',1),('member','member',x'00','member-p',1)`)
 	if e != nil {
 		t.Fatal(e)
 	}

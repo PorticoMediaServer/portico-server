@@ -53,9 +53,9 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);
- INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);
- INSERT INTO accounts VALUES('member','member',x'00','member-profile',1);
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1);
  UPDATE direct_memberships SET role='admin' WHERE account_id='admin';`); e != nil {
 		t.Fatal(e)
 	}

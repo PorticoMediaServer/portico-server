@@ -28,7 +28,7 @@ func noticeFixture(t *testing.T) (*Store, identity.Principal, identity.Principal
 	s := New(db)
 	clock := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 	s.Now = func() time.Time { return clock }
-	if _, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);INSERT INTO accounts VALUES('member','member',x'00','member-profile',1)`); e != nil {
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1)`); e != nil {
 		t.Fatal(e)
 	}
 	owner := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "owner", ProfileID: "owner-profile", ServerID: "server", Role: "owner"}, Hash: "owner-session", Epoch: 1}
@@ -514,7 +514,7 @@ func TestNoticeBroadcastPagesAndResumesBeyondFiveHundredProfiles(t *testing.T) {
 	s, owner, _, auth := noticeFixture(t)
 	for i := 0; i < 520; i++ {
 		id := fmt.Sprintf("account-%04d", i)
-		if _, err := s.DB.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, id, id, id+"-profile"); err != nil {
+		if _, err := s.DB.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, id, id, id+"-profile"); err != nil {
 			t.Fatal(err)
 		}
 	}

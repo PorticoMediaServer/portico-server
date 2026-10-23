@@ -30,7 +30,7 @@ func supportFixture(t *testing.T) (Dependencies, identity.Envelope, identity.Env
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO accounts VALUES('owner','PRIVATE-OWNER',x'00','profile',1),('member','PRIVATE-MEMBER',x'00','member-profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('private-library','PRIVATE-TITLE','movie','/private/SOURCE-PATH');INSERT INTO jobs(id,library_id,status,error,created_at)VALUES('private-job','private-library','failed','TOKEN-secret','2026-09-05T00:00:00Z');`); e != nil {
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','PRIVATE-OWNER',x'00','profile',1),('member','PRIVATE-MEMBER',x'00','member-profile',1);INSERT INTO libraries(id,name,kind,root) VALUES('private-library','PRIVATE-TITLE','movie','/private/SOURCE-PATH');INSERT INTO jobs(id,library_id,status,error,created_at)VALUES('private-job','private-library','failed','TOKEN-secret','2026-09-05T00:00:00Z');`); e != nil {
 		t.Fatal(e)
 	}
 	owner, e := id.Issue("owner", "profile", "local", "owner", 1)

@@ -33,7 +33,7 @@ func TestListeningTimelineHTTPScopesPagingAndPrivateFacts(t *testing.T) {
 	second := c.BookFile(book, 2, "/private/books/part-two.m4b")
 	denied := c.Book(secret, "Secret title", "Secret author")
 	c.BookFile(denied, 1, "/private/secret/part.m4b")
-	c.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1),('member','member',x'00','profile',1),('other','other',x'00','other-profile',1)`)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1),('member','member',x'00','profile',1),('other','other',x'00','other-profile',1)`)
 	c.Exec(`UPDATE direct_memberships SET role='member',allowed_libraries='["books"]' WHERE account_id IN('member','other')`)
 	c.Drain()
 	token, err := ident.Issue("member", "profile", "local", "member", 1)
