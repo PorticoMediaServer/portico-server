@@ -25,7 +25,7 @@ export type AudioRenderV2 = Readonly<{
   mode: AudioRenderMode;
   /** This presentation's media (opaque; not the session id or the presentation generation). */
   id: string;
-  /** For people: why converted or unavailable. */
+  /** Diagnostic only: never display the server's reason. */
   reason?: string;
   /** Present unless `unavailable`. */
   url?: string;

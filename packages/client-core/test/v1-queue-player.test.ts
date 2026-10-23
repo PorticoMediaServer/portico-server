@@ -467,7 +467,7 @@ test('§18: a canceled or expired edge falls back to the ordinary end and advanc
   await player.commitAudio(prepared.token);
   assert.equal(server.commits, 0);
   assert.equal(playback.getSnapshot().audioEffects.prepared, undefined, 'the edge is dropped');
-  assert.match(playback.getSnapshot().audioEffects.notice, /ordinary playback/);
+  assert.equal(playback.getSnapshot().listeningNotice, undefined, 'transient recovery is silent');
   assert.equal(playback.getSnapshot().session!.id, first.id, 'the current track keeps playing');
   // Expiry is checked before asking: no request, the same fallback.
   const again = transitionsSetup(() => clock);
@@ -479,7 +479,7 @@ test('§18: a canceled or expired edge falls back to the ordinary end and advanc
   clock += 61_000;
   await again.player.commitAudio(late.token);
   assert.equal(again.server.commits, 0);
-  assert.match(again.playback.getSnapshot().audioEffects.notice, /expired/);
+  assert.equal(again.playback.getSnapshot().listeningNotice, undefined, 'expiry is silent');
   stop(); again.stop();
 });
 

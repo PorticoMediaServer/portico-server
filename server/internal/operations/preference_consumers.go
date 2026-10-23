@@ -11,7 +11,6 @@ var preferenceConsumers = func() map[string]string {
 		"music.qualityDownloads":              "server.downloads.quality",
 		"music.neverBoost":                    "client.audio_effects",
 		"music.smoothTransitions":             "client.audio_effects",
-		"music.sampleRateMatching":            "client.audio_effects",
 		"music.dsdGainDb":                     "server.playback.audio_conversion",
 		"playback.skipBackMs":                 "client.playback.controls",
 		"playback.skipForwardMs":              "client.playback.controls",
@@ -66,7 +65,6 @@ var preferenceConsumers = func() map[string]string {
 type AudioEffectPreferences struct {
 	NeverBoost         bool   `json:"neverBoost"`
 	SmoothTransitions  bool   `json:"smoothTransitions"`
-	SampleRateMatching string `json:"sampleRateMatching"`
 	DSDGainDB          int    `json:"dsdGainDb"`
 	Gapless            bool   `json:"gapless"`
 	CrossfadeMs        int    `json:"crossfadeMs"`
@@ -74,5 +72,5 @@ type AudioEffectPreferences struct {
 }
 
 func (v PreferenceValues) AudioEffects() AudioEffectPreferences {
-	return AudioEffectPreferences{NeverBoost: v.Bool("music.neverBoost"), SmoothTransitions: v.Bool("music.smoothTransitions"), SampleRateMatching: v.Text("music.sampleRateMatching"), DSDGainDB: v.Int("music.dsdGainDb"), Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
+	return AudioEffectPreferences{NeverBoost: v.Bool("music.neverBoost"), SmoothTransitions: v.Bool("music.smoothTransitions"), DSDGainDB: v.Int("music.dsdGainDb"), Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
 }

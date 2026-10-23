@@ -45,3 +45,18 @@ func TestMusicQualityR28RegistryStoredOriginalAndReplay(t *testing.T) {
 		t.Fatal("video ID saved as music")
 	}
 }
+
+func TestMusicR32DrawnDefaultsAndDeviceLocalMatching(t *testing.T) {
+	if f, ok := PreferenceFieldFor("music.smoothTransitions"); !ok || f.Default != true {
+		t.Fatal("812 smooth transitions default", f)
+	}
+	f, ok := PreferenceFieldFor("music.dsdGainDb")
+	if !ok || f.Default != -6 || !reflect.DeepEqual(f.AllowedValues, []any{0, -3, -6, -9, -12}) {
+		t.Fatal("812 discrete DSD controls", f)
+	}
+	for _, key := range []string{"music.sampleRateMatching", "music.eq"} {
+		if _, ok := PreferenceFieldFor(key); ok {
+			t.Fatal("device-local engine state published as account/server preference", key)
+		}
+	}
+}

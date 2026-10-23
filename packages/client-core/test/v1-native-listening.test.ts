@@ -16,7 +16,7 @@ import {PlaybackApiError} from '../src/playback-v1/http.ts';
 import {queueItemInput} from '../src/queue-controller.ts';
 import type {V1Http} from '../src/playback-v1/http.ts';
 import type {Session} from '../src/playback-v1/types.ts';
-import type {ListeningAction, ListeningDeadlines, NativeListeningV1Context, NativeListeningV1Control, NativeListeningV1Event, NativeQueueAdvance} from '../src/playback/native-listening.ts';
+import type {ListeningAction, ListeningDeadlines, NativeListeningPolicy, NativeListeningV1Context, NativeListeningV1Control, NativeListeningV1Event, NativeQueueAdvance} from '../src/playback/native-listening.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 const settle = () => new Promise(r => setTimeout(r, 20));
@@ -344,5 +344,55 @@ test('C3: a session.updated event for the native session reaches the owner at on
   emitEvent('session.updated', owner.session!.id);
   await settle();
   assert.deepEqual(owner.updates, [owner.session!.id]);
+  stop();
+});
+
+// b4 source fixtures only. Verification remains held by Root's resource pause.
+test('b4: failed policy pauses and each Play retries configuration before native resume', async () => {
+  const {playback,player,owner,stop}=setup();
+  let rejects=true;
+  const policies:NativeListeningPolicy[]=[];
+  (owner as ReferenceOwner&{configure(p:NativeListeningPolicy):Promise<void>}).configure=async p=>{policies.push(p);if(rejects)throw new Error('timer bridge refused');};
+  playback.setListeningPolicy({preferences:null,activityRevision:1,activityAtMs:Date.now(),timerRevision:1,timer:null});
+  await player.playEntries(['song-1','song-2'].map(queueItemInput));await settle();
+  assert.equal(playback.getSnapshot().intent,'paused');
+  assert.equal(playback.getSnapshot().listeningNotice,'listening_policy_failed');
+  const before=policies.length;
+  playback.resume();await settle();
+  assert.ok(policies.length>before,'Play re-sends the rejected policy');
+  assert.equal(owner.actions.filter(a=>a.action==='resume').length,0);
+  assert.equal(playback.getSnapshot().listeningNotice,'listening_policy_failed');
+  rejects=false;
+  playback.resume();await settle();
+  assert.equal(owner.actions.filter(a=>a.action==='resume').length,1);
+  assert.equal(playback.getSnapshot().listeningNotice,undefined);
+  stop();
+});
+
+test('b4: native applied facts are per-song and missing observations never inherit a true value',async()=>{
+  const {playback,player,owner,stop}=setup();
+  await player.playEntries(['song-1','song-2'].map(queueItemInput));
+  owner.emit({rendering:true,eqApplied:true,levelingApplied:true});
+  assert.equal(playback.getSnapshot().audioEffects.eqApplied,true);
+  assert.equal(playback.getSnapshot().audioEffects.levelingApplied,true);
+  owner.emit({rendering:false,eqApplied:false,levelingApplied:false});
+  assert.equal(playback.getSnapshot().audioEffects.eqApplied,false);
+  await owner.move('next');
+  assert.equal(playback.getSnapshot().audioEffects.levelingApplied,false);
+  assert.equal(playback.getSnapshot().audioEffects.eqApplied,false);
+  stop();
+});
+
+test('b4: renderer facts reject stale session/generation/intent and clear on an error',async()=>{
+  const {playback,player,stop}=setup({nativeFor:()=>false});
+  await player.playEntries(['song-1','song-2'].map(queueItemInput));
+  const s=playback.getSnapshot(),binding={intentId:s.intentId,sessionId:s.session!.id,generation:s.session!.generation};
+  assert.equal(playback.audioProcessingApplied({...binding,generation:binding.generation+1},{eqApplied:true,levelingApplied:true}),false);
+  assert.equal(playback.audioProcessingApplied(binding,{eqApplied:true,levelingApplied:true}),true);
+  playback.pause();playback.listeningNotice('audio_autoplay_blocked');
+  assert.equal(playback.getSnapshot().listeningNotice,'audio_autoplay_blocked');
+  playback.fail(binding.intentId,'fixture playback error');
+  assert.equal(playback.getSnapshot().listeningNotice,undefined);
+  assert.equal(playback.getSnapshot().audioEffects.eqApplied,false);
   stop();
 });

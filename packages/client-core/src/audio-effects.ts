@@ -5,14 +5,19 @@ import type {AudioRenderV2} from './playback-v1/audio-render.ts';
 export type AudioEffectsSettings=Readonly<{gapless:boolean;crossfadeSeconds:number;normalization:'off'|'track'|'album';neverBoost?:boolean;smoothTransitions?:boolean;sampleRateMatching?:'smart'|'strict'|'off'}>;
 /** Before the server's music preferences are known (and when a device has none cached): the
  * registry's own defaults, so gapless is on (X-02). */
-export const defaultAudioEffects:AudioEffectsSettings=Object.freeze({gapless:true,crossfadeSeconds:0,normalization:'off'});
+export const defaultAudioEffects:AudioEffectsSettings=Object.freeze({gapless:true,crossfadeSeconds:0,normalization:'off',neverBoost:false,smoothTransitions:true});
 /** Every effect off: what a viewer who turned them all off gets. */
 export const noAudioEffects:AudioEffectsSettings=Object.freeze({gapless:false,crossfadeSeconds:0,normalization:'off'});
 /** A prepared next track (§18.2): the version 2 on-device-decode plan (`audio`, §18.1)
  * that v1 queues prepare. */
 export type PreparedAudio=Readonly<{token:string;expiresAtMs:number;itemId?:string;audio?:AudioRenderV2}>;
+/** Only an unrequested pause is a listening notice. Engine recovery codes are diagnostic. */
+export type ListeningNoticeCode='audio_autoplay_blocked'|'listening_policy_failed';
+export const listeningNoticeKey=(code:ListeningNoticeCode):'web.player.pressPlay'|'listening.paused'=>code==='audio_autoplay_blocked'?'web.player.pressPlay':'listening.paused';
+export type AudioProcessingBinding=Readonly<{intentId:number;sessionId:string;generation:number}>;
+export type AudioProcessingApplied=Readonly<{eqApplied:boolean;levelingApplied:boolean}>;
 export type AudioEffectsSnapshot=Readonly<{
- settings:AudioEffectsSettings;rendering:boolean;rate:number;notice:string;effectiveRate?:number;waiting?:boolean;
+ settings:AudioEffectsSettings;rendering:boolean;rate:number;eqApplied:boolean;levelingApplied:boolean;effectiveRate?:number;waiting?:boolean;
  prepared?:PreparedAudio;committed?:Readonly<{token:string;itemId:string;session:PlaybackSession}>;
 }>;
 export function parseAudioEffects(v:any):AudioEffectsSettings {
@@ -20,8 +25,8 @@ export function parseAudioEffects(v:any):AudioEffectsSettings {
  if(v.neverBoost!==undefined&&typeof v.neverBoost!=='boolean'||v.smoothTransitions!==undefined&&typeof v.smoothTransitions!=='boolean'||v.sampleRateMatching!==undefined&&!['smart','strict','off'].includes(v.sampleRateMatching))throw new Error('Invalid music processing settings.');
  return Object.freeze({...(v.neverBoost!==undefined?{neverBoost:v.neverBoost}:{}),...(v.smoothTransitions!==undefined?{smoothTransitions:v.smoothTransitions}:{}),...(v.sampleRateMatching!==undefined?{sampleRateMatching:v.sampleRateMatching}:{}),gapless:v.gapless,crossfadeSeconds:v.crossfadeSeconds,normalization:v.normalization});
 }
-export const audioEffectsEnabled=(s:AudioEffectsSettings)=>s.gapless||s.smoothTransitions===true||s.crossfadeSeconds>0||s.normalization!=='off';
-export const audioTransitionsEnabled=(s:AudioEffectsSettings)=>s.gapless||s.smoothTransitions===true||s.crossfadeSeconds>0;
+export const audioEffectsEnabled=(s:AudioEffectsSettings)=>s.gapless||s.crossfadeSeconds>0||s.normalization!=='off';
+export const audioTransitionsEnabled=(s:AudioEffectsSettings)=>s.gapless||s.crossfadeSeconds>0;
 export function transitionTiming(now:number,end:number,seconds:number,rate:number){
  if(![now,end,seconds,rate].every(Number.isFinite)||seconds<0||seconds>12||rate<.25||rate>4)throw new Error('Invalid audio transition timing.');
  // Scheduling uses the engine clock. A late network result must not cut samples
