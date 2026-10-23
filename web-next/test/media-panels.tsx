@@ -1,6 +1,6 @@
 import {useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {IconSprite} from '../src/kit/Icon';
+import {Icon, IconSprite} from '../src/kit/Icon';
 import {PlaybackInfo, type PlaybackInfoCopy, type PlaybackInfoProjection} from '../src/kit/media/PlaybackInfo';
 import '../src/kit/tokens.css';
 import '../src/kit/fonts.css';
@@ -18,7 +18,7 @@ const copy: PlaybackInfoCopy = {
 };
 const projection: PlaybackInfoProjection = {
   itemTitle:'Gladiator',deviceName:'Chrome on Windows',route:'converted',
-  explanation:"This browser can't play Dolby Vision or Dolby Digital Plus, so the server converts both.",networkAndBitrate:'Home network 21 Mbps',
+  explanation:"This browser can't play Dolby Vision or Dolby Digital Plus, so the server converts both.",network:'Home network',bitrate:'21 Mbps',
   sections:[
     {kind:'picture',route:'converted',rows:[
       {field:'container',source:'MKV',delivered:'MP4',changed:true},
@@ -41,9 +41,9 @@ const projection: PlaybackInfoProjection = {
   ],
 };
 function Comparison() {
-  const [open,setOpen]=useState(true),returnFocusRef=useRef<HTMLButtonElement>(null);
+  const [open,setOpen]=useState(false),returnFocusRef=useRef<HTMLButtonElement>(null);
   return <><IconSprite /><div data-comparison-background="" style={{position:'fixed',inset:0,pointerEvents:'none'}} />
-    <button ref={returnFocusRef} hidden />
+    <button ref={returnFocusRef} type="button" aria-label="More" onClick={()=>setOpen(true)} style={{position:'fixed',left:40,top:40,width:48,height:48,display:'grid',placeItems:'center'}}><Icon name="i-more" size={22} /></button>
     <PlaybackInfo projection={projection} copy={copy} open={open} onOpenChange={setOpen} returnFocusRef={returnFocusRef} />
   </>;
 }

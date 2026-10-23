@@ -10,7 +10,7 @@ export type PlaybackInfoField = 'container' | 'codec' | 'hdr' | 'bitDepth' | 're
  * No private presentation, capability target or unstructured reason is an input to this view. */
 export type PlaybackInfoProjection = Readonly<{
   itemTitle: string; deviceName?: string; route: PlaybackRoute;
-  explanation?: string; networkAndBitrate?: string;
+  explanation?: string; network?: string; bitrate?: string;
   sections: readonly Readonly<{
     kind: 'picture' | 'sound' | 'subtitles'; route: PlaybackRoute;
     rows: readonly Readonly<{field: PlaybackInfoField; source?: string; delivered?: string; changed: boolean}>[];
@@ -55,7 +55,7 @@ export function PlaybackInfo({projection, copy, layout = 'desktop', open, onOpen
       }}>
       <header className={styles.infoHeading}><Dialog.Title>{copy.title}</Dialog.Title><button type="button" ref={close} className={styles.close} aria-label={copy.close} onClick={() => onOpenChange(false)}><Icon name="i-x" size={22} /></button></header>
       <p className={styles.infoIdentity}><b>{projection.itemTitle}</b>{projection.deviceName && <><i />{projection.deviceName}</>}</p>
-      <section className={styles.infoRoute} aria-label={copy.route}><RouteStepper route={projection.route} copy={copy} />{projection.explanation && <p className={styles.infoReason}>{projection.explanation}</p>}{projection.networkAndBitrate && <p className={styles.infoNetwork}>{projection.networkAndBitrate}</p>}</section>
+      <section className={styles.infoRoute} aria-label={copy.route}><RouteStepper route={projection.route} copy={copy} />{projection.explanation && <p className={styles.infoReason}>{projection.explanation}</p>}{(projection.network || projection.bitrate) && <p className={styles.infoNetwork}>{projection.network}{projection.network && projection.bitrate && <i />}{projection.bitrate}</p>}</section>
       {layout !== 'phone' && <div className={styles.compareHeading}><span /><span>{copy.inFile}</span><span>{copy.playingHere}</span></div>}
       <div className={styles.infoBody} onScroll={event => { event.currentTarget.dataset.scrolled = String(event.currentTarget.scrollTop > 0); }}>
         {projection.sections.map((section, index) => <section key={section.kind} className={styles.infoSection} tabIndex={layout === 'tv' ? 0 : undefined} ref={element => { blocks.current[index] = element; }}>
