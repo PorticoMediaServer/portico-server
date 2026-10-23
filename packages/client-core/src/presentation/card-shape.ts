@@ -1,6 +1,6 @@
 import type {ContentEntryKind} from '../library-content.ts';
 
-export type CardShape = 'poster' | 'square' | 'landscape' | 'circle';
+export type CardShape = 'poster' | 'square' | 'landscape' | 'circle' | 'portrait';
 
 /**
  * Where a card is drawn. Justin's rule (Audit Decisions, "Card shapes"):
@@ -16,7 +16,7 @@ export type CardShape = 'poster' | 'square' | 'landscape' | 'circle';
 export type ShapeContext = 'shelf' | 'grid' | 'list' | 'showWorkspace' | 'detailExtras' | 'hero';
 
 /** The library family a card belongs to, when the kind alone is ambiguous (collections, categories). */
-export type ShapeFamily = 'movie' | 'tv' | 'anime' | 'audiobook' | 'music';
+export type ShapeFamily = 'movie' | 'tv' | 'anime' | 'audiobook' | 'music' | 'read';
 
 const musicKinds: ReadonlySet<ContentEntryKind> = new Set(['artist', 'album', 'song', 'disc']);
 const bookKinds: ReadonlySet<ContentEntryKind> = new Set(['book', 'audiobook_file', 'book_series', 'chapter']);
@@ -30,13 +30,14 @@ export function shapeFor(kind: ContentEntryKind, context: ShapeContext = 'shelf'
   if (musicKinds.has(kind) || bookKinds.has(kind)) return 'square';
   if (personKinds.has(kind)) return 'circle';
   if ((kind === 'collection' || kind === 'category') && (family === 'music' || family === 'audiobook')) return 'square';
+  if ((kind === 'collection' || kind === 'category') && family === 'read') return 'portrait';
   // movie, show, season, collection, category
   return 'poster';
 }
 
 /** Width ÷ height for a shape, for reserving geometry before artwork loads (PC-VISUAL §13.1). */
 export function shapeAspect(shape: CardShape): number {
-  return shape === 'poster' ? 2 / 3 : shape === 'landscape' ? 16 / 9 : 1;
+  return shape === 'poster' ? 2 / 3 : shape === 'portrait' ? 3 / 4 : shape === 'landscape' ? 16 / 9 : 1;
 }
 
 /** People (cast, crew, authors, members) are always circles. */

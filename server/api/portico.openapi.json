@@ -29836,6 +29836,33 @@
           "libraries": {
             "items": {
               "properties": {
+                "capabilities": {
+                  "properties": {
+                    "cardShape": {
+                      "enum": [
+                        "poster",
+                        "square",
+                        "portrait"
+                      ],
+                      "type": "string"
+                    },
+                    "reading": {
+                      "enum": [
+                        false
+                      ],
+                      "type": "boolean"
+                    },
+                    "tv": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "tv",
+                    "reading",
+                    "cardShape"
+                  ],
+                  "type": "object"
+                },
                 "defaultView": {
                   "type": "string"
                 },
@@ -30254,6 +30281,33 @@
           },
           "library": {
             "properties": {
+              "capabilities": {
+                "properties": {
+                  "cardShape": {
+                    "enum": [
+                      "poster",
+                      "square",
+                      "portrait"
+                    ],
+                    "type": "string"
+                  },
+                  "reading": {
+                    "enum": [
+                      false
+                    ],
+                    "type": "boolean"
+                  },
+                  "tv": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "tv",
+                  "reading",
+                  "cardShape"
+                ],
+                "type": "object"
+              },
               "defaultView": {
                 "type": "string"
               },
@@ -95466,6 +95520,33 @@
           },
           "library": {
             "properties": {
+              "capabilities": {
+                "properties": {
+                  "cardShape": {
+                    "enum": [
+                      "poster",
+                      "square",
+                      "portrait"
+                    ],
+                    "type": "string"
+                  },
+                  "reading": {
+                    "enum": [
+                      false
+                    ],
+                    "type": "boolean"
+                  },
+                  "tv": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "tv",
+                  "reading",
+                  "cardShape"
+                ],
+                "type": "object"
+              },
               "defaultView": {
                 "type": "string"
               },
@@ -99437,6 +99518,33 @@
         "properties": {
           "library": {
             "properties": {
+              "capabilities": {
+                "properties": {
+                  "cardShape": {
+                    "enum": [
+                      "poster",
+                      "square",
+                      "portrait"
+                    ],
+                    "type": "string"
+                  },
+                  "reading": {
+                    "enum": [
+                      false
+                    ],
+                    "type": "boolean"
+                  },
+                  "tv": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "tv",
+                  "reading",
+                  "cardShape"
+                ],
+                "type": "object"
+              },
               "defaultView": {
                 "type": "string"
               },
@@ -106311,6 +106419,33 @@
           "items": {
             "items": {
               "properties": {
+                "capabilities": {
+                  "properties": {
+                    "cardShape": {
+                      "enum": [
+                        "poster",
+                        "square",
+                        "portrait"
+                      ],
+                      "type": "string"
+                    },
+                    "reading": {
+                      "enum": [
+                        false
+                      ],
+                      "type": "boolean"
+                    },
+                    "tv": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "tv",
+                    "reading",
+                    "cardShape"
+                  ],
+                  "type": "object"
+                },
                 "defaultView": {
                   "type": "string"
                 },
@@ -177084,6 +177219,33 @@
       },
       "PostLibrariesResponse": {
         "properties": {
+          "capabilities": {
+            "properties": {
+              "cardShape": {
+                "enum": [
+                  "poster",
+                  "square",
+                  "portrait"
+                ],
+                "type": "string"
+              },
+              "reading": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              "tv": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tv",
+              "reading",
+              "cardShape"
+            ],
+            "type": "object"
+          },
           "defaultView": {
             "type": "string"
           },
@@ -255047,6 +255209,33 @@
                     "libraries": {
                       "items": {
                         "properties": {
+                          "capabilities": {
+                            "properties": {
+                              "cardShape": {
+                                "enum": [
+                                  "poster",
+                                  "square",
+                                  "portrait"
+                                ],
+                                "type": "string"
+                              },
+                              "reading": {
+                                "enum": [
+                                  false
+                                ],
+                                "type": "boolean"
+                              },
+                              "tv": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "tv",
+                              "reading",
+                              "cardShape"
+                            ],
+                            "type": "object"
+                          },
                           "defaultView": {
                             "type": "string"
                           },
@@ -257175,6 +257364,33 @@
                     },
                     "library": {
                       "properties": {
+                        "capabilities": {
+                          "properties": {
+                            "cardShape": {
+                              "enum": [
+                                "poster",
+                                "square",
+                                "portrait"
+                              ],
+                              "type": "string"
+                            },
+                            "reading": {
+                              "enum": [
+                                false
+                              ],
+                              "type": "boolean"
+                            },
+                            "tv": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "tv",
+                            "reading",
+                            "cardShape"
+                          ],
+                          "type": "object"
+                        },
                         "defaultView": {
                           "type": "string"
                         },
@@ -364595,6 +364811,33 @@
                     "items": {
                       "items": {
                         "properties": {
+                          "capabilities": {
+                            "properties": {
+                              "cardShape": {
+                                "enum": [
+                                  "poster",
+                                  "square",
+                                  "portrait"
+                                ],
+                                "type": "string"
+                              },
+                              "reading": {
+                                "enum": [
+                                  false
+                                ],
+                                "type": "boolean"
+                              },
+                              "tv": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "tv",
+                              "reading",
+                              "cardShape"
+                            ],
+                            "type": "object"
+                          },
                           "defaultView": {
                             "type": "string"
                           },
@@ -364788,6 +365031,33 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "capabilities": {
+                      "properties": {
+                        "cardShape": {
+                          "enum": [
+                            "poster",
+                            "square",
+                            "portrait"
+                          ],
+                          "type": "string"
+                        },
+                        "reading": {
+                          "enum": [
+                            false
+                          ],
+                          "type": "boolean"
+                        },
+                        "tv": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "tv",
+                        "reading",
+                        "cardShape"
+                      ],
+                      "type": "object"
+                    },
                     "defaultView": {
                       "type": "string"
                     },
@@ -367631,6 +367901,33 @@
                     },
                     "library": {
                       "properties": {
+                        "capabilities": {
+                          "properties": {
+                            "cardShape": {
+                              "enum": [
+                                "poster",
+                                "square",
+                                "portrait"
+                              ],
+                              "type": "string"
+                            },
+                            "reading": {
+                              "enum": [
+                                false
+                              ],
+                              "type": "boolean"
+                            },
+                            "tv": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "tv",
+                            "reading",
+                            "cardShape"
+                          ],
+                          "type": "object"
+                        },
                         "defaultView": {
                           "type": "string"
                         },
@@ -371891,6 +372188,33 @@
                   "properties": {
                     "library": {
                       "properties": {
+                        "capabilities": {
+                          "properties": {
+                            "cardShape": {
+                              "enum": [
+                                "poster",
+                                "square",
+                                "portrait"
+                              ],
+                              "type": "string"
+                            },
+                            "reading": {
+                              "enum": [
+                                false
+                              ],
+                              "type": "boolean"
+                            },
+                            "tv": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "tv",
+                            "reading",
+                            "cardShape"
+                          ],
+                          "type": "object"
+                        },
                         "defaultView": {
                           "type": "string"
                         },

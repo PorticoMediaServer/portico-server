@@ -5,12 +5,47 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/requestinput"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"portico.local/apikit"
 	"portico.local/server/internal/dbwork"
 )
+
+// LibraryCapabilities describes current media support, independently of the
+// viewer's authorization. Read library kinds exist, but no extraction/reader
+// producer exists yet; creating one must never promise functional reading.
+type LibraryCapabilities struct {
+	TV        bool   `json:"tv"`
+	Reading   bool   `json:"reading"`
+	CardShape string `json:"cardShape"`
+}
+
+func (LibraryCapabilities) JSONSchema() map[string]any {
+	type wire LibraryCapabilities
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	properties := shape["properties"].(map[string]any)
+	properties["cardShape"].(map[string]any)["enum"] = []string{"poster", "square", "portrait"}
+	// No current producer can extract or open Read content. The published
+	// contract must change with that producer before any client offers Read.
+	properties["reading"].(map[string]any)["enum"] = []bool{false}
+	return shape
+}
+
+func capabilitiesForLibrary(kind string) *LibraryCapabilities {
+	out := &LibraryCapabilities{CardShape: "poster"}
+	switch kind {
+	case "movie", "tv", "anime":
+		out.TV = true
+	case "music", "audiobook":
+		out.TV, out.CardShape = true, "square"
+	case "book", "comic":
+		out.CardShape = "portrait"
+	}
+	return out
+}
 
 func (s *Service) ContentRevision(library, profile string) (ContentRevision, error) {
 	var revision ContentRevision

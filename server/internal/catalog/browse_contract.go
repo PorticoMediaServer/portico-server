@@ -646,6 +646,7 @@ func (s *Service) library(id string) (Library, error) {
 	}
 	err := s.read().QueryRow(`SELECT id,name,kind FROM libraries WHERE id=?`, id).Scan(&lib.ID, &lib.Name, &lib.Kind)
 	lib.DefaultView = DefaultLibraryView(lib.Kind)
+	lib.Capabilities = capabilitiesForLibrary(lib.Kind)
 	return lib, err
 }
 

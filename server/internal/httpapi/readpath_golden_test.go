@@ -610,6 +610,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		}
 		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
 		want.Response = goldenListeningExtension(t, f, actual, want.Response)
+		want.Response = goldenLibraryMediaCapabilities(t, actual, want.Response)
 		if want.Status != actual.Status {
 			differences++
 			t.Errorf("%s: status %d, golden %d\n  body: %s", actual.Name, actual.Status, want.Status, truncate(actual.Response))
@@ -625,6 +626,46 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 	if differences > 8 {
 		t.Errorf("%d cases differ in total", differences)
 	}
+}
+
+// The library DTO now publishes media support. Extend only the four recorded
+// library/capability answers with independently authored expected facts; retain
+// every original fixture byte and all the existing exact response comparisons.
+func goldenLibraryMediaCapabilities(t *testing.T, actual goldenCase, response string) string {
+	t.Helper()
+	switch actual.Name {
+	case "capabilities/open", "capabilities/restricted", "libraries/open", "libraries/restricted":
+	default:
+		return response
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(response), &document); err != nil {
+		t.Fatal(err)
+	}
+	add := func(library map[string]any) {
+		var shape string
+		switch library["kind"] {
+		case "movie", "tv", "anime":
+			shape = "poster"
+		case "music", "audiobook":
+			shape = "square"
+		default:
+			t.Fatalf("%s: specify media facts for golden library %v", actual.Name, library["kind"])
+		}
+		library["capabilities"] = map[string]any{"tv": true, "reading": false, "cardShape": shape}
+	}
+	if strings.HasPrefix(actual.Name, "capabilities/") {
+		add(document["library"].(map[string]any))
+	} else {
+		for _, row := range document["items"].([]any) {
+			add(row.(map[string]any))
+		}
+	}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical(string(raw))
 }
 
 func truncate(text string) string {
