@@ -10,7 +10,7 @@ import styles from './overlays.module.css';
 
 export type OverlayAction = Readonly<{label: ReactNode; onAction: () => void; icon?: IconName; accessibilityLabel?: string}>;
 export type ToastAction = OverlayAction & Readonly<{variant?: 'glass' | 'text'}>;
-export type ToastData = Readonly<{id: string; message: ReactNode; action?: ToastAction; icon?: IconName; artwork?: ReactNode; tone?: 'default' | 'success' | 'warning' | 'error'}>;
+export type ToastData = Readonly<{id: string; message: ReactNode; action?: ToastAction; icon?: IconName; artwork?: ReactNode; tone?: 'default' | 'success' | 'warning' | 'error'; durationMs?: number}>;
 export type ToastProps = Omit<ToastData, 'id'> & {open: boolean; onOpenChange: OverlayChange; className?: string; testID?: string};
 
 /** One notification surface. The host supplies replacement, placement and lifetime. */
@@ -68,8 +68,9 @@ export function ToastHost({toast, onDismiss, bottomInset, className, toastClassN
   const clock = useRef<{pause: (source: string) => void; resume: (source: string) => void} | null>(null);
   current.current = toast; dismiss.current = onDismiss; if (toast) last.current = toast;
   const id = toast?.id, hasAction = !!toast?.action;
+  const duration = toast?.durationMs !== undefined && Number.isFinite(toast.durationMs) && toast.durationMs > 0 && toast.durationMs <= 2_147_483_647 ? toast.durationMs : hasAction ? 8000 : 4000;
   useEffect(() => {
-    let timer: number | undefined, remaining = hasAction ? 8000 : 4000, deadline = 0;
+    let timer: number | undefined, remaining = duration, deadline = 0;
     const pauses = new Set<string>();
     const clear = () => { if (timer !== undefined) window.clearTimeout(timer); timer = undefined; };
     const start = () => { clear(); if (!current.current || pauses.size) return; deadline = performance.now() + remaining; timer = window.setTimeout(() => { const value = current.current; if (value) dismiss.current(value.id, 'action'); }, remaining); };
@@ -84,7 +85,7 @@ export function ToastHost({toast, onDismiss, bottomInset, className, toastClassN
     document.addEventListener('visibilitychange', visibility);
     document.addEventListener('pointerup', release); document.addEventListener('pointercancel', release); window.addEventListener('blur', blur); window.addEventListener('focus', focus);
     return () => { clear(); clock.current = null; document.removeEventListener('visibilitychange', visibility); document.removeEventListener('pointerup', release); document.removeEventListener('pointercancel', release); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); };
-  }, [id, hasAction]);
+  }, [id, duration]);
   useLayoutEffect(() => {
     replacement.current?.cancel();
     if (id && host.current) replacement.current = host.current.animate([{opacity: 0}, {opacity: 1}], {duration: reduced ? 160 : 180, easing: 'linear'});

@@ -24,9 +24,14 @@ export type SettingsTableProps = Readonly<{
 function Cell({value, kind}: {value?: SettingsTableCell; kind?: SettingsTableColumn['kind']}) {
   const cell = typeof value === 'string' ? {title: value} : value;
   if (!cell) return null;
-  return <div className={styles.cell} data-kind={kind} title={[cell.title, cell.meta].filter(Boolean).join('\n')}>
-    {kind === 'main' && (cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} style={{'--settings-avatar-hue': settingsTableAvatarHue(cell.title)} as CSSProperties} aria-hidden="true">{cell.avatar}</span> : null)}
-    <span className={kind === 'badge' ? styles.badge : styles.cellText} data-tone={cell.tone}><span>{cell.title}</span>{cell.meta && <small>{cell.meta}</small>}</span>
+  if (kind === 'badge') return <span className={styles.badge} data-tone={cell.tone}>{cell.title}</span>;
+  if (kind === 'muted') return <span className={styles.cellMuted}>{cell.title}</span>;
+  if (kind === 'num') return <span className={styles.cellNumber}>{cell.title}</span>;
+  const text = <div className={styles.cellText}><b>{cell.title}</b>{cell.meta && <small>{cell.meta}</small>}</div>;
+  if (kind !== 'main') return text;
+  return <div className={styles.cell} data-kind="main">
+    {cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} style={{'--settings-avatar-hue': settingsTableAvatarHue(cell.title)} as CSSProperties} aria-hidden="true">{cell.avatar}</span> : null}
+    {text}
   </div>;
 }
 
@@ -84,8 +89,8 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
   }, [range.last, rows, offset, query, hasMore, loading, onLoadMore]);
   const rendered = rows.slice(range.first, range.last + 1);
   return <section className={styles.tableSection} aria-label={label}>
-    <div className={styles.tableToolbar}>
-      {selectedCount ? <><span role="status" className={styles.selectionCount}>{t('next.settings.selected', {count: selectedCount})}</span>{bulkActions.map(action => <Button size="xs" key={action.id} className={action.destructive ? styles.danger : undefined} onClick={event => action.onAction([...(selected ?? [])], event.currentTarget)}>{action.label}</Button>)}<Button size="xs" variant="text" onClick={() => {restoreSearch.current = true; onSelectionChange?.(new Set());}}>{t('next.settings.clear')}</Button></> : <>
+    <div className={styles.tableToolbar} data-selection={!!selectedCount || undefined}>
+      {selectedCount ? <div className={styles.tableSelection}><span role="status" className={styles.selectionCount}>{t('next.settings.selected', {count: selectedCount})}</span>{bulkActions.map(action => <Button size="xs" key={action.id} className={action.destructive ? styles.danger : undefined} onClick={event => action.onAction([...(selected ?? [])], event.currentTarget)}>{action.label}</Button>)}<button type="button" className={styles.tableClearSelection} onClick={() => {restoreSearch.current = true; onSelectionChange?.(new Set());}}>{t('next.settings.clear')}</button></div> : <>
         <TextField ref={search} type="search" variant="table-search" value={query.search} placeholder={searchLabel} aria-label={searchLabel} autoComplete="off" spellCheck={false} trailing={query.search ? <button type="button" className={styles.tableClearSearch} aria-label={t('next.controls.clearSearch')} onClick={() => {changeQuery({...query, search: ''});search.current?.focus();}}><Icon name="i-x" size={14} /></button> : undefined} onChange={event => changeQuery({...query, search: event.currentTarget.value})} />
         {filters.map(filter => <Select key={filter.id} className={[styles.tableFilter, (query.filters[filter.id] ?? 'all') !== 'all' ? styles.tableFilterActive : undefined].filter(Boolean).join(' ')} aria-label={`${filter.label}: ${filter.options.find(option => option.value === (query.filters[filter.id] ?? 'all'))?.label ?? ''}`} value={query.filters[filter.id] ?? 'all'} triggerLabel={filter.showAllValue === false && (query.filters[filter.id] ?? 'all') === 'all' ? filter.label : undefined} options={filter.options} onValueChange={value => changeQuery({...query, filters: {...query.filters, [filter.id]: value}})} />)}
         <span className={styles.tableCount} role="status">{countLabel}</span>{actions}
@@ -117,7 +122,7 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
           {rendered.map((row, index) => <tr key={row.id} data-table-row={row.id} aria-rowindex={offset + range.first + index + 2} data-selected={selected?.has(row.id) || undefined}
             onClick={event => {if (!(event.target as HTMLElement).closest('button,input,a')) rowAction?.onAction(row, event.currentTarget.querySelector<HTMLElement>('[data-table-action]') ?? event.currentTarget);}}>
             {selectable && <td><input type="checkbox" disabled={row.selectable === false} checked={selected?.has(row.id) ?? false} aria-label={t('next.settings.selectRow', {name: row.label})} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), [row.id], event.currentTarget.checked))} /></td>}
-            {columns.map(column => <td key={column.id} data-kind={column.kind}><Cell value={row.cells[column.id]} kind={column.kind} /></td>)}
+            {columns.map(column => {const value = row.cells[column.id];return <td key={column.id} data-kind={column.kind} title={typeof value === 'string' ? value : value && [value.title, value.meta].filter(Boolean).join(', ')}><Cell value={value} kind={column.kind} /></td>;})}
             {rowAction && <td className={styles.tableAction}><Button size="xs" data-table-action aria-label={t('next.settings.rowAction', {action: rowAction.label, name: row.label})} onClick={event => rowAction.onAction(row, event.currentTarget)}>{rowAction.label}</Button></td>}
           </tr>)}
           {range.after > 0 && <tr aria-hidden="true"><td colSpan={columnsCount} style={{height: range.after, padding: 0}} /></tr>}
