@@ -73,7 +73,7 @@ func (p Probe) AnalyzePlayback(ctx context.Context, path string, f *Facts) {
 	}
 	// HDR10+ and, where the container did not carry it, HDR10 static metadata
 	// travel in the first picture (SEI in HEVC elementary and MPEG-TS sources).
-	if (video.Codec == "hevc" || video.Codec == "av1" || video.Codec == "vp9") && video.ColorTransfer == "smpte2084" || video.Detail.DolbyVisionProfile > 0 {
+	if video.Codec == "hevc" || video.Codec == "av1" || video.Codec == "vp9" || video.Detail.DolbyVisionProfile > 0 {
 		bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
 		raw, e := p.analysisOutput(bounded, path, 1<<20, "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_frames", "-show_entries", "frame=media_type,width,height,side_data_list", "-of", "json")
 		cancel()

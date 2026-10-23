@@ -22,15 +22,20 @@ func TestDolbyVisionDecodedSourceFactsFromGeneratedMedia(t *testing.T) {
 		file, layer   string
 		dv, hdr10plus bool
 	}{
-		{"joined-MEL.hevc", "MEL", true, false}, {"joined-FEL.hevc", "FEL", true, false},
+		{"source-MEL.mp4", "MEL", true, false}, {"source-FEL.mp4", "FEL", true, false},
 		{"dv-8.1.hevc", "", true, false}, {"dv-8.4.hevc", "", true, false},
 		{"base-pq.hevc", "", false, false}, {"hdr10plus.hevc", "", false, true},
 	} {
 		t.Run(sample.file, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "source.mp4")
-			out, err := exec.Command(ffmpeg, "-v", "error", "-nostdin", "-threads", "1", "-r", "24", "-i", filepath.Join(fixtures, sample.file), "-map", "0:v:0", "-c:v", "copy", "-use_editlist", "0", path).CombinedOutput()
-			if err != nil {
-				t.Fatalf("procedural fixture mux: %v %s", err, out)
+			path := filepath.Join(fixtures, sample.file)
+			if filepath.Ext(sample.file) == ".mp4" {
+				path = filepath.Join(filepath.Dir(fixtures), "dovi-probe-r40", sample.file)
+			} else {
+				path = filepath.Join(t.TempDir(), "source.mp4")
+				out, err := exec.Command(ffmpeg, "-v", "error", "-nostdin", "-threads", "1", "-r", "24", "-i", filepath.Join(fixtures, sample.file), "-map", "0:v:0", "-c:v", "copy", "-use_editlist", "0", path).CombinedOutput()
+				if err != nil {
+					t.Fatalf("procedural fixture mux: %v %s", err, out)
+				}
 			}
 			probe := Probe{Binary: ffprobe}
 			facts, err := probe.Inspect(context.Background(), path)
