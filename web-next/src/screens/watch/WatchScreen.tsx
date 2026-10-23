@@ -62,6 +62,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const mode = geometry?.mode ?? (!fullWindow && shapePortrait ? 'portrait' : 'full');
   const portrait = mode === 'portrait' || mode === 'book', permanent = mode === 'tabletop';
   const mobile = width < 1024;
+  const externalPanel = surfaces?.playOn?.active === true;
   // Playback info f1: the film keeps playing with no player controls under the panel.
   const infoHidesChrome = panel === 'info' && !mobile;
   const chromeVisible = (visible || permanent) && !infoHidesChrome;
@@ -81,7 +82,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const clearTimer = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
   const revealFor = useCallback((milliseconds: number) => {
     clearTimer(); setVisible(true);
-    if (!open || permanent || panel || more || shortcuts || scrubDrag.current || !presentation?.playing) return;
+    if (!open || permanent || panel || externalPanel || more || shortcuts || scrubDrag.current || !presentation?.playing) return;
     timer.current = setTimeout(() => {
       if (chrome.current?.contains(document.activeElement)) {
         if (keyboardFocus.current) return;
@@ -89,7 +90,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       }
       setVisible(false);
     }, milliseconds);
-  }, [clearTimer, open, permanent, panel, more, shortcuts, presentation?.playing]);
+  }, [clearTimer, open, permanent, panel, externalPanel, more, shortcuts, presentation?.playing]);
   const reveal = useCallback(() => revealFor(coarsePointer ? 4000 : 2800), [revealFor, coarsePointer]);
   useEffect(() => {
     const layout = `${width}:${height}:${geometry?.revision ?? ''}`, changed = lastLayout.current !== null && lastLayout.current !== layout;
@@ -107,6 +108,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   useEffect(() => { if (panel || more || shortcuts) pictureInput.cancel(); }, [panel, more, shortcuts, pictureInput]);
   const showPanel = (next: WatchPanel, anchor?: HTMLButtonElement) => {
     if (!surfaces?.available.includes(next)) return;
+    if (next === 'play-on' && surfaces.playOn) {setMore(false);surfaces.playOn.open(anchor);reveal();return;}
     if (anchor) panelAnchor.current = anchor;
     setMore(false); setPanel(next); reveal();
   };
@@ -121,7 +123,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (!open) return;
     const keydown = (event: KeyboardEvent) => {
       keyboardFocus.current = true;
-      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || more || shortcuts) return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || externalPanel || more || shortcuts) return;
       if ((event.key === ' ' || event.key === 'Enter') && event.target instanceof Element && event.target.closest('button,a')) return;
       const step = watchStepIntent(current.current.binding.runtime, current.current.snapshot, event.key);
       if (step) { event.preventDefault(); send(step); reveal(); return; }
@@ -191,6 +193,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
         onPointerCancel={() => pictureInput.cancel()}
         onClick={event => {
+          if (externalPanel) {pictureInput.cancel();surfaces?.playOn?.close();return;}
           if (panel) { pictureInput.cancel(); setPanel(null); return; }
           if (more || shortcuts) return;
           const target = pictureTarget();
