@@ -13,8 +13,8 @@
   },
   "onnx": {
     "version": "516acb2a0ff5ef73f64547898e018e793152c506-onnx1",
-    "sha256": "ba2ce1a652eaf2fa0e96139a41a24456ed8780639b2579395c719db453e527c0",
-    "bytes": 3174939
+    "sha256": "e539f3b4e8937c3a19134908e517d11d7791dfeedfc142ff7069c47f32693ba2",
+    "bytes": 3182950
   },
   "distribution": {
     "url": "https://files.pythonhosted.org/packages/1b/6f/38229e7d99c438e11114bbfa39c8c39185458c398011d0b6d7d7c7401617/musicnn-0.1.0-py3-none-any.whl",
