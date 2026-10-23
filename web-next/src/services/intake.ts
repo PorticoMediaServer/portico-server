@@ -26,6 +26,15 @@ export function captureServicesLink(page: Pick<Location, 'pathname' | 'search' |
   return {kind, link: {version: 1, kind, value, createdAt: now}};
 }
 
+/** Unknown continuations are never left in the address while Services starts. Only the drawn
+ * Start-page section anchors are navigation. Actual sign-in/owner parsing is steward-owned. */
+export function scrubUnsupportedServicesFragment(page: Pick<Location, 'pathname' | 'search' | 'hash'>,
+  history: Pick<History, 'state' | 'replaceState'>) {
+  if (!page.hash || page.pathname === '/' && (page.hash === '#join' || page.hash === '#setup')) return false;
+  history.replaceState(history.state, '', page.pathname + page.search);
+  return true;
+}
+
 function validLink(value: ServicesLink | undefined, now: number): value is ServicesLink {
   if (!value || value.version !== 1 || !Object.hasOwn(lifetimes, value.kind) ||
     !Number.isSafeInteger(value.createdAt) || value.createdAt > now || now - value.createdAt >= lifetimes[value.kind]) return false;
@@ -57,7 +66,7 @@ export function servicesLinkStore(): ServicesLinkStore {
   if (tab === null) { tab = crypto.randomUUID(); sessionStorage.setItem(key, tab); }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(tab) || sessionStorage.getItem(key) !== tab)
     throw Object.assign(new Error('invalid_saved_continuation'), {code: 'invalid_saved_continuation'});
-  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1:' + tab, 8192);
+  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1:' + tab, 8192, true);
 }
 
 export async function forgetServicesLink(store: ServicesLinkStore, expected: ServicesLink) {

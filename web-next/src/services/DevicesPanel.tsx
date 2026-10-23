@@ -1,7 +1,7 @@
+import {HostedError} from '../kit/accounts/ServicesAuth';
 import {useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {AccountSessionReviewService} from '@core/account-sessions.ts';
-import {AuthError} from '../kit/accounts';
 import {ServicesBadge, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
@@ -47,7 +47,7 @@ export function DevicesPanel({api, frame}: Props) {
   };
   const actions = <Button size="small" disabled={busy || !active.some(item => !item.current) && !state.nextCursor} onClick={() => setAll(true)}>{t('web.hostedAccount.signOutOthers')}</Button>;
   return frame(<>
-    {error ? <AuthError error={error} /> : null}{state.error ? <AuthError error={state.error} /> : null}{state.mutationError ? <AuthError error={state.mutationError} /> : null}
+    {error ? <HostedError error={error} /> : null}{state.error ? <HostedError error={state.error} /> : null}{state.mutationError ? <HostedError error={state.mutationError} /> : null}
     {devices && active.length > 0 && <ServicesGroup>{active.map(item => {
       const device = metadata.get(item.id);
       if (!device) return null;

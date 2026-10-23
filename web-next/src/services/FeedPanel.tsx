@@ -1,5 +1,5 @@
+import {HostedError} from '../kit/accounts/ServicesAuth';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
-import {AuthError} from '../kit/accounts';
 import {ServicesEmpty, ServicesFeedRow, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {Button, Switch} from '../kit/controls';
 import {ServicesFeed} from './feed';
@@ -26,7 +26,7 @@ export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReview
     finally { if (alive.current) setDownloading(undefined); }
   };
   return <>
-    {state.error ? <AuthError error={state.error} /> : null}{error ? <AuthError error={error} /> : null}
+    {state.error ? <HostedError error={state.error} /> : null}{error ? <HostedError error={error} /> : null}
     {!state.loading && !state.items.length ? <ServicesGroup><ServicesEmpty title={t('services.workspace.emptyNotifications')} description={t('services.workspace.emptyNotificationsBody')} /></ServicesGroup> : null}
     {state.items.length ? <ServicesGroup>{state.items.map(item => {
       const copy = serviceNoticeCopy(item, i18n);

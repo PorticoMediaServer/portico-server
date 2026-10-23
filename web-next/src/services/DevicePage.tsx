@@ -2,8 +2,8 @@ import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react'
 import {ApiError} from '@core/index.ts';
 import {normalizeSetupCode} from '@core/setup-code.ts';
 import type {MessageId} from '@i18n';
-import {AuthError, AuthLinks} from '../kit/accounts';
-import {ServicesAccountLine, ServicesActions, ServicesAuthStage, ServicesCodeChip, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
+import {AuthLinks} from '../kit/accounts';
+import {HostedError, ServicesAccountLine, ServicesActions, ServicesAuthStage, ServicesCodeChip, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthForm} from './AuthForm';
 import {accountIdentity, sameAccount, type ServicesAccount} from './session';
@@ -15,6 +15,8 @@ const platforms: Partial<Record<string, MessageId>> = {ios: 'services.platform.i
 export function DevicePage({account, initialCode = ''}: {account: ServicesAccount; initialCode?: string}) {
   const {t} = useMemo(servicesI18n, []);
   const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
+  const [authenticating, setAuthenticating] = useState(() => !session);
+  useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   const [code, setCode] = useState(initialCode), [review, setReview] = useState<DeviceReview>();
   const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>(), [done, setDone] = useState<'approve' | 'deny'>();
   const operation = useRef<AbortController | null>(null);
@@ -46,12 +48,12 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
   const errorCode = (error as {code?: string} | undefined)?.code;
   const notFound = [400, 404, 410, 422].includes((error as {status?: number} | undefined)?.status ?? 0);
   let completeCode = false; try { normalizeSetupCode(code); completeCode = true; } catch { /* incomplete field */ }
-  if (!session) return <ServicesAuthStage><ServicesAuthForm account={account} onSignedIn={() => {}} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
+  if (!session || authenticating) return <ServicesAuthStage><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
     before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
   if (done) return <ServicesAuthStage variant="state"><ServicesStateIcon tone={done === 'approve' ? 'success' : 'warning'} icon={done === 'approve' ? 'i-check' : 'i-close'} /><ServicesHeading>{t(done === 'approve' ? 'services.device.approvedTitle' : 'services.device.deniedTitle')}</ServicesHeading><ServicesLead>{t(done === 'approve' ? 'services.device.approved' : 'services.device.denied')}</ServicesLead><ServicesActions><Button onClick={another}>{t('web.device.anotherCode')}</Button></ServicesActions></ServicesAuthStage>;
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.device.title')}</ServicesHeading><ServicesLead>{t(review ? 'services.device.reviewLead' : 'web.device.lede')}</ServicesLead>
     <ServicesAccountLine>{t('services.device.approving', {name: session.account.displayName || session.account.username})}<button type="button" disabled={busy} onClick={() => void account.service.logout()}>{t('services.device.notYou')}</button></ServicesAccountLine>
-    {error && !notFound ? errorCode === 'account_changed' || errorCode === 'timeout' ? <ServicesNotice icon="i-clock">{t(errorCode === 'account_changed' ? 'services.device.accountChanged' : 'services.device.timeout')}</ServicesNotice> : <AuthError error={error} /> : null}
+    {error && !notFound ? errorCode === 'account_changed' || errorCode === 'timeout' ? <ServicesNotice icon="i-clock">{t(errorCode === 'account_changed' ? 'services.device.accountChanged' : 'services.device.timeout')}</ServicesNotice> : <HostedError error={error} /> : null}
     {review ? <>
       <ServicesFacts items={[{id: 'device', label: t('services.device.device'), value: review.preview.deviceName}, {id: 'platform', label: t('services.device.platform'), value: platforms[review.preview.platform] ? t(platforms[review.preview.platform]!) : review.preview.platform}, {id: 'code', label: t('auth.code'), value: review.preview.userCode}]} />
       <ServicesNotice tone="info">{t('web.device.approveWarn')}</ServicesNotice>

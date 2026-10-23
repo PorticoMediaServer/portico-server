@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
-import {AuthError, AuthLinks, AuthPasswordField} from '../kit/accounts';
-import {ServicesAuthStage, ServicesHeading, ServicesLead, ServicesNotice, ServicesStrength, ServicesActions, ServicesLabel, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
+import {AuthPasswordField} from '../kit/accounts';
+import {HostedError, ServicesBackLink, ServicesAuthStage, ServicesHeading, ServicesLead, ServicesNotice, ServicesStrength, ServicesActions, ServicesLabel, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {resetPassword, verifyEmail, type VerificationOutcome} from './link-effects';
 import type {ServicesAccount} from './session';
@@ -46,10 +46,10 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
           autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} placeholder={t('services.factor.placeholder')} disabled={busy}
           description={<><span className={styles.desktopOnly}>{t('web.reset.factorHelp')}</span><span className={styles.phoneOnly}>{t('services.reset.factorHelpPhone')}</span></>}
           error={factorWrong ? t('signIn.error.codeInvalid') : undefined} />
-        {error && !factorWrong && !passwordWrong ? <AuthError error={error} /> : null}
+        {error && !factorWrong && !passwordWrong ? <HostedError error={error} /> : null}
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={!passwordStrength(password).acceptable || !confirm}>{t('web.reset.submit')}</Button></ServicesActions>
       </form>
-      <AuthLinks><a href="/">{t('web.link.backToPortico')}</a></AuthLinks>
+      <ServicesBackLink href="/">{t('web.link.backToPortico')}</ServicesBackLink>
     </>}
   </ServicesAuthStage>;
 }
@@ -69,7 +69,7 @@ export function VerifyPage({account, token}: {account: ServicesAccount; token?: 
   return <ServicesAuthStage variant={success ? 'state' : 'reset'}>
     {success && <ServicesStateIcon />}
     <ServicesHeading>{t(outcome === 'changed' ? 'web.verify.changedTitle' : success ? 'web.verify.doneTitle' : 'web.verify.title')}</ServicesHeading>
-    {!token ? <ServicesNotice>{t('web.link.invalid')}</ServicesNotice> : expired ? <ServicesNotice icon="i-clock">{t('web.verify.expired')}</ServicesNotice> : error ? <AuthError error={error} /> : outcome ? <ServicesLead>{t(outcome === 'changed' ? 'web.verify.changed' : outcome === 'elsewhere' ? 'web.verify.confirmedElsewhere' : 'web.verify.done')}</ServicesLead> : <ServicesNotice tone="info" busy>{t('web.verify.working')}</ServicesNotice>}
+    {!token ? <ServicesNotice>{t('web.link.invalid')}</ServicesNotice> : expired ? <ServicesNotice icon="i-clock">{t('web.verify.expired')}</ServicesNotice> : error ? <HostedError error={error} /> : outcome ? <ServicesLead>{t(outcome === 'changed' ? 'web.verify.changed' : outcome === 'elsewhere' ? 'web.verify.confirmedElsewhere' : 'web.verify.done')}</ServicesLead> : <ServicesNotice tone="info" busy>{t('web.verify.working')}</ServicesNotice>}
     {outcome !== 'elsewhere' && (!token || error || outcome) ? <ServicesActions><Button variant={success ? 'primary' : 'glass'} onClick={() => location.assign('/')}>{t(outcome === 'changed' ? 'web.verify.signIn' : outcome === 'confirmed' ? 'web.link.continue' : 'web.link.backToPortico')}</Button></ServicesActions> : null}
   </ServicesAuthStage>;
 }

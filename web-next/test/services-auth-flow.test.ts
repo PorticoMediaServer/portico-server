@@ -69,3 +69,31 @@ test('disposing a pending bootstrap prevents late state publication or automatic
   const snapshot = flow.getSnapshot(); flow.dispose(); resolveOptions(options); await pending;
   assert.equal(flow.getSnapshot(), snapshot); assert.equal(p.authenticated(), 0); assert.equal(p.completed(), 0);
 });
+
+test('canceling provider onboarding cancels the actual browser-bound transaction without adopting a session', async () => {
+  const p = port();
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false, suggestedName: 'Actual callback name'});
+  const flow = new ServicesAuthFlow(p.value, p.done);
+  await flow.initialize(); assert.equal(flow.getSnapshot().mode, 'provider');
+  await flow.cancelProvider();
+  assert.deepEqual(p.calls[0].slice(0, 3), ['/v1/identity/cancel', 'POST', undefined]);
+  assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal(flow.getSnapshot().suggestedName, undefined);
+  assert.equal(p.authenticated(), 0); assert.equal(p.completed(), 0); flow.dispose();
+});
+
+test('provider creation keeps the drawn ready step and refuses Continue after a family change', async () => {
+  const p = port();
+  let session = {account: {id: 'account', username: 'harbourview', displayName: 'Alex'}, familyId: 'created-family', accessToken: 'test-access', expiresAt: '2030-01-01T00:00:00Z'};
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false});
+  p.value.client.complete = async () => session;
+  p.value.service.synchronize = async () => {};
+  p.value.service.accessSession = async () => session;
+  p.value.service.getSnapshot = () => ({phase: 'ready', session, pendingRevocations: 0});
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  await flow.finishProvider('harbourview', 'Alex');
+  assert.equal(flow.getSnapshot().mode, 'ready'); assert.equal(p.completed(), 0);
+  session = {...session, familyId: 'another-family'};
+  await flow.continue();
+  assert.equal(p.completed(), 0); assert.equal((flow.getSnapshot().error as ApiError).code, 'account_changed');
+  flow.dispose();
+});

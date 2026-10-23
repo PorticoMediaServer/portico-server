@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
-import {AuthCodeBoxes, AuthError, AuthLinks, AuthPasswordField} from '../kit/accounts';
-import {ServicesActions, ServicesAuthStage, ServicesDivider, ServicesHeading, ServicesHint, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesQuiet, ServicesStateIcon, ServicesStrength, ServicesTerms} from '../kit/accounts/ServicesAuth';
+import {AuthCodeBoxes, AuthLinks, AuthPasswordField} from '../kit/accounts';
+import {HostedError, ServicesActions, ServicesAuthStage, ServicesDivider, ServicesHeading, ServicesHint, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderButton, ServicesQuiet, ServicesStateIcon, ServicesStrength, ServicesTerms} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthFlow} from './auth-flow';
 import type {ServicesAccount} from './session';
@@ -38,7 +38,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
     <ServicesHeading singleLine>{title}</ServicesHeading><ServicesLead>{body}</ServicesLead>
     {mode === 'signin' && before}
     {(mode === 'signin' || mode === 'create') && providerButtons}
-    {state.error ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : (state.error as {code?: string})?.code === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : <AuthError error={state.error} /> : null}
+    {state.error ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : (state.error as {code?: string})?.code === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : <HostedError error={state.error} /> : null}
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
@@ -87,7 +87,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
         <TextField variant="auth" label={t('auth.username')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} description={t('services.provider.usernameHelp')} value={username} onChange={event => setUsername(event.currentTarget.value)} minLength={3} maxLength={32} required disabled={busy} />
         <TextField variant="auth" label={<ServicesLabel detail={t('field.optional')}>{t('auth.yourName')}</ServicesLabel>} name="name" autoComplete="name" value={name} onChange={event => setName(event.currentTarget.value)} disabled={busy} />
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || username.trim().length < 3}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
-      </form><AuthLinks><button type="button" disabled={busy} onClick={() => flow.go('signin')}>{t('action.cancel')}</button></AuthLinks><ServicesTerms />
+      </form><AuthLinks><button type="button" disabled={busy} onClick={() => void flow.cancelProvider()}>{t('action.cancel')}</button></AuthLinks><ServicesTerms />
     </>}
     {mode === 'ready' && <ServicesActions><Button variant="primary" onClick={() => flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
   </>;

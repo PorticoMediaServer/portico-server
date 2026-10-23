@@ -2,6 +2,7 @@ import {Fragment, type ReactNode} from 'react';
 import {createI18n, deviceRegion, resolveRegion, parseMessage} from '@i18n';
 import type {IdentityProvider} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
+import {presentError} from '@core/presentation/errors.ts';
 import {Icon, type IconName} from '../Icon';
 import {AuthStage} from './AuthStage';
 import styles from './services-auth.module.css';
@@ -21,6 +22,11 @@ export function ServicesNotice({children, tone = 'warning', icon, busy = false}:
     {busy ? <span className={styles.spinner} aria-hidden="true" /> : <Icon name={icon ?? (tone === 'success' ? 'i-check' : tone === 'info' ? 'i-info' : 'i-warn')} size={20} />}
     <span>{children}</span>
   </div>;
+}
+export function HostedError({error}: {error: unknown}) {
+  if (!error) return null;
+  const result = presentError(error, 'portico-account', {operation: 'action', i18n: createI18n(resolveRegion(undefined, deviceRegion()))});
+  return result.silent ? null : <ServicesNotice tone="error">{result.body}</ServicesNotice>;
 }
 export function ServicesStrength({password, id}: {password: string; id: string}) {
   if (!password) return null;
@@ -54,3 +60,4 @@ export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}
   return <div className={styles.codeChip}><Icon name="i-tv" size={18} />{label}<b>{code}</b></div>;
 }
 export function ServicesAccountLine({children}: {children: ReactNode}) { return <p className={styles.accountLine}>{children}</p>; }
+export function ServicesBackLink({children, href}: {children: ReactNode; href: string}) { return <div className={styles.backLink}><a href={href}>{children}</a></div>; }

@@ -17,8 +17,6 @@ export function serviceNoticeCopy(item: AccountNotification, i18n: ReturnType<ty
     }
     case 'server_offline': icon = 'i-server'; tone = 'amber'; title = t('web.account.notif.serverOffline', {server: item.server?.name ?? ''}); body = t('web.account.notif.serverOfflineBody'); break;
     case 'signing_key_expiring': icon = 'i-lock'; tone = 'amber'; title = t('web.account.notif.keyExpiring'); body = t('web.account.notif.keyExpiringBody', {key: item.detail.keyId ?? '', date: item.detail.expiresAt ? i18n.date(item.detail.expiresAt) : ''}); break;
-    case 'storage_nearly_full': icon = 'i-storage'; tone = 'amber'; title = t('web.account.notif.storage', {server: item.server?.name ?? ''}); body = t('web.account.notif.storageBody'); break;
-    case 'invitation_accepted': icon = 'i-people'; title = t('web.account.notif.joined', {server: item.server?.name ?? ''}); body = t('web.account.notif.joinedBody'); break;
     default: title = t('web.account.notif.other'); body = '';
   }
   return {icon, tone, title, body};

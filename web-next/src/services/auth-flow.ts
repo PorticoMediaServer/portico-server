@@ -1,6 +1,6 @@
 import {AccountAttemptIds, MFARequiredError, type IdentityOptions, type IdentityProvider, type IdentityTransaction, type MFAChallenge, type Registration} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
-import type {ServicesAccount} from './session';
+import {accountIdentity, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'ready';
 export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
@@ -13,6 +13,7 @@ export class ServicesAuthFlow {
   private disposed = false;
   private challenge?: MFAChallenge;
   private transaction?: IdentityTransaction;
+  private readyIdentity?: AccountIdentity;
   private ids = new AccountAttemptIds(async () => crypto.randomUUID());
   constructor(private readonly account: ServicesAccount, private readonly signedIn: () => void,
     mode: 'signin' | 'create' | 'forgot' = 'signin', private readonly redirect = (url: string) => location.assign(url)) {
@@ -75,6 +76,15 @@ export class ServicesAuthFlow {
       if (value.authorizationUrl && !signal.aborted) this.redirect(value.authorizationUrl);
     });
   }
+  cancelProvider() {
+    return this.run(async signal => {
+      await this.account.client.request(routePath('identity_cancel'), 'POST', undefined, signal);
+      if (!signal.aborted) {
+        this.transaction = undefined; this.ids.clear('provider');
+        this.publish({mode: 'signin', provider: undefined, suggestedName: undefined});
+      }
+    });
+  }
   create(input: {username: string; displayName: string; contactAddress: string; password: string}) {
     return this.run(async signal => {
       const value = await this.account.client.register({...input, username: input.username.trim().toLowerCase(), displayName: input.displayName.trim() || input.username.trim(), contactAddress: input.contactAddress.trim(), requestId: await this.ids.for('registration', input)}, signal);
@@ -98,10 +108,16 @@ export class ServicesAuthFlow {
   finishProvider(username: string, displayName: string) {
     return this.run(async signal => {
       const transaction = this.transaction; if (!transaction?.needsUsername || !transaction.contactVerified) return;
-      await this.account.service.authenticateIfSignedOut(inner => this.account.client.complete(transaction.transactionId,
+      const accepted = await this.account.service.authenticateIfSignedOut(inner => this.account.client.complete(transaction.transactionId,
         {username: username.trim(), displayName: displayName.trim(), ...(transaction.onboardingToken ? {onboardingToken: transaction.onboardingToken} : {})}, AbortSignal.any([inner, signal])));
-      if (!signal.aborted) { this.transaction = undefined; this.publish({mode: 'ready'}); }
+      if (!signal.aborted) { this.readyIdentity = accountIdentity(accepted); this.transaction = undefined; this.publish({mode: 'ready'}); }
     });
   }
-  continue() { if (!this.disposed && this.state.mode === 'ready') this.signedIn(); }
+  continue() {
+    return this.run(async () => {
+      if (this.state.mode !== 'ready' || !this.readyIdentity) return;
+      await currentAccountWork(this.account, async () => undefined, this.readyIdentity);
+      if (!this.disposed) this.signedIn();
+    });
+  }
 }

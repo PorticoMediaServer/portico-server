@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {captureServicesLink, forgetServicesLink, restoreServicesLink, type ServicesLink, type ServicesLinkStore} from '../src/services/intake.ts';
+import {captureServicesLink, forgetServicesLink, restoreServicesLink, scrubUnsupportedServicesFragment, type ServicesLink, type ServicesLinkStore} from '../src/services/intake.ts';
 
 function vault(initial?: ServicesLink) {
   let value = initial;
@@ -14,6 +14,15 @@ test('device and mail fragments are removed before any asynchronous continuation
     const result = captureServicesLink({pathname, hash, search: ''}, {state: {entry: 1}, replaceState: (_state, _title, url) => { scrubbed = true; assert.equal(url, pathname); }}, 1000);
     assert.equal(scrubbed, true); assert.equal(result?.link?.value, value);
   }
+});
+
+test('unknown continuation fragments are scrubbed and refused, while drawn Start anchors remain navigation', () => {
+  for (const pathname of ['/', '/claim', '/account']) {
+    let next: unknown;
+    assert.equal(scrubUnsupportedServicesFragment({pathname, search: '', hash: '#unrecognized=private'}, {state: null, replaceState: (_state, _title, url) => { next = url; }}), true);
+    assert.equal(next, pathname);
+  }
+  for (const hash of ['', '#join', '#setup']) assert.equal(scrubUnsupportedServicesFragment({pathname: '/', search: '', hash}, {state: null, replaceState() { assert.fail('navigation anchor changed'); }}), false);
 });
 
 test('ambiguous new links clear previous continuation rather than restoring it', async () => {
