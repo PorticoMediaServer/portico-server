@@ -25,7 +25,7 @@ export function LiveOnNow({owner, now, timezone, artwork, reducedMotion, onOpen,
     const element = track.current;if (!element) return;
     const measure = () => setWindow({left: element.scrollLeft, width: element.clientWidth});
     const observer = new ResizeObserver(measure);observer.observe(element);measure();return () => observer.disconnect();
-  }, []);
+  }, [state.channelsError]);
   const first = Math.max(0, Math.floor(window.left / step) - 1), count = Math.ceil(window.width / step) + 2;
   const last = Math.max(first, Math.min(first + count - 1, (state.total ?? count) - 1));
   useEffect(() => current.store.setViewport({firstRow: first, lastRow: last, start: now, end: now + 1}), [current, first, last, now]);
