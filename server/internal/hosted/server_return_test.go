@@ -172,6 +172,9 @@ func TestRegisteredReturnLocalOwnerOutcomesPreserveProfilesAndRejectMerge(t *tes
 			if role == "current" {
 				who.AccountID = "previous-account"
 			}
+			if _, e := f.db.Exec(`UPDATE networking_claim_intents SET approved_username=?,owner_change_reserved=1 WHERE operation_id=?`, who.Username, who.Return.OperationID); e != nil {
+				t.Fatal(e)
+			}
 			var revision int64
 			if e := f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id=?`, ownerID).Scan(&revision); e != nil {
 				t.Fatal(e)

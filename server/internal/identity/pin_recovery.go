@@ -148,19 +148,37 @@ type AuthCapabilities struct {
 
 // Capabilities describes the sign-in methods this server exposes.
 func (s *Service) Capabilities(ctx context.Context) (AuthCapabilities, error) {
-	out := AuthCapabilities{ServerID: s.ID(), ServerName: s.Name(), SetupRequired: s.SetupRequired(), TwoFactor: true, QuickConnect: true}
+	out := AuthCapabilities{ServerID: s.ID(), ServerName: s.Name(), SetupRequired: s.SetupRequired(), TwoFactor: true, SelfRegistration: SelfRegistrationOff, Methods: []string{}}
 	out.HostedAttach = s.Hosted()
-	out.SelfRegistration = s.SelfRegistration()
-	out.Methods = []string{"password"}
+	policyRegistration := s.SelfRegistration()
+	read, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return out, e
+	}
+	defer read.Rollback()
+	var mode string
+	var ready, accounts, passwords, linked bool
+	e = read.Tx().QueryRowContext(ctx, `SELECT COALESCE((SELECT auth_mode FROM onboarding_state_v1 WHERE singleton=1),''),COALESCE((SELECT ready FROM onboarding_state_v1 WHERE singleton=1),0),EXISTS(SELECT 1 FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.disabled=0),EXISTS(SELECT 1 FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.disabled=0 AND length(a.password_hash)>0 AND NOT EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id)),EXISTS(SELECT 1 FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE m.disabled=0)`).Scan(&mode, &ready, &accounts, &passwords, &linked)
+	if e != nil {
+		return out, e
+	}
+	if mode == "local" && passwords {
+		out.Methods = append(out.Methods, "password")
+	}
+	out.QuickConnect = ready && accounts
 	if out.QuickConnect {
 		out.Methods = append(out.Methods, "quick-connect")
 	}
-	if out.HostedAttach {
+	if out.HostedAttach && accounts && (mode == "hosted" || linked) {
 		out.Methods = append(out.Methods, "hosted")
 	}
-	if out.SelfRegistration != SelfRegistrationOff {
-		out.Methods = append(out.Methods, "self-registration")
+	if mode == "local" && ready {
+		out.SelfRegistration = policyRegistration
+		if out.SelfRegistration != SelfRegistrationOff {
+			out.Methods = append(out.Methods, "self-registration")
+		}
 	}
+
 	return out, nil
 }
 

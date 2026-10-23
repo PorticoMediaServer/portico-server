@@ -502,6 +502,7 @@ export class HttpLocalApi {
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<RouteResponse<"setup_server">>(routePath("setup_server"), "POST", routeBody("setup_server", {
       setupToken,
+      authMode: "local",
       username,
       password,
       name,

@@ -327,7 +327,11 @@ func (k *ProtectedKeys) Sign(ctx context.Context, b Binding, payload []byte) ([]
 	if e != nil {
 		return nil, e
 	}
-	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || !active.Valid || active.String != b.OperationID {
+	var pending sql.NullString
+	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
+		return nil, e
+	}
+	if id.ServerID != b.ServerID || !bytes.Equal(id.PublicKey, b.PublicKey) || id.ResetGeneration != b.LocalGeneration || ((!active.Valid || active.String != b.OperationID) && (!pending.Valid || pending.String != b.OperationID)) {
 		return nil, ErrStale
 	}
 	if kind.Kind == "portico.claim.web.v2" {

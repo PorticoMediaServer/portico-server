@@ -129437,16 +129437,24 @@ export const schemas = {
     "type": "object"
   },
   "PostNetworkingClaimPrepareRequest": {
+    "additionalProperties": false,
     "properties": {
       "accountId": {
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]*$",
         "type": "string"
       },
       "expected": {
+        "additionalProperties": false,
         "properties": {
           "localGeneration": {
+            "pattern": "^(0|[1-9][0-9]*)$",
             "type": "string"
           },
           "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
             "type": "string"
           }
         },
@@ -129455,6 +129463,27 @@ export const schemas = {
           "localGeneration"
         ],
         "type": "object"
+      },
+      "previousOwnerRole": {
+        "enum": [
+          "admin",
+          "member",
+          "remove"
+        ],
+        "type": "string"
+      },
+      "purpose": {
+        "enum": [
+          "setup",
+          "switch",
+          "change-owner"
+        ],
+        "type": "string"
+      },
+      "returnRegistrationId": {
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]*$",
+        "type": "string"
       }
     },
     "required": [
@@ -131806,20 +131835,12 @@ export const schemas = {
   },
   "PostSetupFinishRequest": {
     "properties": {
-      "enabled": {
-        "type": "boolean"
-      },
       "revision": {
         "type": "string"
-      },
-      "warningConfirmed": {
-        "type": "boolean"
       }
     },
     "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
+      "revision"
     ],
     "type": "object"
   },

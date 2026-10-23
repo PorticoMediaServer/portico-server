@@ -68,9 +68,7 @@ func registerSetupHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/installation.go:28
 	if err := apikit.RegisterHTTP[struct {
-		Revision         int64 `json:"revision,string"`
-		Enabled          bool  `json:"enabled"`
-		WarningConfirmed bool  `json:"warningConfirmed"`
+		Revision int64 `json:"revision,string"`
 	}, identity.OnboardingState](registry, apikit.Metadata{ID: "post_setup_finish", Method: "POST", Path: "/v1/setup/finish", Summary: "Run setup finish", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
@@ -161,10 +159,7 @@ func registerSetupHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/installation.go:28
-	if err := apikit.RegisterHTTP[struct {
-		AccountID string                           `json:"accountId,omitempty"`
-		Expected  networking.ClaimIdentityExpected `json:"expected"`
-	}, networking.ClaimStatus](registry, apikit.Metadata{ID: "post_networking_claim_prepare", Method: "POST", Path: "/v1/networking/claim/prepare", Summary: "Run network claim prepare", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[networking.ClaimPrepareRequest, networking.ClaimStatus](registry, apikit.Metadata{ID: "post_networking_claim_prepare", Method: "POST", Path: "/v1/networking/claim/prepare", Summary: "Run network claim prepare", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/installation.go:28

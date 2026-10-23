@@ -363,7 +363,13 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 			if current != who.AccountID {
 				return ErrForbidden
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',must_change=0 WHERE id=?`, c.account.ID); e != nil {
+			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',epoch=epoch+1 WHERE id=?`, c.account.ID); e != nil {
+				return e
+			}
+			if e = s.revokeCredentialsTx(ctx, tx, c.account.ID); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO identity_credential_state(account_id,must_change) VALUES(?,0) ON CONFLICT(account_id) DO UPDATE SET must_change=0`, c.account.ID); e != nil {
 				return e
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET auth_mode='hosted',revision=revision+1 WHERE singleton=1 AND ready=1`); e != nil {
@@ -378,12 +384,25 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 		if who.Return.Purpose != "change-owner" || current == who.AccountID {
 			return ErrForbidden
 		}
+		var localUsername string
+		var reserved bool
+		if e = tx.QueryRowContext(ctx, `SELECT approved_username,owner_change_reserved FROM networking_claim_intents WHERE operation_id=? AND account_id=? AND purpose='change-owner' AND owner_id=? AND current_owner_account_id=? AND previous_owner_role=?`, who.Return.OperationID, who.AccountID, c.account.ID, current, who.Return.PreviousOwnerRole).Scan(&localUsername, &reserved); e != nil {
+			return e
+		}
+		if !reserved || localUsername == "" {
+			return ErrForbidden
+		}
 		var collision bool
-		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE)`, who.AccountID, who.Username).Scan(&collision); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE)`, who.AccountID, localUsername).Scan(&collision); e != nil {
 			return e
 		}
 		if collision {
 			return ErrForbidden
+		}
+		// Release only inside the actual same writer that consumes this approval;
+		// any insert/session/final fence failure rolls this release back as well.
+		if _, e = tx.ExecContext(ctx, `UPDATE networking_claim_intents SET owner_change_reserved=0 WHERE operation_id=?`, who.Return.OperationID); e != nil {
+			return e
 		}
 		previous := who.Return.PreviousOwnerRole
 		if previous != "admin" && previous != "member" && previous != "remove" {
@@ -407,7 +426,7 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 			return e
 		}
 		aid, pid := Token(), Token()
-		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'',?)`, aid, who.Username, pid); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,X'',?)`, aid, localUsername, pid); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='owner',revision=revision+1 WHERE account_id=?`, aid); e != nil {
@@ -416,7 +435,7 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 		if _, e = tx.ExecContext(ctx, `INSERT INTO account_portico_links(account_id,hosted_account_id,consent) VALUES(?,?,?)`, aid, who.AccountID, who.Consent); e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, who.Username, pid); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET name=? WHERE id=?`, localUsername, pid); e != nil {
 			return e
 		}
 		out, e = s.PorticoSignInTx(ctx, tx, who)
