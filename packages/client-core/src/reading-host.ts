@@ -1,0 +1,222 @@
+import type {ReadingManifest, ReadingProgress, ReadingSavedProgress, ReadingSession, ReadingPage} from './reading.ts';
+import {ReadingError} from './reading.ts';
+import {parsePreferenceSnapshot, type PreferenceSnapshot} from './preferences.ts';
+import {decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse, decodePutReadingSessionsSessionIdProgressResponse} from '../../contracts/src/index.ts';
+
+/** Local trusted-app bridge only. No HTTP path, origin, credential or fetch port. */
+export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'>;
+export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
+type RecordValue = Record<string, unknown>;
+const record = (v: unknown): v is RecordValue => typeof v === 'object' && v !== null && !Array.isArray(v);
+const integer = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
+function fail(code = 'invalid_bridge'): never {throw new ReadingError(code);}
+const CHUNK = 48 * 1024, CONTROL = 2 * 1024 * 1024;
+const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function encode(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i]!, b = bytes[i + 1] ?? 0, c = bytes[i + 2] ?? 0;
+    out += alphabet[a >> 2]! + alphabet[((a & 3) << 4) | (b >> 4)]! + (i + 1 < bytes.length ? alphabet[((b & 15) << 2) | (c >> 6)] : '=') + (i + 2 < bytes.length ? alphabet[c & 63] : '=');
+  }
+  return out;
+}
+function decode(text: unknown, expected: number): Uint8Array {
+  if (typeof text !== 'string' || text.length !== Math.ceil(expected / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(text)) fail();
+  const out = new Uint8Array(expected); let offset = 0;
+  for (let i = 0; i < text.length; i += 4) {
+    const a = alphabet.indexOf(text[i]!), b = alphabet.indexOf(text[i + 1]!), c = alphabet.indexOf(text[i + 2]!), d = alphabet.indexOf(text[i + 3]!);
+    if (offset < expected) out[offset++] = (a << 2) | (b >> 4);
+    if (offset < expected) out[offset++] = ((b & 15) << 4) | (c >> 2);
+    if (offset < expected) out[offset++] = ((c & 3) << 6) | d;
+  }
+  return out;
+}
+function packet(message: string, max: number): RecordValue {
+  if (typeof message !== 'string' || message.length > max) fail();
+  const value: unknown = JSON.parse(message);
+  if (!record(value) || value.v !== 1) fail();
+  return value;
+}
+function frozen<T>(value: T): T {
+  if (value && typeof value === 'object') {for (const child of Object.values(value)) frozen(child); Object.freeze(value);}
+  return value;
+}
+function errorInfo(error: unknown) {
+  return error instanceof ReadingError ? {code: error.code, status: error.status} : {code: 'reading_unavailable'};
+}
+
+/** RN retains the actual captured facade. Its caller still owns session.close().
+ * Binary messages are pulled in <=48KiB chunks; just one original member/page is
+ * retained, with an idle deadline, never a book/archive cache. */
+export function createReadingHost({session, channel, preferences, initialProgress, current, send, onBack, onSettings}: Readonly<{
+  session: ReadingHostSession; channel: string; preferences: () => PreferenceSnapshot; initialProgress: ReadingProgress;
+  current: () => boolean; send: (message: string) => void; onBack: () => void; onSettings: () => void;
+}>) {
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
+  const manifest = session.manifest, life = new AbortController(), requests = new Map<number, AbortController>();
+  let started = false, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
+  const valid = () => !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;
+  const check = () => {if (!valid()) fail('cancelled');};
+  const post = (value: RecordValue) => {if (valid()) send(JSON.stringify({v: 1, channel, ...value}));};
+  const release = () => {if (transfer) clearTimeout(transfer.timer); transfer = undefined;};
+  const dispose = () => {
+    if (life.signal.aborted) return;
+    // Retirement is local; it must not issue a cleanup request as another viewer.
+    try {send(JSON.stringify({v: 1, channel, kind: 'retired', error: errorInfo(session.signal.reason)}));} catch { /* native surface already gone */ }
+    life.abort(); release(); for (const request of requests.values()) request.abort(); requests.clear();
+    session.signal.removeEventListener('abort', dispose);
+  };
+  session.signal.addEventListener('abort', dispose, {once: true});
+  if (session.signal.aborted) dispose();
+  const stage = (id: number, bytes: Uint8Array, metadata: RecordValue = {}) => {
+    if (transfer || bytes.byteLength > 32 * 1024 * 1024) fail('bridge_busy');
+    transfer = {id, bytes, offset: 0, timer: setTimeout(release, 30000)};
+    return {transfer: id, length: bytes.byteLength, ...metadata};
+  };
+  const receive = (message: string) => {
+    let data: RecordValue;
+    try {data = packet(message, 16384);} catch {return;}
+    if (data.kind === 'ready') {
+      if (started || !valid()) return;
+      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress}); return;
+    }
+    if (!started || data.channel !== channel || !valid()) return;
+    if (data.kind === 'cancel' && integer(data.id, 1, last)) {requests.get(data.id)?.abort(); if (transfer?.id === data.id) release(); return;}
+    if (data.kind !== 'request' || !integer(data.id, last + 1, Number.MAX_SAFE_INTEGER)) return;
+    last = data.id; const id = data.id, method = data.method, args = record(data.args) ? data.args : {};
+    if (requests.size >= 4) {post({kind: 'reply', id, error: {code: 'bridge_busy'}}); return;}
+    const request = new AbortController(); requests.set(id, request);
+    let ownsBinary = false;
+    const deadline = setTimeout(() => request.abort(), 30000);
+    void (async () => {
+      check(); let value: unknown;
+      if (method === 'range' || method === 'asset' || method === 'page') {if (binaryRequest || transfer) fail('bridge_busy'); binaryRequest = true; ownsBinary = true;}
+      if (method === 'head') value = await session.headPDF(request.signal) ?? null;
+      else if (method === 'range') {
+        if (!integer(args.start, 0, manifest.size - 1) || !integer(args.endExclusive, Number(args.start) + 1, manifest.size) || args.endExclusive - args.start > 65536) fail('invalid_range');
+        if (transfer) fail('bridge_busy');
+        value = stage(id, await session.readRange({start: args.start, endExclusive: args.endExclusive}, request.signal));
+      } else if (method === 'asset') {
+        if (typeof args.path !== 'string' || args.path.length > 4096 || transfer) fail('invalid_asset');
+        value = stage(id, await session.readAsset(args.path, request.signal));
+      } else if (method === 'page') {
+        if (!integer(args.index, 0, 4095) || !integer(args.width, 32, 2048) || transfer) fail('invalid_page');
+        const page = await session.page(args.index, {width: args.width, signal: request.signal});
+        value = stage(id, page.bytes, {index: page.index, name: page.name, mime: page.mime});
+      } else if (method === 'chunk') {
+        if (!transfer || args.transfer !== transfer.id || args.offset !== transfer.offset) fail();
+        const start = transfer.offset, end = Math.min(start + CHUNK, transfer.bytes.length);
+        value = {offset: start, bytes: encode(transfer.bytes.subarray(start, end))}; transfer.offset = end;
+        clearTimeout(transfer.timer);
+        if (end === transfer.bytes.length) release(); else transfer.timer = setTimeout(release, 30000);
+      } else if (method === 'release') {if (transfer?.id === args.transfer) release(); value = null;}
+      else if (method === 'progress') value = await session.progress(request.signal);
+      else if (method === 'save') {
+        // The canonical facade validates the generated location and CAS request before I/O.
+        if (!integer(args.expectedRevision, 0, Number.MAX_SAFE_INTEGER) || !record(args.location)) fail('invalid_location');
+        value = await session.saveProgress(args as Parameters<ReadingSession['saveProgress']>[0], request.signal);
+      } else if (method === 'back') {onBack(); value = null;}
+      else if (method === 'settings') {onSettings(); value = null;}
+      else fail();
+      check(); if (request.signal.aborted) {if (transfer?.id === id) release(); fail('cancelled');}
+      if (ownsBinary) {binaryRequest = false; ownsBinary = false;}
+      post({kind: 'reply', id, value});
+    })().catch(error => {if (transfer?.id === id) release(); post({kind: 'reply', id, error: errorInfo(error)});})
+      .finally(() => {clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
+  };
+  return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});}, setActive: (active: boolean) => {if (started) post({kind: 'active', active});}});
+}
+
+export type ReadingGuest = Readonly<{
+  session: ReadingHostSession; initialProgress: ReadingProgress;
+  preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
+  onActive: (listener: (active: boolean) => void) => () => void;
+  back: () => Promise<void>; openSettings: () => Promise<void>; dispose: () => void;
+}>;
+/** Bundled browser side: structural source ports only, no selected-server API. */
+export function connectReadingHost(transport: ReadingHostTransport): Readonly<{ready: Promise<ReadingGuest>; dispose: () => void}> {
+  const life = new AbortController(), waiting = new Map<number, {resolve: (value: unknown) => void; reject: (error: unknown) => void}>();
+  const listeners = new Set<() => void>(), activeListeners = new Set<(active: boolean) => void>();
+  let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, binaryTail = Promise.resolve();
+  let resolveReady!: (guest: ReadingGuest) => void, rejectReady!: (error: unknown) => void;
+  const ready = new Promise<ReadingGuest>((resolve, reject) => {resolveReady = resolve; rejectReady = reject;});
+  void ready.catch(() => {});
+  const dispose = (reason: unknown = new ReadingError('cancelled')) => {
+    if (life.signal.aborted) return;
+    life.abort(reason); clearTimeout(startDeadline); off(); rejectReady(reason);
+    for (const pending of waiting.values()) pending.reject(reason);
+    waiting.clear(); listeners.clear(); activeListeners.clear();
+  };
+  function call(method: string, args: RecordValue = {}, signal?: AbortSignal): Promise<unknown> {
+    if (!channel || life.signal.aborted || signal?.aborted) return Promise.reject(new ReadingError('cancelled'));
+    if (waiting.size >= 4) return Promise.reject(new ReadingError('bridge_busy'));
+    const id = ++sequence;
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const release = () => {clearTimeout(timer); signal?.removeEventListener('abort', aborted); waiting.delete(id);};
+      const aborted = () => {release(); transport.send(JSON.stringify({v: 1, channel, kind: 'cancel', id})); reject(new ReadingError('cancelled'));};
+      waiting.set(id, {resolve(value) {release(); resolve(value);}, reject(error) {release(); reject(error);}});
+      timer = setTimeout(aborted, 30000); signal?.addEventListener('abort', aborted, {once: true});
+      try {transport.send(JSON.stringify({v: 1, channel, kind: 'request', id, method, args}));} catch (error) {release(); reject(error);}
+    });
+  }
+  async function binary(method: string, args: RecordValue, signal?: AbortSignal): Promise<{bytes: Uint8Array; metadata: RecordValue}> {
+    const predecessor = binaryTail; let unlock!: () => void;
+    binaryTail = new Promise<void>(resolve => {unlock = resolve;});
+    let transfer: number | undefined;
+    try {
+      await predecessor;
+      if (life.signal.aborted || signal?.aborted) fail('cancelled');
+      const metadata = await call(method, args, signal);
+      if (!record(metadata) || !integer(metadata.transfer, 1, Number.MAX_SAFE_INTEGER) || !integer(metadata.length, 0, 32 * 1024 * 1024)) fail();
+      transfer = metadata.transfer; const bytes = new Uint8Array(metadata.length);
+      for (let offset = 0; offset < bytes.length;) {
+        const size = Math.min(CHUNK, bytes.length - offset), part = await call('chunk', {transfer, offset}, signal);
+        if (!record(part) || part.offset !== offset) fail();
+        bytes.set(decode(part.bytes, size), offset); offset += size;
+      }
+      return {bytes, metadata};
+    } finally {if (transfer !== undefined && !life.signal.aborted) void call('release', {transfer}).catch(() => {}); unlock();}
+  }
+  const off = transport.subscribe(message => {
+    try {
+      const data = packet(message, CONTROL);
+      if (data.kind === 'initial' && !initialized) {
+        if (typeof data.channel !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(data.channel)) fail();
+        const manifest: ReadingManifest = frozen(decodePostReadingSessionsResponse(data.manifest));
+        snapshot = parsePreferenceSnapshot(data.preferences);
+        const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
+        channel = data.channel; initialized = true; clearTimeout(startDeadline);
+        const session: ReadingHostSession = Object.freeze({manifest, signal: life.signal,
+          headPDF: async signal => {await call('head', {}, signal);},
+          readRange: async (range, signal) => (await binary('range', range, signal)).bytes,
+          readAsset: async (path, signal) => (await binary('asset', {path}, signal)).bytes,
+          page: async (index, options): Promise<ReadingPage> => {
+            const {bytes, metadata} = await binary('page', {index, width: options.width}, options.signal);
+            if (metadata.index !== index || typeof metadata.name !== 'string' || metadata.name.length > 4096 || !['image/png', 'image/jpeg', 'image/webp'].includes(String(metadata.mime))) fail();
+            return {index, name: metadata.name, mime: metadata.mime as ReadingPage['mime'], bytes};
+          },
+          progress: async signal => decodeGetReadingSessionsSessionIdProgressResponse(await call('progress', {}, signal)),
+          saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
+        });
+        resolveReady(Object.freeze({session, initialProgress,
+          preferences: Object.freeze({getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}}),
+          onActive: (listener: (active: boolean) => void) => {activeListeners.add(listener); return () => {activeListeners.delete(listener);};},
+          back: async () => {await call('back');}, openSettings: async () => {await call('settings');}, dispose,
+        }));
+      } else if (initialized && data.channel === channel) {
+        if (data.kind === 'retired') {dispose(new ReadingError(record(data.error) && typeof data.error.code === 'string' ? data.error.code : 'cancelled')); return;}
+        if (data.kind === 'preferences') {snapshot = parsePreferenceSnapshot(data.preferences); for (const listener of [...listeners]) listener();}
+        else if (data.kind === 'active' && typeof data.active === 'boolean') {for (const listener of [...activeListeners]) listener(data.active);}
+        else if (data.kind === 'reply' && integer(data.id, 1, sequence)) {
+          const pending = waiting.get(data.id); if (!pending) return;
+          if (record(data.error)) pending.reject(new ReadingError(typeof data.error.code === 'string' ? data.error.code : 'reading_unavailable', integer(data.error.status, 100, 599) ? data.error.status : undefined));
+          else pending.resolve(data.value);
+        }
+      }
+    } catch {dispose(new ReadingError('invalid_bridge'));}
+  });
+  const startDeadline = setTimeout(() => dispose(new ReadingError('reading_unavailable')), 30000);
+  transport.send(JSON.stringify({v: 1, kind: 'ready'}));
+  return Object.freeze({ready, dispose});
+}

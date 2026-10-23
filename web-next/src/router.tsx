@@ -47,5 +47,7 @@ const devRoutes = import.meta.env.DEV ? [createRoute({
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
 })] : [];
 export const routeTree = rootRoute.addChildren([...destinations, ...devRoutes]);
-export const router = createRouter({routeTree, defaultViewTransition: true});
+// The initial route must paint before there is a document snapshot to animate.
+// The shell's real-render listener enables native transitions for later routes.
+export const router = createRouter({routeTree, defaultViewTransition: false});
 declare module '@tanstack/react-router' { interface Register { router: typeof router } }
