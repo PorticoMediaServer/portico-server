@@ -431,6 +431,7 @@ index metadata_tags_facet
 index metadata_tags_name
 index metadata_work_expiry
 index mount_operations_retention
+index music_sonic_embeddings_model
 index music_virtual_tracks_entity
 index networking_certificates_scope
 index networking_claim_one_active
@@ -982,6 +983,7 @@ table library_network_policy
 table library_preferences
 table library_revisions
 table library_scan_policies
+table library_sonic_settings
 table library_sources
 table listening_book_groups
 table listening_book_series
@@ -1095,6 +1097,8 @@ table mount_revision
 table music_acoustid_health
 table music_artist_evidence
 table music_match_observations
+table music_sonic_embeddings
+table music_sonic_tags
 table music_technical_facts
 table music_virtual_tracks
 table networking_address_absence
