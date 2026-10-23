@@ -5,4 +5,6 @@ RUN apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o APT::Update::E
     && rm -rf /var/lib/apt/lists/* \
     && smbd --version
 COPY smb.conf /etc/samba/smb.conf
+COPY entrypoint.sh /usr/local/bin/portico-smb-fixture
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/portico-smb-fixture"]
 CMD ["smbd", "--foreground", "--no-process-group", "--debug-stdout", "--configfile=/etc/samba/smb.conf"]
