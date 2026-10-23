@@ -3,6 +3,7 @@ import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
 import {selectedViewerRecord} from '@core/viewer-selection.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
+import {appearancePreferences, regionPreferences} from '@core/preference-effects.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
@@ -30,7 +31,7 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
-  facts: ShellFacts; epoch: number; viewerFence: string; isCurrent: () => boolean;
+  facts: ShellFacts; preferences?: PreferencesReader; epoch: number; viewerFence: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -186,7 +187,7 @@ export class ShellBootstrap {
     const display=browserServerDisplay();display.remember(api,facts.serverName);
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
-    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, epoch, viewerFence: document.viewerFence, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
+    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, preferences, epoch, viewerFence: document.viewerFence, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
     cleanups.push(runEventFeed(events, freshness.hub, browserFeedEnvironment(assembly.busy, assembly.onBusy)));
@@ -194,7 +195,7 @@ export class ShellBootstrap {
       if (!isCurrent()) return;
       const binding = assembly.getBinding();
       this.publish({phase: 'ready', binding: {...binding, shell: {...binding.shell,
-        identity: {...binding.shell.identity, unread: inbox.getSnapshot().unread}}}});
+        identity: {...binding.shell.identity, unread: inbox.getSnapshot().unread, showNotificationDot: (preferences.getSnapshot('web') ?? facts.preferences).effective['notifications.badges'] === true}}}});
     };
     cleanups.push(inbox.subscribe(publishBinding));
     cleanups.push(assembly.subscribe(publishBinding));
@@ -202,14 +203,25 @@ export class ShellBootstrap {
     const restart = () => { if (isCurrent()) this.restart(); };
     cleanups.push(home.subscribe(() => { const next = home.getSnapshot().document; if (next && next.viewerFence !== document.viewerFence) restart(); }));
     cleanups.push(events.on('libraries.changed', restart));
-    cleanups.push(events.on('settings.changed', restart));
+    let regionKey = JSON.stringify(regionPreferences(facts.preferences));
+    cleanups.push(preferences.subscribe(() => {
+      const next = preferences.getSnapshot('web'); if (!next || !isCurrent()) return;
+      const key = JSON.stringify(regionPreferences(next));
+      if (key !== regionKey) { regionKey = key; restart(); } else publishBinding();
+    }));
+    const refreshPreferences = () => { void preferences.preferences('web').catch(() => { /* Keep the last confirmed values; a wake or later event retries. */ }); };
+    cleanups.push(events.on('settings.changed', event => { if (event.resource?.id === 'preferences') refreshPreferences(); else restart(); }));
     cleanups.push(events.on('list.changed', event => { if (['members', 'liveSources', 'libraryChannels'].includes(event.resource?.id ?? '')) restart(); }));
     const wake = () => {
-      if (!globalThis.document.hidden) { auth.wake(); void auth.permissionDenied(); }
+      if (!globalThis.document.hidden) { auth.wake(); void auth.permissionDenied(); refreshPreferences(); }
     };
     globalThis.document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake);
     cleanups.push(() => { globalThis.document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); });
-    globalThis.document.documentElement.dataset.reduceMotion = String(facts.preferences.effective['appearance.reduceMotion'] === true);
+    const motion = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(preferences.getSnapshot('web') ?? facts.preferences, motion.matches).reducedMotion); };
+    applyMotion(); motion.addEventListener('change', applyMotion);
+    cleanups.push(preferences.subscribe(applyMotion));
+    cleanups.push(() => motion.removeEventListener('change', applyMotion));
     publishBinding();
   }
   selectServer = async (serverId:string) => {this.fence();this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);await this.start();}catch(error){this.publish({phase:'error',error});}};

@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
@@ -133,7 +134,7 @@ func TestPausedHistorySessionStartPreservesResume(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,123000,0,'old')`, key, entity); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,'{"privacy.pauseWatchHistory":true}',0)`, "profile:"+operations.ViewerScopeKey(p.Viewer)); err != nil {
+	if _, err := operations.New(db).ApplyPreferences(context.Background(), p, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "pause", Values: operations.PreferencePatch{"privacy.pauseWatchHistory": true}}); err != nil {
 		t.Fatal(err)
 	}
 	writerTx(t, db, func(tx *sql.Tx) error { return claimSessionProgress(tx, p, item, "new", 0) })
