@@ -136,7 +136,7 @@ func TestBrowserPreparationActualProducerConsentAndOfflineDeparture(t *testing.T
 	if list := b.call("http", "/v1/servers", b.targetToken, nil); list.Status != 200 || !bytes.Contains(list.Body, []byte(f.id.ID())) {
 		t.Fatalf("actual directory membership missing %d %s", list.Status, list.Body)
 	}
-	if e := f.service.ConfigureClaimCleanup(f.keys); e != nil {
+	if e := f.service.ConfigureIdentityDepartures(f.keys); e != nil {
 		t.Fatal(e)
 	}
 	f.id.PrepareIdentityDeparture = f.service.PrepareIdentityDeparture
