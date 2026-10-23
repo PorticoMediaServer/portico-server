@@ -40,3 +40,13 @@ test('finishing an older page cannot clear a newer link opened in another tab', 
   const v = vault(next); await forgetServicesLink(v.store, old); assert.deepEqual(v.value(), next);
   await forgetServicesLink(v.store, next); assert.equal(v.value(), undefined);
 });
+
+test('a newly captured link never adopts a value read back from a racing page', async () => {
+  const first: ServicesLink = {version: 1, kind: 'reset', value: 'first', createdAt: 1000};
+  const second = {...first, value: 'second'};
+  let reads = 0;
+  const store: ServicesLinkStore = {change: async () => {}, read: async () => { reads++; return second; }};
+  assert.deepEqual(await restoreServicesLink(store, {kind: 'reset', link: first}, 1001), first);
+  assert.equal(await restoreServicesLink(store, {kind: 'reset'}, 1001), undefined);
+  assert.equal(reads, 0);
+});

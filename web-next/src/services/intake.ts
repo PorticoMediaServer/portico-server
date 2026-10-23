@@ -36,7 +36,11 @@ function validLink(value: ServicesLink | undefined, now: number): value is Servi
 
 /** A malformed newly opened link replaces an older one; it must never revive stale authority. */
 export async function restoreServicesLink(store: ServicesLinkStore, capture?: LinkCapture, now = Date.now()) {
-  if (capture) await store.change(() => capture.link);
+  if (capture) {
+    const value = validLink(capture.link, now) ? capture.link : undefined;
+    await store.change(() => value);
+    return value;
+  }
   const value = await store.read();
   if (validLink(value, now)) return value;
   if (value) await store.change(() => undefined);
@@ -46,7 +50,14 @@ export function servicesLinkStore(): ServicesLinkStore {
   // Services has no plain-HTTP vault fallback. The existing account API allows only HTTPS or
   // a secure loopback context, and this continuation also requires authenticated encryption.
   if (!globalThis.isSecureContext || !globalThis.crypto?.subtle) throw Object.assign(new Error('secure_context_required'), {code: 'secure_context_required'});
-  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1', 8192);
+  // Only this noncredential vault selector is in sessionStorage. The link itself stays encrypted
+  // in the existing protected store, and a second tab cannot replace this tab's pending reset.
+  const key = 'portico.services-tab.v1';
+  let tab = sessionStorage.getItem(key);
+  if (tab === null) { tab = crypto.randomUUID(); sessionStorage.setItem(key, tab); }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(tab) || sessionStorage.getItem(key) !== tab)
+    throw Object.assign(new Error('invalid_saved_continuation'), {code: 'invalid_saved_continuation'});
+  return new BrowserProtectedStore<ServicesLink>('portico.services-link.v1:' + tab, 8192);
 }
 
 export async function forgetServicesLink(store: ServicesLinkStore, expected: ServicesLink) {
