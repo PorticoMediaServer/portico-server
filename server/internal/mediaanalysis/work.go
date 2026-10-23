@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/mediaartifact"
+	"portico.local/server/internal/sonic"
 	"portico.local/server/internal/storage"
 )
 
@@ -31,6 +32,7 @@ type produced struct {
 	Summary   any
 	Artifacts []artifactOutput
 	Markers   []Marker
+	Sonic     []sonicItemAnalysis
 }
 
 // RunOne is a single stage quantum of the EXISTING durable inventory job. It
@@ -99,14 +101,14 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 			return false, false, "", nil
 		}
 		var complete bool
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0 AND (?='' OR r.evidence=?))`, request.ObjectID, request.SourceRevision, op, Algorithm, b.Source.Incarnation, b.Source.Generation, b.ProbeEvidence, b.ProbeEvidence).Scan(&complete)
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0 AND (?='' OR r.evidence=?))`, request.ObjectID, request.SourceRevision, op, s.stageAlgorithm(b, op), b.Source.Incarnation, b.Source.Generation, b.ProbeEvidence, b.ProbeEvidence).Scan(&complete)
 		if err != nil || complete {
 			return false, false, "", err
 		}
 		var state string
 		var attempt int
 		var next int64
-		err = tx.QueryRowContext(ctx, `SELECT state,attempt,next_ms,error_code FROM analysis_stage_runs WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, b.WorkAlgorithm).Scan(&state, &attempt, &next, &code)
+		err = tx.QueryRowContext(ctx, `SELECT state,attempt,next_ms,error_code FROM analysis_stage_runs WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, s.stageWorkAlgorithm(b, op)).Scan(&state, &attempt, &next, &code)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return false, false, "", err
 		}
@@ -120,6 +122,9 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	}
 	stage := ""
 	for _, op := range catalog.DeepScanOperations {
+		if op == catalog.SonicOperation && !s.SonicCanAttempt() {
+			continue
+		}
 		// Episode artwork has its own metadata publication/CAS and runs through
 		// ingestion's same durable job after these immutable analysis stages.
 		if op == catalog.EpisodeThumbnailOperation {
@@ -187,11 +192,11 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	publications := map[string]string{}
 	for _, op := range stages {
 		var attempt int
-		err = tx.QueryRowContext(ctx, `INSERT INTO analysis_stage_runs(job_id,object_id,source_revision,policy_revision,stage,algorithm,state,attempt,updated_ms) VALUES(?,?,?,?,?,?,'running',1,?) ON CONFLICT(job_id,object_id,source_revision,policy_revision,stage,algorithm) DO UPDATE SET state='running',attempt=attempt+1,processed_bytes=0,error_code='',next_ms=0,updated_ms=excluded.updated_ms RETURNING attempt`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, b.WorkAlgorithm, nowMS()).Scan(&attempt)
+		err = tx.QueryRowContext(ctx, `INSERT INTO analysis_stage_runs(job_id,object_id,source_revision,policy_revision,stage,algorithm,state,attempt,updated_ms) VALUES(?,?,?,?,?,?,'running',1,?) ON CONFLICT(job_id,object_id,source_revision,policy_revision,stage,algorithm) DO UPDATE SET state='running',attempt=attempt+1,processed_bytes=0,error_code='',next_ms=0,updated_ms=excluded.updated_ms RETURNING attempt`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, s.stageWorkAlgorithm(b, op), nowMS()).Scan(&attempt)
 		if err != nil {
 			return false, "", err
 		}
-		publications[op] = token(request.JobID, request.ObjectID, request.SourceRevision, fmt.Sprint(request.PolicyRevision), op, b.WorkAlgorithm, fmt.Sprint(attempt))
+		publications[op] = token(request.JobID, request.ObjectID, request.SourceRevision, fmt.Sprint(request.PolicyRevision), op, s.stageWorkAlgorithm(b, op), fmt.Sprint(attempt))
 	}
 	if err = gated.Commit(); err != nil {
 		return false, "", err
@@ -220,7 +225,7 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		return fail(err)
 	}
 	counted := &countedInput{Input: input, limit: s.options.MaxInputBytes * 4, progress: func(n int64) {
-		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET processed_bytes=?,updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=? AND state='running'`, n, nowMS(), request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, stage, b.WorkAlgorithm)
+		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET processed_bytes=?,updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=? AND state='running'`, n, nowMS(), request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, stage, s.stageWorkAlgorithm(b, stage))
 	}}
 	tool := "builtin-sha256"
 	if stage != "checksum" {
@@ -242,7 +247,10 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		return runner(ctx, key, spec, consume)
 	}
 	results := map[string]produced{}
+	started := time.Now()
 	switch {
+	case stage == catalog.SonicOperation:
+		results[stage], err = s.produceSonic(ctx, b, decode, publications[stage], physical)
 	case isSharedAudioStage(stage):
 		results, err = s.produceSharedAudio(ctx, b, stages, decode, publications)
 	default:
@@ -274,6 +282,9 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		if err = s.publish(ctx, b, op, publications[op], input.Evidence(), tool, results[op]); err != nil {
 			return fail(err)
 		}
+		if op == catalog.SonicOperation {
+			s.recordSonicProgress(b.Source.LibraryID, len(results[op].Sonic), time.Since(started))
+		}
 	}
 	return false, "", nil
 }
@@ -300,7 +311,7 @@ func (c *countedInput) ReadExtent(ctx context.Context, offset, length int64) ([]
 }
 func (s *Service) stageFailure(ctx context.Context, b binding, stage string, cause error) (bool, string, error) {
 	state, code := "retry_wait", "analysis_failed"
-	if errors.Is(cause, ErrUnsupported) || errors.Is(cause, decoder.ErrConfinementUnavailable) || errors.Is(cause, decoder.ErrInvalidConfiguration) {
+	if errors.Is(cause, ErrUnsupported) || errors.Is(cause, sonic.ErrUnavailable) || errors.Is(cause, decoder.ErrConfinementUnavailable) || errors.Is(cause, decoder.ErrInvalidConfiguration) {
 		state, code = "unsupported", "decoder_or_stream_unsupported"
 	}
 	if errors.Is(cause, ErrBudget) {
@@ -314,13 +325,13 @@ func (s *Service) stageFailure(ctx context.Context, b binding, stage string, cau
 	cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if interrupted {
-		_, e := dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET state='pending',attempt=MAX(0,attempt-1),updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, b.WorkAlgorithm)
+		_, e := dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET state='pending',attempt=MAX(0,attempt-1),updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, s.stageWorkAlgorithm(b, stage))
 		return false, "", e
 	}
 	if errors.Is(cause, ErrConflict) {
 		code = "analysis_source_or_markers_changed"
 	}
-	_, e := dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET state=CASE WHEN attempt>=3 AND ?='retry_wait' THEN 'failed' ELSE ? END,error_code=?,next_ms=?+MIN(300000,1000*(1<<MIN(attempt,8))),updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, state, state, code, nowMS(), nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, b.WorkAlgorithm)
+	_, e := dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET state=CASE WHEN attempt>=3 AND ?='retry_wait' THEN 'failed' ELSE ? END,error_code=?,next_ms=?+MIN(300000,1000*(1<<MIN(attempt,8))),updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, state, state, code, nowMS(), nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, s.stageWorkAlgorithm(b, stage))
 	return false, "", e
 }
 func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, tool string, out produced) error {
@@ -344,7 +355,7 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	if e != nil {
 		return e
 	}
-	if current.AssetID != b.AssetID || current.Source.Incarnation != b.Source.Incarnation || current.Source.Generation != b.Source.Generation || current.DurationUS != b.DurationUS || current.ProbeEvidence != b.ProbeEvidence || b.Container == "strm" && evidence != b.ProbeEvidence {
+	if current.AssetID != b.AssetID || current.Source.Incarnation != b.Source.Incarnation || current.Source.Generation != b.Source.Generation || current.DurationUS != b.DurationUS || current.ProbeEvidence != b.ProbeEvidence || b.Container == "strm" && evidence != b.ProbeEvidence || stage == catalog.SonicOperation && current.SonicBinding != b.SonicBinding {
 		return ErrConflict
 	}
 	p, e := catalog.ScanPolicyTx(ctx, tx, b.Source.LibraryID)
@@ -366,11 +377,16 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	if len(out.Markers) > 0 && current.MarkerRevision != b.MarkerRevision {
 		return ErrConflict
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, b.ObjectID, b.AssetID, b.SourceRevision, b.Source.Incarnation, b.Source.Generation, b.PolicyRevision, stage, Algorithm, evidence, tool, b.DurationUS, jsonString(out.Summary), nowMS()); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, b.ObjectID, b.AssetID, b.SourceRevision, b.Source.Incarnation, b.Source.Generation, b.PolicyRevision, stage, s.stageAlgorithm(b, stage), evidence, tool, b.DurationUS, jsonString(out.Summary), nowMS()); e != nil {
 		return e
 	}
 	if stage == "loudness" {
 		if e = persistFullLoudness(ctx, tx, id, out.Summary); e != nil {
+			return e
+		}
+	}
+	if stage == catalog.SonicOperation {
+		if e = persistSonic(ctx, tx, id, out.Sonic); e != nil {
 			return e
 		}
 	}
@@ -416,7 +432,7 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	if _, e = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_operations_json=?,analysis_revision=?,analysis_error='' WHERE id=? AND revision=?`, jsonString(ops), b.SourceRevision, b.ObjectID, b.SourceRevision); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE analysis_stage_runs SET state='complete',error_code='',updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, b.WorkAlgorithm); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE analysis_stage_runs SET state='complete',error_code='',updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, nowMS(), b.JobID, b.ObjectID, b.SourceRevision, b.PolicyRevision, stage, s.stageWorkAlgorithm(b, stage)); e != nil {
 		return e
 	}
 	return gated3.Commit()

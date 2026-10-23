@@ -6,6 +6,8 @@ import {dayPrimeTime} from '@core/channel-guide.ts';
 import type {GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
 import {programmeFactParts} from '@portico/client-core/kit-model';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useQuietRefresh} from '../../platform/freshness';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -24,6 +26,7 @@ import {LiveOnNow} from './OnNow';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
+const liveDependencies = [dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.list('myRecordings'), dependsOn.personal(), dependsOn.event('stream.resync')];
 const nowStart = () => Math.floor(Date.now() / halfHour) * halfHour;
 type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme?: GuideProgram}>;
 function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
@@ -94,6 +97,12 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   }, [owner, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now]);
   const drag = useRef<Readonly<{x: number; y: number; start: number}> | undefined>(undefined), moved = useRef(false);
   const currentSelection = selected?.owner === owner ? selected : undefined;
+  useQuietRefresh('live-guide', async refresh => {
+    await refresh.settle();
+    if (refresh.signal.aborted || !owner.life.current()) return;
+    const value = await owner.refresh(refresh.signal);
+    if (!refresh.signal.aborted && owner.life.current()) {setSelected(undefined);setSummary({owner, value});setFailed(undefined);}
+  }, () => summary?.owner === owner, {dependencies: liveDependencies, everyMs: 0});
   const facts = (programme: GuideProgram) => programmeFactParts({startMs: programme.start, endMs: programme.end,
     episode: programme.episode ? {mode: 'seasonal', season: programme.episode.season, episode: programme.episode.number} : undefined,
     subtitle: programme.subtitle, categories: programme.categories, year: programme.year, rating: programme.rating, flags: programme.flags, recording: programme.recording?.state === 'recording'},
