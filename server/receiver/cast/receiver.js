@@ -510,7 +510,12 @@
       meta=identity;publish();
       if(identity.artworkPath){
         var image=await artworkUrl(identity.artworkPath);
-        if(current()&&image){showArtwork(image,identity.kind==='song'||identity.kind==='album');publish();}
+        if(current()&&image){
+          currentArtwork=image;
+          // loading(meta) resets the view's art. Publish that identity before
+          // its artwork, while CAF metadata receives the same genuine image.
+          publish();showArtwork(image,identity.kind==='song'||identity.kind==='album');
+        }
       }
     } catch(e) { /* Missing/refused metadata remains absent; no notice or old-title fallback. */ }
   }

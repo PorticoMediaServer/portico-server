@@ -26,6 +26,7 @@ async function harness(fixture={}){
    if(fixture.rejectAdvance)return reply({error:{code:'queue_changed'}},409);
    return reply({queue:{id:'q-1',revision:'2'},session:{...sessionFor({},0),id:'ps_2',itemId:'song-2',queue:{queueId:'q-1',entryId:'entry-2'}}});
   }
+  if(path==='/v1/artwork/fixture'&&fixture.artwork)return new Response('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',{headers:{'Content-Type':'image/svg+xml'}});
   if(path.startsWith('/v1/items/')){if(fixture.catalogWait)await fixture.catalogWait;const item=fixture.catalog?.[decodeURIComponent(path.slice('/v1/items/'.length))];return item?reply(item):reply({error:{code:'not_found'}},fixture.catalogStatus||404);}
   if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
@@ -42,6 +43,7 @@ async function harness(fixture={}){
   if(path.startsWith('/v1/cast/devices/')&&options.method==='DELETE')return reply({},204);
   throw new Error('unexpected path '+path);
  }};
+ if(fixture.artwork)context.FileReader=class{readAsDataURL(blob){blob.arrayBuffer().then(data=>{this.result='data:'+blob.type+';base64,'+Buffer.from(data).toString('base64');this.onload();});}};
  if(fixture.clock)context.Date=class extends Date{static now(){return fixture.clock.now}};
  context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  vm.runInNewContext(source,context);await new Promise(setImmediate);
@@ -329,6 +331,16 @@ test('next display reads genuine authorized catalogue identity and exact structu
  const read=h.calls.find(c=>c.url==='/v1/items/song-2');assert.equal(read.method,'GET');assert.equal(read.headers.Authorization,'Bearer bearer-ABCD');
  const update=h.metadataUpdates.at(-1);assert.equal(update.media.metadata.artist,'Actual artist');assert.equal(update.media.metadata.albumName,'Actual album');assert.equal(update.broadcast,false);assert(!JSON.stringify(update).includes('/v1/media/'));
 });
+test('catalogue loading identity precedes cover and CAF receives that same genuine image',async()=>{
+ const methods=[],h=await harness({direct:true,audioOnly:true,container:'mp3',artwork:true,catalog:{song:{id:'song',title:'Read song',kind:'song',posterUrl:'/v1/artwork/fixture',song:{artist:'Read artist',albumTitle:'Read album'}}},view:{loading:()=>methods.push('loading'),artwork:()=>methods.push('artwork')}});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song',0,{title:'Before read',kind:'song'});await settle();
+ assert.equal(methods.at(-1),'artwork','a later loading publication cannot clear the fetched cover');
+ assert(methods.lastIndexOf('loading')<methods.lastIndexOf('artwork'));
+ const metadata=h.metadataUpdates.at(-1).media.metadata;assert.equal(metadata.title,'Read song');assert.equal(metadata.artist,'Read artist');assert.match(metadata.images[0].url,/^data:image\/svg\+xml;base64,/);
+ assert(h.calls.some(c=>c.url==='/v1/artwork/fixture'&&c.headers.Authorization==='Bearer bearer-ABCD'));
+ h.events.LOADED_DATA();assert.equal(h.metadataUpdates.at(-1).media.metadata.images[0].url,metadata.images[0].url);
+});
+
 test('refused and mismatched catalogue reads keep next identity absent without a notice',async()=>{
  for(const fixture of [{catalogStatus:403},{catalog:{'song-2':{id:'other',title:'Wrong title',kind:'song'}}}]){
   const views=[],notices=[],h=await harness({...fixture,queue:true,direct:true,audioOnly:true,container:'mp3',view:{playing:s=>views.push(s),notice:s=>notices.push(s)}});
