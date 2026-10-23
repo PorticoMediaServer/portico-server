@@ -7,7 +7,7 @@ import {
  parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
-const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
+const limits={accessTokens:true,maxProfiles:8,allowRemote:true,conversion:'server',maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
 
@@ -30,12 +30,9 @@ test('member limits round-trip, with the rating kept as the server stored it', (
   assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
-  // An absent envelope is an unrestricted one, not a parse failure.
-  const empty = parseMemberLimits({});
-  assert.equal(empty.maxContentRating, '');
-  assert.equal(empty.maximumAge, -1);
-  assert.equal(empty.allowUnrated, true);
-  assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
+  // The canonical producer publishes these permissions explicitly. Missing values
+  // must not silently grant tokens or remote access on the owner screen.
+  assert.throws(() => parseMemberLimits({}));
 });
 
 test('a limits document is pinned to the account it was read for', () => {
