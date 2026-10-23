@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"portico.local/server/internal/telemetry"
 	"testing"
 )
 
@@ -28,6 +30,30 @@ func TestDashboardAnalyticsDoNotGrantAdministratorPeopleAuthority(t *testing.T) 
 		if w.Code != 200 {
 			t.Fatal("normal administrator boundary changed", path, w.Code, w.Body.String())
 		}
+	}
+}
+
+type observedAudio struct {
+	AudioMedia
+	active int64
+}
+
+func (a observedAudio) ActiveAudioConversions() int64 { return a.active }
+
+type dashboardHost struct{}
+
+func (dashboardHost) Sample(context.Context, int64) telemetry.Sample {
+	return telemetry.Sample{Metrics: map[string]telemetry.Metric{}}
+}
+
+func TestDashboardLoadIncludesObservedAudioAndPreservesUnknownVideo(t *testing.T) {
+	s := dashboardSampler{host: dashboardHost{}, d: Dependencies{AudioMedia: observedAudio{active: 3}}}
+	out := s.Sample(context.Background(), 1000)
+	if m := out.Metrics["softwareConversions"]; m.Status != telemetry.StatusLimited || m.Value != 3 {
+		t.Fatal(m)
+	}
+	if out.Metrics["hardwareConversions"].Known() {
+		t.Fatal("invented hardware observation")
 	}
 }
 func TestMediaMeterCountsSuccessfulPartialWritesOnly(t *testing.T) {

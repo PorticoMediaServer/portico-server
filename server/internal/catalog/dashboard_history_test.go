@@ -191,3 +191,62 @@ func TestHistoryFiltersUseIndexedPersonRangeAndRejectSQLControls(t *testing.T) {
 		t.Fatal("person/range index not used")
 	}
 }
+
+func TestDashboardPeopleOtherAndHistoryKindsRemainDistinct(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	now := time.Date(2026, 10, 22, 17, 0, 0, 0, time.FixedZone("host", -7*3600))
+	s.Clock = func() time.Time { return now }
+	names := homeNames(t, db)
+	for n, row := range []struct {
+		item string
+		kind int
+	}{{"p1", 9}, {"p2", 0}, {"t1", 7}, {"t2", 7}, {"e101", 4}, {"e102", 4}} {
+		result, e := db.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms) VALUES(?,'local','a','p','Person',?,'library',?,'Title',?,?,1000)`, fmt.Sprint(n), names[row.item].ID, row.kind, now.Add(-time.Hour).UnixMilli(), now.UnixMilli())
+		if e != nil {
+			t.Fatal(e)
+		}
+		id, _ := result.LastInsertId()
+		if _, e = db.Exec(`INSERT INTO play_history_time VALUES(?,?,1000)`, id, now.Add(-time.Hour).UnixMilli()); e != nil {
+			t.Fatal(e)
+		}
+	}
+	people, e := s.DashboardPeople(context.Background(), PlayHistoryQuery{Period: "7d"})
+	if e != nil || len(people.Items) != 1 {
+		t.Fatal(people, e)
+	}
+	other := false
+	for _, k := range people.Items[0].Kinds {
+		if k.Kind == "audiobooks" || k.Kind == "live" {
+			t.Fatal("history kinds leaked into Top people", k)
+		}
+		if k.Kind == "other" {
+			other = k.Plays == 2 && k.WatchedMs == 2000
+		}
+	}
+	if !other {
+		t.Fatal(people)
+	}
+	for _, top := range []struct{ kind, target, unit string }{{"music", "album", "track_plays"}, {"tv", "show", "episode_plays"}} {
+		history, e := s.DashboardHistory(context.Background(), PlayHistoryQuery{Period: "7d"}, top.kind)
+		if e != nil || len(history.Top) != 1 {
+			t.Fatal(history, e)
+		}
+		v := history.Top[0]
+		if v.ItemID != names[top.target].Public || v.Plays != 2 || v.People != 1 || v.CountUnit != top.unit {
+			t.Fatal(v)
+		}
+		if history.TimeZone != "UTC" {
+			t.Fatal("timezone did not match UTC facts", history.TimeZone)
+		}
+		kinds := map[string]bool{}
+		for _, b := range history.Buckets {
+			for _, k := range b.Kinds {
+				kinds[k.Kind] = true
+			}
+		}
+		if !kinds["audiobooks"] || !kinds["live"] {
+			t.Fatal("history collapsed the distinct media families", kinds)
+		}
+	}
+}

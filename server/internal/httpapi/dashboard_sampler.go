@@ -26,6 +26,21 @@ func (s dashboardSampler) Sample(ctx context.Context, at int64) telemetry.Sample
 			}
 		}
 	}
+	if audio, ok := s.d.AudioMedia.(interface{ ActiveAudioConversions() int64 }); ok {
+		active := float64(audio.ActiveAudioConversions())
+		software := out.Metrics["softwareConversions"]
+		if software.Known() {
+			software.Value += active
+			out.Metrics["softwareConversions"] = software
+		} else if active > 0 {
+			out.Metrics["softwareConversions"] = telemetry.Limited(active, "Audio producers are observed; video producer counts are unavailable.")
+		}
+	} else if s.d.AudioMedia != nil {
+		software := out.Metrics["softwareConversions"]
+		if software.Known() {
+			out.Metrics["softwareConversions"] = telemetry.Limited(software.Value, "The audio converter does not publish its active producer count.")
+		}
+	}
 
 	return out
 }
