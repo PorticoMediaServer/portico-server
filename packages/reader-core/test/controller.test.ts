@@ -171,3 +171,23 @@ test('gesture activity publishes changed measured zoom before forwarding and pre
   await f.controller.close();const closed=f.controller.getSnapshot();
   f.mount.onSurfaceInput?.({kind:'activity'});assert.equal(f.controller.getSnapshot(),closed);assert.equal(inputs,inputCount);
 });
+
+for(const next of ['replacement','close'] as const)test(`delayed failed-open cleanup cannot overwrite ${next} state`,async()=>{
+  const f=fixture(),replacement=fixture(),disposing=deferred<void>(),release=deferred<void>();let calls=0,retiredDisposed=0;
+  f.document.mount=async()=>{throw new Error('failed old renderer');};
+  f.document.dispose=async()=>{retiredDisposed++;disposing.resolve();await release.promise;};
+  f.adapter.open=async()=>++calls===1?f.document:replacement.document;
+  const failed=f.controller.open({source,format:'epub',container});
+  await disposing.promise;
+  try {
+    if(next==='replacement')await f.controller.open({source,format:'epub',container});
+    else await f.controller.close();
+    const current=f.controller.getSnapshot();
+    assert.equal(current.status,next==='replacement'?'ready':'closed');
+    release.resolve();await failed;
+    assert.equal(f.controller.getSnapshot(),current);
+    assert.equal(f.controller.getSnapshot().error,undefined);
+    assert.equal(retiredDisposed,1);
+    assert.equal(replacement.docsDisposed,0);
+  }finally{release.resolve();await failed;await f.controller.close();}
+});

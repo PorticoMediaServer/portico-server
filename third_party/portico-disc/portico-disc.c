@@ -29,6 +29,7 @@
 #include <dvdread/ifo_read.h>
 #include <dvdread/ifo_types.h>
 #include <dvdnav/dvdnav.h>
+#include "mpegts_dovi.h"
 
 #define OUTPUT_MAX (1024 * 1024)
 #define TITLE_MAX 4096
@@ -65,15 +66,52 @@ static void language(const uint8_t *lang, size_t len) {
 static void probe_start(const char *kind, const char *packaging, const char *encryption) {
     emit("{\"schema\":1,\"kind\":\"%s\",\"packaging\":\"%s\",\"encryption\":\"%s\",\"titles\":[", kind, packaging, encryption);
 }
-static void bd_streams(const BLURAY_STREAM_INFO *streams, unsigned n, const char *kind, unsigned clip, int *first) {
+static int bd_dv_pid(const BLURAY_CLIP_INFO *clip, unsigned pid) {
+    if (clip->dv_stream_count && !clip->dv_streams) { output_error = 1; return 0; }
+    for (unsigned i = 0; i < clip->dv_stream_count; i++) if (clip->dv_streams[i].pid == pid) return 1;
+    return 0;
+}
+static int bd_pid_facts(BLURAY *bd, unsigned clip, uint32_t packets, PD_DoviFacts *facts) {
+    uint64_t limit = (uint64_t)packets * 192;
+    size_t size = 0;
+    if (limit > 1024 * 1024) limit = 1024 * 1024;
+    limit -= limit % 192;
+    memset(facts, 0, sizeof(*facts));
+    if (!limit) return 0;
+    uint8_t *buffer = malloc((size_t)limit);
+    if (!buffer) return -1;
+    if (bd_seek_playitem(bd, clip) < 0) { free(buffer); return -1; }
+    while (size < limit) {
+        int want = (int)(limit - size);
+        if (want > 6144) want = 6144;
+        int got = bd_read(bd, buffer + size, want);
+        if (got < 0 || got > want) { free(buffer); return -1; }
+        if (!got) break;
+        size += (unsigned)got;
+    }
+    pd_dovi_probe(buffer, size, 192, facts);
+    free(buffer);
+    return 0;
+}
+static void bd_streams(const BLURAY_STREAM_INFO *streams, unsigned n, const char *kind,
+                       const BLURAY_CLIP_INFO *clip_info, unsigned clip,
+                       const PD_DoviFacts *facts, uint8_t *seen, int *first) {
     if ((n && !streams) || n > 256) { output_error = 1; return; }
     for (unsigned i = 0; i < n; i++) {
         const BLURAY_STREAM_INFO *s = &streams[i];
+        if (s->pid >= PD_PID_MAX) { output_error = 1; return; }
+        if (seen[s->pid]) continue;
+        seen[s->pid] = 1;
+        unsigned base = facts->base[s->pid];
+        int enhancement = base || bd_dv_pid(clip_info, s->pid);
         emit("%s{\"clipSequence\":%u,\"pid\":%u,\"kind\":\"%s\",\"coding\":%u,\"language\":", *first ? "" : ",", clip, s->pid, kind, s->coding_type);
         language(s->lang, 3);
-        /* STN coding alone does not prove Dolby Vision EL. A PMT DOVI
-         * descriptor pass must supply this fact before the join is enabled. */
-        emit(",\"dolbyVisionEnhancementLayer\":false,\"dolbyVisionEnhancementKnown\":false}");
+        /* The pinned libbluray explicitly exposes its Dolby Vision EL STN
+         * entries. PMT supplies the separate, validated base PID relation. */
+        emit(",\"dolbyVisionEnhancementLayer\":%s,\"dolbyVisionEnhancementKnown\":%s",
+             enhancement ? "true" : "false", enhancement ? "true" : "false");
+        if (base) emit(",\"dolbyVisionBasePid\":%u", base);
+        emit("}");
         *first = 0;
     }
 }
@@ -93,6 +131,7 @@ static int probe_bd(BLURAY *bd, const char *packaging) {
         if (!t) return 3;
         if (!t->angle_count || t->clip_count > 4096 || t->chapter_count > 65535 || (t->clip_count && !t->clips) || (t->chapter_count && !t->chapters)) { bd_free_title_info(t); return 4; }
         if (t->duration < 60 * UINT64_C(90000)) { bd_free_title_info(t); continue; }
+        if (!bd_select_playlist(bd, t->playlist) || !bd_select_angle(bd, 0)) { bd_free_title_info(t); return 3; }
         emit("%s{\"discOrder\":%u,\"playlist\":%u,\"playlistFile\":\"%05u.mpls\",\"durationMs\":%" PRIu64 ",\"angleCount\":%u,\"clips\":[", order ? "," : "", order, t->playlist, t->playlist, t->duration/90, t->angle_count);
         for (uint32_t j = 0; j < t->clip_count; j++) {
             BLURAY_CLIP_INFO *c = &t->clips[j];
@@ -103,12 +142,25 @@ static int probe_bd(BLURAY *bd, const char *packaging) {
         emit("],\"streams\":[");
         for (uint32_t j = 0; j < t->clip_count; j++) {
             BLURAY_CLIP_INFO *c = &t->clips[j];
-            bd_streams(c->video_streams, c->video_stream_count, "video", j, &first);
-            bd_streams(c->audio_streams, c->audio_stream_count, "audio", j, &first);
-            bd_streams(c->pg_streams, c->pg_stream_count, "subtitle", j, &first);
-            bd_streams(c->ig_streams, c->ig_stream_count, "interactive", j, &first);
-            bd_streams(c->sec_video_streams, c->sec_video_stream_count, "video", j, &first);
-            bd_streams(c->sec_audio_streams, c->sec_audio_stream_count, "audio", j, &first);
+            PD_DoviFacts facts;
+            uint8_t seen[PD_PID_MAX] = {0};
+            if (bd_pid_facts(bd, j, c->pkt_count, &facts) < 0) { bd_free_title_info(t); return 3; }
+            bd_streams(c->video_streams, c->video_stream_count, "video", c, j, &facts, seen, &first);
+            bd_streams(c->audio_streams, c->audio_stream_count, "audio", c, j, &facts, seen, &first);
+            bd_streams(c->pg_streams, c->pg_stream_count, "subtitle", c, j, &facts, seen, &first);
+            bd_streams(c->ig_streams, c->ig_stream_count, "interactive", c, j, &facts, seen, &first);
+            bd_streams(c->sec_video_streams, c->sec_video_stream_count, "video", c, j, &facts, seen, &first);
+            bd_streams(c->sec_audio_streams, c->sec_audio_stream_count, "audio", c, j, &facts, seen, &first);
+            bd_streams(c->dv_streams, c->dv_stream_count, "video", c, j, &facts, seen, &first);
+            for (unsigned pid = 32; pid < PD_PID_MAX - 1; pid++) if (facts.base[pid]) {
+                BLURAY_STREAM_INFO pmt_stream;
+                memset(&pmt_stream, 0, sizeof(pmt_stream));
+                pmt_stream.coding_type = 0x24; /* observed PMT HEVC stream_type */
+                pmt_stream.pid = facts.base[pid];
+                bd_streams(&pmt_stream, 1, "video", c, j, &facts, seen, &first);
+                pmt_stream.pid = pid;
+                bd_streams(&pmt_stream, 1, "video", c, j, &facts, seen, &first);
+            }
         }
         emit("],\"chapters\":[");
         for (uint32_t j = 0; j < t->chapter_count; j++) emit("%s{\"startMs\":%" PRIu64 "}", j ? "," : "", t->chapters[j].start/90);
