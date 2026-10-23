@@ -2,6 +2,8 @@ pub mod audio;
 pub mod boundary;
 pub mod equalizer;
 pub mod equalizer_store;
+pub mod download_receipt;
+pub mod download_store;
 pub mod mpv;
 #[cfg(feature = "shell")]
 pub mod shell;

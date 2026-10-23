@@ -2457,8 +2457,12 @@ dependencies = [
 name = "portico-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "chrono",
  "gtk",
+ "libc",
  "libloading 0.9.0",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

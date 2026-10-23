@@ -14,6 +14,12 @@ pub enum Error {
     PreferencesUnavailable,
     PreferencesConflict,
     WindowUnavailable,
+    DownloadsUnavailable,
+    DownloadsConflict,
+    DownloadNotReady,
+    DownloadVerificationFailed,
+    InvalidReceipt,
+    StorageFull,
     Unsupported,
 }
 pub type Result<T> = std::result::Result<T, Error>;
