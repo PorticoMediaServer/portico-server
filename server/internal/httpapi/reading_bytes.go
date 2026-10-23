@@ -221,7 +221,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		policyError(w, "not_found")
 		return
 	}
-	e, err := reading.OpenEPUB(r.Context(), f, f.Size)
+	e, err := reading.OpenEPUB(f.Context(), f, f.Size)
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
@@ -241,7 +241,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
-	b, mime, err := e.Asset(r.Context(), path)
+	b, mime, err := e.Asset(f.Context(), path)
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
@@ -276,7 +276,7 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	c, err := reading.OpenComic(r.Context(), f, f.Size)
+	c, err := reading.OpenComic(f.Context(), f, f.Size)
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
@@ -285,7 +285,7 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
-	p, err := c.Page(r.Context(), index, width)
+	p, err := c.Page(f.Context(), index, width)
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
