@@ -14,19 +14,23 @@ import (
 )
 
 type Store struct {
-	db               *sql.DB
-	live             *livechannels.Store
-	durable          DurableAuthority
-	now              func() time.Time
-	captureAvailable bool
-	driver           CaptureDriver
-	storage          StorageDriver
-	policy           atomic.Value
-	locks            *livechannels.PhysicalLocks
-	instance         string
-	mu               sync.Mutex
-	active           map[string]map[string]context.CancelFunc
-	wg               sync.WaitGroup
+	// StoragePolicyChangedTx joins owner edits to the server configuration
+	// projection. Install once before exposing owner handlers. It runs inside
+	// the same authorized transaction, before its receipt is committed.
+	StoragePolicyChangedTx func(context.Context, *sql.Tx, StoragePolicy, StoragePolicy) error
+	db                     *sql.DB
+	live                   *livechannels.Store
+	durable                DurableAuthority
+	now                    func() time.Time
+	captureAvailable       bool
+	driver                 CaptureDriver
+	storage                StorageDriver
+	policy                 atomic.Value
+	locks                  *livechannels.PhysicalLocks
+	instance               string
+	mu                     sync.Mutex
+	active                 map[string]map[string]context.CancelFunc
+	wg                     sync.WaitGroup
 }
 
 func New(db *sql.DB, live *livechannels.Store, durable DurableAuthority) (*Store, error) {

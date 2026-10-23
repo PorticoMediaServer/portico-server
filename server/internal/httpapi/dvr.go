@@ -280,7 +280,11 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
-		return d.DVR.SetStoragePolicy(ctx, d.dvrAuthority(p), channelSubject(p), in)
+		out, err := d.DVR.SetStoragePolicy(ctx, d.dvrAuthority(p), channelSubject(p), in)
+		if err == nil && d.Console != nil {
+			err = d.Console.FlushConfiguration(context.WithoutCancel(ctx))
+		}
+		return out, err
 	}))
 }
 

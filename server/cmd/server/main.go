@@ -394,7 +394,7 @@ func run() (runErr error) {
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
 	configSettings := operations.New(db)
-	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, adminops.LiveConfiguration{}, adminops.DVRConfiguration{}}
+	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, adminops.LiveConfiguration{}, adminops.DVRConfiguration{}, adminops.DVRStorageConfiguration{}}
 	if e = configSettings.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -1011,6 +1011,7 @@ func run() (runErr error) {
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	if console != nil {
+		recordingStore.StoragePolicyChangedTx = adminops.QueueDVRStorageConfigurationTx
 		console.ConfigFile, console.ConfigPath = configSettings.ConfigFile, layout.Config
 		console.ConfigurationDomains = append([]operations.ConfigurationDomain{}, configSettings.ConfigurationDomains...)
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
@@ -1184,6 +1185,9 @@ func run() (runErr error) {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+		if err := recordingStore.RefreshStoragePolicy(ctx); err != nil {
+			log.Printf("Recording storage policy could not be reloaded: %v", err)
+		}
 		control.NotifySettingsChanged(ctx)
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()

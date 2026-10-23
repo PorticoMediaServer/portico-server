@@ -357,8 +357,7 @@ func (s *Store) GetStoragePolicy(ctx context.Context, a livechannels.Authority) 
 	if e != nil || f == "" {
 		return p, ErrDenied
 	}
-	e = tx.QueryRowContext(ctx, `SELECT revision,retention_days,episode_limit,floor_bytes,cap_bytes FROM dvr_storage_policy WHERE singleton=1`).Scan(&p.Revision, &p.RetentionDays, &p.EpisodeLimit, &p.FloorBytes, &p.CapBytes)
-	return p, e
+	return ReadStoragePolicyTx(ctx, tx)
 }
 
 type StoragePolicyInput struct {
@@ -369,7 +368,7 @@ type StoragePolicyInput struct {
 func (s *Store) SetStoragePolicy(ctx context.Context, a livechannels.Authority, o livechannels.Owner, in StoragePolicyInput) (StoragePolicy, error) {
 	var out StoragePolicy
 	p := in.Policy
-	if !hexID.MatchString(in.RequestID) || in.ExpectedRevision < 1 || p.RetentionDays < 0 || p.RetentionDays > 3650 || p.EpisodeLimit < 0 || p.EpisodeLimit > 100000 || p.FloorBytes < 0 || p.CapBytes < 0 || p.FloorBytes > 1<<53-1 || p.CapBytes > 1<<53-1 {
+	if !hexID.MatchString(in.RequestID) || in.ExpectedRevision < 1 || !validStoragePolicy(p) {
 		return out, ErrInvalid
 	}
 	if s == nil || s.db == nil {
@@ -387,16 +386,19 @@ func (s *Store) SetStoragePolicy(ctx context.Context, a livechannels.Authority, 
 		if e != nil || replay {
 			return e
 		}
-		res, e := tx.ExecContext(ctx, `UPDATE dvr_storage_policy SET revision=revision+1,retention_days=?,episode_limit=?,floor_bytes=?,cap_bytes=? WHERE singleton=1 AND revision=?`, p.RetentionDays, p.EpisodeLimit, p.FloorBytes, p.CapBytes, in.ExpectedRevision)
+		before, e := ReadStoragePolicyTx(ctx, tx)
 		if e != nil {
 			return e
 		}
-		n, _ := res.RowsAffected()
-		if n != 1 {
-			return ErrConflict
+		out, e = ReplaceStoragePolicyTx(ctx, tx, in.ExpectedRevision, p)
+		if e != nil {
+			return e
 		}
-		out = p
-		out.Revision = in.ExpectedRevision + 1
+		if s.StoragePolicyChangedTx != nil {
+			if e = s.StoragePolicyChangedTx(ctx, tx, before, out); e != nil {
+				return e
+			}
+		}
 		return saveReceiptTx(ctx, tx, o, in.RequestID, in, out, s.now())
 	})
 	if e == nil {

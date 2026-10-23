@@ -76,9 +76,10 @@ func (s *Store) refreshStoragePolicy(ctx context.Context) error {
 // configured without it, so a database that has lost the row is one the server
 // does not start on.
 func ReadStoragePolicy(ctx context.Context, db *sql.DB) (StoragePolicy, error) {
-	var p StoragePolicy
-	e := db.QueryRowContext(ctx, `SELECT revision,retention_days,episode_limit,floor_bytes,cap_bytes FROM dvr_storage_policy WHERE singleton=1`).Scan(&p.Revision, &p.RetentionDays, &p.EpisodeLimit, &p.FloorBytes, &p.CapBytes)
-	return p, e
+	if db == nil {
+		return StoragePolicy{}, ErrInvalid
+	}
+	return readStoragePolicy(ctx, db)
 }
 
 // Estimate uses the source's recent measured byte rate with 25% headroom. With
