@@ -17,6 +17,7 @@ import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} fr
 import type {SettingsDevicePort} from '../../platform/settings-platform';
 import {readDeviceSettingsBinding, writeDeviceSettingsBinding} from './device-bindings';
 import {settingsPresetOptions} from './preset-options';
+import {SettingsSectionReads} from './section-loading';
 
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
@@ -65,18 +66,18 @@ export class SettingsController {
   private readonly forms: Partial<Record<SettingsBindingForm, DocumentForm>> = {};
   private preferences: PreferenceSnapshot;
   private configuration?: SettingsConfiguration;
-  private snapshot: SettingsPageSnapshot = Object.freeze({loading: true});
+  private readonly sectionReads: SettingsSectionReads;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
   private readonly rowErrors = new Map<string, unknown>();
   private readonly offDevice?: () => void;
   private closed = false;
-  private loaded = false;
-  private loading?: Promise<void>;
+  private headerLoading?: Promise<void>;
   private writing = false;
   private header: ReturnType<typeof settingsServerHeader> = {facts: []};
   constructor(options: SettingsControllerOptions) {
     this.options = options; this.preferences = options.preferences;
+    this.sectionReads = new SettingsSectionReads(this.current, () => {for (const listener of this.listeners) listener();});
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
     this.console = new ConsoleClient(options.api, scope);
     this.preferencesReader = new PreferencesReader(options.api, scope);
@@ -91,15 +92,14 @@ export class SettingsController {
     }
   }
   private current = () => !this.closed && this.options.isCurrent();
-  getSnapshot = () => this.snapshot;
+  getSnapshot = (section: SettingsSection) => this.sectionReads.snapshot(`${section.scope}/${section.id}`);
   preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
   serverFacts = () => this.current() ? this.header.facts : [];
   subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
   private publish(patch: Partial<SettingsPageSnapshot>) {
     if (!this.current()) return;
-    this.snapshot = Object.freeze({...this.snapshot, ...patch});
-    for (const listener of this.listeners) listener();
+    this.sectionReads.update(patch);
   }
   sectionVisible = (section: SettingsSection) => {
     if (!settingsSectionVisible(section, this.options.environment)) return false;
@@ -155,26 +155,22 @@ export class SettingsController {
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
   configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible)).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];
-  load = (): Promise<void> => {
-    if (!this.current() || this.loaded) return Promise.resolve();
-    if (this.loading) return this.loading;
-    this.publish({loading: true, error: undefined});
-    const task = (async () => {
-      try {
-        if (this.forms.runtime) {
-          const [health, storage] = await Promise.allSettled([this.console.measurement('health'), this.console.measurement('storage')]);
-          if (!this.current()) return;
-          this.header = settingsServerHeader(health.status === 'fulfilled' ? health.value : undefined, storage.status === 'fulfilled' ? storage.value : undefined);
-          this.publish({});
-        }
-        await Promise.all(Object.values(this.forms).map(async form => {await form.load(); if (form.error()) throw form.error();}));
-        if (this.forms.runtime) this.configuration = await loadSettingsConfiguration(this.options.api, this.options.serverId, this.lifetime.signal);
-        if (!this.current()) return;
-        this.loaded = true; this.publish({loading: false});
-      } catch (error) {this.publish({loading: false, error});}
-      finally {this.loading = undefined;}
+  load = (section: SettingsSection): Promise<void> => {
+    if (!this.current() || !this.sectionVisible(section)) return Promise.resolve();
+    if (section.scope === 'server' && this.forms.runtime && !this.headerLoading) this.headerLoading = (async () => {
+      const [health, storage] = await Promise.allSettled([this.console.measurement('health'), this.console.measurement('storage')]);
+      if (!this.current()) return;
+      this.header = settingsServerHeader(health.status === 'fulfilled' ? health.value : undefined, storage.status === 'fulfilled' ? storage.value : undefined);
+      this.publish({});
     })();
-    this.loading = task; return task;
+    const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
+      .map(location => settingsBinding(location.row.id)?.form).filter((id): id is SettingsBindingForm => !!id && !!this.forms[id]));
+    const reads = [...formIds].map(id => ({id: `form/${id}`, load: async () => {const form = this.forms[id]!;await form.load();if (form.error()) throw form.error();}}));
+    if (section.scope === 'server' && this.forms.runtime) reads.push({id: 'configuration', load: async () => {
+      const configuration = await loadSettingsConfiguration(this.options.api, this.options.serverId, this.lifetime.signal);
+      if (this.current()) this.configuration = configuration;
+    }});
+    return this.sectionReads.load(`${section.scope}/${section.id}`, reads);
   };
   private preferenceScope(row: SettingsRow, key: string): PreferenceScope {
     const field = this.preferences.registry.fields.find(field => field.key === key);
@@ -236,7 +232,7 @@ export class SettingsController {
   change = (row: SettingsRow, value: SettingsValue, context?: SettingsContext) => {void this.write(row, value, false, context);};
   reset = (row: SettingsRow, context?: SettingsContext) => {const value = this.read(row, context)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true, context);};
   dispose = () => {
-    this.closed = true; this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.preferencesReader.dispose();
+    this.closed = true; this.sectionReads.dispose(); this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.preferencesReader.dispose();
     for (const form of Object.values(this.forms)) form.dispose();
     this.configuration = undefined; this.header = {facts: []}; this.rowErrors.clear(); this.listeners.clear();
   };

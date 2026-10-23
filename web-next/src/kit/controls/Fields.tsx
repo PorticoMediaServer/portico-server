@@ -19,7 +19,7 @@ export type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   errorIcon?: IconName;
   leadingIcon?: IconName;
   trailing?: ReactNode;
-  variant?: 'field' | 'compact' | 'setting' | 'search' | 'auth' | 'code' | 'large-search';
+  variant?: 'field' | 'compact' | 'setting' | 'search' | 'table-search' | 'auth' | 'code' | 'large-search';
   containerClassName?: string;
 };
 
@@ -34,7 +34,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
   return <div className={[styles.field, containerClassName].filter(Boolean).join(' ')} data-variant={variant} data-disabled={disabled || undefined} data-invalid={Boolean(error) || undefined}>
     {label && <label className={styles.fieldLabel} htmlFor={inputId}>{label}</label>}
     <div className={styles.inputShell}>
-      {(leadingIcon || variant === 'search' || variant === 'large-search') && <Icon name={leadingIcon ?? 'i-search'} size={variant === 'large-search' ? 30 : 20} />}
+      {(leadingIcon || variant === 'search' || variant === 'table-search' || variant === 'large-search') && <Icon name={leadingIcon ?? 'i-search'} size={variant === 'large-search' ? 30 : variant === 'table-search' ? 18 : 20} />}
       {variant === 'large-search' ? <div className={styles.searchValue}>{input}<span className={styles.largeSearchPlaceholder} aria-hidden="true">{props.placeholder}</span></div> : input}
       {trailing && <span className={styles.inputTrailing}>{trailing}</span>}
     </div>

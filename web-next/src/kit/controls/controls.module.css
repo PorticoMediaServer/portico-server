@@ -153,6 +153,9 @@
 .field[data-variant="search"] .input {padding: 1px 2px; font-size: 15px;}
 .field[data-variant="search"] .input::placeholder {font-weight: 600;}
 .field[data-variant="search"] .inputShell:focus-within {box-shadow: inset 0 0 0 1px var(--color-line), 0 0 0 3px var(--color-focus);}
+.field[data-variant="table-search"] .inputShell {height: 40px; border-radius: 10px; padding: 0 8px 0 13px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line);}
+.field[data-variant="table-search"] .input {height: 38px; font-size: 15px;}
+.field[data-variant="table-search"] .inputShell:focus-within {box-shadow: inset 0 0 0 1px var(--color-line), 0 0 0 3px var(--color-focus);}
 .field[data-invalid] .inputShell {box-shadow: inset 0 0 0 1.5px var(--color-danger);}
 .field[data-invalid] .inputShell:focus-within {box-shadow: inset 0 0 0 1.5px var(--color-danger), 0 0 0 3px var(--color-focus);}
 .field[data-disabled] {opacity: .5;}

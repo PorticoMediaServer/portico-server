@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PlaybackDock, type DockPlayback, type QueuePlaybackFence, type QueueScope} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../src/platform/playback/index.ts';
 import type {DockNoticeData, DockPresentation} from '../src/kit/dock/index.ts';
-import {fenceKey, hasDock, PlaybackPresentations, retainedPlaybackNotice} from '../src/shell/playback-model.ts';
+import {fenceKey, hasDock, localVideoSurfaceActive, PlaybackPresentations, retainedPlaybackNotice} from '../src/shell/playback-model.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 import {PlaybackMediaOwner} from '../src/shell/playback-media-owner.ts';
 
@@ -94,6 +94,32 @@ test('spacing follows accepted dock arbitration, including remote ownership whil
   dock.collapse(video.fence); assert.equal(hasDock(snapshot(dock)), true);
   dock.expand(video.fence); dock.beginRemote({id: 'remote', kind: 'play-on', phase: 'connecting', sequence: '1', playback: video, positionSeconds: 845}, 0);
   assert.equal(hasDock(snapshot(dock)), true);
+});
+test('connecting, pairing and waiting keep the current local picture until confirmed remote playback', () => {
+  const dock = new PlaybackDock(scope);dock.start(video);
+  const current = () => ({...snapshot(dock), presentation: {kind: 'video', fence: video.fence}, nativeVideoSurfaceActive: true}) as WebPlaybackRuntimeSnapshot;
+  for (const [index, phase] of (['connecting', 'pairing', 'waiting'] as const).entries()) {
+    const transition = index === 0 ? dock.beginRemote({id: 'remote', kind: 'cast', phase, sequence: String(index + 1), playback: video, positionSeconds: 845}, index)
+      : dock.remote({id: 'remote', kind: 'cast', phase, sequence: String(index + 1), playback: video, positionSeconds: 845}, index);
+    assert.deepEqual(transition.effects, []);
+    assert.equal(localVideoSurfaceActive(current()), true);
+    assert.equal(dock.getSnapshot().local?.expanded, true);
+    assert.equal(current().nativeVideoSurfaceActive, true);
+  }
+  const confirmed = dock.remote({id: 'remote', kind: 'cast', phase: 'playing', sequence: '4', playback: video, positionSeconds: 845}, 3);
+  assert.equal(confirmed.effects[0]?.kind, 'stop');
+  assert.equal(localVideoSurfaceActive(current()), false);
+});
+test('cancelled receiver selection preserves local playback and a stale presentation cannot reveal another surface', () => {
+  const dock = new PlaybackDock(scope);dock.start(video);
+  const current = () => ({...snapshot(dock), presentation: {kind: 'video', fence: video.fence}}) as WebPlaybackRuntimeSnapshot;
+  dock.beginRemote({id: 'remote', kind: 'play-on', phase: 'connecting', sequence: '1', playback: video, positionSeconds: 845}, 0);
+  dock.dismissRemote('remote');
+  assert.equal(localVideoSurfaceActive(current()), true);
+  assert.equal(dock.getSnapshot().local?.playing, true);
+  assert.equal(localVideoSurfaceActive({...current(), presentation: {kind: 'video', fence: fence('other')}} as WebPlaybackRuntimeSnapshot), false);
+  assert.equal(localVideoSurfaceActive({...current(), presentation: undefined}), false);
+  assert.equal(localVideoSurfaceActive(undefined), false);
 });
 test('one media element survives scope gaps and old runtime disposal precedes every new adoption', () => {
   const media = {}, owner = new PlaybackMediaOwner<object>(), calls: unknown[] = [];

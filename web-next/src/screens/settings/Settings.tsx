@@ -19,7 +19,7 @@ export type SettingsConfigurationMatch = Readonly<{id: string; key: string; labe
 export type SettingsBindings = Readonly<{
   accountName: string; serverName: string; role: 'owner' | 'admin' | 'member';
   environment: SettingsEnvironment;
-  subscribe: (listener: () => void) => () => void; getSnapshot: () => SettingsPageSnapshot;
+  subscribe: (listener: () => void) => () => void; getSnapshot: (section: SettingsSection) => SettingsPageSnapshot;
   sectionVisible: (section: SettingsSection) => boolean;
   eligible: (row: SettingsRow, context: SettingsContext) => boolean;
   audience: (section: SettingsSection) => ServerAudience;
@@ -33,12 +33,11 @@ export type SettingsBindings = Readonly<{
   section?: (context: SettingsContext, openPanel: (panelId: string, recordId?: string) => void, renderRows: (holder: SettingsHolder) => ReactNode) => ReactNode;
   configurationMatches?: (query: string) => readonly SettingsConfigurationMatch[];
   panel?: (context: SettingsContext) => Readonly<{title?: string; description?: string; create?: SettingsPanelProps['create']}>;
-  load: () => Promise<void>;
+  load: (section: SettingsSection) => Promise<void>;
   openHome: () => void;
 }>;
 
 export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void}) {
-  const snapshot = useSyncExternalStore(bindings.subscribe, bindings.getSnapshot, bindings.getSnapshot);
   const width = useShellWidth(), compact = width < 900;
   const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(false), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
@@ -54,6 +53,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   };
   const selected = settingsRoute(route, sectionVisible, (row, section) => rowState(row, rowContext(row, section)).present);
   const section = settingsSpec.find(section => section.scope === selected.scope && section.id === selected.section)!;
+  const snapshot = useSyncExternalStore(bindings.subscribe, () => bindings.getSnapshot(section), () => bindings.getSnapshot(section));
   const context: SettingsContext = {section};
   const openPanel = (id: string, recordId?: string) => {
     if (!section.panels?.[id]) return;
@@ -74,7 +74,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     setPanel(current => current && location && location.panelId === current.id && selected.scope === scope && selected.section === page ? {...current, tab: location.tabId} : undefined);
     setAdvanced(false); setCompactPage(true);
   };
-  useEffect(() => {void bindings.load();}, [bindings]);
+  useEffect(() => {void bindings.load(section);}, [bindings, section]);
   useEffect(() => {
     const found = selected.row && settingsRowIndex.get(selected.row);
     if (!found) return;
@@ -100,7 +100,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   return <SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
     <SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} />
-    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load();}}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
+    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load(section);}}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
     {panel && panelSpec && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}

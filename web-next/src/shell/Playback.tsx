@@ -6,7 +6,7 @@ import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeDat
 import {Button} from '../kit/controls';
 import {router} from '../router';
 import type {ShellArtwork} from './artwork';
-import {fenceKey, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from './playback-model';
+import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from './playback-model';
 import {PlaybackMediaOwner} from './playback-media-owner';
 import {useShellWidth} from './viewport';
 import styles from './playback.module.css';
@@ -32,7 +32,7 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => { void runtime.onAction(action).catch(binding.reportError); },
   } : undefined, [runtime, binding]);
   const expanded = !!snapshot?.dock.local?.expanded;
-  const activeVideo = snapshot?.presentation?.kind === 'video' && !!snapshot.dock.local && !snapshot.dock.remote;
+  const activeVideo = localVideoSurfaceActive(snapshot);
   const nativeVideoActive = snapshot?.nativeVideoSurfaceActive === true && activeVideo && !snapshot.presentation?.finished;
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});

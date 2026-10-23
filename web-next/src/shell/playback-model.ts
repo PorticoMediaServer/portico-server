@@ -43,3 +43,9 @@ export class PlaybackPresentations {
 export function hasDock(snapshot: WebPlaybackRuntimeSnapshot): boolean {
   return !!snapshot.dock.remote || !!snapshot.dock.local && !snapshot.dock.local.expanded;
 }
+/** Pending receiver selection does not retire this device's genuine media surface. */
+export function localVideoSurfaceActive(snapshot: WebPlaybackRuntimeSnapshot | undefined): boolean {
+  const presentation = snapshot?.presentation, local = snapshot?.dock.local;
+  return !!presentation && presentation.kind === 'video' && !!local && snapshot!.dock.remote?.phase !== 'playing'
+    && fenceKey(local.fence) === fenceKey(presentation.fence);
+}

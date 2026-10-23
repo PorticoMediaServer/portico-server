@@ -44,13 +44,15 @@
 .settingsGrid .table th { background: none; }
 .settingsGrid .table td { height: 44px; }
 .readonlyMono { display: inline-block; padding: 6px 10px; border-radius: 8px; background: var(--color-ink); color: var(--color-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 500; text-align: right; }
-.tableToolbar { min-height: 56px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 0 0 16px; }
+.tableToolbar { min-height: 60px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 4px 0 16px; }
 .tableToolbar > div:first-child { width: 300px; max-width: 100%; }
 .tableFilter { min-width: 0; }
 .tableFilter > span:first-child { color: var(--color-text-secondary); font-weight: 600; }
 .tableFilterActive { box-shadow: inset 0 0 0 1.5px var(--color-accent); }
 .tableFilterActive > span:first-child { color: var(--color-text); font-weight: 700; }
-.tableCount { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); white-space: nowrap; }
+.tableCount { margin-left: auto; padding-left: 8px; font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); white-space: nowrap; }
+.tableAction { text-align: right; }
+.tableClearSearch { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text-secondary); }
 .selectionCount { margin-right: 8px; font-size: 14px; font-weight: 700; }
 .tableScroll { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; background: var(--color-raised); border-radius: 14px; }
 .table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 15px; font-weight: 600; line-height: normal; }
