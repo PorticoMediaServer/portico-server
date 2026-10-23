@@ -16,6 +16,11 @@ on:
         default: ''
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Finish the running MAIN checkpoint and retain only the newest pending one.
+  # Source merges continue independently; pull-request supersessions can stop.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   repository:
     runs-on: ubuntu-latest
