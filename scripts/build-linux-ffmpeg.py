@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work', required=True, type=Path)
     parser.add_argument('--source', required=True, type=Path)
+    parser.add_argument('--verify-completed-only', action='store_true')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
@@ -95,10 +96,24 @@ def main():
             shutil.copyfile(source, destination)
         if digest(destination) != hashes[name]:
             raise ValueError('Build input changed during capture: ' + name)
-    (work / 'linux-build-inputs.json').write_text(json.dumps({'files': hashes,
+    input_record = {'files': hashes,
         'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
         'dependencyPrefixFilesSHA256': digest(deps / 'prefix-files.json'),
-        'nativeBuildTools': {'glslc': digest(deps / 'extra/glslc')}}, indent=2) + '\n')
+        'nativeBuildTools': {'glslc': digest(deps / 'extra/glslc')}}
+    completed = work / 'linux-output'
+    if (completed / 'repeat-build.json').exists():
+        if json.loads((completed / 'linux-build-inputs.json').read_text()) != input_record:
+            raise ValueError('Completed source build inputs changed; preserve the previous output')
+        rounds = json.loads((completed / 'repeat-build.json').read_text())
+        binaries = {name: digest(completed / 'bin' / name) for name in ('ffmpeg', 'ffprobe', 'portico-disc')}
+        if (len(rounds) != 2 or [r['round'] for r in rounds] != [1, 2] or
+                any(r['sourceArchiveSHA256'] != source_sha or r['binaries'] != binaries for r in rounds)):
+            raise ValueError('Completed repeated executable proof changed')
+        print('Reused two identical source-built executable rounds with unchanged inputs')
+        return
+    if args.verify_completed_only:
+        raise ValueError('Packaging requires a completed two-round source build')
+    (work / 'linux-build-inputs.json').write_text(json.dumps(input_record, indent=2) + '\n')
     results = []
     for index in (1, 2):
         build = work / 'linux-compile'

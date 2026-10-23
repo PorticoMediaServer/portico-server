@@ -3,6 +3,8 @@ set -euo pipefail
 # Native macOS builds, or BtbN's container cross builds. Never publishes.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:?usage: build-ffmpeg.sh TARGET [WORK_DIRECTORY]}"
+PHASE="${PORTICO_FFMPEG_PHASE:-full}"
+case "$PHASE" in full) ;; compile|package) [[ "$TARGET" == linux-x64 ]] || { echo 'Split compile/package phases currently require linux-x64' >&2; exit 1; };; *) echo 'Unknown source build phase' >&2; exit 1;; esac
 LANE_SCRATCH="${PORTICO_LANE_SCRATCH:?Set PORTICO_LANE_SCRATCH to the workspace .scratch/hardware-r29 directory}"
 [[ "$LANE_SCRATCH" == /*/.scratch/hardware-r29 ]] || { echo 'Use the lane scratch directory on disk' >&2; exit 1; }
 mkdir -p "$LANE_SCRATCH"
@@ -43,6 +45,7 @@ fi
 # Keep an earlier checked source receipt intact when a new post-series contract
 # is introduced. Each source tree is extracted directly from the locked archive.
 POST_SERIES_KEY="$(python3 -c 'import hashlib,json,sys;p=json.load(open(sys.argv[1]))["ffmpeg"].get("postSeriesPatches",[]);print("-"+hashlib.sha256(json.dumps(p,sort_keys=True).encode()).hexdigest()[:12] if p else "")' "$ROOT/third_party/ffmpeg/sources.lock.json")"
+SOURCE="$WORK/ffmpeg-$VERSION$POST_SERIES_KEY.tar.xz"
 PREPARED_SOURCE="$WORK/patched-source$POST_SERIES_KEY"
 python3 "$ROOT/scripts/prepare-ffmpeg-source.py" "$PREPARED_SOURCE" --archive "$ARCHIVE"
 python3 "$ROOT/scripts/archive-ffmpeg-source.py" "$PREPARED_SOURCE" "$SOURCE" "$SOURCE_DATE_EPOCH"
@@ -96,6 +99,11 @@ PYLICENSE
   fi
   python3 "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/recipe" "$PREPARED_SOURCE" "$TARGET"
   if [[ "$TARGET" == linux-x64 ]]; then
+    if [[ "$PHASE" == package ]]; then
+      # Recheck exact source, recipe, dependency seal and both executable rounds
+      # without restarting the compiler image retired after the compile phase.
+      python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE" --verify-completed-only
+    else
     python3 "$ROOT/scripts/build-linux-ffmpeg-deps.py" --recipe "$WORK/recipe" --work "$WORK/linux-deps"
     docker run --rm --name portico-hardware-r29-licenses --label portico.lane=hardware-r29 \
       --network none --cpus 1 --memory 512m --memory-swap 512m \
@@ -110,7 +118,12 @@ PYLICENSE
     python3 "$ROOT/scripts/build-linux-libdovi.py" --work "$WORK"
     # The source-built binaries use the exact immutable dependency prefix.
     python3 "$ROOT/scripts/build-linux-ffmpeg.py" --work "$WORK" --source "$SOURCE"
+    fi
     INPUT="$WORK/linux-output"
+    if [[ "$PHASE" == compile ]]; then
+      echo "Repeated source compilation finished; bundle packaging and runtime qualification remain: $INPUT"
+      exit 0
+    fi
   else
     [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]] || { echo 'Dependency-only phase currently supports linux-x64' >&2; exit 1; }
   cp "$SOURCE" "$WORK/recipe/portico-ffmpeg-source.tar.xz"
