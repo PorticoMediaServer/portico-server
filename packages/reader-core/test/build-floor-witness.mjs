@@ -23,6 +23,12 @@ await build({root,base:'./',configFile:false,publicDir:false,build:{outDir:out,e
 await rename(join(out,'floor.html'),join(out,'index.html'));
 await mkdir(join(out,'fixtures'));await writeFile(join(out,'fixtures','manifest.json'),JSON.stringify(manifest));
 await copyFile(pdfPath,join(out,'fixtures','publication.pdf'));await copyFile(comicPath,join(out,'fixtures','publication.cbz'));
+const licences={};
+for(const [name,path]of [['Portico','../../../LICENSE'],['PDF.js','../../../third_party/reader/pdfjs-LICENSE'],['zip.js','../../../third_party/reader/zipjs-LICENSE'],
+  ['Foliate','../../../third_party/reader/foliate-LICENSE'],['DOMPurify','../../../third_party/reader/dompurify-LICENSE'],['Literata','../assets/OFL.txt']])
+  licences[name]=await readFile(new URL(path,import.meta.url),'utf8');
+licences['@noble/hashes']=await readFile(new URL('./LICENSE',import.meta.resolve('@noble/hashes/sha2.js')),'utf8');
+await writeFile(join(out,'licences.json'),JSON.stringify(licences));
 console.log(JSON.stringify({operation:'built-reader-floor-witness',output:out,target:'ios15.1/safari15.1',pdfjsVersion:manifest.pdfjsVersion,rawWorkerBytes:worker.length,fixtureBytes:pdf.length+comic.length,
   qualification:'Diagnostic asset graph for actual WKWebView execution; no native host or floor-runtime acceptance.'}));
 }

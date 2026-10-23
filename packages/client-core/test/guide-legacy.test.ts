@@ -8,6 +8,17 @@ const settle = async () => { for (let i = 0; i < 30; i++) await new Promise(setI
 const SERVER = 'srv';
 const NOW = Date.parse('2026-09-22T19:20:00Z');
 
+test('a captured channel search reaches directory, named programmes and neighbor reads', async () => {
+  const {api, requests} = legacyApi(), stop = new AbortController();
+  const source = legacyGuideSource(api, SERVER, {kind: 'live-source', sourceId: 'antenna', timezone: 'UTC', search: 'Summit'});
+  const page = await source.channels(0, 1, stop.signal);
+  await source.programs([page.items[0]!.id], NOW, NOW + HOUR_MS, stop.signal);
+  await source.neighbor?.(page.items[0]!, 1, stop.signal);
+  assert.ok(requests.some(path => path.startsWith('/v1/guide/channels?')));
+  assert.ok(requests.some(path => path.startsWith('/v1/guide?')));
+  assert.ok(requests.every(path => new URL(path, 'https://example.test').searchParams.get('search') === 'Summit'));
+});
+
 /** Current directory, source summaries and named programme windows over the demo fixture. */
 function legacyApi(opts: {library?: boolean; failKind?: string; refreshState?: string} = {}) {
   const requests: string[] = [];
