@@ -3,7 +3,7 @@
  *
  * The page is served by the Portico server it talks to (and, unchanged, at
  * cast.getportico.tv for every server). The receiver framework script from
- * Google is the only external resource.
+ * Google and its documented CAF player dependencies are the external resources.
  *
  * Pairing: a sender asks its server for a one-use code (POST /v1/cast/bootstrap)
  * and delivers it over the `urn:x-cast:tv.getportico.cast` channel (a Cast device
@@ -80,11 +80,10 @@
     if (!view || typeof view[method] !== 'function') return false;
     try { view[method].apply(view, args || []); return true; } catch (e) { return false; }
   }
-  // The composed receiver loads its generated canonical text before this engine.
-  // The existing page keeps its old copy until that checked view/asset composition lands.
-  function copy(key, legacy, params) {
+  // The composed receiver loads its generated canonical catalogue before this engine.
+  function copy(key, params) {
     var catalogue = window.porticoCastText;
-    return catalogue && typeof catalogue.t === 'function' ? catalogue.t('cast.receiver.' + key, params) : legacy;
+    return catalogue && typeof catalogue.t === 'function' ? catalogue.t('cast.receiver.' + key, params) : '';
   }
   function remoteKeysAvailable() {
     try { if (castContext && castContext.getDeviceCapabilities().dpad_input_supported === true) return true; } catch (e) { /* unknown */ }
@@ -155,7 +154,7 @@
     resetViewPlayback(); viewLoading = true;
     if (window.porticoCastView && typeof window.porticoCastView.loading === 'function' && !(meta && meta.title)) { viewLoading = false; return; }
     if (viewCall('loading', [meta ? Object.assign({},meta) : null])) return;
-    text('loading-eyebrow', copy('gettingReady', 'Getting ready'));
+    text('loading-eyebrow', copy('gettingReady'));
     text('loading-title', meta && meta.title || '');
     text('loading-subtitle', meta && (meta.subtitle || meta.seriesTitle) || '');
     visible('loading-art', false);
@@ -172,13 +171,6 @@
     art.hidden = false;
   }
   function showPlaying() { clearTimeout(errorTimer); if (window.porticoCastView && typeof window.porticoCastView.playing === 'function') { playingView(); return; } show('playing'); }
-  var errorCopy = {
-    unavailable: ['This title isn’t available right now', 'It may have been removed, or your access may have changed.'],
-    busy: ['Your server is busy right now', 'Try again in a moment from your phone or computer.'],
-    unreachable: ['This TV can’t reach your server', 'Check that your server is on and that this TV is on the same network, then try again.'],
-    decode: ['This title couldn’t play on this TV', 'Try again from your phone or computer, or choose a lower quality.'],
-    generic: ['This title couldn’t play on this TV', 'Try again from your phone or computer.'],
-  };
   function errorKind(code) {
     code = String(code || '');
     if (/not_found|unavailable|forbidden|permission/.test(code)) return 'unavailable';
@@ -190,10 +182,9 @@
   /** A visible error card: the TV always says what went wrong (CAST-01). Never shows raw codes. */
   function showError(code) {
     stopPreparing(); viewGeneration++; pictureReady = false; viewLoading = false;
-    var message = errorCopy[errorKind(code)];
     if (!viewCall('error', [errorKind(code)])) {
-      text('error-title', copy('error.' + errorKind(code) + '.title', message[0]));
-      text('error-body', copy('error.' + errorKind(code) + '.body', message[1]));
+      text('error-title', copy('error.' + errorKind(code) + '.title'));
+      text('error-body', copy('error.' + errorKind(code) + '.body'));
       show('error');
     }
     clearTimeout(errorTimer);
@@ -428,13 +419,13 @@
       if (event && event.preventDefault) event.preventDefault();
       var input = $('code-input'), button = $('pair');
       var code = ((input && input.value) || '').trim().toUpperCase();
-      if (code.length < 4) { say(copy('pair.enterCode', 'Enter the code shown on your phone.'), 'error'); return; }
+      if (code.length < 4) { say(copy('pair.enterCode'), 'error'); return; }
       if (button) button.disabled = true;
-      say(copy('pair.connecting', 'Connecting…'));
+      say(copy('pair.connecting'));
       serial(function(){return redeem(code);}).then(function () {
         if (button) button.disabled = false;
         if (input) input.value = '';
-        say(copy('pair.connected', 'Connected. Choose a title on your phone or computer.'));
+        say(copy('pair.connected'));
       }).catch(function (error) {
         if (button) button.disabled = false;
         say(pairingMessage(error), 'error');
@@ -444,13 +435,13 @@
 
   function pairingMessage(error) {
     switch (error && error.code) {
-      case 'cast_code_expired': return copy('pair.expired', 'That code has expired. Try again from your phone or computer.');
-      case 'cast_code_consumed': return copy('pair.consumed', 'That code has already been used. Try again from your phone or computer.');
-      case 'cast_code_revoked': return copy('pair.canceled', 'That code was canceled.');
-      case 'cast_code_not_found': return copy('pair.invalid', 'That code isn’t valid.');
-      case 'rate_limited': return copy('pair.rateLimited', 'Too many attempts. Wait a moment, then try again.');
-      case 'tv_busy': return copy('pair.busy', 'This TV is playing something for someone else. Ask them to stop, then try again.');
-      default: return copy('pair.failed', 'This TV couldn’t connect. Try again.');
+      case 'cast_code_expired': return copy('pair.expired');
+      case 'cast_code_consumed': return copy('pair.consumed');
+      case 'cast_code_revoked': return copy('pair.canceled');
+      case 'cast_code_not_found': return copy('pair.invalid');
+      case 'rate_limited': return copy('pair.rateLimited');
+      case 'tv_busy': return copy('pair.busy');
+      default: return copy('pair.failed');
     }
   }
 
@@ -740,7 +731,7 @@
   function requesterName(message, senderId) {
     var name = cleanText(message && message.displayName, 64);
     if (name) return name;
-    return copy('someone', 'Someone');
+    return copy('someone');
   }
   function hideTakeover() { if (!viewCall('takeover', [null])) visible('takeover', false); }
   function takeoverView(controllerHere, remaining) {
@@ -753,8 +744,8 @@
       pendingPair.viewControllerPresent = controllerHere;
       if (takeoverView(controllerHere, timeoutMs)) return;
     }
-    text('takeover-title', copy('takeover.title', requester + ' wants to play on this TV', {requester:requester}));
-    text('takeover-body', controllerHere ? copy('takeover.present', 'Waiting for the person watching now to allow it.') : copy('takeover.absent', 'Switching in a few seconds.'));
+    text('takeover-title', copy('takeover.title', {requester:requester}));
+    text('takeover-body', controllerHere ? copy('takeover.present') : copy('takeover.absent'));
     visible('takeover', true);
   }
   function discardPair(p) {
@@ -866,7 +857,7 @@
       if(request&&localRequests.has(request))return request;
       if (fromOther(request) || !playback || !Number.isFinite(request.currentTime)) return null;
       if (!playback.serverSeek) return request;
-      seekTo(request.currentTime).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);});
+      seekTo(request.currentTime).catch(function(){notice(copy('notice.seekFailed'), 5000);});
       return null;
     });
     manager.setMessageInterceptor(types.STOP,function(request){if(request&&localRequests.has(request))return request;return serial(stopPlayback).then(function(){return request;}).catch(function(){return null;});});
@@ -906,10 +897,10 @@
           break;
         case 'play': if (playback) mediaCommand('PLAY'); break;
         case 'pause': if (playback) mediaCommand('PAUSE'); break;
-        case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds).catch(function(){notice(copy('notice.seekFailed', 'That seek couldn’t be made.'), 5000);}); break;
+        case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds).catch(function(){notice(copy('notice.seekFailed'), 5000);}); break;
         case 'audio': if(Number.isSafeInteger(message.trackId)) manager.getAudioTracksManager().setActiveById(message.trackId); break;
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
-        case 'stop': serial(stopPlayback).catch(function(){notice(copy('notice.stopFailed', 'Stop couldn’t be confirmed.'), 5000);}); break;
+        case 'stop': serial(stopPlayback).catch(function(){notice(copy('notice.stopFailed'), 5000);}); break;
         case 'status': break;
         default: return;
       }

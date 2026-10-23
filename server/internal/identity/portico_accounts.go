@@ -195,7 +195,41 @@ func inheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string)
 	if err != nil {
 		return err
 	}
+	// Descendants must have been issued with the parent's immutable offline
+	// horizon. Refuse a caller that tries to mint another ninety days.
+	var parent, child string
+	if err = tx.QueryRowContext(ctx, `SELECT p.authorization_horizon,c.authorization_horizon FROM authorization_session_families p JOIN authorization_session_families c ON c.id=? WHERE p.id=? AND p.revoked=0`, to, from).Scan(&parent, &child); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUnauthorized
+		}
+		return err
+	}
+	if child > parent {
+		return ErrUnauthorized
+	}
 	return recordPorticoAdmissionTx(ctx, tx, to, signer)
+}
+
+type inheritedHorizonKey struct{}
+
+func withParentPorticoHorizonTx(ctx context.Context, tx *sql.Tx, family string) (context.Context, error) {
+	if family == "" {
+		return ctx, nil
+	}
+	var until string
+	var revoked bool
+	e := tx.QueryRowContext(ctx, `SELECT f.authorization_horizon,f.revoked FROM portico_admitted_families a JOIN authorization_session_families f ON f.id=a.family_id WHERE a.family_id=?`, family).Scan(&until, &revoked)
+	if errors.Is(e, sql.ErrNoRows) {
+		return ctx, nil
+	}
+	if e != nil {
+		return ctx, e
+	}
+	t, e := familyTime(until)
+	if e != nil || revoked || !t.After(time.Now()) {
+		return ctx, ErrUnauthorized
+	}
+	return context.WithValue(ctx, inheritedHorizonKey{}, t), nil
 }
 
 // InheritPorticoAdmissionTx is inheritPorticoAdmissionTx for an issuer outside
