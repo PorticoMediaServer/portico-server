@@ -17810,6 +17810,11 @@
                   },
                   "type": "array"
                 },
+                "limitsRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "liveState": {
                   "type": "string"
                 },
@@ -17849,6 +17854,7 @@
                 "username",
                 "role",
                 "revision",
+                "limitsRevision",
                 "disabled",
                 "status",
                 "allowedLibraries",
@@ -212674,6 +212680,11 @@
                             },
                             "type": "array"
                           },
+                          "limitsRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "liveState": {
                             "type": "string"
                           },
@@ -212713,6 +212724,7 @@
                           "username",
                           "role",
                           "revision",
+                          "limitsRevision",
                           "disabled",
                           "status",
                           "allowedLibraries",
