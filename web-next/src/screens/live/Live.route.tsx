@@ -18,6 +18,7 @@ import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/sc
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
+import {liveListPrograms, liveProgramWindow} from './program-window';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
@@ -72,20 +73,22 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     const observer = new ResizeObserver(measure);observer.observe(element);measure();return () => observer.disconnect();
   }, [owner, sources?.length]);
   const phone = width < 600, column = phone ? 60 : width < 1024 ? 180 : 284, rowHeight = phone ? 72 : width < 1024 ? 62 : 76;
+  const view = search.view ?? 'guide';
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, windowSize.width - column) / scale;
+  const {start: readStart, end: readEnd} = liveProgramWindow(view, start, end, now);
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - 1), count = Math.ceil(windowSize.height / rowHeight) + 3;
   const last = Math.max(first, Math.min(first + count - 1, (snapshot.total ?? count) - 1));
-  useEffect(() => owner.store.setViewport({firstRow: first, lastRow: last, start, end}), [owner, first, last, start, end]);
+  useEffect(() => owner.store.setViewport({firstRow: first, lastRow: last, start: readStart, end: readEnd}), [owner, first, last, readStart, readEnd]);
   useEffect(() => {
     if (!search.channelId || selected?.owner === owner) return;
     for (let index = first; index <= last; index++) {
       const channel = owner.store.channelAt(index);
       if (channel?.id !== search.channelId) continue;
-      const programme = owner.store.programsFor(index, start, end).programs.find(programme => programme.start <= now && now < programme.end);
+      const programme = owner.store.programsFor(index, readStart, readEnd).programs.find(programme => programme.start <= now && now < programme.end);
       if (programme) setSelected({owner, channel, programme});
       return;
     }
-  }, [owner, snapshot.version, search.channelId, selected, first, last, start, end, now]);
+  }, [owner, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now]);
   const drag = useRef<Readonly<{x: number; y: number; start: number}> | undefined>(undefined), moved = useRef(false);
   const currentSelection = selected?.owner === owner ? selected : undefined;
   const facts = (programme: GuideProgram) => programmeFactParts({startMs: programme.start, endMs: programme.end,
@@ -106,7 +109,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const ends = selectedSources.map(source => Date.parse(source.availableEnd));
   const through = ends.length && ends.every(value => Number.isFinite(value)) ? Math.min(...ends) : undefined;
   const days = through === undefined ? [] : dayStarts(now, through, timezone);
-  const view = search.view ?? 'guide', hasSources = !!sources?.length;
+  const hasSources = !!sources?.length;
   const body = currentSelection && <>
     {currentSelection.programme ? <p className={styles.facts}>{facts(currentSelection.programme).map(part => <span key={part.id}>{part.text}</span>)}</p> : <p>{t('guide.noInformation')}</p>}
     {currentSelection.programme?.description && <p>{currentSelection.programme.description}</p>}
@@ -136,7 +139,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
             {days.length > 0 && <Select aria-label={t('guide.day')} value={String(localDayStart(start, timezone))}
               options={days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)}))}
               onValueChange={value => {const day = days.find(day => String(day) === value);if (day !== undefined) setStart(dayPrimeTime(day, timezone));}}/>}
-            <TextField aria-label={t('web.live.findChannel')} placeholder={t('web.live.findChannel')} value={draft} onChange={event => setDraft(event.currentTarget.value)}/>
+            <TextField aria-label={t('web.live.findChannel')} placeholder={t('web.live.findChannel')} maxLength={120} value={draft} onChange={event => setDraft(event.currentTarget.value)}/>
             <div className={styles.end}>{snapshot.total !== undefined && <span>{t('player.info.channels', {count: snapshot.total})}</span>}
               <Select aria-label={t('channels.sort')} value={search.sort ?? 'number'} options={[{value: 'number', label: t('channels.sortNumber')}, {value: 'name', label: t('channels.sortName')}, {value: 'favorites', label: t('channels.favorites')}]}
                 onValueChange={sort => {if (sort === 'number' || sort === 'name' || sort === 'favorites') navigate({sort});}}/>
@@ -156,7 +159,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
               onClickCapture={event => {if (moved.current) {event.preventDefault();event.stopPropagation();moved.current = false;}}}>
               <div className={styles.rows} style={{height: Math.max(0, snapshot.total ?? count) * rowHeight}}>
                 {Array.from({length: Math.max(0, last - first + 1)}, (_, offset) => {
-                  const index = first + offset, channel = owner.store.channelAt(index), page = owner.store.programsFor(index, start, end);
+                  const index = first + offset, channel = owner.store.channelAt(index), page = owner.store.programsFor(index, readStart, readEnd);
                   const programs = page.programs, cells = page.complete ? layoutRow(programs, {viewStart: start, viewEnd: end, pxPerMs: scale, now, gapPx: 2, ...(width < 1024 ? {tiers: {full: 50, title2: 50, title: 24}} : {})}) : [];
                   return <div key={index} className={styles.row} style={{top: index * rowHeight}} data-live-channel-id={channel?.id}>
                     <div className={styles.channel}>{channel ? <>{mark(channel)}<span><b>{channel.name}</b><small>{channel.number}{!phone && channel.group && <span>{channel.group}</span>}</small></span></> : <Skeleton width={phone ? 36 : 180} height={34}/>}</div>
@@ -167,7 +170,9 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
                         onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme: cell.program});}}>
                         <b>{cell.program?.title ?? t('guide.noInformation')}</b>{cell.tier === 'full' && cell.program && <small>{facts(cell.program).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new', 'premiere', 'recording'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</small>}
                       </button>)}
-                    </> : <div className={styles.listPrograms}>{programs.filter(programme => programme.end > now).slice(0, 3).map(programme => <button key={programme.id} type="button" onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme});}}><small>{defaultI18n.time(programme.start)}</small><b>{programme.title}</b><span>{facts(programme).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</span></button>)}</div>}</div>
+                    </> : <div className={styles.listPrograms}>{liveListPrograms(programs, now).map((programme, slot) => programme
+                      ? <button key={slot} type="button" onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme});}}><small>{defaultI18n.time(programme.start)}</small><b>{programme.title}</b><span>{facts(programme).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</span></button>
+                      : <span key={slot} className={styles.listGap}>{slot === 0 ? t('guide.noInformation') : undefined}</span>)}</div>}</div>
                   </div>;
                 })}
               </div>
