@@ -75,6 +75,11 @@ export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}
 }
 export function ServicesAccountLine({children}: {children: ReactNode}) { return <p className={styles.accountLine}>{children}</p>; }
 export function ServicesBackLink({children, href}: {children: ReactNode; href: string}) { return <div className={styles.backLink}><a href={href}>{children}</a></div>; }
+export function ServicesSignedInAccount({username, disabled, onDifferent}: {username: string; disabled?: boolean; onDifferent: () => void}) {
+  return <div className={styles.returnAccount}><span className={styles.returnAvatar} aria-hidden="true">{Array.from(username)[0]?.toLocaleUpperCase()}</span>
+    <span><b>{t('services.return.signedIn', {username})}</b><small>{t('accounts.invitation.account')}</small></span>
+    <button type="button" disabled={disabled} onClick={onDifferent}>{t('accounts.invitation.notYou')}</button></div>;
+}
 export function ServicesDeviceAccount({name, disabled, onSignOut}: {name: string; disabled?: boolean; onSignOut: () => void}) {
   const message = t('services.device.approving', {name: '{name}'});
   return <ServicesAccountLine>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'name' ? <b key={index}>{name}</b> : null)}<button type="button" disabled={disabled} onClick={onSignOut}><span className={styles.deviceDesktop}>{t('services.device.notYou')}</span><span className={styles.devicePhone}>{t('services.device.notYouPhone')}</span></button></ServicesAccountLine>;
