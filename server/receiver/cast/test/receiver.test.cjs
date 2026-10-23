@@ -385,3 +385,20 @@ test('device identity comes only from the SDK and decoder limits do not invent d
  assert.equal(p.audioOutput.route,undefined);
  const unknown=await harness({info:{'model-name':'unknown'},supports:()=>true}),u=unknown.receiver.buildProfile(unknown.castContext);assert.equal(u.client.model,undefined);
 });
+
+test('receiver status publishes only actual finite SDK clock readings, including a genuine zero',async()=>{
+ const h=await harness();await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});
+ h.manager.getDurationSec=()=>180;
+ for(const value of [undefined,null,NaN,Infinity,-1,'12']){
+  h.manager.getCurrentTimeSec=()=>value;await h.message('phone',{type:'status'});
+  const status=h.sent.filter(m=>m.body.type==='status').at(-1).body;
+  assert(!Object.hasOwn(status,'positionSeconds'));assert.equal(status.durationSeconds,180);
+ }
+ h.manager.getCurrentTimeSec=()=>0;await h.message('phone',{type:'status'});
+ assert.equal(h.sent.filter(m=>m.body.type==='status').at(-1).body.positionSeconds,0);
+ h.manager.getCurrentTimeSec=()=>61.25;h.manager.getDurationSec=()=>NaN;await h.message('phone',{type:'status'});
+ const unknownDuration=h.sent.filter(m=>m.body.type==='status').at(-1).body;
+ assert.equal(unknownDuration.positionSeconds,61.25);assert(!Object.hasOwn(unknownDuration,'durationSeconds'));
+ h.manager.getCurrentTimeSec=()=>{throw new Error('not ready')};h.manager.getDurationSec=()=>{throw new Error('not ready')};await h.message('phone',{type:'status'});
+ const notReady=h.sent.filter(m=>m.body.type==='status').at(-1).body;assert(!Object.hasOwn(notReady,'positionSeconds'));assert(!Object.hasOwn(notReady,'durationSeconds'));
+});

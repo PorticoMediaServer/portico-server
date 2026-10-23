@@ -707,13 +707,25 @@
   });
   function isController(senderId) { return !!controllerSender && senderId === controllerSender; }
   function statusBody() {
-    return {
+    var status = {
       type: 'status', paired: !!session, itemId: playback ? playback.itemId || '' : '',
-      positionSeconds: position(), durationSeconds: playback && manager && typeof manager.getDurationSec === 'function' ? manager.getDurationSec() || 0 : 0,
       audioTracks: manager ? manager.getAudioTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       textTracks: manager ? manager.getTextTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       paused: paused(), state: recovering?'recovering':playback?(paused()?'paused':'playing'):'idle'
     };
+    // A fallback zero used for local bookkeeping is not a receiver clock fact.
+    // Omit unknown readings so the sender cannot offer continuation at an invented position.
+    if (playback && manager) {
+      try {
+        var at = manager.getCurrentTimeSec();
+        if (typeof at === 'number' && Number.isFinite(at) && at >= 0) status.positionSeconds = at;
+      } catch (e) { /* The SDK has not supplied a clock yet. */ }
+      try {
+        var length = typeof manager.getDurationSec === 'function' ? manager.getDurationSec() : undefined;
+        if (typeof length === 'number' && Number.isFinite(length) && length >= 0) status.durationSeconds = length;
+      } catch (e) { /* The SDK has not supplied a duration yet. */ }
+    }
+    return status;
   }
 
   // --- Cast framework wiring ------------------------------------------------
