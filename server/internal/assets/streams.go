@@ -43,7 +43,9 @@ type storedDetail struct {
 
 // EncodeDetail is the stored representation of one stream's planning facts.
 func (s Stream) EncodeDetail() string {
-	raw, err := json.Marshal(storedDetail{s.Detail, s.HearingImpaired, s.Commentary})
+	detail := s.Detail
+	detail.StreamBreadth = StreamBreadth{}
+	raw, err := json.Marshal(storedDetail{detail, s.HearingImpaired, s.Commentary})
 	if err != nil || len(raw) > 4096 {
 		return ""
 	}
@@ -92,6 +94,8 @@ func PersistStreams(tx *sql.Tx, asset string, size, modified int64, streams []St
 	raw, _ := json.Marshal(streams)
 	for _, s := range streams {
 		raw = append(raw, s.EncodeDetail()...)
+		breadth, _ := json.Marshal(s.Detail.StreamBreadth)
+		raw = append(raw, breadth...)
 	}
 	hash := sha256.Sum256(raw)
 	fingerprint := hex.EncodeToString(hash[:])
@@ -105,6 +109,9 @@ func PersistStreams(tx *sql.Tx, asset string, size, modified int64, streams []St
 	for _, s := range streams {
 		_, e = tx.Exec(`INSERT INTO asset_streams(asset_id,stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,color_transfer,color_primaries,detail_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, asset, s.Index, s.Type, s.Codec, s.Language, s.Title, s.Channels, s.ChannelLayout, s.Default, s.Forced, streamText(s.ColorTransfer, 32), streamText(s.ColorPrimaries, 32), s.EncodeDetail())
 		if e != nil {
+			return e
+		}
+		if e = persistStreamBreadth(tx, asset, s); e != nil {
 			return e
 		}
 	}

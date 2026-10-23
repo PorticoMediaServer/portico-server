@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"testing"
@@ -14,12 +15,41 @@ import (
 // would, so the catalog reads exactly the rows the console writes.
 func storePreference(t *testing.T, db *sql.DB, v identity.Viewer, values map[string]any) {
 	t.Helper()
-	body, e := json.Marshal(values)
+	store := operations.New(db)
+	auth := func(context.Context, *sql.Tx, string) error { return nil }
+	p := identity.Principal{Viewer: v}
+	current, e := store.Preferences(context.Background(), p, "web", auth)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO console_documents VALUES(?,2,?,0) ON CONFLICT(scope) DO UPDATE SET revision=revision+1,body=excluded.body`, "profile:"+operations.ViewerScopeKey(v), string(body)); e != nil {
+	if _, e = store.ApplyPreferences(context.Background(), p, auth, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: current.Documents[0].Revision, IdempotencyKey: identity.Token(), Values: operations.PreferencePatch(values)}); e != nil {
 		t.Fatal(e)
+	}
+
+}
+
+// Community fixtures opt in explicitly; production defaults keep activity private.
+func shareFixtureProfiles(t *testing.T, db *sql.DB) {
+	t.Helper()
+	rows, err := db.Query(`SELECT id,profile_id FROM accounts`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var viewers []identity.Viewer
+	for rows.Next() {
+		var v identity.Viewer
+		v.Authority = "local"
+		if err = rows.Scan(&v.AccountID, &v.ProfileID); err != nil {
+			t.Fatal(err)
+		}
+		viewers = append(viewers, v)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	for _, v := range viewers {
+		storePreference(t, db, v, map[string]any{"privacy.showActivityToMembers": true})
 	}
 }
 

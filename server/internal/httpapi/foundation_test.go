@@ -239,9 +239,6 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-capabilities.json", "GetCapabilitiesResponse", "GET", "/v1/capabilities", nil, capabilities, "viewer"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-bootstrap.json", "GetBootstrapResponse", "GET", "/v1/bootstrap", nil, bootstrap, "viewer"); err != nil {
-			t.Fatal(err)
-		}
 		if err := contract.Record("../../testdata/contracts/get-events.json", "GetEventsResponse", "GET", "/v1/events?waitMs=0", nil, events, "viewer"); err != nil {
 			t.Fatal(err)
 		}
@@ -267,6 +264,11 @@ func TestFoundationContractAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-admin-updates.json", "GetAdminUpdatesResponse", "GET", "/v1/admin/updates", nil, updates, "owner"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if value := os.Getenv("PORTICO_CONTRACT_UPDATE"); value == "1" || value == "get-bootstrap" {
+		if err := contract.Record("../../testdata/contracts/get-bootstrap.json", "GetBootstrapResponse", "GET", "/v1/bootstrap", nil, bootstrap, "viewer"); err != nil {
 			t.Fatal(err)
 		}
 	}
