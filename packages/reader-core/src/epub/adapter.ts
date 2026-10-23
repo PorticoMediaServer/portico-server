@@ -7,6 +7,7 @@ import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, Read
 import {openEpubArchive, safeArchivePath, type EpubAssets} from './archive.ts';
 import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
+import {validateEpubRaster} from './media.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
@@ -102,8 +103,9 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
     async function loadBlob(path:string):Promise<Blob|null> {
       throwIfAborted(signal);const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
       let bytes=await assets.read(path,signal);throwIfAborted(signal);
-      const mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
+      let mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
       if(mime==='image/svg+xml'||/\.svg$/i.test(path))bytes=new TextEncoder().encode(secureMarkup(decoder.decode(bytes),'image/svg+xml'));
+      else mime=validateEpubRaster(bytes,path,mime)?.mime??mime;
       return new Blob([bytes as Uint8Array<ArrayBuffer>],{type:mime});
     }
     const close=async()=>{if(disposed)return;disposed=true;lifetime.abort();try{await view?.dispose();}finally{book?.destroy();await assets.dispose();}};
@@ -129,6 +131,14 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
         if(detail.type==='text/css')detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureCss(typeof data==='string'?data:await data.text(),true);});
         if(['application/xhtml+xml','text/html','image/svg+xml'].includes(detail.type)) {
           detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureMarkup(typeof data==='string'?data:await data.text(),detail.type as 'application/xhtml+xml',true);});
+        } else if(detail.type!=='text/css') {
+          detail.data=Promise.resolve(detail.data).then(data=>{
+            throwIfAborted(signal);
+            // The engine wraps this Blob again; retain sniffed raster MIME
+            // instead of restoring an incorrect manifest declaration.
+            if(data instanceof Blob&&/^image\/(?:jpeg|png|gif|webp)$/.test(data.type))detail.type=data.type;
+            return data;
+          });
         }
       });
       const b=book;
