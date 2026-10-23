@@ -77,7 +77,7 @@ func TestDashboardPeopleAccountPagingAndHistorySharedFilters(t *testing.T) {
 	}
 }
 
-func TestDashboardBucketsUseMondayWeeksCalendarMonthsAndObservedTime(t *testing.T) {
+func TestDashboardBucketsUseDailyWindowsWeeklyYearAndObservedTime(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -102,11 +102,16 @@ func TestDashboardBucketsUseMondayWeeksCalendarMonthsAndObservedTime(t *testing.
 			if e != nil {
 				t.Fatal(e)
 			}
-			if n > 0 && (period == "30d" || period == "90d") && start.Weekday() != time.Monday {
-				t.Fatal("week not Monday", b)
-			}
-			if n > 0 && period == "1y" && start.Day() != 1 {
-				t.Fatal("month not calendar", b)
+			if n > 0 {
+				if start.Hour() != 0 || start.Minute() != 0 || start.Second() != 0 {
+					t.Fatal("calendar boundary not midnight", b)
+				}
+				if period == "1y" && start.Weekday() != now.AddDate(0, 0, -6).Weekday() {
+					t.Fatal("week does not end with today", b)
+				}
+				if period == "all" && start.Day() != 1 {
+					t.Fatal("all-time month not calendar", b)
+				}
 			}
 			for _, k := range b.Kinds {
 				total += k.WatchedMs
@@ -126,6 +131,123 @@ func TestDashboardBucketsUseMondayWeeksCalendarMonthsAndObservedTime(t *testing.
 	var remaining int
 	if e = db.QueryRow(`SELECT count(*) FROM play_history_time`).Scan(&remaining); e != nil || remaining != 0 {
 		t.Fatal(remaining, e)
+	}
+}
+
+func TestDashboardHistoryWindowsKeepDailyFactsAndEndAnchoredWeeks(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	s.Clock = func() time.Time { return now }
+	item := homeNames(t, db)["m1"].ID
+	parse := func(t *testing.T, value string) time.Time {
+		t.Helper()
+		at, e := time.Parse(time.RFC3339Nano, value)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return at
+	}
+	for n, fact := range []struct {
+		at, account, library string
+		kind                 int
+		watched              int64
+	}{
+		{"2026-10-15T23:50:00Z", "a", "movies", 1, 11000},
+		{"2026-10-16T00:10:00Z", "a", "movies", 1, 22000},
+		{"2026-10-18T23:40:00Z", "a", "movies", 1, 33000},
+		{"2026-10-19T00:10:00Z", "a", "movies", 1, 44000},
+		{"2026-10-21T17:20:00Z", "a", "movies", 1, 55000},
+		{"2025-10-22T12:05:00Z", "a", "movies", 1, 66000},
+		{"2026-10-19T00:10:00Z", "b", "movies", 1, 600000},
+		{"2026-10-19T00:10:00Z", "a", "movies", 7, 700000},
+		{"2026-10-19T00:10:00Z", "a", "other", 1, 800000},
+	} {
+		at := parse(t, fact.at)
+		result, e := db.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms) VALUES(?,'local',?,'p','Person',?,?,?,'Window',?,?,?)`, fmt.Sprint(n), fact.account, item, fact.library, fact.kind, at.UnixMilli(), now.UnixMilli(), fact.watched)
+		if e != nil {
+			t.Fatal(e)
+		}
+		id, e := result.LastInsertId()
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = db.Exec(`INSERT INTO play_history_time VALUES(?,?,?)`, id, at.Truncate(time.Hour).UnixMilli(), fact.watched); e != nil {
+			t.Fatal(e)
+		}
+	}
+	type totals struct{ plays, watched int64 }
+	daily := map[string]totals{
+		"2026-10-15": {1, 11000}, "2026-10-16": {1, 22000}, "2026-10-18": {1, 33000},
+		"2026-10-19": {1, 44000}, "2026-10-21": {1, 55000},
+	}
+	for _, tc := range []struct {
+		period string
+		count  int
+		width  time.Duration
+		total  totals
+		want   map[string]totals
+	}{
+		{"30d", 31, 24 * time.Hour, totals{5, 165000}, daily},
+		{"90d", 91, 24 * time.Hour, totals{5, 165000}, daily},
+		{"1y", 53, 7 * 24 * time.Hour, totals{6, 231000}, map[string]totals{
+			"2025-10-22": {1, 66000}, "2026-10-09": {1, 11000}, "2026-10-16": {4, 154000},
+		}},
+	} {
+		t.Run(tc.period, func(t *testing.T) {
+			q := PlayHistoryQuery{Period: tc.period, AccountID: "a", LibraryID: "movies", Media: "movies", Search: "Window"}
+			out, e := s.DashboardHistory(context.Background(), q, "movies")
+			if e != nil {
+				t.Fatal(e)
+			}
+			from, until := parse(t, out.From), parse(t, out.Until)
+			if !from.Equal(now.Add(-HistoryPeriods[tc.period])) || !until.Equal(now) || out.TimeZone != "UTC" || len(out.Buckets) != tc.count {
+				t.Fatal("range coverage changed", out)
+			}
+			previous := from
+			got := map[string]totals{}
+			var sum totals
+			for i, b := range out.Buckets {
+				start, end := parse(t, b.Start), parse(t, b.End)
+				if !start.Equal(previous) || !end.After(start) || end.After(until) {
+					t.Fatal("gap, overlap or inverted bucket", b)
+				}
+				edge := i == 0 || i == len(out.Buckets)-1
+				if b.Partial != edge || !edge && end.Sub(start) != tc.width {
+					t.Fatal("incorrect bucket width or clipping", b)
+				}
+				previous = end
+				for _, k := range b.Kinds {
+					if k.Kind != "movies" {
+						t.Fatal("unselected kind", k)
+					}
+					key := start.Format("2006-01-02")
+					v := got[key]
+					v.plays += k.Plays
+					v.watched += k.WatchedMs
+					got[key] = v
+					sum.plays += k.Plays
+					sum.watched += k.WatchedMs
+				}
+			}
+			if !previous.Equal(until) || sum != tc.total || len(got) != len(tc.want) {
+				t.Fatal("facts lost, duplicated or padded", got, sum)
+			}
+			for day, want := range tc.want {
+				if got[day] != want {
+					t.Fatal("facts placed in wrong calendar window", day, got[day], want)
+				}
+			}
+			var heat int64
+			for _, day := range out.BusiestTimes {
+				for _, ms := range day {
+					heat += ms
+				}
+			}
+			if heat != sum.watched || len(out.Top) != 1 || out.Top[0].Plays != sum.plays {
+				t.Fatal("aggregate filters disagree", heat, out.Top)
+			}
+		})
 	}
 }
 

@@ -223,23 +223,27 @@ func (s *Service) DashboardHistory(ctx context.Context, q PlayHistoryQuery, topK
 		from = now.Add(-span)
 	}
 	out.From = from.Format(time.RFC3339Nano)
-	// Calendar boundaries: a Monday week, or first day of the month. Bucket
-	// edges are clipped to the requested range and to "now", with partial=true.
+	// Daily windows, or seven-day windows ending with today for a year.
+	// Keep the shared rolling range: clip its edges rather than discard facts
+	// to force a fixed bucket count. All-time retains calendar months.
+	weekEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
 	bucketStart := func(t time.Time) time.Time {
 		d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 		switch q.Period {
-		case "30d", "90d":
-			return d.AddDate(0, 0, -(int(d.Weekday())+6)%7)
-		case "1y", "all":
+		case "1y":
+			// These boundaries are UTC, so every calendar day is 24 hours.
+			days := int(weekEnd.Sub(d) / (24 * time.Hour))
+			return weekEnd.AddDate(0, 0, -7*((days+6)/7))
+		case "all":
 			return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
 		}
 		return d
 	}
 	next := func(t time.Time) time.Time {
 		switch q.Period {
-		case "30d", "90d":
+		case "1y":
 			return t.AddDate(0, 0, 7)
-		case "1y", "all":
+		case "all":
 			return t.AddDate(0, 1, 0)
 		}
 		return t.AddDate(0, 0, 1)
