@@ -20,7 +20,7 @@ func TestMemberCeilingReaderReadsTheCurrentCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',X'00','member-profile',1)`); err != nil {
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',X'00','member-profile',1),('someone-else','someone-else',X'00','someone-else-profile',1)`); err != nil {
 		t.Fatal(err)
 	}
 	read := func(account string) (int, error) {
@@ -51,6 +51,10 @@ func TestMemberCeilingReaderReadsTheCurrentCap(t *testing.T) {
 	}
 	if limit, err := read("someone-else"); err != nil || limit != 0 {
 		t.Fatalf("another account: %d %v", limit, err)
+	}
+	// A missing account is not an unrestricted member; stale authority must fail.
+	if limit, err := read("missing-account"); err == nil {
+		t.Fatalf("missing account was taken for an unlimited member: %d", limit)
 	}
 	set("member", `{"remoteBitrateKbps":"many"}`)
 	if limit, err := read("member"); err == nil {
