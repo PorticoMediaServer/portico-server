@@ -56,6 +56,8 @@ type ActivityItem struct {
 	EpisodeNumber    *int          `json:"episodeNumber,omitempty"`
 	Year             int           `json:"year,omitempty"`
 	Artist           string        `json:"artist,omitempty"`
+	BookTitle        string        `json:"bookTitle,omitempty"`
+	Author           string        `json:"author,omitempty"`
 	Album            string        `json:"album,omitempty"`
 	Art              []ActivityArt `json:"art"`
 }
@@ -114,26 +116,29 @@ func enrichActivityItems(ctx context.Context, tx *sql.Tx, items []AdminSession, 
 		return nil
 	}
 	raw, _ := json.Marshal(ids)
-	rows, err := tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.year,COALESCE(pid(sh.public_id),''),COALESCE(sh.title,''),se.number,ep.number,COALESCE(ep.numbering,''),COALESCE(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch'),''),COALESCE(ar.title,''),COALESCE(al.title,'')
+	rows, err := tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.year,COALESCE(pid(sh.public_id),''),COALESCE(sh.title,''),se.number,ep.number,COALESCE(ep.numbering,''),COALESCE(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch'),''),COALESCE(ar.title,''),COALESCE(al.title,''),COALESCE(b.author,''),COALESCE(book.title,'')
  FROM json_each(?) wanted CROSS JOIN catalog_entities i ON i.public_id=pid_blob(wanted.value)
  CROSS JOIN catalog_kinds k ON k.id=i.kind
  LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id LEFT JOIN catalog_entities sh ON sh.id=ep.show_id
  LEFT JOIN catalog_seasons se ON se.entity_id=ep.season_id
  LEFT JOIN catalog_songs so ON so.entity_id=i.id LEFT JOIN catalog_entities al ON al.id=so.album_id
- LEFT JOIN catalog_albums ad ON ad.entity_id=al.id LEFT JOIN catalog_entities ar ON ar.id=ad.artist_id`, string(raw))
+ LEFT JOIN catalog_albums ad ON ad.entity_id=al.id LEFT JOIN catalog_entities ar ON ar.id=ad.artist_id
+ LEFT JOIN catalog_book_files bf ON bf.entity_id=i.id LEFT JOIN catalog_books b ON b.entity_id=bf.book_id LEFT JOIN catalog_entities book ON book.id=bf.book_id`, string(raw))
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var id, kind, showID, show, numbering, airDate, artist, album string
+		var id, kind, showID, show, numbering, airDate, artist, album, author, bookTitle string
 		var year int
 		var season, episode *int
-		if err = rows.Scan(&id, &kind, &year, &showID, &show, &season, &episode, &numbering, &airDate, &artist, &album); err != nil {
+		if err = rows.Scan(&id, &kind, &year, &showID, &show, &season, &episode, &numbering, &airDate, &artist, &album, &author, &bookTitle); err != nil {
 			break
 		}
 		for n := range items {
 			if it := items[n].Item; it != nil && it.ID == id {
 				it.Kind, it.ShowID, it.EpisodeNumbering, it.AirDate = kind, showID, numbering, airDate
+				it.Author = author
+				it.BookTitle = bookTitle
 				it.Year, it.ShowTitle, it.SeasonNumber, it.EpisodeNumber, it.Artist, it.Album = year, show, season, episode, artist, album
 			}
 		}
@@ -156,6 +161,7 @@ func enrichActivityItems(ctx context.Context, tx *sql.Tx, items []AdminSession, 
  SELECT r.public_id,'item' kind,r.id entity_id,0 priority FROM requested r
  UNION ALL SELECT r.public_id,'show',ep.show_id,1 FROM requested r CROSS JOIN catalog_episodes ep ON ep.entity_id=r.id
  UNION ALL SELECT r.public_id,'album',so.album_id,1 FROM requested r CROSS JOIN catalog_songs so ON so.entity_id=r.id
+ UNION ALL SELECT r.public_id,'book',bf.book_id,1 FROM requested r CROSS JOIN catalog_book_files bf ON bf.entity_id=r.id
  ), ranked AS (
  SELECT c.public_id,a.kind,pid(e.public_id) art_id,a.role,a.digest,
  row_number() OVER(PARTITION BY c.public_id,CASE a.role WHEN 'backdrop' THEN 'backdrop' WHEN 'cover' THEN 'square' WHEN 'square' THEN 'square' ELSE 'poster' END ORDER BY c.priority,a.role) rank

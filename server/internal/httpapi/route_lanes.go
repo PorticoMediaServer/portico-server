@@ -127,6 +127,8 @@ var routeLanes = map[string]string{
 	"GET /v1/admin/notifications/settings":                                       "admin",
 	"GET /v1/admin/operations/{panel}":                                           "admin",
 	"GET /v1/admin/play-history":                                                 "admin",
+	"GET /v1/admin/play-history/dashboard":                                       "admin",
+	"GET /v1/admin/play-history/people":                                          "admin",
 	"GET /v1/admin/play-history/summary":                                         "admin",
 	"GET /v1/admin/playback-operations/{operationId}":                            "admin",
 	"GET /v1/admin/playback-sessions":                                            "admin",

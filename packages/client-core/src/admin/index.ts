@@ -21,3 +21,5 @@ export * from "../segment-review.ts";
 
 export * from '../storage-status.ts';
 export * from './activity-summary/index.ts';
+
+export * from './dashboard.ts';

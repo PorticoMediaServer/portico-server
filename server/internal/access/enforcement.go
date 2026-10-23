@@ -45,6 +45,7 @@ type Admission struct {
 
 // Decision carries the clamps a permitted request still has to respect.
 type Decision struct {
+	UploadLimited bool `json:"-"`
 	// MaxVideoBitrateBPS is 0 when the account has no remote bitrate cap, or the
 	// request is not remote.
 	MaxVideoBitrateBPS int

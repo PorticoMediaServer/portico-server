@@ -11,10 +11,10 @@
 import {keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 export type MetricStatus='available'|'limited'|'unavailable';
 export type Metric={status:MetricStatus;value:number;detail?:string};
-export type MetricName='cpu'|'memory'|'diskRead'|'diskWrite'|'netIn'|'netOut'|'gpuUsage'|'gpuMemory'|'gpuEncoder';
-export const METRIC_NAMES:MetricName[]=['cpu','memory','diskRead','diskWrite','netIn','netOut','gpuUsage','gpuMemory','gpuEncoder'];
-export type TelemetryWindow='10m'|'1h'|'24h';
-export const TELEMETRY_WINDOWS:TelemetryWindow[]=['10m','1h','24h'];
+export type MetricName='cpu'|'memory'|'diskRead'|'diskWrite'|'netIn'|'netOut'|'gpuUsage'|'gpuMemory'|'gpuEncoder'|'processCPU'|'processMemory'|'homeMbps'|'awayMbps'|'hardwareConversions'|'softwareConversions';
+export const METRIC_NAMES:MetricName[]=['cpu','memory','diskRead','diskWrite','netIn','netOut','gpuUsage','gpuMemory','gpuEncoder','processCPU','processMemory','homeMbps','awayMbps','hardwareConversions','softwareConversions'];
+export type TelemetryWindow='live'|'12h'|'24h'|'7d'|'30d'|'90d'|'1y'|'all'|'10m'|'1h';
+export const TELEMETRY_WINDOWS:TelemetryWindow[]=['live','12h','24h','7d','30d','90d','1y','all','10m','1h'];
 export type TelemetrySample={at:number;metrics:Record<MetricName,Metric>;memoryUsedBytes:number;memoryTotalBytes:number;gpuDevice?:string;gpuProvider?:string};
 export type TelemetryPoint={t:number;v:number};
 export type TelemetryReading={window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
@@ -69,7 +69,7 @@ export function parseTelemetryReading(value:unknown):TelemetryReading{
  if(!TELEMETRY_WINDOWS.includes(r.window)||!integer(r.observedAt))invalid();
  const series=base(r.series);const out={} as Record<MetricName,TelemetryPoint[]>;
  for(const name of METRIC_NAMES){
-  const points=series[name];
+  const points=series[name] ?? (METRIC_NAMES.indexOf(name)>=9?[]:undefined);
   if(!Array.isArray(points)||points.length>MAX_POINTS)invalid();
   let previous=-1;
   // A point that is out of order, from the future or not a number is left out; the rest of the line is kept.
