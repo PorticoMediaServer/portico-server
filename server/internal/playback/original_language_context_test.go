@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/subtitles"
 )
 
 func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T) {
@@ -27,7 +28,7 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 	})
 	// Use the actual normalized preference writer/reader, not an injected
 	// DeliveryInput. Metadata rows below are accepted provider fixture facts.
-	_, err := operations.New(db).ApplyPreferences(ctx, principal, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "original-context", Values: operations.PreferencePatch{"playback.preferredAudioLanguages": []string{"@original", "fr"}}})
+	_, err := operations.New(db).ApplyPreferences(ctx, principal, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "original-context", Values: operations.PreferencePatch{"playback.preferredAudioLanguages": []string{"@original", "fr"}, "playback.subtitleMode": "foreign", "playback.preferredSubtitleLanguages": []string{"en"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 		values, _, _, err := operations.EffectivePreferences(tx, v, device)
 		return values, err
 	}, nil, "")
-	if _, err = db.Exec(`INSERT INTO screen_metadata_work(target_kind,target_id,library_id,title_seed) VALUES('item',?,'lib','Film')`, entity); err != nil {
+	if _, err = db.Exec(`INSERT OR IGNORE INTO screen_metadata_work(target_kind,target_id,library_id,title_seed) VALUES('item',?,'lib','Film')`, entity); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO screen_metadata_publications(id,target_kind,target_id,provider,provider_type,provider_id,payload,confidence,reasons,source_kind,input_digest,query_digest,observed_at,language,region,selection_revision,generation,decision) VALUES('original-context','item',?,'tmdb','movie','42','{}',1,'[]','provider','fixture','fixture','now','en','US',1,1,'accepted')`, entity); err != nil {
@@ -80,6 +81,14 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 		preview, err := s.PlanV1(ctx, principal, item, tc.choice)
 		if err != nil || preview.AudioStream != tc.want || preview.Trace.Audio.ChosenBy != tc.reason {
 			t.Fatalf("preview %s: stream=%d trace=%+v err=%v", tc.language, preview.AudioStream, preview.Trace, err)
+		}
+		values, _, _, err := operations.EffectivePreferences(db, principal.Viewer, "web")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sub := subtitles.ChooseAutomatic(automaticSubtitles(values, preview.Trace, "en-US"), []subtitles.Track{{ID: "english", Language: "eng", Format: "srt", Origin: "embedded"}})
+		if (sub != nil) != (tc.want != 1) {
+			t.Fatalf("foreign subtitles ignored actual selected audio: stream=%d subtitle=%+v", tc.want, sub)
 		}
 		session, err := s.CreateV1(ctx, principal, item, fmt.Sprintf("original-%d", n), tc.choice, nil)
 		if err != nil {
