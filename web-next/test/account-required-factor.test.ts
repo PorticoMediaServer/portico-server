@@ -10,7 +10,8 @@ function fixture() {
   let required = true, passwordChange = false, selected: {connection: {pin: typeof pin; session: LocalSession}; signIn: 'local'} | undefined;
   let holdPath: string | undefined, release!: () => void, pending: Promise<void> | undefined;
   const calls: {path: string; body: unknown}[] = [], admitted: string[] = [];
-  let selections = 0;
+  let selections = 0, signIns = 0;
+  const tokens: string[] = [];
   const system = {id: serverId, name: 'Actual server', signIn: 'local', move: null, version: '1', setupRequired: false, hostedConfigured: false, hostedAttached: false};
   const pin = {serverId, publicKey: 'p'.repeat(43), fingerprint: 'f'.repeat(43)};
   const snapshot = () => ({authority: 'local', serverId, canManage: !required,
@@ -22,24 +23,25 @@ function fixture() {
     expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {authority: 'local', serverId, accountId: 'account-a', profileId: 'profile-a', role: 'account'}} as LocalSession;
   const enrolment = {secret: 'ABCDEFGHIJKLMNOP', uri: 'otpauth://totp/Actual?secret=ABCDEFGHIJKLMNOP', recoveryCodes: ['fixture-code']};
   const connection = {pin, dispose() {}, getSnapshot: () => ({phase: 'ready'})};
-  const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => connection as never;
+  const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => connection as never;api.setAccessToken = value => {tokens.push(value);};
   api.request = (async (path, _method, body) => {
     calls.push({path, body});if (path === holdPath) await pending;
     if (path === '/v1/system') return system;
-    if (path === '/v1/direct/sign-in') return {...snapshot(), session, ...(passwordChange ? {passwordChangeRequired: true} : {})};
+    if (path === '/v1/direct/sign-in') return {...snapshot(), session: {...session, sessionFamilyId: ++signIns === 1 ? session.sessionFamilyId : 'successor-family'}, ...(passwordChange ? {passwordChangeRequired: true} : {})};
+    if (path === '/v1/direct/password') {passwordChange = false;return {};}
     if (path === '/v1/direct') return snapshot();
     if (path === '/v1/direct/two-factor/enrol') return enrolment;
     if (path === '/v1/direct/two-factor/verify') return {enabled: true, pendingEnrolment: false, recoveryCodesRemaining: 1};
     throw new Error('Unexpected fixture route: ' + path);
   }) as HttpLocalApi['request'];
   const entry = new BrowserAccountEntry({
-    store: {read: async () => ({revision: 1, servers: []}), selected: async () => selected, connectionStorage: () => ({read: async () => undefined, change: async () => {}})} as never,
-    actions: {switchProfile: async () => {selections++;}} as never,
+    store: {read: async () => ({version: 1, revision: 1, servers: []}), selected: async () => selected, connectionStorage: () => ({read: async () => undefined, change: async () => {}})} as never,
+    actions: {switchProfile: async () => {selections++;}, signOutServer: async (captured: LocalSession) => {assert.equal(captured.sessionFamilyId, 'account-family');selected = undefined;}} as never,
     environment: () => ({storage: {read: async () => undefined, change: async () => {}}}),
     restore: async () => ({api, session}), inspect: async () => pin, connect: (async () => ({api, connection})) as never,
     remember: async (_api, granted) => {admitted.push(granted.sessionFamilyId);selected = {connection: {pin, session: granted}, signIn: 'local'};}, retire: async () => {},
   }, {inspect: async () => system, getSnapshot: () => ({origin}), cancel() {}, dispose() {}} as unknown as ServerSignInProbe);
-  return {entry, calls, admitted, session, enrolment, get selections() {return selections;},
+  return {entry, calls, admitted, session, enrolment, tokens, get selections() {return selections;},
     clearRequirement: () => {required = false;}, requirePassword: () => {passwordChange = true;},
     replaceSelection: () => {selected = {connection: {pin, session: {...session, sessionFamilyId: 'successor-family'}}, signIn: 'local'};},
     hold: (path: string) => {holdPath = path;pending = new Promise(resolve => {release = resolve;});}, release: () => release()};
@@ -99,4 +101,13 @@ test('cancellation during verification cannot read onward or expose a ready prof
   const work = f.entry.confirmRequiredTwoStep(password, '123456');await dispatched(f, '/v1/direct/two-factor/verify');
   f.entry.cancel();f.release();assert.equal(await work, false);assert.equal(f.entry.getSnapshot().phase, 'welcome');
   assert.equal(f.calls.some(call => call.path === '/v1/direct'), false);f.entry.dispose();
+});
+
+test('password change clears the retired bearer before ordinary sign-in continues into required setup', async () => {
+  const f = fixture();f.requirePassword();await signIn(f);
+  await f.entry.changePassword(password, 'new-fixture-input');
+  assert.equal(f.entry.getSnapshot().phase, 'password');assert.equal(f.tokens.at(-1), '');
+  await f.entry.signIn('actual-user', 'new-fixture-input');
+  assert.equal(f.entry.getSnapshot().phase, 'two-step-setup');
+  assert.deepEqual(f.admitted, ['account-family', 'successor-family']);f.entry.dispose();
 });

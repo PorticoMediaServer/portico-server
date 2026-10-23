@@ -286,7 +286,7 @@ export class BrowserAccountEntry {
  async changePassword(currentPassword:string,newPassword:string){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='password-change'||!api||!session)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{await changeRequiredPassword(api,currentPassword,newPassword,op.signal);await this.ports.actions.signOutServer(session);if(op.current())this.publish({...state,phase:'password',snapshot:undefined,busy:false,error:undefined});}
+  try{await changeRequiredPassword(api,currentPassword,newPassword,op.signal);await this.ports.actions.signOutServer(session);if(op.current()){this.session=undefined;api.setAccessToken('');this.publish({...state,phase:'password',snapshot:undefined,busy:false,error:undefined});}}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
  async loadProfiles(){
