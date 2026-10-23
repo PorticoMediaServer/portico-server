@@ -135,17 +135,12 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			return
 		}
 		query := r.URL.Query()
-		out, e := store.Invitations(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), access.InvitationQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), State: query.Get("state")})
+		out, total, matched, e := store.InvitationTable(r.Context(), d.accessReadAuthority(&p, identity.TierAdmin), p, access.InvitationQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), State: query.Get("state")}, query.Get("q"), query.Get("sort"), query.Get("direction"))
 		if e != nil {
 			accessFailure(w, e)
 			return
 		}
-		for i := range out.Items {
-			if !identity.ManagesTier(p.Role, out.Items[i].Role) {
-				out.Items[i].Notes = nil
-			}
-		}
-		write(w, 200, out)
+		write(w, 200, access.InvitationTablePage{InvitationPage: out, TotalCount: total, MatchedCount: matched})
 	})
 	d.httpHandle(mux, "GET /v1/admin/access/invitations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)

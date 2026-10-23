@@ -295,6 +295,7 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/reading/continue":                                                   {check: readingRestrictionCheck("GET /v1/reading/continue")},
 		"GET /v1/reading/items":                                                      {check: readingRestrictionCheck("GET /v1/reading/items")},
 		"GET /v1/items/{itemId}/reading/versions":                                    {check: readingRestrictionCheck("GET /v1/items/{itemId}/reading/versions")},
 		"GET /v1/reading/sessions/{sessionId}/source":                                {check: readingRestrictionCheck("GET /v1/reading/sessions/{sessionId}/source")},
