@@ -1,14 +1,26 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {buildHostedSignInStartURL, parseHostedSignInStartURL} from '../src/hosted-sign-in-start.ts';
+import {createHash, generateKeyPairSync, sign} from 'node:crypto';
+import {buildHostedSignInStartURL, parseHostedSignInStartURL, verifyHostedSignInStart} from '../src/hosted-sign-in-start.ts';
 import {routeBase64} from '../src/route-identity.ts';
-import type {RegisteredSignIn} from '../src/same-tab-return.ts';
+import type {RegisteredSignInWithContext} from '../src/same-tab-return.ts';
 
 const now = Date.UTC(2030, 0, 1), hosted = 'https://web.example.test';
 const token = (byte: number) => routeBase64(new Uint8Array(32).fill(byte));
-const value = (): RegisteredSignIn => ({start: {serverId: 'srv_' + token(1), purpose: 'sign-in', claimOperationId: 'installed_operation-1',
-  registrationId: 'ret_' + token(2), state: token(3), codeChallenge: token(4), serverChallenge: token(5), installationId: '10000000-0000-4000-8000-000000000001'},
-  registration: {id: 'ret_' + token(2), origin: 'https://server.example.test'}, hostedOrigin: hosted, expiresAt: new Date(now + 60_000).toISOString()});
+const keys = generateKeyPairSync('ed25519'), key = keys.publicKey.export({format: 'der', type: 'spki'}).subarray(-32);
+const serverId = 'srv_' + createHash('sha256').update('portico.server.identity.v1\0').update(key).digest('base64url');
+const value = (): RegisteredSignInWithContext => {
+  const facts = {kind: 'portico.registered-sign-in-prepare', version: '1', serverId, publicKey: key.toString('base64url'),
+    fingerprint: createHash('sha256').update(key).digest('base64url'), serverName: 'Actual server', registrationId: 'ret_' + token(2),
+    registrationOrigin: 'https://server.example.test', hostedOrigin: hosted, claimOperationId: 'installed_operation-1', challenge: token(5),
+    nonce: token(6), installationId: '10000000-0000-4000-8000-000000000001', issuedAt: new Date(now).toISOString().replace('.000Z', 'Z'),
+    expiresAt: new Date(now + 60_000).toISOString().replace('.000Z', 'Z')};
+  const raw = Buffer.from(JSON.stringify(facts));
+  return {start: {serverId, purpose: 'sign-in', claimOperationId: facts.claimOperationId, registrationId: facts.registrationId,
+    state: token(3), codeChallenge: token(4), serverChallenge: facts.challenge, installationId: facts.installationId},
+    registration: {id: facts.registrationId, origin: facts.registrationOrigin}, hostedOrigin: hosted, expiresAt: facts.expiresAt,
+    context: {payload: raw.toString('base64url'), signature: sign(null, raw, keys.privateKey).toString('base64url')}};
+};
 const encode = (json: string) => hosted + '/#signIn=v1.' + routeBase64(new TextEncoder().encode(json));
 
 test('the genuine installed operation survives a canonical ordinary HTTPS-root handoff', () => {
@@ -22,7 +34,7 @@ test('the builder rejects every protected or unknown field at all three object b
     for (const part of ['root', 'start', 'registration']) {
       const input = value() as unknown as Record<string, any>;
       (part === 'root' ? input : input[part])[key] = 'must-never-travel';
-      assert.throws(() => buildHostedSignInStartURL(input as unknown as RegisteredSignIn, now));
+      assert.throws(() => buildHostedSignInStartURL(input as unknown as RegisteredSignInWithContext, now));
     }
   }
   const input = value(); let called = false;
@@ -54,4 +66,23 @@ test('the parser rejects duplicate/reordered/extra JSON, noncanonical base64, UT
     hosted + '/#signIn=v1.' + 'A'.repeat(8192),
   ];
   for (const candidate of invalid) assert.equal(parseHostedSignInStartURL(candidate, hosted, now), undefined);
+});
+
+test('Hosted verifies the original signed name and every wrapper binding before either auth5 state', async () => {
+  assert.equal((await verifyHostedSignInStart(value(), now)).serverName, 'Actual server');
+  for (const mutate of [
+    (v: any) => {v.start.serverId = 'srv_' + token(9);},
+    (v: any) => {v.start.claimOperationId = 'another_operation';},
+    (v: any) => {v.start.serverChallenge = token(9);},
+    (v: any) => {v.start.installationId = '20000000-0000-4000-8000-000000000001';},
+    (v: any) => {v.registration.id = v.start.registrationId = 'ret_' + token(9);},
+    (v: any) => {v.registration.origin = 'https://different.example';},
+    (v: any) => {v.hostedOrigin = 'https://different.example';},
+    (v: any) => {v.expiresAt = new Date(now + 59_000).toISOString();},
+    (v: any) => {v.context.signature = routeBase64(new Uint8Array(64).fill(1));},
+    (v: any) => {const facts = JSON.parse(Buffer.from(v.context.payload, 'base64url').toString()); facts.serverName = 'Forged label'; v.context.payload = Buffer.from(JSON.stringify(facts)).toString('base64url');},
+  ]) {const input = value(); mutate(input); await assert.rejects(verifyHostedSignInStart(input, now));}
+  await assert.rejects(verifyHostedSignInStart(value(), now + 60_000));
+  const missing = value() as any; delete missing.context;
+  assert.throws(() => buildHostedSignInStartURL(missing, now));
 });

@@ -6,6 +6,7 @@ import type {PreferenceSnapshot} from '@core/preferences.ts';
 import type {ShellArtwork} from '../../shell/artwork';
 import type {ShellIdentity} from '../../shell/Shell';
 import type {QueueBrowseSelector} from '@core/playback-v1/types.ts';
+import type {WatchVersionRequest} from '../watch/version-presentation';
 
 /** Captured by the shell for one server/account/profile/role epoch. Not a wire DTO. */
 export type ScreenContext = Readonly<{
@@ -24,6 +25,7 @@ export type ScreenContext = Readonly<{
     chooseProfile?: () => void;
     openBrowse?: (selector: QueueBrowseSelector) => void;
     play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string}>, signal: AbortSignal) => Promise<void>;
+    chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
     reportError: (error: unknown) => void;
   }>;
 }>;

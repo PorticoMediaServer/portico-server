@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -135,6 +136,9 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		s.serveMu.Unlock()
 		if !same {
 			slot.cancel()
+			if expectedEpoch == "" {
+				return nil, storage.ErrBusy
+			}
 			return nil, storage.ErrRemoteChanged
 		}
 		if process == nil {
@@ -144,6 +148,13 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 			return nil, storage.ErrRemoteOffline
 		}
 		if err := process.Check(ctx); err != nil {
+			// A new metadata/reader admission has not consumed this physical
+			// epoch. A committed policy/root/profile change must retire the old
+			// process, then let that new caller's normal bounded turn try again.
+			// Existing readers retain their exact epoch and fail terminally.
+			if expectedEpoch == "" && ctx.Err() == nil && (errors.Is(err, storage.ErrRemoteChanged) || (err == context.Canceled || err == rcloneprogram.ErrServeStopped) && slot.life.Err() != nil) {
+				return nil, storage.ErrBusy
+			}
 			return nil, err
 		}
 		return process, nil
@@ -185,6 +196,10 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	defer clear(material.Configuration)
 	backend, host, port, err := serveTransport(material.Configuration, material.Remote)
+	if err != nil {
+		return nil, err
+	}
+	slot.capabilities, err = sourceBackendCapabilities(backend, host)
 	if err != nil {
 		return nil, err
 	}

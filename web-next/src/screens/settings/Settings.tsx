@@ -10,6 +10,7 @@ import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity'
 import {useShellWidth} from '../../shell/viewport';
 import {configurationFieldEligible} from './eligibility';
 import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
+import {useWebAction} from '../../route-registry-view';
 import styles from '../../kit/settings/settings.module.css';
 
 const t = defaultI18n.t;
@@ -39,7 +40,7 @@ export type SettingsBindings = Readonly<{
 }>;
 
 export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void}) {
-  const width = useShellWidth(), compact = width < 900;
+  const width = useShellWidth(), compact = width < 900, feedback = useWebAction('feedback');
   const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(false), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   const [configurationKey, setConfigurationKey] = useState<string>();
@@ -92,6 +93,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     account={settingsSpec.filter(section => section.scope === 'account' && sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     server={settingsSpec.filter(section => section.scope === 'server' && sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     selectedId={`${selected.scope}/${selected.section}`} selectedSearchResult={selected.row ? {pageId: `${selected.scope}/${selected.section}`, rowId: selected.row} : undefined}
+    actions={feedback ? [{id: 'feedback', icon: 'i-flag', label: t('next.shell.feedback'), onAction: feedback}] : []}
     query={query} onQueryChange={setQuery} onNavigate={go} matches={groups} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
   const panelSpec = panel && section.panels?.[panel.id], tab = panelSpec?.tabs?.find(tab => tab.id === panel?.tab);
   const panelContext: SettingsContext = {section, panelId: panel?.id, tabId: tab?.id, recordId: panel?.recordId};
