@@ -12,14 +12,17 @@ import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
 import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
 import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
-import {Hero, HeroFacts, Shelf, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
+import {Hero, HeroFacts, type HeroCandidate, type LayoutPlatform} from '../../kit/layout';
 import {Button} from '../../kit/controls';
 import {CollectionBanner, LiveCard, PosterCard, RankedCard, SquareCard, WideCard, type CardSelection} from '../../kit/cards';
-import {HomeSkeleton, StateView} from '../../kit/states';
+import {HomeSkeleton, StateLayout} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {currentHomeLive, homeCardModel, homeLiveDeadline, homePlaybackTarget, homeSpotlights} from './model';
+import {PagedShelf} from '../browse/PagedShelf';
 import styles from './home.module.css';
+import type {HomeCustomizationBindings} from './customization';
+import {HomeCustomizeEntry} from './Customize';
 
 export type HomeSelection = Readonly<{
   /** The canonical selection owner supplies its real bar and controls. */
@@ -40,8 +43,9 @@ export type HomeEffects = Readonly<{
   openMore: (row: HomeRow, entry: ContentEntry, anchor: HTMLElement) => void;
   setMyList: (spotlight: HomeSpotlight) => Promise<void>;
   reportError: (error: unknown) => void;
+  openHome?: () => void;
 }>;
-export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean}>;
+export type HomeBindings = Readonly<{service: HomeService; artwork: ShellArtwork; effects: HomeEffects; selection: HomeSelection; time: TimeEnvironment; reducedMotion: boolean; serverName?: string; customization?: HomeCustomizationBindings}>;
 type HomePresentation = Pick<HomeBindings, 'artwork' | 'effects' | 'selection' | 'time' | 'reducedMotion'>;
 const t = defaultI18n.t;
 const dependencies = [dependsOn.libraries, dependsOn.content(), dependsOn.order(), dependsOn.personal(), dependsOn.progress(), dependsOn.settings('preferences'), dependsOn.settings('server'), dependsOn.list('recommendations'), dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.event('stream.resync')];
@@ -111,14 +115,16 @@ export function HomeScreen(bindings: HomeBindings) {
     const timers = [300, 8000].map(delay => setTimeout(() => setElapsed(Date.now() - started), Math.max(0, delay - (Date.now() - started))));
     return () => timers.forEach(clearTimeout);
   }, [snapshot.document, started]);
-  if (!document && snapshot.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}} />;
-  if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}} />;
+  if (!document && snapshot.phase === 'error') return <StateLayout className={styles.home} title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning" contentStyle={{top: width >= 1024 ? 470 : 250}}
+    primary={{id: 'retry', icon: width >= 1024 ? 'i-retry' : undefined, label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}}
+    secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.effects.openHome ?? (() => {void service.retry();})}}/>;
+  if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}
+    slowNotice={bindings.serverName ? <div className={styles.slowNotice} role="status"><span className={styles.waitingDot}/><span><b>{t('next.states.stillLoading')}</b>{' '}{t('next.states.slowConnection', {server: bindings.serverName})}</span></div> : undefined}/>;
   return <HomeView {...bindings} document={document} nowMs={now} refreshLive={refreshLive} onMore={rowId => { void service.more(rowId); }} />;
 }
 
 type Spotlight = Omit<ReturnType<typeof homeSpotlights>[number], 'reason'> & HeroCandidate & {causalReason: HomeReason; source: HomeSpotlight};
-export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
+export function HomeView({service, customization, document, nowMs, onMore, refreshLive, artwork, effects, selection, time, reducedMotion}: HomeBindings & {document: HomeDocument; nowMs: number; onMore: (rowId: string) => void; refreshLive: () => void}) {
   const width = useShellWidth(), platform: LayoutPlatform = width >= 1024 ? 'desktop' : 'phone-web';
   const heroPixels = Math.max(width, heroSpec.backdropWidth[platform === 'desktop' ? 'web' : 'phone']) * devicePixelRatio;
   const hero = useVisible(), env = useMemo(() => ({t, locale: time.locale}), [time.locale]);
@@ -151,6 +157,7 @@ export function HomeView({document, nowMs, onMore, refreshLive, artwork, effects
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
       {rows.map((row, index) => <HomeRowView key={row.id} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
         artwork={artwork} effects={effects} selection={selection} time={time} reducedMotion={reducedMotion} />)}
+      {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
     </div>
   </div>;
 }
@@ -172,22 +179,27 @@ function HomeRowView(props: HomeRowProps) {
 }
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
-  const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title), subtitle: serverTextLabel(defaultI18n, row.subtitleText), platform,
-    onSeeAll: row.seeAll ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
-  const visibleRange = useCallback((first: number, last: number) => { onRange(first, last); if (row.nextCursor && last >= row.entries.length - 3) onMore(); }, [row.nextCursor, row.entries.length, onMore, onRange]);
+  const phone = platform !== 'desktop';
+  const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title),
+    subtitle: !phone || ['on_now', 'listen_next', 'continue_listening'].includes(row.id) ? serverTextLabel(defaultI18n, row.subtitleText) : undefined, platform,
+    onSeeAll: row.seeAll && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
+  const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
+  const ranked = row.id === 'community_watching' && !!row.period;
+  const cardWidth = ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
   const live = currentHomeLive(row.live, nowMs);
   if (row.live) {
     if (!live) return null;
     const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
-    return <Shelf {...header} items={live.channels} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
-      onVisibleRange={(first, last) => { onRange(first, last); if (row.nextCursor && last >= live.channels.length - 3) onMore(); }}
+    const liveWidth = platform === 'desktop' ? 316 : 244, liveHeight = platform === 'desktop' ? 178 : 140;
+    return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={liveWidth} artworkRatio={liveWidth / liveHeight} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
+      onVisibleRange={onRange}
       renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
   }
   if (row.collection) {
     return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
   }
   if (!row.entries.length) return null;
-  return <Shelf {...header} items={row.entries} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={visibleRange}
+  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / (platform === 'desktop' ? 255 : 174) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 
@@ -213,7 +225,7 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const props = {model, visible: interest.visible, watched: entry.watched, isNew: entry.new,
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
     ambient: square ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
-    fallback: <GeneratedArt glyph={Array.from(entry.title.trim())[0] ?? ''} />,
+    fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
     onNavigate: () => effects.openEntry(entry),
     onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
     selection: selection.card(row, entry),
