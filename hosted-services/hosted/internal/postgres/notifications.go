@@ -15,6 +15,27 @@ type NotificationPreferences struct {
 	ServerOffline bool `json:"serverOffline"`
 }
 
+// UnmarshalJSON requires the explicit boolean promised by the public contract.
+// An omitted or null switch must never silently save false.
+func (p *NotificationPreferences) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if e := json.Unmarshal(raw, &fields); e != nil {
+		return e
+	}
+	if len(fields) != 1 || fields["serverOffline"] == nil {
+		return identity.ErrInvalid
+	}
+	var value *bool
+	if e := json.Unmarshal(fields["serverOffline"], &value); e != nil {
+		return e
+	}
+	if value == nil {
+		return identity.ErrInvalid
+	}
+	p.ServerOffline = *value
+	return nil
+}
+
 // NotificationPreferences hides owner-alert kinds the account turned off.
 // Security events and sign-ins are always shown.
 func (s *AccountSecurity) NotificationPreferences(ctx context.Context, token string, update *NotificationPreferences) (NotificationPreferences, error) {
@@ -57,9 +78,11 @@ type NotificationFeed struct {
 
 const notificationPage = 50
 
-// visibleNotifications is the account's feed filter: its own rows, minus the
-// owner-alert kinds it turned off.
-const visibleNotifications = `n.account_id=$1 AND NOT EXISTS(SELECT 1 FROM account_notification_preferences p WHERE p.account_id=n.account_id AND (n.kind='server_offline' AND NOT p.server_offline))`
+// visibleNotifications is shared by list, unread and get. The positive kind
+// list also excludes retired server notices. Signing-key expiry is queued only
+// for the configured operator account; its existing alert remains available.
+// Security events and sign-ins are never hidden by the quiet-server switch.
+const visibleNotifications = `n.account_id=$1 AND n.kind IN('server_offline','new_device','security_event','account_export_ready','signing_key_expiring') AND NOT EXISTS(SELECT 1 FROM account_notification_preferences p WHERE p.account_id=n.account_id AND (n.kind='server_offline' AND NOT p.server_offline))`
 
 func scanNotification(rows interface{ Scan(...any) error }) (Notification, error) {
 	var n Notification
