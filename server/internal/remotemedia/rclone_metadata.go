@@ -140,7 +140,10 @@ func (m *RcloneMetadata) Stat(ctx context.Context, relative string, check func(c
 	}
 	// SlowHash means calculating a hash can read the object (or execute a remote
 	// hashing command). Bounded decode never authorizes that whole-file work.
-	err = m.request(ctx, "operations/stat", map[string]any{"fs": m.fs, "remote": relative, "opt": map[string]any{"showHash": capability.HashCostKnown && !capability.SlowHash, "noMimeType": true}}, &raw, check)
+	// FilesOnly also prevents upstream StatJSON from swallowing a NewObject
+	// failure and then listing its parent as though the request succeeded.
+	// Directory membership has its separate bounded listing path.
+	err = m.request(ctx, "operations/stat", map[string]any{"fs": m.fs, "remote": relative, "opt": map[string]any{"showHash": capability.HashCostKnown && !capability.SlowHash, "noMimeType": true, "filesOnly": true}}, &raw, check)
 	if err != nil {
 		return RcloneFileMetadata{}, err
 	}

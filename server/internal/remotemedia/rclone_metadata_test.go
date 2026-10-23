@@ -35,7 +35,7 @@ func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
 					}
 				} else if r.URL.Path == "/operations/stat" {
 					opt := request["opt"].(map[string]any)
-					if request["remote"] != "episode.mkv" || opt["showHash"] != (cost == "fast") {
+					if request["remote"] != "episode.mkv" || opt["showHash"] != (cost == "fast") || opt["filesOnly"] != true {
 						t.Fatal("hash cost or member request bypass", request)
 					}
 					body = `{"item":{"Path":"episode.mkv","Size":123,"ModTime":"2026-10-23T10:00:00.123456789Z","ID":"provider-object"}}`
