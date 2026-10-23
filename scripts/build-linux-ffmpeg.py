@@ -83,7 +83,7 @@ cp /disc/LICENSE /ffbuild/prefix/portico-disc-LICENSE
 cp COPYING.GPLv3 /ffbuild/prefix/COPYING.GPLv3
 ''')
         argv = ['docker', 'run', '--rm', '--name', 'portico-hardware-r29-ffmpeg',
-                '--cpus', '2', '--memory', '8g', '--memory-swap', '8g', '--network', 'none',
+                '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--network', 'none',
                 '--label', 'portico.lane=hardware-r29',
                 '-v', str(build) + ':/ffbuild', '-v', str(prefix) + ':/opt/ffbuild:ro',
                 '-v', str(args.source.resolve()) + ':/source.tar.xz:ro',

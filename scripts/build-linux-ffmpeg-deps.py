@@ -93,7 +93,7 @@ python3 /build-linux-ffmpeg-deps.py --inside
     # used for source/build scratch. A single container holds small native build
     # tools (e.g. glslc) between dependency stages; exported before it exits.
     run('docker', 'run', '--rm', '--name', 'portico-hardware-r29-linux-deps',
-        '--cpus', str(jobs), '--memory', '8g', '--memory-swap', '8g',
+        '--cpus', str(jobs), '--memory', '4g', '--memory-swap', '4g',
         '--label', 'portico.lane=hardware-r29',
         '-v', str(recipe) + ':/recipe:ro', '-v', str(work) + ':/portico',
         '-v', str(work / 'prefix') + ':/opt/ffbuild',
@@ -138,11 +138,22 @@ def inside():
         if not archive.exists():
             # Download commands originate only in the exact public source
             # recipe. Any submodule/dependency commits are retained in source.
-            run('bash', '-e', '-o', 'pipefail', '-c', raw, cwd=stage)
+            download_root = work / 'tmp' / (name + '.download-root')
+            run('bash', '-e', '-o', 'pipefail', '-c', raw + '\npwd -P > ' + shlex.quote(str(download_root)), cwd=stage)
+            archive_root = Path(download_root.read_text().strip()).resolve(strict=True)
+            if not archive_root.is_relative_to(stage):
+                raise ValueError('Download recipe escaped its source directory: ' + name)
+            # Upstream archives the final shell directory. libiconv, for
+            # example, downloads into iconv/ and changes there to add gnulib.
             run('tar', '--sort=name', '--mtime=@' + os.environ['SOURCE_DATE_EPOCH'],
                 '--owner=0', '--group=0', '--numeric-owner', '-I', 'xz -T1',
-                '-cf', str(archive) + '.new', '.', cwd=stage)
+                '-cf', str(archive) + '.new', '.', cwd=archive_root)
             Path(str(archive) + '.new').replace(archive)
+            # Build from the archived layout too; the first build and a resumed
+            # build must see precisely the same root and original source bytes.
+            shutil.rmtree(stage)
+            stage.mkdir()
+            run('tar', '-xf', str(archive), '-C', str(stage))
         else:
             run('tar', '-xf', str(archive), '-C', str(stage))
         # Collect actual licence files before build recipes edit the source.

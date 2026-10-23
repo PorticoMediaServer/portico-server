@@ -31,9 +31,9 @@ if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" != 1 && "${PORTICO_FFMPEG_DEPS_ONLY:-0}
   [[ -f "$DISC_SOURCE" && ! -L "$DISC_SOURCE" ]] || { echo 'Checked disc source is missing' >&2; exit 1; }
   git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/portico-disc.c" > "$WORK/checked-portico-disc.c"
   cmp "$WORK/checked-portico-disc.c" "$DISC_SOURCE"
-  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/LICENSE
-  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/LICENSE" > "$WORK/checked-portico-disc.LICENSE"
-  cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/third_party/portico-disc/LICENSE"
+  git -C "$ROOT" diff --quiet HEAD -- LICENSE
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:LICENSE" > "$WORK/checked-portico-disc.LICENSE"
+  cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/LICENSE"
   [[ ${PORTICO_DISC_FIXTURES_SHA256:-} =~ ^[0-9a-f]{64}$ && -f ${PORTICO_DISC_FIXTURES:-} ]] || { echo 'Provide the checked disc fixture manifest and SHA256' >&2; exit 1; }
 fi
 if [[ ! -f "$ARCHIVE" ]]; then
