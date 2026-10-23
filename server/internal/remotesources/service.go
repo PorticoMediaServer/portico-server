@@ -239,6 +239,8 @@ func mapError(err error) error {
 		return err
 	case errors.Is(err, mediasource.ErrSourceChanged):
 		return storage.ErrRemoteChanged
+	case errors.Is(err, remotemedia.ErrObservationChanged):
+		return storage.ErrRemoteChanged
 	case errors.Is(err, remotemedia.ErrDenied):
 		return storage.ErrRemoteCredentials
 	case errors.Is(err, remotemedia.ErrPolicy), errors.Is(err, remotemedia.ErrDAVResponse):
@@ -254,6 +256,15 @@ func mapError(err error) error {
 	}
 }
 func ErrorCode(err error) string {
+	var response *remotemedia.ResponseFailure
+	if errors.As(err, &response) {
+		if response.Kind == "throttled" {
+			return "rate_limited"
+		}
+		if response.Kind == "quota" {
+			return "quota_exceeded"
+		}
+	}
 	switch {
 	case errors.Is(err, storage.ErrRemoteChanged), errors.Is(err, mediasource.ErrSourceChanged):
 		return "source_changed"
