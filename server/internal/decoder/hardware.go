@@ -426,10 +426,14 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		bounded, cancel = context.WithTimeout(ctx, timeout)
 		out.OutputQuality["h264:8"] = d.run(bounded, executable, qualityArgs) == nil
 		cancel()
-		for _, depth := range []int{8, 10} {
-			hevcSpec := spec
-			hevcSpec.encoder = "hevc_" + string(backend)
-			args := probeArgs(hevcSpec, device, "")
+		for _, cell := range []struct {
+			codec string
+			depth int
+		}{{"hevc", 8}, {"hevc", 10}, {"av1", 8}, {"av1", 10}} {
+			depth := cell.depth
+			codecSpec := spec
+			codecSpec.encoder = cell.codec + "_" + string(backend)
+			args := probeArgs(codecSpec, device, "")
 			if depth == 10 {
 				for i := 0; i+1 < len(args); i++ {
 					if args[i] == "-vf" {
@@ -441,11 +445,12 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 				}
 			}
 			bounded, cancel = context.WithTimeout(ctx, timeout)
-			out.OutputEncoders["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, args) == nil
+			key := cell.codec + ":" + strconv.Itoa(depth)
+			out.OutputEncoders[key] = d.run(bounded, executable, args) == nil
 			cancel()
-			if out.OutputEncoders["hevc:"+strconv.Itoa(depth)] {
+			if out.OutputEncoders[key] {
 				bounded, cancel = context.WithTimeout(ctx, timeout)
-				out.OutputQuality["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, probeQualityArgs(hevcSpec, device, depth)) == nil
+				out.OutputQuality[key] = d.run(bounded, executable, probeQualityArgs(codecSpec, device, depth)) == nil
 				cancel()
 			}
 		}
