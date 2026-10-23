@@ -1,4 +1,5 @@
 import {preferenceValue} from '@core/preferences.ts';
+import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import {setServiceI18n} from '@core/presentation/service-text.ts';
@@ -26,8 +27,10 @@ export const assembleShellBindings: ShellAssembler = async context => {
   let active = true;
   const current = () => active && context.isCurrent();
   const scope = Object.freeze({serverId: viewer.serverId, viewerId: JSON.stringify([authority, viewer.accountId, viewer.profileId])});
-  const language = shellLanguage(context.facts.preferences);
+  const currentPreferences = () => context.preferences?.getSnapshot('web') ?? context.facts.preferences;
+  const language = shellLanguage(currentPreferences());
   setServiceI18n(language);
+  context.api.setAppLanguage(language.locale);
   const time = {t: language.t, locale: language.region.formatLocale, timeZone: language.region.timeZone,
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
@@ -50,12 +53,12 @@ export const assembleShellBindings: ShellAssembler = async context => {
     try {
       const runtime = new WebShellPlaybackRuntime({api: context.api, authority: {...viewer, authority, epoch: context.epoch, viewerFence: document.viewerFence},
         contentScope: scope, events: context.events,
-        isCurrent: () => current() && context.home.getSnapshot().document?.viewerFence === document.viewerFence, settings: shellPlaybackSettings(context.facts.preferences)});
+        isCurrent: () => current() && context.home.getSnapshot().document?.viewerFence === document.viewerFence, settings: shellPlaybackSettings(currentPreferences)});
       owned.push(() => runtime.dispose());
       const playback = runtime.selectionPlayback(homeCurrent), selection = createShellSelection(context, playback, feedback.reportError, dockVisible);
       owned.push(selection.dispose, runtime.subscribe(changed), selection.subscribe(changed));
       const binding: ShellPlaybackBinding = {runtime, artwork: context.artwork, environment: time, reportError: feedback.reportError,
-        skips: {back: preferenceValue<number>(context.facts.preferences, 'playback.skipBackMs') / 1000, forward: preferenceValue<number>(context.facts.preferences, 'playback.skipForwardMs') / 1000}};
+        get skips() {return {back: preferenceValue<number>(currentPreferences(), 'playback.skipBackMs') / 1000, forward: preferenceValue<number>(currentPreferences(), 'playback.skipForwardMs') / 1000};}};
       return {value: {runtime, playback, selection, binding}, dispose: close};
     } catch (error) {close();throw error;}
   }});
@@ -75,13 +78,21 @@ export const assembleShellBindings: ShellAssembler = async context => {
     section => { void router.navigate({to: '/dashboard', search: section ? {section} : {}}).catch(feedback.reportError); },
     () => { void router.navigate({to: '/dashboard', search: {section: 'updates'}}).catch(feedback.reportError); });
   resources.push(activity.dispose);
+  let homeLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
+  if (context.preferences) resources.push(context.preferences.subscribe(() => {
+    if (!current()) return;
+    playerResources?.get()?.runtime.refreshSettings();
+    const nextLayout = JSON.stringify([currentPreferences().effective['home.rowOrder'], currentPreferences().effective['home.hiddenRowIds']]);
+    if (nextLayout !== homeLayout) {homeLayout = nextLayout;void context.home.revalidate().catch(feedback.reportError);}
+    changed();
+  }));
   const getBinding = (): ShellBindings => {
     const visibleDock = dockVisible();
     return {api: context.api, events: context.events, scopeKey: JSON.stringify([viewer.serverId, authority, viewer.accountId, viewer.profileId, context.session().sessionFamilyId, context.epoch]),
       playback: playerResources?.get()?.binding,
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible: visibleDock, onSignOut: context.signOut,onSignOutPorticoAccount:context.signOutPorticoAccount,onSwitchProfile:context.switchProfile,onSwitchServer:context.switchServer,savedServers:context.savedServers,
         phoneSelection: playerResources?.get()?.selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={visibleDock} />},
-      home: {service: context.home, artwork: context.artwork, time, serverName: context.facts.identity.serverName, reducedMotion: preferenceValue<boolean>(context.facts.preferences, 'appearance.reduceMotion'), selection: homeSelection,
+      home: {service: context.home, artwork: context.artwork, time, serverName: context.facts.identity.serverName, reducedMotion: appearancePreferences(currentPreferences(), globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: homeSelection,
         customization: {isCurrent: current, requestId: randomId, createSavedViews: () => {
           if (!current()) throw new Error('shell_authority_retired');
           return new PersonalSavedService(context.api, scope, async () => randomId());

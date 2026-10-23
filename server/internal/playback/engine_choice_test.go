@@ -379,13 +379,13 @@ func TestCodecTagClosesDirectPlayOnly(t *testing.T) {
 // explicit track.
 func TestRememberedAudioLanguage(t *testing.T) {
 	tracks := []SourceAudio{{Index: 1, Language: "eng", Default: true}, {Index: 2, Language: "jpn"}, {Index: 3, Language: "jpn", Commentary: true}}
-	if a, by := chooseAudio(tracks, -1, "ja", []string{"en"}); a.Index != 2 || by != "carried" {
+	if a, by := chooseAudio(tracks, -1, "ja", []string{"en"}, ""); a.Index != 2 || by != "carried" {
 		t.Fatal(a, by)
 	}
-	if a, by := chooseAudio(tracks, 1, "ja", nil); a.Index != 1 || by != "explicit" {
+	if a, by := chooseAudio(tracks, 1, "ja", nil, ""); a.Index != 1 || by != "explicit" {
 		t.Fatal(a, by)
 	}
-	if a, by := chooseAudio(tracks, -1, "fr", []string{"en"}); a.Index != 1 || by != "preferred_language" {
+	if a, by := chooseAudio(tracks, -1, "fr", []string{"en"}, ""); a.Index != 1 || by != "preferred_language" {
 		t.Fatal(a, by)
 	}
 }

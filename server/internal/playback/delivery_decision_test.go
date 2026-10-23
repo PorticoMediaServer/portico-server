@@ -263,9 +263,9 @@ func TestDecisionMatrixAcrossDevices(t *testing.T) {
 		if p = decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.PreferredAudioLanguages = []string{"fre"} }); p.Strategy != DeliveryOriginal || p.AudioStream != 2 {
 			t.Fatal(p)
 		}
-		// A commentary is never the automatic choice.
+		// A known original-language match excludes commentary, even the default.
 		source = videoSource("mp4", "h264", avcDetail, SourceAudio{Codec: "aac", Channels: 2, Language: "eng", Commentary: true, Default: true}, SourceAudio{Codec: "aac", Channels: 2, Language: "eng"})
-		if p = decide(t, source, appleTVProfile(), nil); p.AudioStream != 2 {
+		if p = decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.OriginalLanguage = "en" }); p.AudioStream != 2 {
 			t.Fatal("commentary chosen automatically", p.Trace.Audio)
 		}
 	})
@@ -350,14 +350,14 @@ func TestDecisionTraceIsBoundedAndPathFree(t *testing.T) {
 func TestChooseAudioLanguageFolding(t *testing.T) {
 	tracks := []SourceAudio{{Index: 1, Language: "ger"}, {Index: 2, Language: "en-US"}, {Index: 3, Language: "jpn", Default: true}}
 	for want, index := range map[string]int{"de": 1, "deu": 1, "eng": 2, "en": 2, "ja": 3} {
-		if a, by := chooseAudio(tracks, -1, "", []string{want}); a.Index != index || by != "preferred_language" {
+		if a, by := chooseAudio(tracks, -1, "", []string{want}, ""); a.Index != index || by != "preferred_language" {
 			t.Fatal(want, a, by)
 		}
 	}
-	if a, by := chooseAudio(tracks, -1, "", []string{"sv"}); a.Index != 3 || by != "default" {
+	if a, by := chooseAudio(tracks, -1, "", []string{"sv"}, ""); a.Index != 3 || by != "default" {
 		t.Fatal(a, by)
 	}
-	if a, by := chooseAudio(tracks, 2, "", []string{"de"}); a.Index != 2 || by != "explicit" {
+	if a, by := chooseAudio(tracks, 2, "", []string{"de"}, ""); a.Index != 2 || by != "explicit" {
 		t.Fatal(a, by)
 	}
 }
