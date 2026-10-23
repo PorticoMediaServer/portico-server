@@ -4,8 +4,9 @@ import type {PlayHistoryEntry, PlayHistoryFilters, PlayHistoryPeriod} from '@cor
 import {SettingsTable, type TableQuery} from '../../kit/settings';
 import type {DashboardBindings} from './bindings';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead} from './use-read';
-import {clock, mediaKinds} from './model';
-import {mediaLabel, ReadFeedback, t} from './shared';
+import {mediaKinds} from './model';
+import {formatHistoryDuration} from './format';
+import {mediaLabel, ReadFeedback, Section, t} from './shared';
 import styles from './dashboard.module.css';
 export function HistoryScreen({bindings: b, embedded = false}: {bindings: DashboardBindings; embedded?: boolean}) {
   const current = useDashboardAuthority(b);
@@ -30,15 +31,15 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   const tableRows = useMemo(() => rows.map(entry => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {
-      title: {title: entry.title, meta: [entry.parentTitle, entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode}))].filter(Boolean).join(' / '), image: artwork},
-      person: {title: entry.user || t('next.dashboard.removedPerson'), avatar: entry.user.slice(0, 1), meta: entry.profile},
+      title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
+      person: {title: entry.user || t('next.dashboard.removedPerson'), avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
       player: {title: entry.platform ?? '', meta: entry.device},
       played: {title: defaultI18n.date(Date.parse(entry.startedAt), 'medium'), meta: defaultI18n.time(Date.parse(entry.startedAt))},
-      for: {title: entry.watchedMs !== undefined ? clock(entry.watchedMs) : '—', ...(entry.durationSeconds > 0 ? {meta: t('next.dashboard.ofDuration', {duration: clock(entry.durationSeconds * 1000)})} : {})},
+      for: {title: entry.completed ? t('next.dashboard.finished') : entry.watchedMs !== undefined ? formatHistoryDuration(entry.watchedMs / 1000) : '—', ...(entry.durationSeconds > 0 ? {meta: entry.completed ? formatHistoryDuration(entry.durationSeconds) : t('next.dashboard.ofDuration', {duration: formatHistoryDuration(entry.durationSeconds, true)})} : entry.kind === 'channel' ? {meta: t('next.dashboard.live')} : {})},
       where: {title: entry.location === 'local' ? t('next.dashboard.home') : entry.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation'), tone: 'quiet' as const},
     }};
   }), [rows, b]);
-  return <><ReadFeedback state={state} /><SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback state={state} /><SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
     columns={[
       {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
       {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},
@@ -52,5 +53,5 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
       {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value: value === 'today' ? '24h' : value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
     ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
     emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />
-  </>;
+  </Section>;
 }

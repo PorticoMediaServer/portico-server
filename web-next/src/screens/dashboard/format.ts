@@ -30,6 +30,19 @@ export function fmtDur(h: number): string {
   return t('next.dashboard.format.hoursMinutes', {hours: String(Math.floor(m / 60)), minutes: String(m % 60).padStart(2, '0')});
 }
 export const fmtHrs = (h: number): string => t('next.dashboard.hours', {value: String(h >= 10 ? Math.round(h) : Math.round(h * 10) / 10)});
+/** History's human lengths: whole-minute labels follow ruling 7, short exact totals retain their seconds. */
+export function formatHistoryDuration(seconds: number, exactShort = false): string {
+  const total = Math.max(0, Math.floor(seconds)), minutes = Math.round(total / 60);
+  if (exactShort && total < 300 && total % 60) return t('next.dashboard.format.minutesSeconds', {minutes: Math.floor(total / 60), seconds: total % 60});
+  return minutes >= 60 ? t('next.dashboard.format.historyHoursMinutes', {hours: Math.floor(minutes / 60), minutes: minutes % 60}) : t('next.dashboard.format.runtimeMinutes', {minutes});
+}
+/** Date presentation only. Bucket boundaries always come from the server. */
+export function formatHistoryStarted(startedAt: string, timeZone: string, capturedUntil: string): string {
+  const stamp = Date.parse(startedAt), captured = Date.parse(capturedUntil);
+  const day = new Intl.DateTimeFormat(defaultI18n.locale, {year: 'numeric', month: 'numeric', day: 'numeric', timeZone});
+  const time = new Intl.DateTimeFormat(defaultI18n.locale, {hour: 'numeric', minute: '2-digit', timeZone}).format(stamp);
+  return day.format(stamp) === day.format(captured) ? t('next.dashboard.format.todayAt', {time}) : new Intl.DateTimeFormat(defaultI18n.locale, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone}).format(stamp);
+}
 export function formatLoadAxis(value: number, kind: DashboardLoadKind): string {
   if (value === 0 || kind === 'conversions') return String(value);
   return t(kind === 'bandwidth' ? 'next.dashboard.mbps' : 'next.dashboard.percent', {value: String(value)});

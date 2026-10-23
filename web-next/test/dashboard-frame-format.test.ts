@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
-import {fmtDur, fmtHrs, fmtMbps, fmtPct, formatAudioSource, formatDeliveryTarget, formatStreamRate, formatSubtitleSource, formatTrackRoute, formatVideoSource, loadScale, niceScale} from '../src/screens/dashboard/format.ts';
-import {trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
+import {fmtDur, fmtHrs, fmtMbps, fmtPct, formatAudioSource, formatDeliveryTarget, formatHistoryDuration, formatHistoryStarted, formatStreamRate, formatSubtitleSource, formatTrackRoute, formatVideoSource, loadScale, niceScale} from '../src/screens/dashboard/format.ts';
+import {curveSegments, plotLine, trackRoute, sessionTracks, clock, mediaKinds} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const referenceRepo = process.env.PORTICO_DASHBOARD_DESIGN_REPO;
 const reference = referenceRepo && execFileSync('git', ['-C', referenceRepo, 'show', '812dacacc70e296ac870ec36d1a37a485eaeb8ed:design/ui-v1/settings/dashboard.js'], {encoding: 'utf8'});
@@ -57,6 +57,14 @@ test('VS-10 maps only known per-track decisions and preserves protocol identifie
 test('Top people retains the five drawn kinds in their drawn order', () => {
   assert.deepEqual(mediaKinds, ['movies', 'tv', 'music', 'audiobooks', 'live']);
 });
+test('History lengths and local date presentation match the drawn cells without resolving intervals', () => {
+  assert.equal(formatHistoryDuration(180), '3 min');
+  assert.equal(formatHistoryDuration(274, true), '4 min 34 s');
+  assert.equal(formatHistoryDuration(7500), '2 h 5 min');
+  assert.equal(formatHistoryDuration(1439.9), '24 min');
+  assert.equal(formatHistoryStarted('2026-10-22T18:26:00Z', 'America/Halifax', '2026-10-22T19:15:00Z'), 'Today, 3:26 PM');
+  assert.equal(formatHistoryStarted('2026-10-22T17:26:00Z', 'Asia/Kathmandu', '2026-10-22T19:15:00Z').startsWith('Today'), false);
+});
 test('formatter functions agree with the checked drawing over boundary values', {skip: !reference}, () => {
   const scaleSource = reference!.slice(reference!.indexOf('  function niceScale('), reference!.indexOf('  const f1 ='));
   const referenceScale = vm.runInNewContext(scaleSource + '; niceScale');
@@ -64,4 +72,14 @@ test('formatter functions agree with the checked drawing over boundary values', 
   const a = reference!.indexOf('  const fmtMbps ='), b = reference!.indexOf('  const clamp =');
   const formatters = vm.runInNewContext(reference!.slice(a, b) + '; ({fmtMbps,fmtPct,fmtDur,fmtHrs})');
   for (const value of [0, .01, .1, .5, 1, 2.08333333333333, 9.44, 10.4, 99.9, 100, 1234]) for (const [name, format] of Object.entries({fmtMbps, fmtPct, fmtDur, fmtHrs})) assert.equal(format(value), formatters[name](value), `${name}(${value})`);
+});
+test('chart curves copy the checked monotone helper including descending stack baselines', {skip: !reference}, () => {
+  const a = reference!.indexOf('  const f1 ='), b = reference!.indexOf('  const thin =');
+  const drawing = vm.runInNewContext(reference!.slice(a, b) + '; ({segs,smooth,stepped})');
+  const points: [number, number][] = [[64, 220], [110, 100], [160, 100], [230, 210], [350, 20]];
+  for (const input of [points, [...points].reverse(), points.slice(0, 1)]) {
+    assert.equal(curveSegments(input), drawing.segs(input));
+    assert.equal(plotLine(input), drawing.smooth(input));
+    assert.equal(plotLine(input, true), drawing.stepped(input));
+  }
 });

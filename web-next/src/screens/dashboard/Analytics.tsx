@@ -6,7 +6,7 @@ import {Select, Button, Segmented} from '../../kit/controls';
 import type {DashboardBindings} from './bindings';
 import {useDashboardAccounts, useDashboardRead} from './use-read';
 import {fmtDur, fmtHrs, niceScale} from './format';
-import {hours, mediaKinds, quietestHours} from './model';
+import {curveSegments, plotLine, hours, mediaKinds, quietestHours} from './model';
 import {mediaLabel, Range, ReadFeedback, Section, t} from './shared';
 import styles from './dashboard.module.css';
 const historyKinds = mediaKinds;
@@ -42,7 +42,7 @@ export function Analytics({bindings: b}: {bindings: DashboardBindings}) {
     <Section title={t('next.dashboard.top')} actions={<><Segmented aria-label={t('next.dashboard.media')} value={topKind} onValueChange={value => setTopKind(value as DashboardTopKind)} items={['movies', 'tv', 'music'].map(kind => ({value: kind, label: mediaLabel(kind)}))} /><Select aria-label={t('next.dashboard.person')} value={topPerson} options={peopleOptions} onValueChange={value => value === '__more' ? accounts.loadMore() : setTopPerson(value)} /><Range value={topRange} values={ranges} onChange={value => setTopRange(value as PlayHistoryPeriod)} /></>}>
       <ReadFeedback state={top} />{top.value && (top.value.top.length ? <div className={styles.rankedShelf}>{topBackdrop && <div className={styles.shelfAmbient} aria-hidden="true"><img src={topBackdrop} alt="" /></div>}<ol className={styles.shelf} data-square={topKind === 'music' || undefined}>{top.value.top.map((item, index) => {
         const art = b.artwork(item.itemId, topKind === 'music' ? 'square' : 'poster', item.posterRevision);
-        return <li key={item.itemId}><span className={styles.rank} aria-hidden="true">{index + 1}</span><div className={styles.rankedArt}>{art && <img src={art} alt="" loading="lazy" />}</div><h4>{item.title}</h4><p>{t(item.countUnit === 'track_plays' ? 'next.dashboard.trackPlays' : item.countUnit === 'episode_plays' ? 'next.dashboard.episodePlays' : item.countUnit === 'album_plays' ? 'next.dashboard.albumPlays' : 'next.dashboard.plays', {count: item.plays})}</p>{topPerson === 'all' && <p>{t('next.dashboard.peopleCount', {count: item.people})}</p>}</li>;
+        return <li key={item.itemId}><span className={styles.rank} aria-hidden="true">{index + 1}</span><div className={styles.rankedArt}>{art && <img src={art} alt="" loading="lazy" />}</div><h4>{item.title}</h4><p>{t('next.dashboard.plays', {count: item.plays})}</p>{topPerson === 'all' && <p>{t('next.dashboard.peopleCount', {count: item.people})}</p>}</li>;
       })}</ol></div> : <p className={styles.empty}>{t('next.dashboard.nothing')}</p>)}
     </Section>
   </>;
@@ -57,15 +57,15 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
   return <><div className={styles.card}><h4>{t('next.dashboard.timePlayed')}</h4>{total ? <div className={styles.plot} tabIndex={0} role="group" aria-label={t('next.dashboard.timePlayed')}
     onBlur={() => setFocus(undefined)} onPointerLeave={() => setFocus(undefined)} onPointerMove={event => {const rect = event.currentTarget.getBoundingClientRect(); setFocus(Math.max(0, Math.min(h.buckets.length - 1, Math.floor((event.clientX - rect.left) / rect.width * h.buckets.length))));}}
     onKeyDown={event => {if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {event.preventDefault(); setFocus(old => event.key === 'Home' ? 0 : event.key === 'End' ? h.buckets.length - 1 : Math.max(0, Math.min(h.buckets.length - 1, (old ?? 0) + (event.key === 'ArrowLeft' ? -1 : 1))));}}}>
-    <svg className={styles.chart} viewBox="0 0 912 250" role="img" aria-label={t('next.dashboard.timePlayed')}>
-      {scale.ticks.map(value => <g key={value}><path className={styles.gridline} d={`M48,${210 - value / scale.top * 190}H864`} /><text x="40" y={214 - value / scale.top * 190} textAnchor="end">{value === 0 ? '0' : t('next.dashboard.hours', {value: String(value)})}</text></g>)}
+    <svg className={styles.chart} viewBox="0 0 912 240" role="img" aria-label={t('next.dashboard.timePlayed')}>
+      {scale.ticks.map(value => <g key={value}><path className={styles.gridline} d={`M50,${Math.round(214 - value / scale.top * 206) + .5}H904`} /><text x="40" y={Math.round(214 - value / scale.top * 206) + 4.5} textAnchor="end">{value === 0 ? '0' : t('next.dashboard.hours', {value: String(value)})}</text></g>)}
       {kinds.map((kind, ki) => {
-        const x = (i: number) => 48 + i / Math.max(1, h.buckets.length - 1) * 816;
-        const y = (i: number, last: number) => 210 - h.buckets[i].kinds.filter(k => kinds.slice(0, last).includes(k.kind as typeof kinds[number])).reduce((sum, k) => sum + k.watchedMs, 0) / max * 190;
-        const path = h.buckets.map((_, i) => `${i ? 'L' : 'M'}${x(i)},${y(i, ki + 1)}`).join('') + h.buckets.map((_, i) => i).reverse().map(i => `L${x(i)},${y(i, ki)}`).join('') + 'Z';
-        return <path className={styles.area} key={kind} data-series={kind} d={path} />;
+        const x = (i: number) => 50 + (h.buckets.length === 1 ? .5 : i / (h.buckets.length - 1)) * 854;
+        const y = (i: number, last: number) => 214 - h.buckets[i].kinds.filter(k => kinds.slice(0, last).includes(k.kind as typeof kinds[number])).reduce((sum, k) => sum + k.watchedMs, 0) / max * 206;
+        const hi = h.buckets.map((_, i): [number, number] => [x(i), y(i, ki + 1)]), lo = h.buckets.map((_, i): [number, number] => [x(i), y(i, ki)]).reverse();
+        return h.buckets.length > 1 && <g key={kind} data-series={kind}><path className={styles.area} d={`${plotLine(hi)}L${lo[0][0].toFixed(1)},${lo[0][1].toFixed(1)}${curveSegments(lo)}Z`} /><path className={styles.areaLine} d={plotLine(hi)} /></g>;
       })}
-      <text x="48" y="242">{date(h.from)}</text><text x="864" y="242" textAnchor="end">{date(h.until)}</text>
+      <text x="50" y="234">{date(h.from)}</text><text x="904" y="234" textAnchor="end">{date(h.until)}</text>
     </svg>
     <div className={styles.chartTip} aria-live="polite">{focus !== undefined && h.buckets[focus] && <><b>{date(h.buckets[focus].start)} – {date(h.buckets[focus].end)} {h.buckets[focus].partial && t('next.dashboard.partial')}</b>{h.buckets[focus].kinds.filter(k => mediaKinds.some(kind => kind === k.kind)).map(k => <span key={k.kind}>{mediaLabel(k.kind)}<strong>{duration(k.watchedMs)}</strong></span>)}</>}</div>
     </div> : <p className={styles.empty}>{t('next.dashboard.nothing')}</p>}
@@ -73,10 +73,10 @@ function HistoryCharts({history: h, media}: {history: DashboardHistory; media: s
     </div>
     <div className={styles.card}><div className={styles.heading}><h4>{t('next.dashboard.busiest')}</h4>{quiet !== undefined && <span className={styles.quiet}>{t('next.dashboard.quietest')} <b>{t('next.dashboard.quietWindow', {from: hour(quiet), until: hour(quiet + 3)})}</b></span>}</div>
       <div className={styles.heatScroll}><div className={styles.heat} style={{'--quiet-hour': quiet ?? 0} as CSSProperties} role="group" aria-label={t('next.dashboard.busiest')}>
-        {h.busiestTimes.map((day, d) => <div className={styles.heatDay} key={d}><span>{new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'short', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))}</span>{day.map((ms, hour) => <button type="button" key={hour} className={styles.heatCell} data-quiet={quiet !== undefined && hour >= quiet && hour < quiet + 3 || undefined} style={{'--heat-intensity': `${(.08 + .92 * ms / heatMax) * 100}%`} as CSSProperties} aria-label={`${new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'long', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))} ${hour}:00: ${duration(ms)}`} onFocus={() => setCell({day: d, hour})} onBlur={() => setCell(undefined)} onPointerEnter={() => setCell({day: d, hour})} onPointerLeave={() => setCell(undefined)} />)}</div>)}
+        {h.busiestTimes.map((day, d) => <div className={styles.heatDay} key={d}><span>{new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'short', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))}</span>{day.map((ms, hour) => <button type="button" key={hour} className={styles.heatCell} data-quiet={quiet !== undefined && hour >= quiet && hour < quiet + 3 || undefined} style={{'--heat-intensity': `${(.06 + .94 * Math.pow(ms / heatMax, .8)) * 100}%`} as CSSProperties} aria-label={`${new Intl.DateTimeFormat(defaultI18n.locale, {weekday: 'long', timeZone: 'UTC'}).format(Date.UTC(2026, 0, 5 + d))} ${hour}:00: ${duration(ms)}`} onFocus={() => setCell({day: d, hour})} onBlur={() => setCell(undefined)} onPointerEnter={() => setCell({day: d, hour})} onPointerLeave={() => setCell(undefined)} />)}</div>)}
         {quiet !== undefined && <div className={styles.quietWindow} aria-hidden="true" />}
         <div className={styles.heatHours}><span />{[0, 3, 6, 9, 12, 15, 18, 21].map(h => <span key={h}>{hour(h)}</span>)}</div>
       </div></div>
-      <div className={styles.legend}><span role="status">{cell ? `${hour(cell.hour)}: ${duration(h.busiestTimes[cell.day][cell.hour])}` : ''}</span><small>{t('next.dashboard.quieter')}　{t('next.dashboard.busier')}</small></div>
+      <div className={styles.legend}><span role="status">{cell ? `${hour(cell.hour)}: ${duration(h.busiestTimes[cell.day][cell.hour])}` : ''}</span><small className={styles.heatLegend}>{t('next.dashboard.quieter')}{[.06, .22, .42, .68, 1].map(intensity => <i key={intensity} style={{'--heat-intensity': `${intensity * 100}%`} as CSSProperties} />)}{t('next.dashboard.busier')}</small></div>
     </div></>;
 }

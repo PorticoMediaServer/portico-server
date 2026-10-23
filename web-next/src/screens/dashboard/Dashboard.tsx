@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useId, useRef, useState} from 'react';
+import {useCallback, useEffect, useId, useRef, useState, type CSSProperties} from 'react';
 import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {MessageId} from '@i18n';
 import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from '@core/admin/dashboard.ts';
@@ -65,9 +65,9 @@ function Load({bindings: b}: {bindings: DashboardBindings}) {
       return <button type="button" className={styles.tile} key={k} id={`${id}-${k}`} role="tab" aria-selected={kind === k} aria-controls={`${id}-panel`} tabIndex={kind === k ? 0 : -1} onClick={() => setKind(k)} onKeyDown={event => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return; event.preventDefault();
         const keys = loadKinds.filter(key => loadSeries(live.value, key).length), next = keys[(keys.indexOf(k) + (event.key === 'ArrowLeft' ? keys.length - 1 : 1)) % keys.length]; setKind(next); document.getElementById(`${id}-${next}`)?.focus();
-      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{format(current, k)}</strong><small>{available.map(s => <span key={s.key}>{s.label} {s.points.at(-1)!.v.toLocaleString(defaultI18n.locale, {maximumFractionDigits: 1})}</span>)}</small><Chart kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} compact /></button>;
+      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{k === 'conversions' ? String(Math.round(current)) : current.toFixed(1)}<small>{t(k === 'bandwidth' ? 'next.dashboard.unit.mbps' : k === 'conversions' ? 'next.dashboard.unit.running' : 'next.dashboard.unit.percent')}</small></strong><small>{available.map(s => <span key={s.key} data-series={s.key}><i />{k === 'bandwidth' ? `${s.label} ${s.points.at(-1)!.v.toFixed(1)}` : k === 'conversions' ? t(s.key === 'hardwareConversions' ? 'next.dashboard.hardwareCount' : 'next.dashboard.processorCount', {value: Math.round(s.points.at(-1)!.v)}) : s.key === 'cpu' || s.key === 'memory' ? t('next.dashboard.systemCurrent', {value: s.points.at(-1)!.v.toFixed(1)}) : t('next.dashboard.portico')}</span>)}</small><Chart kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} step={k === 'conversions'} compact /></button>;
     })}</div>
-    <div className={styles.card} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => setRange(value as TelemetryWindow)} /></div></div>
+    <div className={`${styles.card} ${styles.loadDetail}`} style={{'--load-index': loadKinds.indexOf(kind)} as CSSProperties} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => setRange(value as TelemetryWindow)} /></div></div>
       <ReadFeedback state={detail} /><Chart kind={kind} title={t(`next.dashboard.${kind}`)} series={series} format={format} formatAverage={value => kind === 'conversions' ? value.toFixed(1) : format(value)} step={kind === 'conversions' && range === 'live'} />
     </div>
   </Section>;
