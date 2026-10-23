@@ -10,7 +10,7 @@ import (
 
 func TestDashboardAnalyticsDoNotGrantAdministratorPeopleAuthority(t *testing.T) {
 	f := administrationFixtureNew(t)
-	for _, path := range []string{"/v1/admin/play-history", "/v1/admin/play-history/summary", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status"} {
+	for _, path := range []string{"/v1/admin/play-history", "/v1/admin/play-history/summary", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status", "/v1/admin/telemetry?window=live", "/v1/admin/telemetry/now"} {
 		for _, token := range []string{f.admin, f.member} {
 			w := f.call("GET", path, token, "")
 			if w.Code != 403 {
@@ -29,6 +29,26 @@ func TestDashboardAnalyticsDoNotGrantAdministratorPeopleAuthority(t *testing.T) 
 		w := f.call("GET", path, f.admin, "")
 		if w.Code != 200 {
 			t.Fatal("normal administrator boundary changed", path, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestDashboardManagementRequiresTheAccountsMainProfile(t *testing.T) {
+	f := administrationFixtureNew(t)
+	for _, account := range []string{"owner", "admin"} {
+		profile := account + "-secondary"
+		if _, e := f.deps.DB.Exec(`INSERT INTO direct_profiles(id,account_id,name,position) VALUES(?,?, 'Secondary',1)`, profile, account); e != nil {
+			t.Fatal(e)
+		}
+		token, e := f.deps.Identity.Issue(account, profile, "local", account, 1)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, path := range []string{"/v1/admin/sessions", "/v1/admin/access/members", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status"} {
+			w := f.call("GET", path, token.AccessToken, "")
+			if w.Code != 403 {
+				t.Fatal(account, path, w.Code, w.Body.String())
+			}
 		}
 	}
 }
