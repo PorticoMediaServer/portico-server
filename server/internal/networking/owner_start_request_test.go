@@ -16,6 +16,8 @@ func TestOwnerStartActionStrictProofBindings(t *testing.T) {
 	}
 	for _, raw := range []string{
 		strings.Replace(valid, `"ownerStart":{`, `"ownerStart":null,"ownerStart":{`, 1),
+		`{"expected":{"operationId":"actual_op","localGeneration":"0","revision":"1"},"approvalEnvelope":null}`,
+		`{"expected":{"operationId":"actual_op","localGeneration":"0","revision":"1"},"ownerStart":null}`,
 		strings.Replace(valid, `"state":`, `"State":`, 1),
 		strings.Replace(valid, `"localGeneration":"0"`, `"localGeneration":"0","LocalGeneration":"0"`, 1),
 		strings.Replace(valid, `"revision":"1"`, `"revision":"1","unknown":true`, 1),

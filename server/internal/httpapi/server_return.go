@@ -50,6 +50,11 @@ func (q *porticoReturnRequest) UnmarshalJSON(raw []byte) error {
 	if err != nil {
 		return identity.ErrDirectInput
 	}
+	for _, value := range fields {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return identity.ErrDirectInput
+		}
+	}
 	if _, owner := fields["state"]; owner {
 		var next serverreturn.OwnerExchange
 		if json.Unmarshal(raw, &next) != nil {

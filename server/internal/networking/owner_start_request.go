@@ -41,6 +41,11 @@ func (q *ClaimActionRequest) UnmarshalJSON(raw []byte) error {
 	if err != nil {
 		return ErrInvalid
 	}
+	for _, value := range fields {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return ErrInvalid
+		}
+	}
 	expected, err := wirejson.Object(fields["expected"], "operationId", "localGeneration", "revision")
 	if err != nil || len(expected) != 3 {
 		return ErrInvalid
