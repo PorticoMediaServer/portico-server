@@ -759,6 +759,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			}
 			out.Video = append(out.Video, "-bsf:v", filter)
 		}
+		copyFilter, err := DolbyVisionCopyBitstreamFilter(target, r.Toolchain)
+		if err != nil {
+			return out, err
+		}
+		if copyFilter != "" {
+			out.Video = append(out.Video, "-bsf:v", copyFilter)
+		}
 		out.Video = append(out.Video, "-c:v", "copy")
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, ExecutionSoftware}, HardwareStage{StageEncode, ExecutionSoftware})
 	}

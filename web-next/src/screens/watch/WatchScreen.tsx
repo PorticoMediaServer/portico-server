@@ -6,7 +6,7 @@ import {Icon, type IconName} from '../../kit/Icon';
 import {Button, Slider} from '../../kit/controls';
 import {Menu, type MenuEntry} from '../../kit/overlays';
 import {KeyboardShortcuts} from '../../kit/states';
-import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, type WatchIntent} from './model';
+import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, watchStepIntent, type WatchIntent} from './model';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
 import {ScrubPreview} from './ScrubPreview';
@@ -123,6 +123,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       keyboardFocus.current = true;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || more || shortcuts) return;
       if ((event.key === ' ' || event.key === 'Enter') && event.target instanceof Element && event.target.closest('button,a')) return;
+      const step = watchStepIntent(current.current.binding.runtime, current.current.snapshot, event.key);
+      if (step) { event.preventDefault(); send(step); reveal(); return; }
       let intent: WatchIntent | undefined;
       const p = current.current.snapshot.presentation;
       if (!p) return;
