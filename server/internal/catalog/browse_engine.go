@@ -433,6 +433,10 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		aggregate, err := s.browseAggregate(request, pivot)
 		return aggregate, nil, err
 	}
+	hard, err := s.browseSourceFence(request.ServerID, browseRequestViewer(request), request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, nil, err
+	}
 	sorts, err := resolveBrowseSorts(pivot, request.Sort)
 	if err != nil {
 		return out, nil, err
@@ -535,8 +539,8 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		if err != nil {
 			return out, nil, err
 		}
-		if cursor.Fingerprint != revision {
-			return out, nil, ErrStaleContinuation
+		if err := validateBrowseCursor(&cursor, hard, revision); err != nil {
+			return out, nil, err
 		}
 		expires = cursor.Expires
 		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
@@ -697,7 +701,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: hard, CacheRevision: revision, Total: total, Expires: expires})
 		if err != nil {
 			return out, nil, err
 		}
@@ -707,6 +711,13 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	if after != revision {
+		return out, nil, ErrStaleContinuation
+	}
+	afterHard, err := s.browseSourceFence(request.ServerID, browseRequestViewer(request), request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, nil, err
+	}
+	if afterHard != hard {
 		return out, nil, ErrStaleContinuation
 	}
 	return out, selected, nil

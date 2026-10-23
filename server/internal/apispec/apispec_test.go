@@ -36,7 +36,7 @@ func TestArrayMaximum(t *testing.T) {
 	for i := range roots {
 		roots[i] = root
 	}
-	page := map[string]any{"path": "", "parent": "", "separator": "/", "platform": "linux", "writable": false, "truncated": true, "roots": roots[:64], "entries": []any{}, "nextCursor": ""}
+	page := map[string]any{"path": "", "parent": "", "separator": "/", "platform": "linux", "writable": false, "writableChecked": false, "suggestions": []any{}, "truncated": true, "roots": roots[:64], "entries": []any{}, "nextCursor": ""}
 	if problems := doc.Validate(schema, page); len(problems) != 0 {
 		t.Fatal(problems)
 	}

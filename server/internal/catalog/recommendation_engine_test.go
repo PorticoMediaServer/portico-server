@@ -464,8 +464,28 @@ func TestRecommendationDiscoverUsesWholeAvailableWorksForEveryLibrary(t *testing
 				t.Fatal("wrong total", row)
 			}
 			for _, entry := range row.Entries {
+				// Listening navigation rails have their own canonical kinds. A
+				// new or unknown rail still obeys the engine's whole-work rule.
+				kind := ""
+				if library == "music" {
+					kind = map[string]string{"artists": "artist", "genres": "category", "playlists": "playlist", "most_played_songs": "song", "new_albums": "album", "recently_played": "album"}[row.ID]
+				}
+				if kind != "" {
+					if entry.Kind != kind {
+						t.Fatalf("%s/%s kind=%s want%s", library, row.ID, entry.Kind, kind)
+					}
+					if kind == "album" || kind == "song" {
+						if entry.Available == nil || !*entry.Available {
+							t.Fatalf("%s/%s unavailable listening work: %+v", library, row.ID, entry)
+						}
+					}
+					continue
+				}
 				if entry.Kind != "movie" && entry.Kind != "show" && entry.Kind != "album" && entry.Kind != "book" {
-					t.Fatal(library, entry)
+					t.Fatal(library, row.ID, entry)
+				}
+				if entry.Available == nil || !*entry.Available {
+					t.Fatalf("%s/%s unavailable engine work: %+v", library, row.ID, entry)
 				}
 			}
 		}

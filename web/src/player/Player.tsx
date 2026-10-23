@@ -575,7 +575,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const savedQuality: QualityChoice = inForce && (!fixedQuality(inForce) || offeredSteps.some(q => q.id === inForce)) ? inForce : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
-  const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
+  const stepLabel = (q: FixedQuality) => (q.id === '2160p' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
   const automaticWanted = qualityChoice === 'automatic' && !isAudio && !state.linear && !!state.session && owner.transcoding;
   useEffect(() => {
     engine.playback.setAutomatic(automaticWanted ? {steps: offeredSteps, ...(originalKbps ? {originalKbps} : {})} : null);

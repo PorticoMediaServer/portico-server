@@ -106,6 +106,8 @@ func TestFailedRestoreCanRetryTheSameOperation(t *testing.T) {
 	if err != nil || second == first {
 		t.Fatal("failed receipt prevented retry", first, second, err)
 	}
+	// Backup creation is setup; the retry owns a fresh, unchanged phase budget.
+	deadline = time.Now().Add(10 * time.Second)
 	for service.RestoreProgress().Phase != "staged" {
 		if p := service.RestoreProgress(); p.ErrorCode != "" {
 			t.Fatal(p)

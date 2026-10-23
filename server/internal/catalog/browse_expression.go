@@ -1054,6 +1054,14 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 		return "", err
 	}
 	own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
+	if c.itemPivot {
+		// A playable title's only member is itself. Keep the same own-state
+		// predicate without expanding that identical fact through memberships.
+		if negative {
+			return "NOT " + own, nil
+		}
+		return own, nil
+	}
 	memberField := field
 	memberField.ID = "personal-member"
 	member, err := c.itemPredicate(memberField, node)

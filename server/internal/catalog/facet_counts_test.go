@@ -32,9 +32,25 @@ func TestFacetCountsFollowEveryChange(t *testing.T) {
 			t.Fatal(stage, err)
 		}
 		for field, source := range facetSources {
-			got, err := s.facetsFromCounts(FacetRequest{Library: "m", Field: field})
-			if err != nil {
-				t.Fatal(stage, field, err)
+			// Exercise the public route: contextual facets and maintained counts
+			// share the same independently counted facts below.
+			got := []FacetValue{}
+			for offset := 0; ; {
+				page, err := s.Facets(Viewer{Libraries: []string{"m"}}, FacetRequest{Library: "m", Field: field, Limit: 3, Offset: offset})
+				if err != nil {
+					t.Fatal(stage, field, err)
+				}
+				if page.TotalIsLowerBound {
+					t.Fatal(stage, field, "small fixture facet total was capped")
+				}
+				got = append(got, page.Values...)
+				offset += len(page.Values)
+				if offset >= page.Total {
+					break
+				}
+				if len(page.Values) == 0 {
+					t.Fatal(stage, field, "facet page did not advance")
+				}
 			}
 			where := `e.library_id=(SELECT id FROM catalog_libraries WHERE library_id='m') AND e.item_id IS NOT NULL`
 			if field == "decade" || field == "year" {

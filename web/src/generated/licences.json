@@ -1609,6 +1609,18 @@
    ]
   },
   {
+   "id": "go:github.com/pelletier/go-toml/v2@v2.2.4",
+   "name": "github.com/pelletier/go-toml/v2",
+   "version": "v2.2.4",
+   "licence": "MIT",
+   "group": "server",
+   "url": "https://pkg.go.dev/github.com/pelletier/go-toml/v2@v2.2.4",
+   "text": 29,
+   "copyright": [
+    "Copyright (c) 2021 - 2023 Thomas Pelletier"
+   ]
+  },
+  {
    "id": "go:github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
    "name": "github.com/remyoudompheng/bigfft",
    "version": "v0.0.0-20230129092748-24d4a6f8daec",
@@ -1623,11 +1635,11 @@
   {
    "id": "go:std",
    "name": "Go standard library",
-   "version": "1.26.9",
+   "version": "1.26.10",
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://go.dev",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1639,7 +1651,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/crypto@v0.56.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1651,7 +1663,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/image@v0.46.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1663,7 +1675,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/sys@v0.48.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1675,7 +1687,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/text@v0.42.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1686,7 +1698,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://cs.opensource.google/go/x/image",
-   "text": 30,
+   "text": 31,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1698,7 +1710,7 @@
    "licence": "MIT",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/libc@v1.75.6",
-   "text": 31,
+   "text": 32,
    "copyright": [
     "Copyright (c) 2017 The Libc Authors. All rights reserved."
    ]
@@ -1710,7 +1722,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/mathutil@v1.7.1",
-   "text": 32,
+   "text": 33,
    "copyright": [
     "Copyright (c) 2014 The mathutil Authors. All rights reserved."
    ]
@@ -1722,7 +1734,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/memory@v1.12.1",
-   "text": 33,
+   "text": 34,
    "copyright": [
     "Copyright (c) 2017 The Memory Authors. All rights reserved."
    ]
@@ -1734,7 +1746,7 @@
    "licence": "BSD-3-Clause; SQLite is public domain",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/sqlite@v1.58.0",
-   "text": 34,
+   "text": 35,
    "copyright": [
     "Copyright (c) 2017 The Sqlite Authors. All rights reserved."
    ]
@@ -1745,7 +1757,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/noto-cjk",
-   "text": 35
+   "text": 36
   },
   {
    "id": "server-font:Noto Sans Devanagari (server)",
@@ -1753,7 +1765,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/devanagari",
-   "text": 36,
+   "text": 37,
    "copyright": [
     "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari)"
    ]
@@ -1764,7 +1776,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/thai",
-   "text": 36,
+   "text": 37,
    "copyright": [
     "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai)"
    ]
@@ -1775,7 +1787,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://gitlab.com/cznic/sqlite",
-   "text": 37,
+   "text": 38,
    "copyright": [
     "Copyright (c) 2017 The Sqlite Authors. All rights reserved."
    ]
@@ -1811,6 +1823,7 @@
   "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n<http://www.opensource.org/licenses/mit-license.php>",
   "Redistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google Inc. nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
   "MIT License (Expat)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+  "The MIT License (MIT)\n\ngo-toml v2\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "Redistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google LLC nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\nAdditional IP Rights Grant (Patents)\n\n\"This implementation\" means the copyrightable works distributed by\nGoogle as part of the Go project.\n\nGoogle hereby grants to You a perpetual, worldwide, non-exclusive,\nno-charge, royalty-free, irrevocable (except as stated in this section)\npatent license to make, have made, use, offer to sell, sell, import,\ntransfer and otherwise run, modify and propagate the contents of this\nimplementation of Go, where such license applies only to those patent\nclaims, both currently owned or controlled by Google and acquired in\nthe future, licensable by Google that are necessarily infringed by this\nimplementation of Go.  This grant does not include claims that would be\ninfringed only as a consequence of further modification of this\nimplementation.  If you or your agent or exclusive licensee institute or\norder or agree to the institution of patent litigation against any\nentity (including a cross-claim or counterclaim in a lawsuit) alleging\nthat this implementation of Go or any code incorporated within this\nimplementation of Go constitutes direct or contributory patent\ninfringement, or inducement of patent infringement, then any patent\nrights granted to you under this License for this implementation of Go\nshall terminate as of the date such litigation is filed.",
   "Redistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google LLC nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
   "Redistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the names of the authors nor the names of the\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n# Third-Party Software Notices\n\nThis repository contains code and assets acquired from third-party sources.\nWhile the main project is licensed under the BSD-3 License, the components\nlisted below are subject to their own specific license terms and copyright\nnotices.\n\nThe following is a list of third-party software included in this repository,\ntheir locations, and their respective licenses.\n\n----\n\n## Go\n\n* **URL:** https://github.com/golang/go\n----\n\nCopyright (c) 2009 The Go Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google Inc. nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n----\n\n## musl libc\n\n* **URL:** https://musl.libc.org/\n\n----\n\nmusl as a whole is licensed under the following standard MIT license:\n\n----------------------------------------------------------------------\nCopyright © 2005-2020 Rich Felker, et al.\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n----------------------------------------------------------------------\n\nAuthors/contributors include:\n\nA. Wilcox\nAda Worcester\nAlex Dowad\nAlex Suykov\nAlexander Monakov\nAndre McCurdy\nAndrew Kelley\nAnthony G. Basile\nAric Belsito\nArvid Picciani\nBartosz Brachaczek\nBenjamin Peterson\nBobby Bingham\nBoris Brezillon\nBrent Cook\nChris Spiegel\nClément Vasseur\nDaniel Micay\nDaniel Sabogal\nDaurnimator\nDavid Carlier\nDavid Edelsohn\nDenys Vlasenko\nDmitry Ivanov\nDmitry V. Levin\nDrew DeVault\nEmil Renner Berthing\nFangrui Song\nFelix Fietkau\nFelix Janda\nGianluca Anzolin\nHauke Mehrtens\nHe X\nHiltjo Posthuma\nIsaac Dunham\nJaydeep Patil\nJens Gustedt\nJeremy Huntwork\nJo-Philipp Wich\nJoakim Sindholt\nJohn Spencer\nJulien Ramseier\nJustin Cormack\nKaarle Ritvanen\nKhem Raj\nKylie McClain\nLeah Neukirchen\nLuca Barbato\nLuka Perkov\nM Farkas-Dyck (Strake)\nMahesh Bodapati\nMarkus Wichmann\nMasanori Ogino\nMichael Clark\nMichael Forney\nMikhail Kremnyov\nNatanael Copa\nNicholas J. Kain\norc\nPascal Cuoq\nPatrick Oppenlander\nPetr Hosek\nPetr Skocik\nPierre Carrier\nReini Urban\nRich Felker\nRichard Pennington\nRyan Fairfax\nSamuel Holland\nSegev Finer\nShiz\nsin\nSolar Designer\nStefan Kristiansson\nStefan O'Rear\nSzabolcs Nagy\nTimo Teräs\nTrutz Behn\nValentin Ochs\nWill Dietz\nWilliam Haddon\nWilliam Pitcock\n\nPortions of this software are derived from third-party works licensed\nunder terms compatible with the above MIT license:\n\nThe TRE regular expression implementation (src/regex/reg* and\nsrc/regex/tre*) is Copyright © 2001-2008 Ville Laurikari and licensed\nunder a 2-clause BSD license (license text in the source files). The\nincluded version has been heavily modified by Rich Felker in 2012, in\nthe interests of size, simplicity, and namespace cleanliness.\n\nMuch of the math library code (src/math/* and src/complex/*) is\nCopyright © 1993,2004 Sun Microsystems or\nCopyright © 2003-2011 David Schultz or\nCopyright © 2003-2009 Steven G. Kargl or\nCopyright © 2003-2009 Bruce D. Evans or\nCopyright © 2008 Stephen L. Moshier or\nCopyright © 2017-2018 Arm Limited\nand labelled as such in comments in the individual source files. All\nhave been licensed under extremely permissive terms.\n\nThe ARM memcpy code (src/string/arm/memcpy.S) is Copyright © 2008\nThe Android Open Source Project and is licensed under a two-clause BSD\nlicense. It was taken from Bionic libc, used on Android.\n\nThe AArch64 memcpy and memset code (src/string/aarch64/*) are\nCopyright © 1999-2019, Arm Limited.\n\nThe implementation of DES for crypt (src/crypt/crypt_des.c) is\nCopyright © 1994 David Burren. It is licensed under a BSD license.\n\nThe implementation of blowfish crypt (src/crypt/crypt_blowfish.c) was\noriginally written by Solar Designer and placed into the public\ndomain. The code also comes with a fallback permissive license for use\nin jurisdictions that may not recognize the public domain.\n\nThe smoothsort implementation (src/stdlib/qsort.c) is Copyright © 2011\nValentin Ochs and is licensed under an MIT-style license.\n\nThe x86_64 port was written by Nicholas J. Kain and is licensed under\nthe standard MIT terms.\n\nThe mips and microblaze ports were originally written by Richard\nPennington for use in the ellcc project. The original code was adapted\nby Rich Felker for build system and code conventions during upstream\nintegration. It is licensed under the standard MIT terms.\n\nThe mips64 port was contributed by Imagination Technologies and is\nlicensed under the standard MIT terms.\n\nThe powerpc port was also originally written by Richard Pennington,\nand later supplemented and integrated by John Spencer. It is licensed\nunder the standard MIT terms.\n\nAll other files which have no copyright comments are original works\nproduced specifically for use as part of this library, written either\nby Rich Felker, the main author of the library, or by one or more\ncontibutors listed above. Details on authorship of individual files\ncan be found in the git version control history of the project. The\nomission of copyright and license comments in each file is in the\ninterest of source tree size.\n\nIn addition, permission is hereby granted for all public header files\n(include/* and arch/*/bits/*) and crt files intended to be linked into\napplications (crt/*, ldso/dlstart.c, and arch/*/crt_arch.h) to omit\nthe copyright notice and permission notice otherwise required by the\nlicense, and to use these files without any requirement of\nattribution. These files include substantial contributions from:\n\nBobby Bingham\nJohn Spencer\nNicholas J. Kain\nRich Felker\nRichard Pennington\nStefan Kristiansson\nSzabolcs Nagy\n\nall of whom have explicitly granted such permission.\n\nThis file previously contained text expressing a belief that most of\nthe files covered by the above exception were sufficiently trivial not\nto be subject to copyright, resulting in confusion over whether it\nnegated the permissions granted in the license. In the spirit of\npermissive licensing, and of not having licensing issues being an\nobstacle to adoption, that text has been removed.\n\n----\n\n## go-netdb\n\n* **URL:** https://github.com/dominikh/go-netdb\n\n----\n\nCopyright (c) 2012 Dominik Honnef\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.\nIN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,\nTORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE\nSOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n----\n\n## NixOS/nixpkgs\n\n* **URL:** https://github.com/NixOS/nixpkgs\n\n----\n\nCopyright (c) 2003-2025 Eelco Dolstra and the Nixpkgs/NixOS contributors\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of this software and associated documentation files (the\n\"Software\"), to deal in the Software without restriction, including\nwithout limitation the rights to use, copy, modify, merge, publish,\ndistribute, sublicense, and/or sell copies of the Software, and to\npermit persons to whom the Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright notice and this permission notice shall be\nincluded in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\nNONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE\nLIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION\nWITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
@@ -1823,10 +1836,10 @@
  ],
  "inputs": {
   "LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-  "package-lock.json": "f8aa6774c494ce8d7334edee357c67a38b92866114d07e4039e29d2d3edcc921",
+  "package-lock.json": "b03972a369fd47a92b027f3720af1d8f484853cfc6450f16984c0ee91ed0e6e6",
   "packages/design/LICENSE-LUCIDE": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
-  "server/go.mod": "bab08aed1b08ed2f613b85dcafb22b2c8a406a84c69860550aaeb6ca2726da19",
-  "server/go.sum": "f92a0cfb1c086af46d56dbc8b3a5198687e84efa34433f9029bfeb6f55417fdf",
+  "server/go.mod": "66ce80a3fb11c0528bf7113722492b9dabd32ad5fcdda78a887ab5f60351b4c0",
+  "server/go.sum": "37ffcea82a386b4506b9fc10648602afa7f6a9518cbe9cf2cbfcba04acbfe9a4",
   "server/internal/imagework/SCALE_LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
   "server/internal/mediaexec/fonts/LICENSE": "d75938dec098f06f0ac3c00853065d94f020be1c3c62ef1dc2975ba15b4d9b0e",
   "server/internal/mediaexec/fonts/NotoCJK-LICENSE": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",

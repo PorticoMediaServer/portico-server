@@ -20,6 +20,9 @@ for required in "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$STA
 done
 python3 "$ROOT/scripts/rclone-bundle.py" verify-release "$STAGE" --target "$OS-$ARCH" --public-key "${PORTICO_RELEASE_PUBLIC_KEY_FILE:?A pinned release public key is required}"
 cp "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$PAYLOAD/"
+if [[ -f "$STAGE/race-qualification.json" ]]; then
+  cp "$STAGE/race-qualification.json" "$STAGE/race-qualification.sig" "$PAYLOAD/"
+fi
 cp -R "$STAGE/third_party" "$PAYLOAD/third_party"
 cp -R "$WEB/." "$PAYLOAD/web/"
 cp "$ROOT/LICENSE" "$ROOT/THIRD-PARTY-NOTICES.md" "$PAYLOAD/"

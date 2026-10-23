@@ -73,6 +73,7 @@ index catalog_assets_duration
 index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
 index catalog_automatic_collection_entity
+index catalog_automatic_member_overrides_item
 index catalog_automatic_members_group
 index catalog_book_context_author
 index catalog_book_context_series
@@ -2553,8 +2554,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

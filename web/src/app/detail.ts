@@ -1,5 +1,5 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
-import {DetailService, parseCreditPage, type DetailCredit, type DetailSnapshot, type DetailTarget, type PersonalIntent} from '@core/detail.ts';
+import {useCallback, useEffect, useRef, useState, useMemo, useSyncExternalStore} from 'react';
+import {DetailService, parseCreditPage, type DetailCredit, type DetailProjection, type DetailSnapshot, type DetailTarget, type PersonalIntent} from '@core/detail.ts';
 import {fetchItemRecommendations, fetchShowRecommendations, type ItemRecommendations, type ShowRecommendations} from '@core/recommendations.ts';
 import {ShowWorkspaceService, type ShowWorkspaceRoute, type ShowWorkspaceSnapshot} from '@core/show-workspace.ts';
 import {usePooledService} from './freshness';
@@ -7,6 +7,7 @@ import {titleWithPersonalState, titlesWithPersonalState} from '@core/freshness-h
 import {compatContentApi} from '@core/presentation/index.ts';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
+import {FileInfoReader} from './file-info';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 
 export const requestId = () => Promise.resolve(crypto.randomUUID());
@@ -166,4 +167,19 @@ export function useCreditPages(itemId: string | undefined, group: 'cast' | 'crew
     }).finally(() => { if (flight.current === mine) flight.current = undefined; });
   }, [api, itemId, group, done, state]);
   return {credits: current, more, done, /** The last request for more did not succeed; `more()` tries it again. */ failed: state.itemId === itemId && !!state.failed};
+}
+
+/** Opened separately from the detail projection; every scope/fence change gets
+ * a fresh reader, so a late response cannot publish the previous viewer's files. */
+export function useFileInfo(target: DetailTarget | null, viewerFence: string | undefined, open: boolean, revision: DetailProjection['revision'] | undefined) {
+  const {api} = useSession();
+  const scope = useViewerScope();
+  const libraryId = target?.libraryId, itemId = target?.itemId;
+  const revisionKey = revision ? `${revision.catalog}/${revision.viewer}` : '';
+  const reader = useMemo(() => libraryId && itemId && viewerFence && revisionKey ? new FileInfoReader(api, scope, {libraryId, itemId}, viewerFence) : undefined, [api, scope, libraryId, itemId, viewerFence, revisionKey]);
+  const empty = useMemo(() => ({phase: 'idle' as const}), []);
+  const snapshot = useSyncExternalStore(reader?.subscribe ?? (() => () => {}), reader?.getSnapshot ?? (() => empty));
+  useEffect(() => { reader?.activate(); return () => reader?.dispose(); }, [reader]);
+  useEffect(() => { if (open) void reader?.load(); }, [reader, open]);
+  return {snapshot, retry: () => void reader?.load(), more: () => void reader?.load(true)};
 }

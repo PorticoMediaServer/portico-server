@@ -95,8 +95,8 @@ export function SettingsActions({children, note, sticky}: {children: React.React
 }
 
 const freshnessIds = {Checked: 'freshness.checked', Measured: 'freshness.measured', Updated: 'freshness.updated', Observed: 'freshness.observed'} as const;
-function freshnessText(verb: string, when: string): string {
-  const id = freshnessIds[verb as keyof typeof freshnessIds];
+function freshnessText(verb: string | undefined, when: string): string {
+  const id = verb === undefined ? 'freshness.checked' : freshnessIds[verb as keyof typeof freshnessIds];
   return id ? uiI18n().t(id, {when}) : `${verb} ${when}`;
 }
 
@@ -140,7 +140,7 @@ export function Freshness(props: {at?: string | number | Date; staleAfterMs?: nu
   return scope ? null : <FreshnessView {...props} />;
 }
 
-function FreshnessView({at, staleAfterMs = 5 * 60_000, onRefresh, refreshing, verb = 'Checked'}: {at?: string | number | Date; staleAfterMs?: number; onRefresh?: () => void; refreshing?: boolean; verb?: string}) {
+function FreshnessView({at, staleAfterMs = 5 * 60_000, onRefresh, refreshing, verb}: {at?: string | number | Date; staleAfterMs?: number; onRefresh?: () => void; refreshing?: boolean; verb?: string}) {
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick(v => v + 1), 30_000);

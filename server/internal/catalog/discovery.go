@@ -58,6 +58,7 @@ type cursorValue struct {
 	// continuation doesn't count again (the revision fence keeps it current).
 	Total           int         `json:"total,omitempty"`
 	Fingerprint     string      `json:"fingerprint,omitempty"`
+	CacheRevision   string      `json:"cacheRevision,omitempty"`
 	CatalogRevision int64       `json:"catalogRevision"`
 	ViewerRevision  int64       `json:"viewerRevision"`
 	Scope           cursorScope `json:"scope"`

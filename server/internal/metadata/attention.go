@@ -108,7 +108,7 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
  SELECT l.library_id,l.entity_id,l.kind,e.title,l.generation,l.reason,0,k.name,COALESCE(pid(parent.public_id),''),1,1,pid(e.public_id) FROM listening_metadata_attention l JOIN catalog_entities e ON e.id=l.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=e.parent_id
  JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
- WHERE e.retired=0 AND l.retired=0 AND l.entity_id>?1 AND l.kind<>'book' AND l.reason<>'no_author' AND NOT EXISTS(SELECT 1 FROM metadata_kept_files kept WHERE kept.entity_id=e.id AND kept.files_fingerprint=` + attentionFileFingerprint("e.id") + `) AND EXISTS(SELECT 1 FROM library_metadata_agents agent WHERE agent.library_id=l.library_id AND agent.agent='online')` + listeningScope + `
+ WHERE e.retired=0 AND l.retired=0 AND l.entity_id>?1 AND NOT EXISTS(SELECT 1 FROM metadata_kept_files kept WHERE kept.entity_id=e.id AND kept.files_fingerprint=` + attentionFileFingerprint("e.id") + `) AND EXISTS(SELECT 1 FROM library_metadata_agents agent WHERE agent.library_id=l.library_id AND agent.agent='online')` + listeningScope + `
  UNION ALL
  SELECT cl.library_id,e.id,'item',e.title,portico_metadata_files_revision(` + attentionFileFingerprint("e.id") + `),'unmatched',0,'episode','',1,1,pid(e.public_id)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id

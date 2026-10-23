@@ -59,8 +59,14 @@ func TestContinueFallbackStartsWithTheShowsPartialEpisodes(t *testing.T) {
 				t.Fatalf("id=%s err=%v", id, err)
 			}
 			elapsed := time.Since(start)
-			t.Logf("history=%d elapsed=%s plan=%s", n, elapsed, plan)
-			if elapsed > 250*time.Millisecond {
+			limit := 250 * time.Millisecond
+			if raceDetector {
+				// The race detector also instruments the generated SQLite VM.
+				// Release performance remains qualified separately without it.
+				limit = time.Second
+			}
+			t.Logf("history=%d elapsed=%s bound=%s race=%t plan=%s", n, elapsed, limit, raceDetector, plan)
+			if elapsed > limit {
 				t.Fatalf("fallback took %s", elapsed)
 			}
 		})

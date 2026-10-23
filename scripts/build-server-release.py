@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build only from an isolated source snapshot; never seal a supplied executable."""
+import importlib.util
 import runpy
-import argparse,datetime,hashlib,json,os,pathlib,shutil,subprocess,uuid,shlex,re,base64
+import argparse,datetime,hashlib,json,os,pathlib,shutil,subprocess,uuid,shlex,re,base64,time,signal
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,Ed25519PublicKey
 ROOT=pathlib.Path(__file__).resolve().parent.parent
@@ -78,6 +79,33 @@ def controlled_env():
     env.update({'GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
     return env
 
+def run_phase(name,command,*,cwd,env,timeout):
+    # go test's timeout starts after compilation and applies per package. Bound
+    # the whole process group as well, and expose progress during cold builds.
+    started=time.monotonic()
+    print(f'{datetime.datetime.now(datetime.timezone.utc).isoformat()} starting {name}',flush=True)
+    process=subprocess.Popen(command,cwd=cwd,env=env,start_new_session=True)
+    try:
+        while True:
+            remaining=timeout-(time.monotonic()-started)
+            if remaining<=0:raise subprocess.TimeoutExpired(command,timeout)
+            try:
+                result=process.wait(timeout=min(60,remaining))
+                if result:raise subprocess.CalledProcessError(result,command)
+                break
+            except subprocess.TimeoutExpired:
+                if time.monotonic()-started>=timeout:raise
+                print(f'{datetime.datetime.now(datetime.timezone.utc).isoformat()} {name}: {int(time.monotonic()-started)}s elapsed',flush=True)
+    except BaseException:
+        if process.poll() is None:
+            os.killpg(process.pid,signal.SIGTERM)
+            try:process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid,signal.SIGKILL)
+                process.wait()
+        raise
+    print(f'{datetime.datetime.now(datetime.timezone.utc).isoformat()} completed {name} in {int(time.monotonic()-started)}s',flush=True)
+
 def signing_key():
     path=pathlib.Path(os.environ.get('PORTICO_RELEASE_SIGNING_KEY_FILE',str(ROOT/'runtime/release-signing/private-key')))
     if not path.is_file():raise ValueError('Provide the approved release signing key; release builds never create one')
@@ -145,6 +173,13 @@ def verify_manifest(directory,expected_source,trusted_public_key):
         if hashlib.sha256((rclone/'bundle-manifest.json').read_bytes()).hexdigest()!=manifest.get('rcloneManifestSha256'):raise ValueError('rclone manifest changed')
     return manifest
 
+def verified_qualification(path,source_digest,builder_digest,public):
+    spec=importlib.util.spec_from_file_location('race_qualification',ROOT/'scripts/qualify-server-race.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    compiler=subprocess.check_output([str(ROOT/'scripts/env.sh'),'go','env','GOVERSION'],text=True,env=controlled_env()).strip()
+    if compiler!=module.GO_VERSION:raise ValueError('Qualified compiler changed')
+    return module.verify_report(path,public,source_digest,builder_digest)
+
 def release_version(value):
     numeric=r"(?:0|[1-9][0-9]*)"
     identifier=r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
@@ -153,7 +188,7 @@ def release_version(value):
     return value
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);parser.add_argument('--qualification',type=pathlib.Path,help='Current-run authenticated full race qualification');args=parser.parse_args()
     key=signing_key()
     root_key,root_pem=official_root()
     if args.component=='server':
@@ -177,25 +212,35 @@ def main():
         database_file=pathlib.Path(os.environ.get('PORTICO_TEST_DATABASE_URL_FILE',str(ROOT/'runtime/postgres/test-database-url')))
         if not database_file.is_file():raise SystemExit('Hosted release requires the isolated PostgreSQL integration database.')
         checked_env['PORTICO_TEST_DATABASE_URL_FILE']=str(database_file)
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','mod','verify'],cwd=source,env=checked_env,check=True)
-    if args.component=='server':
-        helper=stage/'test-helper'
-        subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-mod=readonly','-o',str(helper),'./cmd/server'],cwd=source,env=checked_env,check=True)
-        checked_env['PORTICO_PLAYBACK_TEST_HELPER']=str(helper)
-    # The 20,000-row metadata boundary test is deliberately exhaustive. Race
-    # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','test','-race','-timeout=60m','./...'],cwd=source,env=checked_env,check=True)
-    subprocess.run([str(ROOT/'scripts/env.sh'),'sh',str(stage/'scripts/vet-go.sh')],cwd=source,env=checked_env,check=True)
+    run_phase('module verification',[str(ROOT/'scripts/env.sh'),'go','mod','verify'],cwd=source,env=checked_env,timeout=15*60)
+    qualification=None
+    if args.qualification:
+        qualification=verified_qualification(args.qualification,snapshot,builder_digest,key.public_key().public_bytes_raw())
+        shutil.copyfile(args.qualification,stage/'race-qualification.json')
+        shutil.copyfile(args.qualification.with_suffix('.sig'),stage/'race-qualification.sig')
+        print('Verified complete authenticated race qualification for this exact source/workflow/run/attempt.',flush=True)
+    else:
+        if args.component=='server':
+            helper=stage/'test-helper'
+            run_phase('playback helper compilation',[str(ROOT/'scripts/env.sh'),'go','build','-v','-mod=readonly','-o',str(helper),'./cmd/server'],cwd=source,env=checked_env,timeout=30*60)
+            checked_env['PORTICO_PLAYBACK_TEST_HELPER']=str(helper)
+        # The 20,000-row metadata boundary test is deliberately exhaustive. Race
+        # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
+        run_phase('race suite including compilation',[str(ROOT/'scripts/env.sh'),'go','test','-json','-race','-timeout=60m','./...'],cwd=source,env=checked_env,timeout=120*60)
+
+    run_phase('source vetting',[str(ROOT/'scripts/env.sh'),'sh',str(stage/'scripts/vet-go.sh')],cwd=source,env=checked_env,timeout=20*60)
     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     prefix='portico.local/'+args.component+'/internal/buildinfo.'
     flags=' '.join(f'-X {prefix}{key}={value}' for key,value in {'SourceDigest':snapshot,'BuildID':build_id,'Version':args.version,'BuiltAt':built_at,'Proof':f'PORTICO_SOURCE_V1:{snapshot}:{build_id}:END'}.items())
     flags+=' -X '+('portico.local/server/internal/hostedtrust.OfficialRoot' if args.component=='server' else 'portico.local/hosted/trust.OfficialRoot')+'='+root_key
     env=controlled_env();env.update({'GOOS':args.os,'GOARCH':args.arch,'CGO_ENABLED':'0'})
     # -trimpath: the binary names module paths, never this machine's folders (the snapshot, the module cache, Go's own).
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-tags','release','-buildvcs=false','-mod=readonly','-trimpath','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,check=True)
+    run_phase('release executable compilation',[str(ROOT/'scripts/env.sh'),'go','build','-v','-tags','release','-buildvcs=false','-mod=readonly','-trimpath','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,timeout=30*60)
     if snapshot_digest(source)[0]!=snapshot:raise SystemExit('Source snapshot changed during build.')
     if hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()!=builder_digest:raise SystemExit('Builder changed during execution; discard output and retry.')
     binary=stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''));manifest={'schema':1,'version':args.version,'component':args.component,'buildId':build_id,'sourceDigest':snapshot,'officialRoot':root_key,'builtAt':built_at,'target':args.os+'-'+args.arch,'builderSha256':builder_digest,'sourceFiles':copied,'artifact':{'path':binary.name,'sha256':hashlib.sha256(binary.read_bytes()).hexdigest()}}
+    if qualification:
+        manifest['raceQualification']={'sha256':hashlib.sha256((stage/'race-qualification.json').read_bytes()).hexdigest(),'planSha256':qualification['planSha256'],'origin':qualification['plan']['origin']}
     if args.component=='server':
         bundle=args.ffmpeg_bundle.resolve()
         subprocess.run(['python3',str(ROOT/'scripts/verify-ffmpeg-manifest.py'),str(bundle)],check=True)

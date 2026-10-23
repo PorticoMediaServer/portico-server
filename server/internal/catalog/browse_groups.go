@@ -49,13 +49,20 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		return out, err
 	}
 	out.PageInfo.Revision = revision
-	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query), Limit: request.Limit}
+	hard, err := s.browseSourceFence(request.ServerID, browseRequestViewer(request), request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, err
+	}
+	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Category: queryFingerprint(request.Query) + "\x00display:" + request.HomeRowDisplay, Limit: request.Limit}
 	key, id := "", ""
 	start := 0
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
 	if request.Cursor != "" {
 		c, err := s.decodeCursor(request.Cursor, scope)
 		if err != nil {
+			return out, err
+		}
+		if err := validateBrowseCursor(&c, hard, revision); err != nil {
 			return out, err
 		}
 		if len(c.Keys) != 1 {
@@ -291,9 +298,23 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Fingerprint: hard, CacheRevision: revision, Total: total, Expires: expires})
 	}
-	return out, err
+	if err != nil {
+		return out, err
+	}
+	after, err := s.browseRevision(request, pivot, sorts)
+	if err != nil {
+		return out, err
+	}
+	afterHard, err := s.browseSourceFence(request.ServerID, browseRequestViewer(request), request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, err
+	}
+	if after != revision || afterHard != hard {
+		return out, ErrStaleContinuation
+	}
+	return out, nil
 }
 
 // facetHolderKinds are the kinds a library's groupings count

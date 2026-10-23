@@ -20,3 +20,8 @@ server/server.exe
 *.p12
 *.key
 /server/scalebench
+
+# Release staging and packages are generated artifacts, never source inputs.
+.release/
+.toolchain/
+dist/

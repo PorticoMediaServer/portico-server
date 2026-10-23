@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+import hashlib
+import json
 import os
 import pathlib
+import runpy
 import shutil
 import subprocess
 import tarfile
@@ -8,7 +11,10 @@ import tempfile
 import unittest
 import zipfile
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+RCLONE = runpy.run_path(str(ROOT / "scripts/rclone-bundle.py"))
 
 
 class PortablePackagingTests(unittest.TestCase):
@@ -23,7 +29,7 @@ class PortablePackagingTests(unittest.TestCase):
         (self.stage / "third_party/ffmpeg").mkdir(parents=True)
         self.web.mkdir()
         tools.mkdir()
-        for name in ["manifest.json", "manifest.sig", "third_party/ffmpeg/toolchain-manifest.json"]:
+        for name in ["third_party/ffmpeg/toolchain-manifest.json"]:
             (self.stage / name).write_text("fixture")
         (self.web / "index.html").write_text("fixture web")
         binary = self.stage / "portico-server"
@@ -40,8 +46,24 @@ class PortablePackagingTests(unittest.TestCase):
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
         self.env.pop("PORTICO_WEB_DIR", None)
         self.env.pop("PORTICO_DATA_DIR", None)
+        self.key = Ed25519PrivateKey.generate()
+        public = self.root / "pinned-public-key"
+        public.write_bytes(self.key.public_key().public_bytes_raw())
+        self.env["PORTICO_RELEASE_PUBLIC_KEY_FILE"] = str(public)
 
     def package(self, platform):
+        target = platform + "-amd64"
+        rclone = self.stage / "third_party/rclone"
+        RCLONE["prepare"](rclone, target, pathlib.Path(
+            os.environ.get("PORTICO_RCLONE_TEST_CACHE", ROOT / ".cache/rclone")))
+        executable = self.stage / ("portico-server.exe" if platform == "windows" else "portico-server")
+        manifest = {"component": "server", "target": target,
+                    "artifact": {"path": executable.name,
+                                 "sha256": hashlib.sha256(executable.read_bytes()).hexdigest()},
+                    "rcloneManifestSha256": hashlib.sha256((rclone / "bundle-manifest.json").read_bytes()).hexdigest()}
+        raw = json.dumps(manifest).encode()
+        (self.stage / "manifest.json").write_bytes(raw)
+        (self.stage / "manifest.sig").write_bytes(self.key.sign(raw))
         subprocess.run(["bash", str(ROOT / "scripts/package-release.sh"), platform, "amd64",
                         "0.1.0", str(self.stage), str(self.web), str(self.out), "1"],
                        env=self.env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
