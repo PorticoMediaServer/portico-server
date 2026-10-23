@@ -193,7 +193,7 @@ func TestOwnerCaptureRechecksLiveFamilyMoveAndKeyBeforeAnyChallenge(t *testing.T
 func TestOwnerCaptureChallengeAndProofRollbackTogether(t *testing.T) {
 	f := newOwnerCaptureFixture(t)
 	ctx := context.Background()
-	abort := errors.identity.New("caller did not persist full pending")
+	abort := errors.New("caller did not persist full pending")
 	err := dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if err := f.capture(ctx, tx); err != nil {
 			return err
