@@ -101,6 +101,9 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 		return nil, ErrInvalid
 	}
 	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, Direction: "ltr"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
+		return nil, ErrLimit
+	}
 	if p.Spine.Direction == "rtl" {
 		e.Metadata.Direction = "rtl"
 	}
@@ -159,7 +162,11 @@ func (e *EPUB) Asset(ctx context.Context, name string) ([]byte, string, error) {
 	case "text/css":
 		err = validateCSS(b)
 	case "image/jpeg", "image/png", "image/webp":
-		_, err = inspectImage(b)
+		var info Image
+		info, err = inspectImage(b)
+		if err == nil && info.MIME != mime {
+			err = ErrInvalid
+		}
 	}
 	if err != nil {
 		return nil, "", err
@@ -210,7 +217,7 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 			for _, a := range t.Attr {
 				name := strings.ToLower(a.Name.Local)
 				value := strings.TrimSpace(a.Value)
-				if strings.HasPrefix(name, "on") || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
+				if strings.HasPrefix(name, "on") || name == "base" || name == "srcdoc" || name == "srcset" || name == "http-equiv" || name == "ping" || name == "action" || name == "formaction" || name == "background" {
 					return ErrInvalid
 				}
 				if name == "style" {

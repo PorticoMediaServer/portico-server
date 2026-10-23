@@ -68,6 +68,11 @@ func safePath(name string) bool {
 	if name == "" || len(name) > 1024 || strings.ContainsAny(name, "\\\x00%?#:") || strings.HasPrefix(name, "/") {
 		return false
 	}
+	for _, c := range name {
+		if c < 32 || c == 127 {
+			return false
+		}
+	}
 	for _, p := range strings.Split(name, "/") {
 		if p == "" || p == "." || p == ".." {
 			return false

@@ -1,0 +1,282 @@
+package reading
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/sourceaccess"
+	"portico.local/server/internal/storage"
+)
+
+// Authorization is supplied by the HTTP composition and runs in the same
+// transaction as selection: live session, library permission and title fence.
+// The service never treats a filesystem observation as actor authorization.
+type Authorization func(context.Context, *sql.Tx, identity.Principal, string, string) error
+type Service struct {
+	DB             *sql.DB
+	Storage        *storage.Client
+	Mounts         *mounts.Service
+	Authorize      Authorization
+	sessionMu      sync.Mutex
+	sessions       map[string]*Session
+	sessionsClosed bool
+}
+
+type Selection struct {
+	ItemID, SourceID, Format, Title, Revision                                                            string
+	Entity, Asset, Size, ModifiedNS                                                                      int64
+	library, token, path, root, relative, rootID, rootIdentity, incarnation, object, inventory, evidence string
+	generation                                                                                           int64
+}
+
+const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json
+ FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id
+ JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
+ JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
+ JOIN catalog_assets a ON a.id=link.asset_id
+ JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
+ AND lib.kind IN('book','comic') AND link.available=1 AND a.available=1 AND available.available=1
+ AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
+ AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')
+ ORDER BY a.id,o.id LIMIT 1`
+
+func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
+	var v Selection
+	v.ItemID = item
+	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(&v.Entity, &v.Asset, &v.Format, &v.Title, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence)
+	if errors.Is(err, sql.ErrNoRows) {
+		return v, ErrUnavailable
+	}
+	if err != nil {
+		return v, err
+	}
+	if s.Authorize == nil {
+		return v, identity.ErrForbidden
+	}
+	if err = s.Authorize(ctx, tx, p, v.library, item); err != nil {
+		return v, err
+	}
+	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
+		return v, ErrInvalid
+	}
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+		return v, ErrInvalid
+	}
+	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
+		return v, ErrChanged
+	}
+	v.SourceID = v.token
+	v.Revision = v.fence()
+	return v, nil
+}
+func (v Selection) fence() string {
+	b, _ := json.Marshal([]any{v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence})
+	h := sha256.Sum256(append([]byte("portico.reading.observation.v1\x00"), b...))
+	return hex.EncodeToString(h[:])
+}
+func (s *Service) Resolve(ctx context.Context, p identity.Principal, item, sourceID string) (Selection, error) {
+	if s == nil || s.DB == nil || s.Storage == nil {
+		return Selection{}, ErrUnavailable
+	}
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return Selection{}, err
+	}
+	defer g.Rollback()
+	return s.selectTx(ctx, g.Tx(), p, item, sourceID)
+}
+func (s *Service) validate(ctx context.Context, p identity.Principal, selected Selection) error {
+	now, err := s.Resolve(ctx, p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return err
+	}
+	if now.Revision != selected.Revision {
+		return ErrChanged
+	}
+	return nil
+}
+
+// Source owns a rooted, helper-acquired local descriptor. Every read checks live
+// actor/association authority, and the helper checks observed identity before
+// and after each bounded extent. No immutable/no-splice claim is made from it.
+type Source struct {
+	Selection
+	ctx       context.Context
+	p         identity.Principal
+	service   *Service
+	reader    *storage.ObservedPlaybackReader
+	roots     *sourceaccess.Registry
+	mu        sync.Mutex
+	observed  storage.ObservedFileObservation
+	onClose   func()
+	onFailure func()
+	closeOnce sync.Once
+}
+
+func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID, expected string) (*Source, error) {
+	v, err := s.Resolve(ctx, p, item, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if expected != "" && expected != v.Revision {
+		return nil, ErrChanged
+	}
+	// Pool labels on Remote.Acquire do not carry interactive read authority.
+	// Until that real producer is checked on main, remote sources stay closed.
+	if s.Storage.IsRemote(v.path) {
+		return nil, ErrUnavailable
+	}
+	roots := sourceaccess.New(s.Storage, s.Mounts)
+	lease, err := roots.Borrow(ctx, sourceaccess.Authority{OwnerID: "read:" + identity.Token(), RootID: v.rootID, RootPath: v.root, RelativePath: v.relative, Revision: v.incarnation + ":" + strconv.FormatInt(v.generation, 10), Lifetime: ctx, Validate: func(ctx context.Context) error { return s.validate(ctx, p, v) }})
+	if err != nil {
+		roots.Close()
+		return nil, err
+	}
+	r, err := s.Storage.OpenObservedPlayback(ctx, lease)
+	if err != nil {
+		roots.Close()
+		return nil, err
+	}
+	f := &Source{Selection: v, ctx: ctx, p: p, service: s, reader: r, roots: roots}
+	o, err := r.Observe(ctx)
+	if err == nil {
+		err = f.matchInventory(o)
+	}
+	if err == nil {
+		err = s.validate(ctx, p, v)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	f.observed = o
+	return f, nil
+}
+
+func (f *Source) matchInventory(o storage.ObservedFileObservation) error {
+	_, root, ok := strings.Cut(o.RootBindingID, ":")
+	if !ok || !storage.SameRoot(f.rootIdentity, root) || !o.SizeKnown || !o.ModifiedKnown || o.Size != f.Size || o.ModifiedNS != f.ModifiedNS {
+		return ErrChanged
+	}
+	var evidence mediasource.InventoryEvidence
+	if json.Unmarshal([]byte(f.evidence), &evidence) != nil {
+		return ErrInvalid
+	}
+	actual := storage.StableObjectIdentity(o.ObjectBindingID, root)
+	if evidence.Object != actual || (evidence.ChangeToken != "" && evidence.ChangeToken != o.ChangeToken) {
+		return ErrChanged
+	}
+	return nil
+}
+func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
+	if err := f.matchInventory(o); err != nil {
+		return err
+	}
+	if f.observed.RootBindingID != "" && (o.RootBindingID != f.observed.RootBindingID || o.ObjectBindingID != f.observed.ObjectBindingID || o.ChangeToken != f.observed.ChangeToken) {
+		return ErrChanged
+	}
+	return nil
+}
+func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
+	defer func() {
+		if failure != nil && failure != io.EOF && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
+			f.onFailure()
+			f.Close()
+		}
+	}()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	if offset < 0 || offset > f.Size {
+		return 0, ErrInvalid
+	}
+	if len(b) == 0 {
+		return 0, nil
+	}
+	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+		return 0, err
+	}
+	wanted := min(int64(len(b)), f.Size-offset)
+	done := 0
+	for int64(done) < wanted {
+		n := int(min(wanted-int64(done), storage.ObservedReadLimit))
+		data, err := f.reader.ReadExtent(f.ctx, offset+int64(done), n)
+		if err != nil {
+			return done, err
+		}
+		o, err := f.reader.Observe(f.ctx)
+		if err == nil {
+			err = f.checkObservation(o)
+		}
+		if err == nil {
+			err = f.service.validate(f.ctx, f.p, f.Selection)
+		}
+		if err != nil {
+			return done, err
+		}
+		copy(b[done:], data)
+		done += n
+	}
+	if done < len(b) {
+		return done, io.EOF
+	}
+	return done, nil
+}
+func (f *Source) Close() error {
+	f.closeOnce.Do(func() {
+		f.reader.Close()
+		f.roots.Close()
+		if f.onClose != nil {
+			f.onClose()
+		}
+	})
+	return nil
+}
+
+// Validate is also called after buffered parsing/rendering and immediately
+// before publication; CPU work must not turn a revoked read into a response.
+func (f *Source) Validate() (failure error) {
+	defer func() {
+		if failure != nil && f.onFailure != nil {
+			f.onFailure()
+			f.Close()
+		}
+	}()
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
+	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+		return err
+	}
+	o, err := f.reader.Observe(f.ctx)
+	if err != nil {
+		return err
+	}
+	return f.checkObservation(o)
+}
+
+// PDFRange never buffers the publication, and never substitutes a full body
+// for a finite request. The HTTP layer supplies exact 206/conditional semantics.
+func (f *Source) PDFRange(start, endExclusive int64) (io.Reader, error) {
+	if f.Format != "pdf" || start < 0 || endExclusive <= start || endExclusive > f.Size || endExclusive-start > 2<<20 {
+		return nil, ErrInvalid
+	}
+	return io.NewSectionReader(f, start, endExclusive-start), nil
+}

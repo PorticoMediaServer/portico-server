@@ -304,6 +304,12 @@ func Open(db *sql.DB, id string) (*os.File, error) {
 
 func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
+	if kind == "book" {
+		return extension == ".epub" || extension == ".pdf"
+	}
+	if kind == "comic" {
+		return extension == ".cbz" || extension == ".pdf"
+	}
 	audio := false
 	switch extension {
 	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":

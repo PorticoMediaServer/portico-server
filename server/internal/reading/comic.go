@@ -57,6 +57,9 @@ func OpenComic(ctx context.Context, r io.ReaderAt, size int64) (*Comic, error) {
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		if len(c.Metadata.Title) > 4096 || len(c.Metadata.Author) > 4096 || len(c.Metadata.Language) > 64 {
+			return nil, ErrLimit
+		}
 		if info.Manga == "YesAndRightToLeft" {
 			c.Metadata.Direction = "rtl"
 		}
