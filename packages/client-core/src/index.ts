@@ -2047,3 +2047,7 @@ export * from './same-tab-return.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
 export {ServerSignInProbe, parseServerSignIn, signInLabelKey, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
+export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFolder,removeLibraryFolder} from './server-admin/libraries.ts';
+export {readLibraryInventoryConfig} from './library-inventory.ts';
+export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
+export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';

@@ -120,7 +120,7 @@ func MetadataProviders() []MetadataProvider {
 		{"tvdb", "TheTVDB", []string{"movie", "show", "episode"}, false, true, "Metadata provided by TheTVDB."},
 		{"musicbrainz", "MusicBrainz", []string{"music", "book"}, false, false, "Music metadata provided by MusicBrainz."},
 		{"anilist", "AniList", []string{"show", "episode", "movie"}, false, false, "Anime metadata provided by AniList."},
-		{"local", "Local files only", []string{"movie", "show", "episode", "music", "book"}, false, false, ""},
+		{"local", "Local files only", []string{"movie", "show", "episode", "music", "book", "comic"}, false, false, ""},
 	}
 }
 
@@ -148,6 +148,17 @@ type GeneratedNavigation struct {
 
 // LibrarySettings is one library's whole administration document.
 type LibrarySettings struct {
+	ScanDepth          string `json:"scanDepth"`
+	GroupCollections   bool   `json:"groupCollections"`
+	LocalTags          string `json:"localTags"`
+	LyricsSource       string `json:"lyricsSource"`
+	TitleSource        string `json:"titleSource"`
+	EpisodeNumbering   string `json:"episodeNumbering"`
+	FindExtras         bool   `json:"findExtras"`
+	SortIgnoreArticles bool   `json:"sortIgnoreArticles"`
+	RefreshMode        string `json:"refreshMode"`
+	AcoustIDEnabled    bool   `json:"acoustidEnabled"`
+
 	MonitorChanges     bool                             `json:"monitorChanges"`
 	AllowMediaDeletion bool                             `json:"allowMediaDeletion"`
 	ContinueWatching   catalog.ContinueWatchingSettings `json:"continueWatching"`
@@ -173,18 +184,38 @@ func DefaultLibrarySettings() LibrarySettings {
 		}
 	}
 	return LibrarySettings{
-		MonitorChanges:     true,
+		MonitorChanges:   true,
+		ScanDepth:        "basic",
+		GroupCollections: true, LocalTags: "prefer", LyricsSource: "files", TitleSource: "tags", EpisodeNumbering: "season", FindExtras: true, SortIgnoreArticles: true, RefreshMode: "replace_unlocked",
 		AllowMediaDeletion: false,
 		ContinueWatching:   catalog.DefaultContinueWatchingSettings(),
 		Providers:          []ProviderSelection{},
 		Analysis:           enabled,
-		Navigation:         GeneratedNavigation{TrickplayIntervalMs: 10000, TrickplayTileWidth: 320, TrickplayMaxTiles: 400, ChapterThumbnailMode: "embedded", VideoPreviewEnabled: false, VideoPreviewMs: 30000},
+		Navigation:         GeneratedNavigation{TrickplayIntervalMs: 10000, TrickplayTileWidth: 320, TrickplayMaxTiles: 1080, ChapterThumbnailMode: "embedded", VideoPreviewEnabled: false, VideoPreviewMs: 30000},
 		SegmentDetection:   "server",
 	}
 }
 
 func normalizeLibrarySettings(v *LibrarySettings) {
+	if v.ScanDepth == "" {
+		v.ScanDepth = "custom"
+	}
 	catalog.NormalizeContinueWatchingSettings(&v.ContinueWatching)
+	if v.LocalTags == "" {
+		v.LocalTags = "prefer"
+	}
+	if v.LyricsSource == "" {
+		v.LyricsSource = "files"
+	}
+	if v.TitleSource == "" {
+		v.TitleSource = "tags"
+	}
+	if v.EpisodeNumbering == "" {
+		v.EpisodeNumbering = "season"
+	}
+	if v.RefreshMode == "" {
+		v.RefreshMode = "replace_unlocked"
+	}
 	if v.Providers == nil {
 		v.Providers = []ProviderSelection{}
 	}
@@ -225,6 +256,24 @@ func validLocale(v string, max int) bool {
 
 func validateLibrarySettings(v *LibrarySettings) error {
 	fields := []string{}
+	if !oneOf(v.ScanDepth, "file_list_only", "basic", "complete", "custom") {
+		fields = append(fields, "settings.scanDepth")
+	}
+	if !oneOf(v.LocalTags, "prefer", "supplement", "off") {
+		fields = append(fields, "settings.localTags")
+	}
+	if !oneOf(v.LyricsSource, "files", "lrclib") {
+		fields = append(fields, "settings.lyricsSource")
+	}
+	if !oneOf(v.TitleSource, "tags", "names") {
+		fields = append(fields, "settings.titleSource")
+	}
+	if !oneOf(v.EpisodeNumbering, "season", "absolute") {
+		fields = append(fields, "settings.episodeNumbering")
+	}
+	if !oneOf(v.RefreshMode, "replace_unlocked", "fill_missing") {
+		fields = append(fields, "settings.refreshMode")
+	}
 	if !catalog.ValidContinueWatchingSettings(v.ContinueWatching) {
 		fields = append(fields, "settings.continueWatching")
 	}
@@ -292,46 +341,30 @@ func validateLibrarySettings(v *LibrarySettings) error {
 // LibraryDocument is the library configuration page's response: the settings,
 // the library it belongs to, and the vocabularies the page renders from.
 type LibraryDocument struct {
-	LibraryID   string                 `json:"libraryId"`
-	LibraryName string                 `json:"libraryName"`
-	LibraryKind string                 `json:"libraryKind"`
-	Revision    int64                  `json:"revision"`
-	Digest      string                 `json:"digest"`
-	Settings    LibrarySettings        `json:"settings"`
-	Matrix      AnalysisMatrix         `json:"analysisMatrix"`
-	Providers   []MetadataProvider     `json:"availableProviders"`
-	Modes       map[string][]string    `json:"enumerations"`
-	Sources     []LibrarySourceSummary `json:"sources"`
-}
-
-// LibrarySourceSummary names each root the library scans, so the folder picker
-// opens where the library already looks.
-type LibrarySourceSummary struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Root           string `json:"root"`
-	Classification string `json:"classification"`
-	Enabled        bool   `json:"enabled"`
-}
-
-func librarySources(ctx context.Context, tx *sql.Tx, library string) ([]LibrarySourceSummary, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id,name,configured_root,classification,enabled FROM library_sources WHERE library_id=? ORDER BY id`, library)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []LibrarySourceSummary{}
-	for rows.Next() {
-		var s LibrarySourceSummary
-		if err = rows.Scan(&s.ID, &s.Name, &s.Root, &s.Classification, &s.Enabled); err != nil {
-			return nil, err
-		}
-		out = append(out, s)
-	}
-	return out, rows.Err()
+	EligibleControls []string                `json:"eligibleControls"`
+	LibraryID        string                  `json:"libraryId"`
+	LibraryName      string                  `json:"libraryName"`
+	LibraryKind      string                  `json:"libraryKind"`
+	Revision         int64                   `json:"revision"`
+	Digest           string                  `json:"digest"`
+	Settings         LibrarySettings         `json:"settings"`
+	Matrix           AnalysisMatrix          `json:"analysisMatrix"`
+	Providers        []MetadataProvider      `json:"availableProviders"`
+	Modes            map[string][]string     `json:"enumerations"`
+	Sources          []catalog.LibrarySource `json:"sources"`
+	Audience         catalog.LibraryAudience `json:"audience"`
+	Actions          []string                `json:"actions"`
 }
 
 func libraryScope(id string) string { return scopeFor("library", id) }
+
+func librarySettingsIdentity(ctx context.Context, tx *sql.Tx, id string) (name, kind string, managed bool, err error) {
+	err = tx.QueryRowContext(ctx, `SELECT l.name,l.kind,EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=l.id) FROM libraries l WHERE l.id=? AND NOT EXISTS(SELECT 1 FROM catalog_libraries c WHERE c.library_id=l.id AND c.retired=1)`, id).Scan(&name, &kind, &managed)
+	if err == sql.ErrNoRows {
+		err = ErrNotFound
+	}
+	return
+}
 
 // libraryDefaults is what a library holds before its own page is written.
 func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
@@ -340,15 +373,50 @@ func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
 
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
 	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices}}
-	name, kind, err := libraryExists(ctx, tx, id)
+	name, kind, managed, err := librarySettingsIdentity(ctx, tx, id)
 	if err != nil {
 		return out, err
 	}
 	out.LibraryName, out.LibraryKind = name, kind
+	out.Modes["localTags"] = []string{"prefer", "off"}
+	if kind == "music" || kind == "audiobook" {
+		out.Modes["localTags"] = []string{"prefer", "supplement", "off"}
+	}
+	out.Modes["lyricsSource"] = []string{"files", "lrclib"}
+	out.Modes["titleSource"] = []string{"tags", "names"}
+	out.Modes["episodeNumbering"] = []string{"season", "absolute"}
+	out.Modes["refreshMode"] = []string{"replace_unlocked", "fill_missing"}
+
+	out.EligibleControls = []string{"libraries.name", "libraries.type", "libraries.access", "libraries.folders", "libraries.folderPath", "libraries.folderName", "libraries.location", "libraries.rescan", "libraries.symlinks", "libraries.allowDelete", "libraries.remove", "libraries.scanNow", "libraries.scanAll", "libraries.watch", "libraries.scanDepth", "libraries.analysisSteps", "libraries.skipped", "libraries.sortArticles"}
+	if kind == "movie" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.collections")
+	}
+	if kind == "music" || kind == "audiobook" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.localTags")
+	}
+	if kind == "music" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.lyrics", "libraries.fetchLyrics", "libraries.acoustid")
+	}
+	if kind == "tv" || kind == "anime" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.episodeNumbering", "libraries.cwPremieres")
+	}
+	if kind == "movie" || kind == "tv" || kind == "anime" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.language", "libraries.region", "libraries.localTags", "libraries.titleSource", "libraries.extras", "libraries.refreshMode", "libraries.scrub", "libraries.scrubSpacing", "libraries.scrubWidth", "libraries.scrubMax", "libraries.chapterPictures", "libraries.intros", "libraries.cwWeeks", "libraries.cwMax", "libraries.cwWatched", "libraries.cwRule")
+	}
+
 	// Only what this library can choose: AniList serves anime libraries alone.
 	out.Providers = []MetadataProvider{}
 	for _, p := range MetadataProviders() {
-		if p.ID != "anilist" || kind == "anime" {
+		allowed := false
+		for _, k := range p.MediaKinds {
+			if k == libraryMediaKind(kind) {
+				allowed = true
+			}
+		}
+		if kind == "audiobook" || kind == "book" || kind == "comic" {
+			allowed = p.ID == "local"
+		}
+		if allowed && (p.ID != "anilist" || kind == "anime") {
 			out.Providers = append(out.Providers, p)
 		}
 	}
@@ -366,7 +434,26 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 	}
 	redactLibrarySettings(&settings)
 	out.Settings, out.Revision, out.Digest = settings, revision, digestOf(settings)
-	out.Sources, err = librarySources(ctx, tx, id)
+	for _, p := range settings.Providers {
+		if p.Provider != "local" {
+			out.EligibleControls = append(out.EligibleControls, "libraries.unmatched")
+			break
+		}
+	}
+	if kind != "book" && kind != "comic" && kind != "audiobook" {
+		out.EligibleControls = append(out.EligibleControls, "libraries.titlesFrom")
+	}
+
+	out.Sources, err = catalog.LibrarySourcesTx(ctx, tx, id)
+	if err != nil {
+		return out, err
+	}
+	out.Audience, err = catalog.LibraryAudienceTx(ctx, tx, id)
+	out.Actions = []string{"rename", "scan", "remove"}
+	if managed {
+		out.Actions = []string{"rename"}
+		out.EligibleControls = []string{"libraries.name", "libraries.type", "libraries.access"}
+	}
 	return out, err
 }
 
@@ -408,7 +495,7 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 			out = stored
 			return nil
 		}
-		_, kind, err := libraryExists(ctx, tx, id)
+		_, kind, _, err := librarySettingsIdentity(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -435,8 +522,14 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 		value.Providers = nil
 		value.Analysis = nil
 		value.Navigation = GeneratedNavigation{}
+
 		at := s.milliseconds()
-		if err = writeDocument(ctx, tx, scope, revision+1, value, at); err != nil {
+		if err = writeDocument(ctx, tx, scope, revision+1, struct {
+			MonitorChanges     bool                             `json:"monitorChanges"`
+			AllowMediaDeletion bool                             `json:"allowMediaDeletion"`
+			ContinueWatching   catalog.ContinueWatchingSettings `json:"continueWatching"`
+			SegmentDetection   string                           `json:"segmentDetection"`
+		}{value.MonitorChanges, value.AllowMediaDeletion, value.ContinueWatching, value.SegmentDetection}, at); err != nil {
 			return err
 		}
 		if out, err = s.libraryDocument(ctx, tx, id); err != nil {
