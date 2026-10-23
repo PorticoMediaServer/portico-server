@@ -53,6 +53,9 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 		return out, browseIssue("limit", "genre limit must be between 1 and 50")
 	}
 	if dbwork.Snapshot(s.Context()) == nil {
+		if err := s.PrepareRead(s.Context(), viewer.Restrictions); err != nil {
+			return out, err
+		}
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
 			out, err = s.WithContext(ctx).SearchGenres(viewer, request)
@@ -98,6 +101,8 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 	 ), e AS MATERIALIZED (
 	 SELECT DISTINCT target.entity_id,member.item_id FROM targets target
 	 JOIN catalog_browse_memberships member ON member.entity_id=target.entity_id WHERE ` + memberVisible + `
+	 UNION SELECT target.entity_id,target.entity_id FROM targets target
+	 WHERE NOT EXISTS(SELECT 1 FROM catalog_browse_memberships member WHERE member.entity_id=target.entity_id)
 	 ), genres AS MATERIALIZED (
 	 SELECT DISTINCT e.entity_id,CAST(COALESCE(ts.label_override,mg.label) AS TEXT) value
 	 FROM e ` + facetSources["genre"].Join + `
@@ -224,7 +229,15 @@ func (s *Service) SearchGenres(viewer Viewer, request SearchGenreRequest) (Searc
 		if chosen := choose(backdrops[genre.Value], usedBackdrops, 1); len(chosen) != 0 {
 			genre.Backdrop = &chosen[0]
 		}
-		genre.Covers = choose(covers[genre.Value], usedCovers, 2)
+		if candidates := covers[genre.Value]; len(candidates) < 2 {
+			// A one-cover genre cannot be drawn on the phone. Do not reserve
+			// that title ahead of a later genre that can fill its two slots.
+			for _, c := range candidates {
+				genre.Covers = append(genre.Covers, c.art)
+			}
+		} else {
+			genre.Covers = choose(candidates, usedCovers, 2)
+		}
 	}
 	return out, nil
 }

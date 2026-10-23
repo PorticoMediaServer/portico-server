@@ -45,7 +45,7 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	c.Genres(hidden.ID, "fixture", "Hidden only", "Crime")
 	blocked := c.Movie(movies, "/movies/blocked.mkv", "Blocked", 2026)
 	c.Genres(blocked.ID, "fixture", "Blocked only", "Crime")
-	c.Attributes(blocked.ID, "contentRating", "Adult")
+	c.Attributes(blocked.ID, "label", "Adult")
 	artist := c.Artist(music, "Artist")
 	album := c.Album(artist, "Album", 2026)
 	c.Genres(album.ID, "fixture", "Music only", "Crime")
@@ -55,6 +55,8 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 	c.Episode(show, season, 1, "/tv/one.mkv")
 	c.Episode(show, season, 2, "/tv/two.mkv")
 	c.Genres(show.ID, "fixture", "Television")
+	emptyShow := c.Show(tv, "Empty show", 2026)
+	c.Genres(emptyShow.ID, "fixture", "Quiet")
 	c.Collection(movies, "Not a title", items["a"], items["b"])
 	for _, name := range []string{"a", "b", "c", "d", "e"} {
 		selectSearchGenreArt(t, c, items[name], "item", "poster")
@@ -81,7 +83,7 @@ func TestSearchGenresRuling36CountsOrderAndRepresentativeArt(t *testing.T) {
 			t.Fatal("genre lost its label or bounded cover list", genre)
 		}
 	}
-	if want := []string{"Crime", "Drama", "Sci-Fi & Fantasy", "No art", "No backdrop", "Repeat", "Television"}; !reflect.DeepEqual(values, want) {
+	if want := []string{"Crime", "Drama", "Sci-Fi & Fantasy", "No art", "No backdrop", "Quiet", "Repeat", "Television"}; !reflect.DeepEqual(values, want) {
 		t.Fatalf("video title counts/sort/restrictions: %v want %v", values, want)
 	}
 	for value, count := range map[string]int{"Crime": 3, "Drama": 3, "Sci-Fi & Fantasy": 2, "Television": 1} {
