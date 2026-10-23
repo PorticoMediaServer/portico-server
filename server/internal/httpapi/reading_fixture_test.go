@@ -31,7 +31,7 @@ type readingFixture struct {
 // replacement Reading tables, permissive authorizer or playback source trick
 // is installed. This private-boundary check does not claim generated API/UI
 // composition; that is checked separately after canonical contracts land.
-func newReadingFixture(t *testing.T, kind, format string) *readingFixture {
+func newReadingFixture(t *testing.T, kind, format string, publications ...[]byte) *readingFixture {
 	t.Helper()
 	f := newV1Fixture(t, 0)
 	root := t.TempDir()
@@ -44,6 +44,12 @@ func newReadingFixture(t *testing.T, kind, format string) *readingFixture {
 		raw = readingtest.PDF()
 	case "cbz":
 		raw = readingtest.CBZ()
+	}
+	if len(publications) > 1 {
+		t.Fatal("one actual source publication is required")
+	}
+	if len(publications) == 1 {
+		raw = publications[0]
 	}
 	path := filepath.Join(root, name)
 	if err := os.WriteFile(path, raw, 0600); err != nil {

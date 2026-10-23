@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-func TestEPUBDeclaredLocalCSSPreservesEveryAsset(t *testing.T) {
+func fixturePublisherFont(t *testing.T) []byte {
+	t.Helper()
 	// Use the actual licensed publisher font already pinned in this repository.
 	font, err := os.ReadFile("../../../packages/reader-core/assets/Literata[opsz,wght].ttf")
 	if err != nil {
@@ -18,6 +19,12 @@ func TestEPUBDeclaredLocalCSSPreservesEveryAsset(t *testing.T) {
 	if fmt.Sprintf("%x", sha256.Sum256(font)) != "b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440" {
 		t.Fatal("publisher font differs from the checked font")
 	}
+	return font
+}
+
+func TestEPUBDeclaredLocalCSSPreservesEveryAsset(t *testing.T) {
+	font := fixturePublisherFont(t)
+	var err error
 	css := `@import "../Theme/palette.css" screen;
 @import url('../Theme/layout.css') layer(layout) supports(display: grid);
 @font-face { font-family: Publisher; src: url('../Fonts/publisher.ttf') format('truetype'); }

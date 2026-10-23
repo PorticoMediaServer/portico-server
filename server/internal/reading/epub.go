@@ -86,7 +86,7 @@ func OpenSequentialEPUB(ctx context.Context, source SequentialSource) (*EPUB, er
 	return openEPUBArchive(ctx, a)
 }
 func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
-	if a.files["META-INF/encryption.xml"] != nil || a.files["META-INF/rights.xml"] != nil {
+	if a.files["META-INF/rights.xml"] != nil {
 		return nil, ErrInvalid
 	}
 	mime, err := a.read(ctx, "mimetype", 64)
@@ -144,6 +144,16 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 			return nil, ErrInvalid
 		}
 		e.Spine = append(e.Spine, name)
+	}
+	if a.files["META-INF/encryption.xml"] != nil {
+		b, err = a.read(ctx, "META-INF/encryption.xml", 256<<10)
+		if err != nil {
+			return nil, err
+		}
+		if err = validateFontObfuscation(b, e.allowed); err != nil {
+			return nil, err
+		}
+		e.allowed["META-INF/encryption.xml"] = "application/xml"
 	}
 	for name, mime := range e.allowed {
 		e.Resources = append(e.Resources, Resource{name, mime, int64(a.files[name].UncompressedSize64)})
