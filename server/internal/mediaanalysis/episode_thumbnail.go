@@ -3,28 +3,36 @@ package mediaanalysis
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image/jpeg"
 	"io"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/decoder"
 )
 
-const EpisodeThumbnailOperation = "episode_thumbnail"
 const EpisodeThumbnailCostClass = "decode"
-const EpisodeThumbnailDefaultMode = "provider_then_generated"
+const EpisodeThumbnailDefaultMode = "provider_then_made"
+const EpisodeThumbnailProviderMode = "provider"
+const EpisodeThumbnailOffMode = "off"
 
 // EpisodeThumbnailRequest is the seam consumed by the effective library/source
-// policy owner. Authorize rechecks that intersection before source acquisition
-// and before publishing bytes. Input remains a range reader; this operation
-// never materializes or assumes a whole-file download.
+// policy owner. Authorize must recheck the effective library/source intersection
+// for the supplied operation, cost class and automatic/explicit invocation.
+// Open acquires a retained range reader only after permission is granted.
+// Automatic provider/off requests never acquire media. An explicit owner request
+// can generate under every stored mode, without changing that mode or scan depth.
+// The publication transaction must independently recheck the same authority.
 type EpisodeThumbnailRequest struct {
 	Mode          string
 	Manual        bool
 	ProviderStill bool
 	DurationUS    int64
-	Input         Input
+	StartUS       int64
+	EndUS         int64
+	Open          func(context.Context) (Input, error)
 	Decoder       func(Input) Decode
-	Authorize     func(context.Context) error
+	Authorize     func(ctx context.Context, operation, costClass string, manual bool) error
 	SourceVideo   decoder.PreviewVideoFacts
 }
 type EpisodeThumbnailResult struct {
@@ -34,67 +42,69 @@ type EpisodeThumbnailResult struct {
 	PositionUS    int64
 }
 
-// EpisodeThumbnailMode is the product default independent of settings layout.
-// Callers apply the library/source policy before invoking generation.
-func EpisodeThumbnailMode(libraryKind string) string {
-	if libraryKind == "tv" || libraryKind == "anime" {
-		return EpisodeThumbnailDefaultMode
-	}
-	return "off"
-}
-
 // MakeEpisodeThumbnail produces exactly one bounded picture, or chooses an
-// already available provider still. Manual generation obeys the same permission
-// callback and cannot bypass an off/provider-only choice.
+// already available provider still for automatic work. Manual generation ignores
+// the automatic mode restriction and provider presence, but still requires fresh
+// explicit-owner source authority. ProviderStill describes an already permitted
+// provider picture; this function never performs a lookup.
 func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (EpisodeThumbnailResult, error) {
 	out := EpisodeThumbnailResult{Origin: "fallback"}
-	if r.Authorize == nil {
-		return out, ErrInput
-	}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
-	if err := r.Authorize(ctx); err != nil {
-		return out, err
-	}
 	switch r.Mode {
-	case "off":
-		if r.Manual {
-			return out, ErrUnsupported
-		}
-		return out, nil
-	case "provider_only":
-		if r.Manual {
-			return out, ErrUnsupported
-		}
-		if r.ProviderStill {
-			out.Origin = "provider"
-		}
-		return out, nil
-	case EpisodeThumbnailDefaultMode:
+	case EpisodeThumbnailOffMode, EpisodeThumbnailProviderMode, EpisodeThumbnailDefaultMode:
 	default:
 		return out, ErrInput
 	}
-	if r.ProviderStill && !r.Manual {
-		out.Origin = "provider"
-		return out, nil
+	if !r.Manual {
+		if r.Mode == EpisodeThumbnailOffMode {
+			return out, nil
+		}
+		if r.ProviderStill {
+			out.Origin = "provider"
+			return out, nil
+		}
+		if r.Mode == EpisodeThumbnailProviderMode {
+			return out, nil
+		}
 	}
-	if r.Input == nil || r.Decoder == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 {
+	if r.Open == nil || r.Decoder == nil || r.Authorize == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 || r.StartUS < 0 || r.EndUS <= r.StartUS || r.EndUS > r.DurationUS {
 		return out, ErrInput
 	}
-	if err := r.Input.Validate(ctx); err != nil {
+	authorize := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return r.Authorize(ctx, catalog.EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
+	}
+	if err := authorize(); err != nil {
+		return out, err
+	}
+	input, err := r.Open(ctx)
+	if err != nil {
+		return out, err
+	}
+	if input == nil {
+		return out, ErrInput
+	}
+	defer input.Close()
+	if err := input.Validate(ctx); err != nil {
+		return out, err
+	}
+	if err := authorize(); err != nil {
 		return out, err
 	}
 	// Ten percent avoids most opening cards; a short episode still has a valid
 	// seek strictly inside its duration. Decode uses the existing ranged bridge.
-	position := min(r.DurationUS-1, r.DurationUS/10)
+	position := min(r.EndUS-1, r.StartUS+(r.EndUS-r.StartUS)/10)
 	spec := decoder.AnalysisSpec{Kind: "image", StartUS: position, MaxDurationUS: r.DurationUS, SourceVideo: r.SourceVideo}
 	var data []byte
-	decode := r.Decoder(r.Input)
+	decode := r.Decoder(input)
 	if decode == nil {
 		return out, ErrUnsupported
 	}
-	err := decode(ctx, EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
+	err = decode(ctx, catalog.EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
 		var err error
 		data, err = io.ReadAll(io.LimitReader(reader, (1<<20)+1))
 		if len(data) > 1<<20 {
@@ -102,37 +112,24 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 		}
 		return err
 	})
-	if err != nil {
+	// A failed decode can be the first sign of a replaced source. Check both
+	// retained metadata and authority before closing, even when decoding failed.
+	// Keep the original invocation context: cancellation cannot grant more work.
+	validationErr := input.Validate(ctx)
+	authorizationErr := r.Authorize(ctx, catalog.EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
+	if err = errors.Join(err, validationErr, authorizationErr, ctx.Err()); err != nil {
 		return out, err
 	}
 	shape, err := jpeg.DecodeConfig(bytes.NewReader(data))
 	if err != nil || shape.Width != 320 || shape.Height != 180 {
 		return out, ErrUnsupported
 	}
-	if err = r.Input.Validate(ctx); err != nil {
-		return out, err
-	}
-	if err = r.Authorize(ctx); err != nil {
-		return out, err
+	if _, err = jpeg.Decode(bytes.NewReader(data)); err != nil {
+		return out, ErrUnsupported
 	}
 	if err = ctx.Err(); err != nil {
 		return out, err
 	}
 	out = EpisodeThumbnailResult{Origin: "generated", JPEG: data, Width: 320, Height: 180, PositionUS: position}
 	return out, nil
-}
-
-// produceEpisodeThumbnail stages immutable output for the existing durable
-// publisher. The policy owner selects this operation and supplies Authorize.
-func (s *Service) produceEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest, key string) (produced, error) {
-	out := produced{Artifacts: []artifactOutput{}, Markers: []Marker{}}
-	picture, err := MakeEpisodeThumbnail(ctx, r)
-	if err != nil {
-		return out, err
-	}
-	out.Summary = map[string]any{"origin": picture.Origin, "operation": EpisodeThumbnailOperation, "costClass": EpisodeThumbnailCostClass}
-	if picture.Origin == "generated" {
-		err = s.adder(ctx, key, &out)(picture.JPEG, EpisodeThumbnailOperation, "image/jpeg", 0, 0, r.DurationUS, picture.Width, picture.Height)
-	}
-	return out, err
 }
