@@ -9,6 +9,7 @@ import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
 import {useShellWidth} from '../../shell/viewport';
 import {configurationFieldEligible} from './eligibility';
+import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 
 const t = defaultI18n.t;
 export type SettingsContext = Readonly<{section: SettingsSection; panelId?: string; tabId?: string; recordId?: string}>;
@@ -17,6 +18,7 @@ export type SettingsConfigurationMatch = Readonly<{id: string; key: string; labe
 /** Session-owned, checked readers and commands. The screen holds navigation and focus only. */
 export type SettingsBindings = Readonly<{
   accountName: string; serverName: string; role: 'owner' | 'admin' | 'member';
+  environment: SettingsEnvironment;
   subscribe: (listener: () => void) => () => void; getSnapshot: () => SettingsPageSnapshot;
   sectionVisible: (section: SettingsSection) => boolean;
   eligible: (row: SettingsRow, context: SettingsContext) => boolean;
@@ -41,13 +43,15 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   const [configurationKey, setConfigurationKey] = useState<string>();
   const opener = useRef<HTMLElement | null>(null), heading = useRef<HTMLDivElement>(null);
-  const rowState = (row: SettingsRow, context: SettingsContext): SettingPresentation => bindings.eligible(row, context) ? bindings.rowState(row, context) : {present: false};
+  const environment = {...bindings.environment, role: bindings.role};
+  const sectionVisible = (section: SettingsSection) => settingsSectionVisible(section, environment) && bindings.sectionVisible(section);
+  const rowState = (row: SettingsRow, context: SettingsContext): SettingPresentation => settingsRowVisible(row, environment) && bindings.eligible(row, context) ? bindings.rowState(row, context) : {present: false};
   const rowContext = (row: SettingsRow, section: SettingsSection): SettingsContext => {
     const location = settingsRowIndex.get(row.id);
     return {section, panelId: location?.panelId, tabId: location?.tabId,
       recordId: panel?.id === location?.panelId && route.scope === section.scope && route.section === section.id ? panel?.recordId : undefined};
   };
-  const selected = settingsRoute(route, bindings.sectionVisible, (row, section) => rowState(row, rowContext(row, section)).present);
+  const selected = settingsRoute(route, sectionVisible, (row, section) => rowState(row, rowContext(row, section)).present);
   const section = settingsSpec.find(section => section.scope === selected.scope && section.id === selected.section)!;
   const context: SettingsContext = {section};
   const openPanel = (id: string, recordId?: string) => {
@@ -55,8 +59,8 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel({id, recordId, tab: section.panels[id].tabs?.[0]?.id});
   };
-  const matches = searchSettings(query, t, (row, owner) => bindings.sectionVisible(owner) && rowState(row, rowContext(row, owner)).present);
-  const configuration = (bindings.configurationMatches?.(query) ?? []).filter(field => configurationFieldEligible(field, (row, context) => bindings.eligible(row, rowContext(row, context.section))));
+  const matches = searchSettings(query, t, (row, owner) => sectionVisible(owner) && rowState(row, rowContext(row, owner)).present);
+  const configuration = (bindings.configurationMatches?.(query) ?? []).filter(field => configurationFieldEligible(field, (row, context) => settingsRowVisible(row, environment) && bindings.eligible(row, rowContext(row, context.section))));
   const configurationGroups: SettingsSearchGroup[] = configuration.filter(fact => fact.configOnly).length ? [{id: 'configuration', label: t('next.settings.configurationFile'), icon: 'i-server', area: 'server', configuration: true, rows: configuration.filter(fact => fact.configOnly).map(fact => ({id: fact.key, label: fact.label, description: fact.key}))}] : [];
   const groups: SettingsSearchGroup[] = settingsSpec.map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), area: section.scope,
     rows: matches.filter(hit => hit.section === section).map(hit => ({id: hit.rowId, label: hit.label, description: hit.context.join(' · ')}))})).filter(group => group.rows.length);
@@ -79,12 +83,12 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     const frame = requestAnimationFrame(() => document.getElementById(found.row.id)?.scrollIntoView({block: 'center', behavior: 'instant'}));
     return () => cancelAnimationFrame(frame);
   }, [selected.scope, selected.section, selected.row]);
-  const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={holder} state={row => rowState(row, context)}
+  const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={holder} environment={environment} state={row => rowState(row, context)}
     change={(row, value) => {if (rowState(row, context).present) bindings.change(row, value, context);}} reset={row => {if (rowState(row, context).present) bindings.reset(row, context);}} renderSpecial={(row, state) => rowState(row, context).present ? bindings.special(row, state, context, openPanel) : null}
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
-    account={settingsSpec.filter(section => section.scope === 'account' && bindings.sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
-    server={settingsSpec.filter(section => section.scope === 'server' && bindings.sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
+    account={settingsSpec.filter(section => section.scope === 'account' && sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
+    server={settingsSpec.filter(section => section.scope === 'server' && sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     selectedId={`${selected.scope}/${selected.section}`} selectedSearchResult={selected.row ? {pageId: `${selected.scope}/${selected.section}`, rowId: selected.row} : undefined}
     query={query} onQueryChange={setQuery} onNavigate={go} matches={[...groups, ...configurationGroups]} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
   const panelSpec = panel && section.panels?.[panel.id], tab = panelSpec?.tabs?.find(tab => tab.id === panel?.tab);

@@ -57,6 +57,11 @@ export const colors = {
   amber: "#e8bc6a",
   record: "#f17979",
   healthy: "#86cfb3",
+  /** Approved Dashboard categories/load series and hardware label (812daca). */
+  lilac: "#a99be8",
+  gold: "#e0b66e",
+  rose: "#e8929f",
+  hardwareText: "#f3cf86",
   trackRest: "#35505f",
   /** Text and glyphs on action blue (all three accent states). */
   actionInk: "#03121c",

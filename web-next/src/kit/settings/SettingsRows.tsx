@@ -2,27 +2,34 @@ import {Fragment, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {SettingsGroup as GroupSpec, SettingsHolder, SettingsOption, SettingsRow as RowSpec, SettingsValue} from '@core/presentation/settings-spec.ts';
 import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
+import {browserSettingsEnvironment, settingsRowVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 import {ChoiceMatrix, MatchText, SettingsRow} from '../shell/SettingsSurfaces';
 import {Button, RichSelect, Segmented, Switch, TextField} from '../controls';
 import {SettingNumber} from './SettingNumber';
 import {SettingText} from './SettingText';
 import {SettingsAdvanced, SettingsGroup} from './SettingsGroups';
+import {SettingsGrid} from './SettingsGrid';
+import type {SettingsTableColumn, SettingsTableRow} from './SettingsTable';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
 export type SettingPresentation = Readonly<{
   present: boolean; value?: SettingsValue; defaultValue?: SettingsValue; changed?: boolean; displayValue?: string; defaultLabel?: string;
   disabled?: boolean; saving?: boolean; error?: string; choices?: readonly SettingsOption[]; label?: string; help?: string;
+  gridRows?: readonly SettingsTableRow[];
 }>;
 export type SettingsRowsProps = Readonly<{
   holder: SettingsHolder; state: (row: RowSpec) => SettingPresentation; change: (row: RowSpec, value: SettingsValue) => void; reset: (row: RowSpec) => void;
   renderSpecial: (row: RowSpec, state: SettingPresentation) => ReactNode; query?: string; foundRowId?: string;
   advancedOpen: boolean; onAdvancedChange: (open: boolean) => void;
+  environment?: SettingsEnvironment;
 }>;
 function children(rows: readonly RowSpec[]): readonly RowSpec[] {return rows.flatMap(row => [row, ...children(row.children ?? [])]);}
 
 /** Controlled approved structure. It never invents runtime values or successful mutations. */
-export function SettingsRows(props: SettingsRowsProps) {
+export function SettingsRows(input: SettingsRowsProps) {
+  const environment = input.environment ?? browserSettingsEnvironment;
+  const props = {...input, state: (row: RowSpec): SettingPresentation => settingsRowVisible(row, environment) ? input.state(row) : {present: false}};
   const advanced = (props.holder.advanced?.groups ?? []).flatMap(group => children(group.rows)).filter(row => props.state(row).present);
   const summary = advanced.filter(row => props.state(row).changed).map(row => `${props.state(row).label ?? t(row.label)}: ${props.state(row).displayValue ?? ''}`);
   return <>
@@ -43,7 +50,8 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   if (!state.present) return null;
   const parent = row.enableWhen && settingsRowIndex.get(row.enableWhen.id)?.row;
   const condition = parent && props.state(parent).value;
-  const disabled = inheritedDisabled || state.disabled || state.saving || !!row.enableWhen && !row.enableWhen.in.some(value => String(value) === String(condition));
+  const conditionMet = !row.enableWhen || (row.enableWhen.in ? row.enableWhen.in.some(value => String(value) === String(condition)) : !row.enableWhen.notIn?.some(value => String(value) === String(condition)));
+  const disabled = inheritedDisabled || state.disabled || state.saving || !conditionMet;
   const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options ?? [];
   const changed = state.changed && !row.noChanged;
   const defaultLabel = state.defaultLabel ?? (options.find(option => option.value === state.defaultValue)?.label ? t(options.find(option => option.value === state.defaultValue)!.label) : typeof state.defaultValue === 'boolean' ? t(state.defaultValue ? 'next.settings.on' : 'next.settings.off') : state.defaultValue === null ? t('next.settings.notSet') : state.defaultValue === undefined ? undefined : String(state.defaultValue));
@@ -59,6 +67,8 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   } else if (c.type === 'segmented' && state.value !== undefined) control = <Segmented aria-label={label} value={String(state.value)} disabled={disabled} items={options.map(option => ({value: String(option.value), label: t(option.label), disabled: options.some(value => value.sets) && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
   else if (c.type === 'number' && (typeof state.value === 'number' || state.value === null)) control = <SettingNumber label={label} value={state.value} min={c.min ?? 0} max={c.max ?? Number.MAX_SAFE_INTEGER} step={c.step} optional={c.optional} unit={c.unit && t(c.unit)} placeholder={c.placeholder && t(c.placeholder)} disabled={disabled} plain={c.style === 'field'} onCommit={change} />;
   else if (c.type === 'text' && !c.secret && typeof state.value === 'string') control = <SettingText label={label} value={state.value} disabled={disabled} placeholder={c.placeholder && t(c.placeholder)} onCommit={change} />;
+  else if (c.type === 'readonly' && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
+  else if (c.type === 'table' && c.style === 'grid' && state.gridRows) control = <SettingsGrid label={label} rows={state.gridRows} columns={(c.columns ?? []).map(column => ({id: column.id!, label: t(column.label), kind: column.kind as SettingsTableColumn['kind'], width: column.width}))} />;
   else if (c.type === 'matrix' && state.value && typeof state.value === 'object' && !Array.isArray(state.value)) {
     const values = state.value as Readonly<Record<string, SettingsValue>>, defaults = state.defaultValue as Readonly<Record<string, SettingsValue>> | undefined;
     control = <div className={styles.matrixControl} inert={disabled || undefined}><ChoiceMatrix label={label} choices={(c.columns ?? []).map(column => ({value: column.value!, label: t(column.label), description: column.hint && t(column.hint)}))}

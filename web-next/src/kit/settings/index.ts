@@ -11,3 +11,4 @@ export * from './search';
 export * from './SettingsSelectionList';
 export * from './SettingsHours';
 export * from './SettingsStringList';
+export * from './SettingsGrid';

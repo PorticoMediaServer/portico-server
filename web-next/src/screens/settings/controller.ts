@@ -13,6 +13,7 @@ import type {SettingPresentation} from '../../kit/settings';
 import type {SettingsContext, SettingsPageSnapshot} from './Settings';
 import {settingsServerHeader} from './server-header';
 import {configurationFieldEligible, settingsRowEligible, type SettingsEligibility} from './eligibility';
+import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
 
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
@@ -43,7 +44,7 @@ export type SettingsControllerOptions = Readonly<{
   role: 'owner' | 'admin' | 'member'; mainProfile: boolean;
   capabilities: Readonly<{manageServer: boolean; managePeople: boolean; manageSignIn: boolean}>;
   preferences: PreferenceSnapshot; isCurrent: () => boolean; reportError: (error: unknown) => void;
-  eligibility: SettingsEligibility; reading: ReadingSettingsAdapter;
+  eligibility: SettingsEligibility; reading: ReadingSettingsAdapter; environment: SettingsEnvironment;
 }>;
 
 /** One selected session owns every document and pending write. No constructor fetches. */
@@ -88,7 +89,7 @@ export class SettingsController {
     for (const listener of this.listeners) listener();
   }
   sectionVisible = (section: SettingsSection) => {
-    if (section.platforms && !section.platforms.includes('web')) return false;
+    if (!settingsSectionVisible(section, this.options.environment)) return false;
     if (section.scope === 'account') return true;
     if (!this.options.mainProfile) return false;
     if (section.id === 'people') return this.options.capabilities.managePeople;
@@ -97,7 +98,7 @@ export class SettingsController {
   };
   eligible = (row: SettingsRow, context?: SettingsContext): boolean => {
     const location = settingsRowIndex.get(row.id);
-    return !!location && this.current() && settingsRowEligible(row, context ?? {section: location.section, panelId: location.panelId, tabId: location.tabId}, this.options.eligibility);
+    return !!location && this.current() && settingsRowVisible(row, {...this.options.environment, role: this.options.role}) && settingsRowEligible(row, context ?? {section: location.section, panelId: location.panelId, tabId: location.tabId}, this.options.eligibility);
   };
   private sources(): SettingsBindingSources {
     return {configuration: this.configuration, preferences: this.preferences,
@@ -121,7 +122,7 @@ export class SettingsController {
   }
   rowState = (row: SettingsRow, context?: SettingsContext): SettingPresentation => {
     const location = settingsRowIndex.get(row.id);
-    if (!location || !this.sectionVisible(location.section) || row.platforms && !row.platforms.includes('web') || location.group.platforms && !location.group.platforms.includes('web')) return {present: false};
+    if (!location || !this.sectionVisible(location.section)) return {present: false};
     const value = this.read(row, context);
     if (!value || value.configOnly) return {present: false};
     const current = value.current as SettingsValue;

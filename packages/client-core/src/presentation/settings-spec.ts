@@ -1,7 +1,10 @@
 import type {MessageId} from '../../../i18n/src/index.ts';
 
 /** Approved Settings structure. Runtime facts and mutations come from checked bindings. */
-export const settingsDesignRevision = '14a9a192975eb2b659be1f2c99fa52791f128f84';
+export const settingsDesignRevision = '812dacacc70e296ac870ec36d1a37a485eaeb8ed';
+export const settingsIdentityDesignRevision = 'b4cf92e90f39c91e38478cd178e8410a95c63645';
+export type SettingsPlatform = 'web' | 'phone' | 'tv' | 'desktop';
+export type SettingsOperatingSystem = 'android' | 'ios' | 'ipados' | 'tvos' | 'androidtv' | 'firetv' | 'roku' | 'webos' | 'tizen' | 'windows' | 'macos' | 'linux' | 'browser';
 export type SettingsValue = string | number | boolean | null | readonly SettingsValue[] | Readonly<{[key: string]: SettingsValue}>;
 export type SettingsAction = Readonly<{label: MessageId; style?: 'glass' | 'primary' | 'danger'; confirm?: MessageId; remove?: boolean; panel?: string}>;
 export type SettingsOption = Readonly<{value: string | number | boolean; label: MessageId; hint?: MessageId; sets?: Readonly<Record<string, SettingsValue>>; locked?: boolean}>;
@@ -18,12 +21,12 @@ export type SettingsControl = Readonly<{
  sort?: Readonly<{by: string; dir: 'asc' | 'desc'}>; select?: Readonly<{bulk: readonly SettingsAction[]}>; rowAction?: SettingsAction; rowActions?: readonly SettingsAction[]; height?: number;
 }>;
 export type SettingsRow = Readonly<{id: string; label: MessageId; help?: MessageId; control: SettingsControl; children?: readonly SettingsRow[];
- scope?: 'server' | 'account' | 'profile' | 'device'; key?: string; platforms?: readonly string[]; shapes?: readonly string[]; audience?: string;
- enableWhen?: Readonly<{id: string; in: readonly SettingsValue[]}>; noChanged?: boolean}>;
-export type SettingsGroup = Readonly<{title?: MessageId; platforms?: readonly string[]; rows: readonly SettingsRow[]}>;
+ scope?: 'server' | 'account' | 'profile' | 'device'; key?: string; platforms?: readonly SettingsPlatform[]; os?: readonly SettingsOperatingSystem[]; shapes?: readonly string[]; audience?: string;
+ enableWhen?: Readonly<{id: string; in?: readonly SettingsValue[]; notIn?: readonly SettingsValue[]}>; noChanged?: boolean}>;
+export type SettingsGroup = Readonly<{title?: MessageId; platforms?: readonly SettingsPlatform[]; rows: readonly SettingsRow[]}>;
 export type SettingsHolder = Readonly<{groups?: readonly SettingsGroup[]; advanced?: Readonly<{groups?: readonly SettingsGroup[]}>}>;
 export type SettingsPanel = SettingsHolder & Readonly<{title?: MessageId; newTitle?: MessageId; searchName?: MessageId; tabs?: readonly (SettingsHolder & Readonly<{id: string; title: MessageId}>)[]; footer?: Readonly<{primary: MessageId; secondary?: MessageId}>}>;
-export type SettingsSection = SettingsHolder & Readonly<{scope: 'account' | 'server'; id: string; title: MessageId; navGroup: string; icon: string; kind: string; platforms?: readonly string[]; panels?: Readonly<Record<string, SettingsPanel>>; configOnly: readonly Readonly<{key: string; label: MessageId}>[]}>;
+export type SettingsSection = SettingsHolder & Readonly<{scope: 'account' | 'server'; id: string; title: MessageId; navGroup: string; icon: string; kind: string; platforms?: readonly SettingsPlatform[]; panels?: Readonly<Record<string, SettingsPanel>>; configOnly: readonly Readonly<{key: string; label: MessageId}>[]}>;
 
 export const settingsSpec: readonly SettingsSection[] = [
   {
@@ -1476,10 +1479,11 @@ export const settingsSpec: readonly SettingsSection[] = [
             {
               "id": "audioSubtitles.surround",
               "scope": "device",
-              "key": "forceStereo, disablePassthrough",
+              "key": "forceStereo",
               "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.label",
+              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.help",
               "control": {
-                "type": "select",
+                "type": "segmented",
                 "default": "asis",
                 "options": [
                   {
@@ -1487,14 +1491,8 @@ export const settingsSpec: readonly SettingsSection[] = [
                     "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.0.label"
                   },
                   {
-                    "value": "decode",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.1.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.1.hint"
-                  },
-                  {
                     "value": "stereo",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.2.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.2.hint"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.1.rows.0.control.options.1.label"
                   }
                 ]
               }
@@ -1524,7 +1522,6 @@ export const settingsSpec: readonly SettingsSection[] = [
                 "phone"
               ],
               "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.2.rows.0.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.2.rows.0.help",
               "control": {
                 "type": "select",
                 "default": "0",
@@ -1558,7 +1555,17 @@ export const settingsSpec: readonly SettingsSection[] = [
                     "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.2.rows.0.control.options.6.label"
                   }
                 ]
-              }
+              },
+              "os": [
+                "android",
+                "ios",
+                "ipados",
+                "androidtv",
+                "firetv",
+                "roku",
+                "webos",
+                "tizen"
+              ]
             },
             {
               "id": "audioSubtitles.systemCaptions",
@@ -1579,85 +1586,13 @@ export const settingsSpec: readonly SettingsSection[] = [
         },
         {
           "title": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.title",
-          "platforms": [
-            "tv",
-            "phone"
-          ],
-          "rows": [
-            {
-              "id": "audioSubtitles.passthroughFormats",
-              "scope": "device",
-              "key": "disablePassthroughFormats",
-              "platforms": [
-                "tv",
-                "phone"
-              ],
-              "enableWhen": {
-                "id": "audioSubtitles.surround",
-                "in": [
-                  "asis"
-                ]
-              },
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.help",
-              "control": {
-                "type": "matrix",
-                "columns": [
-                  {
-                    "value": "detect",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.columns.0.label"
-                  },
-                  {
-                    "value": "pass",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.columns.1.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.columns.1.hint"
-                  },
-                  {
-                    "value": "convert",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.columns.2.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.columns.2.hint"
-                  }
-                ],
-                "items": [
-                  {
-                    "id": "dd",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.items.0.label",
-                    "default": "detect"
-                  },
-                  {
-                    "id": "ddp",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.items.1.label",
-                    "default": "detect"
-                  },
-                  {
-                    "id": "truehd",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.items.2.label",
-                    "default": "detect"
-                  },
-                  {
-                    "id": "dts",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.items.3.label",
-                    "default": "detect"
-                  },
-                  {
-                    "id": "dtshd",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.control.items.4.label",
-                    "default": "detect"
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "title": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.title",
           "rows": [
             {
               "id": "audioSubtitles.preferSdh",
               "scope": "profile",
               "key": "playback.preferSdhSubtitles",
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.help",
+              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.label",
+              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.0.help",
               "control": {
                 "type": "toggle",
                 "default": false
@@ -1674,19 +1609,19 @@ export const settingsSpec: readonly SettingsSection[] = [
                   "forced"
                 ]
               },
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.help",
+              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.1.label",
+              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.1.help",
               "control": {
                 "type": "select",
                 "default": "none",
                 "options": [
                   {
                     "value": "none",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.control.options.0.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.1.control.options.0.label"
                   },
                   {
                     "value": "full",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.control.options.1.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.1.control.options.1.label"
                   }
                 ]
               }
@@ -1702,8 +1637,8 @@ export const settingsSpec: readonly SettingsSection[] = [
                   "forced"
                 ]
               },
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.2.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.2.help",
+              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.2.label",
+              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.3.rows.2.help",
               "control": {
                 "type": "toggle",
                 "default": true
@@ -1712,32 +1647,32 @@ export const settingsSpec: readonly SettingsSection[] = [
           ]
         },
         {
-          "title": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.title",
+          "title": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.title",
           "rows": [
             {
               "id": "audioSubtitles.subtitleFont",
               "scope": "profile",
               "key": "playback.subtitleFont",
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.0.label",
+              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.label",
               "control": {
                 "type": "select",
                 "default": "default",
                 "options": [
                   {
                     "value": "default",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.0.control.options.0.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.control.options.0.label"
                   },
                   {
                     "value": "serif",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.0.control.options.1.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.control.options.1.label"
                   },
                   {
                     "value": "mono",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.0.control.options.2.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.control.options.2.label"
                   },
                   {
                     "value": "rounded",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.0.control.options.3.label"
+                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.0.control.options.3.label"
                   }
                 ]
               }
@@ -1746,49 +1681,11 @@ export const settingsSpec: readonly SettingsSection[] = [
               "id": "audioSubtitles.styledSubtitles",
               "scope": "profile",
               "key": "playback.keepSubtitleStyling",
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.1.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.5.rows.1.help",
+              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.label",
+              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.4.rows.1.help",
               "control": {
                 "type": "toggle",
                 "default": true
-              }
-            }
-          ]
-        },
-        {
-          "title": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.title",
-          "rows": [
-            {
-              "id": "audioSubtitles.burnIn",
-              "scope": "device",
-              "key": "delivery.burnInSubtitles",
-              "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.label",
-              "help": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.help",
-              "control": {
-                "type": "select",
-                "default": "automatic",
-                "options": [
-                  {
-                    "value": "automatic",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.0.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.0.hint"
-                  },
-                  {
-                    "value": "image",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.1.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.1.hint"
-                  },
-                  {
-                    "value": "always",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.2.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.2.hint"
-                  },
-                  {
-                    "value": "never",
-                    "label": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.3.label",
-                    "hint": "next.settingsSpec.account.audio-subtitles.advanced.groups.6.rows.0.control.options.3.hint"
-                  }
-                ]
               }
             }
           ]
@@ -2013,7 +1910,8 @@ export const settingsSpec: readonly SettingsSection[] = [
       {
         "title": "next.settingsSpec.account.quality.groups.1.title",
         "platforms": [
-          "phone"
+          "phone",
+          "desktop"
         ],
         "rows": [
           {
@@ -2199,35 +2097,6 @@ export const settingsSpec: readonly SettingsSection[] = [
                     "value": "custom",
                     "label": "next.settingsSpec.account.quality.advanced.groups.0.rows.0.control.options.3.label",
                     "hint": "next.settingsSpec.account.quality.advanced.groups.0.rows.0.control.options.3.hint"
-                  }
-                ]
-              }
-            },
-            {
-              "id": "quality.playerEngine",
-              "scope": "device",
-              "key": "playerEngine",
-              "platforms": [
-                "phone",
-                "tv"
-              ],
-              "label": "next.settingsSpec.account.quality.advanced.groups.0.rows.1.label",
-              "help": "next.settingsSpec.account.quality.advanced.groups.0.rows.1.help",
-              "control": {
-                "type": "select",
-                "default": "automatic",
-                "options": [
-                  {
-                    "value": "automatic",
-                    "label": "next.settingsSpec.account.quality.advanced.groups.0.rows.1.control.options.0.label"
-                  },
-                  {
-                    "value": "native",
-                    "label": "next.settingsSpec.account.quality.advanced.groups.0.rows.1.control.options.1.label"
-                  },
-                  {
-                    "value": "mpv",
-                    "label": "next.settingsSpec.account.quality.advanced.groups.0.rows.1.control.options.2.label"
                   }
                 ]
               }
@@ -2485,7 +2354,31 @@ export const settingsSpec: readonly SettingsSection[] = [
                   "label": "next.settingsSpec.account.music.groups.0.rows.1.control.options.6.label"
                 }
               ]
-            }
+            },
+            "children": [
+              {
+                "id": "music.smoothTransitions",
+                "scope": "profile",
+                "key": "music.smoothTransitions",
+                "enableWhen": {
+                  "id": "music.crossfadeMs",
+                  "in": [
+                    2000,
+                    4000,
+                    6000,
+                    8000,
+                    10000,
+                    12000
+                  ]
+                },
+                "label": "next.settingsSpec.account.music.groups.0.rows.1.children.0.label",
+                "help": "next.settingsSpec.account.music.groups.0.rows.1.children.0.help",
+                "control": {
+                  "type": "toggle",
+                  "default": true
+                }
+              }
+            ]
           },
           {
             "id": "music.gapless",
@@ -2496,6 +2389,16 @@ export const settingsSpec: readonly SettingsSection[] = [
             "control": {
               "type": "toggle",
               "default": true
+            }
+          },
+          {
+            "id": "music.eq",
+            "scope": "device",
+            "key": "music.eq",
+            "label": "next.settingsSpec.account.music.groups.0.rows.3.label",
+            "control": {
+              "type": "link",
+              "label": "next.settingsSpec.account.music.groups.0.rows.3.control.label"
             }
           }
         ]
@@ -2727,7 +2630,8 @@ export const settingsSpec: readonly SettingsSection[] = [
             "scope": "device",
             "key": "music.downloadQuality",
             "platforms": [
-              "phone"
+              "phone",
+              "desktop"
             ],
             "label": "next.settingsSpec.account.music.groups.3.rows.2.label",
             "control": {
@@ -2766,34 +2670,112 @@ export const settingsSpec: readonly SettingsSection[] = [
           "title": "next.settingsSpec.account.music.advanced.groups.0.title",
           "rows": [
             {
+              "id": "music.sampleRateMatching",
+              "scope": "device",
+              "key": "music.sampleRateMatching",
+              "platforms": [
+                "phone",
+                "tv"
+              ],
+              "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.label",
+              "help": "next.settingsSpec.account.music.advanced.groups.0.rows.0.help",
+              "control": {
+                "type": "segmented",
+                "default": "smart",
+                "options": [
+                  {
+                    "value": "smart",
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.0.label"
+                  },
+                  {
+                    "value": "strict",
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.1.label"
+                  },
+                  {
+                    "value": "off",
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.2.label"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "music.neverBoost",
+              "scope": "profile",
+              "key": "music.neverBoost",
+              "label": "next.settingsSpec.account.music.advanced.groups.0.rows.1.label",
+              "help": "next.settingsSpec.account.music.advanced.groups.0.rows.1.help",
+              "control": {
+                "type": "toggle",
+                "default": false
+              }
+            },
+            {
+              "id": "music.dsdGainDb",
+              "scope": "profile",
+              "key": "music.dsdGainDb",
+              "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.label",
+              "help": "next.settingsSpec.account.music.advanced.groups.0.rows.2.help",
+              "control": {
+                "type": "select",
+                "default": -6,
+                "options": [
+                  {
+                    "value": 0,
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.0.label"
+                  },
+                  {
+                    "value": -3,
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.1.label"
+                  },
+                  {
+                    "value": -6,
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.2.label"
+                  },
+                  {
+                    "value": -9,
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.3.label"
+                  },
+                  {
+                    "value": -12,
+                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.4.label"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "title": "next.settingsSpec.account.music.advanced.groups.1.title",
+          "rows": [
+            {
               "id": "music.idlePause",
               "scope": "profile",
               "key": "playback.sleepTimerMinutes",
-              "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.label",
-              "help": "next.settingsSpec.account.music.advanced.groups.0.rows.0.help",
+              "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.label",
+              "help": "next.settingsSpec.account.music.advanced.groups.1.rows.0.help",
               "control": {
                 "type": "select",
                 "default": 0,
                 "options": [
                   {
                     "value": 0,
-                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.0.label"
+                    "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.control.options.0.label"
                   },
                   {
                     "value": 30,
-                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.1.label"
+                    "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.control.options.1.label"
                   },
                   {
                     "value": 60,
-                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.2.label"
+                    "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.control.options.2.label"
                   },
                   {
                     "value": 90,
-                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.3.label"
+                    "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.control.options.3.label"
                   },
                   {
                     "value": 120,
-                    "label": "next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.4.label"
+                    "label": "next.settingsSpec.account.music.advanced.groups.1.rows.0.control.options.4.label"
                   }
                 ]
               }
@@ -3418,7 +3400,12 @@ export const settingsSpec: readonly SettingsSection[] = [
                     "label": "next.settingsSpec.account.appearance.advanced.groups.1.rows.0.control.options.2.label"
                   }
                 ]
-              }
+              },
+              "os": [
+                "android",
+                "androidtv",
+                "firetv"
+              ]
             }
           ]
         }
@@ -3723,13 +3710,338 @@ export const settingsSpec: readonly SettingsSection[] = [
         "title": "next.settingsSpec.account.device.groups.1.title",
         "rows": [
           {
+            "id": "device.matchFrameRate",
+            "scope": "device",
+            "key": "matchFrameRate",
+            "platforms": [
+              "tv"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.0.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.0.help",
+            "control": {
+              "type": "segmented",
+              "default": "auto",
+              "options": [
+                {
+                  "value": "auto",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.0.control.options.0.label"
+                },
+                {
+                  "value": "off",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.0.control.options.1.label"
+                }
+              ]
+            }
+          },
+          {
+            "id": "device.matchFrameRateDesktop",
+            "scope": "device",
+            "key": "matchFrameRate",
+            "platforms": [
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.1.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.1.help",
+            "control": {
+              "type": "segmented",
+              "default": "off",
+              "options": [
+                {
+                  "value": "auto",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.1.control.options.0.label"
+                },
+                {
+                  "value": "off",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.1.control.options.1.label"
+                }
+              ]
+            },
+            "os": [
+              "windows",
+              "macos"
+            ]
+          },
+          {
+            "id": "device.matchDynamicRange",
+            "scope": "device",
+            "key": "matchDynamicRange",
+            "platforms": [
+              "tv",
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.2.label",
+            "control": {
+              "type": "segmented",
+              "default": "auto",
+              "options": [
+                {
+                  "value": "auto",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.2.control.options.0.label"
+                },
+                {
+                  "value": "off",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.2.control.options.1.label"
+                }
+              ]
+            },
+            "os": [
+              "tvos",
+              "androidtv",
+              "firetv",
+              "roku",
+              "webos",
+              "tizen",
+              "windows",
+              "macos"
+            ]
+          },
+          {
+            "id": "device.audioOutput",
+            "scope": "device",
+            "key": "device.audioOutput",
+            "platforms": [
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.3.label",
+            "control": {
+              "type": "select",
+              "default": "system",
+              "options": [],
+              "dynamicOptions": true
+            }
+          },
+          {
+            "id": "device.exclusiveOutput",
+            "scope": "device",
+            "key": "device.exclusiveOutput",
+            "platforms": [
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.4.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.4.help",
+            "control": {
+              "type": "toggle",
+              "default": false
+            },
+            "children": [
+              {
+                "id": "device.sampleRateMatching",
+                "scope": "device",
+                "key": "music.sampleRateMatching",
+                "platforms": [
+                  "desktop"
+                ],
+                "enableWhen": {
+                  "id": "device.exclusiveOutput",
+                  "in": [
+                    true
+                  ]
+                },
+                "label": "next.settingsSpec.account.device.groups.1.rows.4.children.0.label",
+                "help": "next.settingsSpec.account.device.groups.1.rows.4.children.0.help",
+                "control": {
+                  "type": "segmented",
+                  "default": "smart",
+                  "options": [
+                    {
+                      "value": "smart",
+                      "label": "next.settingsSpec.account.device.groups.1.rows.4.children.0.control.options.0.label"
+                    },
+                    {
+                      "value": "strict",
+                      "label": "next.settingsSpec.account.device.groups.1.rows.4.children.0.control.options.1.label"
+                    },
+                    {
+                      "value": "off",
+                      "label": "next.settingsSpec.account.device.groups.1.rows.4.children.0.control.options.2.label"
+                    }
+                  ]
+                },
+                "os": [
+                  "windows",
+                  "linux"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "device.sampleRateMatchingMac",
+            "scope": "device",
+            "key": "music.sampleRateMatching",
+            "platforms": [
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.5.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.5.help",
+            "control": {
+              "type": "segmented",
+              "default": "smart",
+              "options": [
+                {
+                  "value": "smart",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.5.control.options.0.label"
+                },
+                {
+                  "value": "strict",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.5.control.options.1.label"
+                },
+                {
+                  "value": "off",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.5.control.options.2.label"
+                }
+              ]
+            },
+            "os": [
+              "macos"
+            ]
+          },
+          {
+            "id": "device.passthrough",
+            "scope": "device",
+            "key": "passthrough",
+            "platforms": [
+              "tv",
+              "phone",
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.6.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.6.help",
+            "control": {
+              "type": "select",
+              "default": "auto",
+              "options": [
+                {
+                  "value": "auto",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.6.control.options.0.label",
+                  "hint": "next.settingsSpec.account.device.groups.1.rows.6.control.options.0.hint",
+                  "sets": {
+                    "device.passthroughFormats": {
+                      "dd": "auto",
+                      "ddp": "auto",
+                      "truehd": "auto",
+                      "dts": "auto",
+                      "dtshd": "auto",
+                      "dtsx": "auto"
+                    },
+                    "device.passthroughFormatsMac": {
+                      "dd": "auto",
+                      "dts": "auto"
+                    }
+                  }
+                },
+                {
+                  "value": "off",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.6.control.options.1.label",
+                  "hint": "next.settingsSpec.account.device.groups.1.rows.6.control.options.1.hint",
+                  "sets": {
+                    "device.passthroughFormats": {
+                      "dd": "off",
+                      "ddp": "off",
+                      "truehd": "off",
+                      "dts": "off",
+                      "dtshd": "off",
+                      "dtsx": "off"
+                    },
+                    "device.passthroughFormatsMac": {
+                      "dd": "off",
+                      "dts": "off"
+                    }
+                  }
+                },
+                {
+                  "value": "custom",
+                  "label": "next.settingsSpec.account.device.groups.1.rows.6.control.options.2.label",
+                  "hint": "next.settingsSpec.account.device.groups.1.rows.6.control.options.2.hint"
+                }
+              ]
+            },
+            "children": [
+              {
+                "id": "device.receiver",
+                "scope": "device",
+                "platforms": [
+                  "tv",
+                  "phone",
+                  "desktop"
+                ],
+                "enableWhen": {
+                  "id": "device.passthrough",
+                  "in": [
+                    "auto",
+                    "custom"
+                  ]
+                },
+                "label": "next.settingsSpec.account.device.groups.1.rows.6.children.0.label",
+                "control": {
+                  "type": "status"
+                },
+                "os": [
+                  "android",
+                  "androidtv",
+                  "firetv",
+                  "roku",
+                  "webos",
+                  "tizen",
+                  "windows",
+                  "macos",
+                  "linux"
+                ]
+              }
+            ],
+            "os": [
+              "android",
+              "androidtv",
+              "firetv",
+              "roku",
+              "webos",
+              "tizen",
+              "windows",
+              "macos",
+              "linux"
+            ]
+          },
+          {
+            "id": "device.passthroughApple",
+            "scope": "device",
+            "platforms": [
+              "tv",
+              "phone"
+            ],
+            "label": "next.settingsSpec.account.device.groups.1.rows.7.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.7.help",
+            "control": {
+              "type": "readonly"
+            },
+            "os": [
+              "ios",
+              "ipados",
+              "tvos"
+            ]
+          },
+          {
+            "id": "device.lossNotices",
+            "scope": "device",
+            "key": "lossNotices",
+            "label": "next.settingsSpec.account.device.groups.1.rows.8.label",
+            "help": "next.settingsSpec.account.device.groups.1.rows.8.help",
+            "control": {
+              "type": "toggle",
+              "default": true
+            }
+          }
+        ]
+      },
+      {
+        "title": "next.settingsSpec.account.device.groups.2.title",
+        "rows": [
+          {
             "id": "device.remote",
             "scope": "profile",
-            "label": "next.settingsSpec.account.device.groups.1.rows.0.label",
+            "label": "next.settingsSpec.account.device.groups.2.rows.0.label",
             "control": {
               "type": "list",
               "itemAction": {
-                "label": "next.settingsSpec.account.device.groups.1.rows.0.control.itemAction.label",
+                "label": "next.settingsSpec.account.device.groups.2.rows.0.control.itemAction.label",
                 "style": "glass"
               }
             }
@@ -3741,10 +4053,10 @@ export const settingsSpec: readonly SettingsSection[] = [
           {
             "id": "device.server",
             "scope": "device",
-            "label": "next.settingsSpec.account.device.groups.2.rows.0.label",
+            "label": "next.settingsSpec.account.device.groups.3.rows.0.label",
             "control": {
               "type": "link",
-              "label": "next.settingsSpec.account.device.groups.2.rows.0.control.label"
+              "label": "next.settingsSpec.account.device.groups.3.rows.0.control.label"
             }
           }
         ]
@@ -3755,32 +4067,44 @@ export const settingsSpec: readonly SettingsSection[] = [
             "id": "device.downloads",
             "scope": "device",
             "platforms": [
-              "phone"
+              "phone",
+              "desktop"
             ],
-            "label": "next.settingsSpec.account.device.groups.3.rows.0.label",
-            "help": "next.settingsSpec.account.device.groups.3.rows.0.help",
+            "label": "next.settingsSpec.account.device.groups.4.rows.0.label",
             "control": {
               "type": "link",
-              "label": "next.settingsSpec.account.device.groups.3.rows.0.control.label"
+              "label": "next.settingsSpec.account.device.groups.4.rows.0.control.label"
             }
           }
         ]
       },
       {
-        "title": "next.settingsSpec.account.device.groups.4.title",
+        "title": "next.settingsSpec.account.device.groups.5.title",
         "rows": [
           {
             "id": "device.appVersion",
             "scope": "device",
-            "label": "next.settingsSpec.account.device.groups.4.rows.0.label",
+            "label": "next.settingsSpec.account.device.groups.5.rows.0.label",
             "control": {
               "type": "readonly"
             }
           },
           {
+            "id": "device.updates",
+            "scope": "device",
+            "platforms": [
+              "desktop"
+            ],
+            "label": "next.settingsSpec.account.device.groups.5.rows.1.label",
+            "help": "next.settingsSpec.account.device.groups.5.rows.1.help",
+            "control": {
+              "type": "status"
+            }
+          },
+          {
             "id": "device.serverVersion",
             "scope": "device",
-            "label": "next.settingsSpec.account.device.groups.4.rows.1.label",
+            "label": "next.settingsSpec.account.device.groups.5.rows.2.label",
             "control": {
               "type": "readonly"
             }
@@ -3788,10 +4112,10 @@ export const settingsSpec: readonly SettingsSection[] = [
           {
             "id": "device.licenses",
             "scope": "device",
-            "label": "next.settingsSpec.account.device.groups.4.rows.2.label",
+            "label": "next.settingsSpec.account.device.groups.5.rows.3.label",
             "control": {
               "type": "link",
-              "label": "next.settingsSpec.account.device.groups.4.rows.2.control.label"
+              "label": "next.settingsSpec.account.device.groups.5.rows.3.control.label"
             }
           },
           {
@@ -3801,7 +4125,7 @@ export const settingsSpec: readonly SettingsSection[] = [
               "web",
               "phone"
             ],
-            "label": "next.settingsSpec.account.device.groups.4.rows.3.label",
+            "label": "next.settingsSpec.account.device.groups.5.rows.4.label",
             "control": {
               "type": "readonly"
             }
@@ -3809,13 +4133,13 @@ export const settingsSpec: readonly SettingsSection[] = [
           {
             "id": "device.sendReport",
             "scope": "device",
-            "label": "next.settingsSpec.account.device.groups.4.rows.4.label",
-            "help": "next.settingsSpec.account.device.groups.4.rows.4.help",
+            "label": "next.settingsSpec.account.device.groups.5.rows.5.label",
+            "help": "next.settingsSpec.account.device.groups.5.rows.5.help",
             "control": {
               "type": "action",
               "style": "glass",
-              "label": "next.settingsSpec.account.device.groups.4.rows.4.control.label",
-              "confirm": "next.settingsSpec.account.device.groups.4.rows.4.control.confirm"
+              "label": "next.settingsSpec.account.device.groups.5.rows.5.control.label",
+              "confirm": "next.settingsSpec.account.device.groups.5.rows.5.control.confirm"
             }
           }
         ]
@@ -3858,26 +4182,206 @@ export const settingsSpec: readonly SettingsSection[] = [
         },
         {
           "title": "next.settingsSpec.account.device.advanced.groups.1.title",
+          "platforms": [
+            "tv",
+            "phone",
+            "desktop"
+          ],
           "rows": [
             {
-              "id": "device.playerLink",
+              "id": "device.passthroughFormats",
               "scope": "device",
+              "key": "passthroughFormats",
+              "platforms": [
+                "tv",
+                "phone",
+                "desktop"
+              ],
               "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.label",
               "control": {
-                "type": "link",
-                "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.label",
-                "to": "account/quality"
-              }
+                "type": "matrix",
+                "columns": [
+                  {
+                    "value": "auto",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.0.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.0.hint"
+                  },
+                  {
+                    "value": "on",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.1.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.1.hint"
+                  },
+                  {
+                    "value": "off",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.2.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.columns.2.hint"
+                  }
+                ],
+                "items": [
+                  {
+                    "id": "dd",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.0.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "ddp",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.1.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "truehd",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.2.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "dts",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.3.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "dtshd",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.4.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "dtsx",
+                    "label": "next.settingsSpec.account.device.advanced.groups.1.rows.0.control.items.5.label",
+                    "default": "auto"
+                  }
+                ]
+              },
+              "os": [
+                "android",
+                "androidtv",
+                "firetv",
+                "roku",
+                "webos",
+                "tizen",
+                "windows",
+                "linux"
+              ]
             }
           ]
         },
         {
           "title": "next.settingsSpec.account.device.advanced.groups.2.title",
+          "platforms": [
+            "desktop"
+          ],
+          "rows": [
+            {
+              "id": "device.passthroughFormatsMac",
+              "scope": "device",
+              "key": "passthroughFormats",
+              "platforms": [
+                "desktop"
+              ],
+              "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.label",
+              "control": {
+                "type": "matrix",
+                "columns": [
+                  {
+                    "value": "auto",
+                    "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.0.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.0.hint"
+                  },
+                  {
+                    "value": "on",
+                    "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.1.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.1.hint"
+                  },
+                  {
+                    "value": "off",
+                    "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.2.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.columns.2.hint"
+                  }
+                ],
+                "items": [
+                  {
+                    "id": "dd",
+                    "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.items.0.label",
+                    "default": "auto"
+                  },
+                  {
+                    "id": "dts",
+                    "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.control.items.1.label",
+                    "default": "auto"
+                  }
+                ]
+              },
+              "os": [
+                "macos"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "next.settingsSpec.account.device.advanced.groups.3.title",
+          "rows": [
+            {
+              "id": "device.player",
+              "scope": "device",
+              "key": "playerEngine",
+              "platforms": [
+                "phone",
+                "tv"
+              ],
+              "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.label",
+              "control": {
+                "type": "select",
+                "default": "auto",
+                "options": [
+                  {
+                    "value": "auto",
+                    "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.0.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.0.hint"
+                  },
+                  {
+                    "value": "native",
+                    "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.1.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.1.hint"
+                  },
+                  {
+                    "value": "mpv",
+                    "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.2.label",
+                    "hint": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.options.2.hint"
+                  }
+                ]
+              },
+              "os": [
+                "android",
+                "androidtv",
+                "firetv"
+              ]
+            },
+            {
+              "id": "device.playerLink",
+              "scope": "device",
+              "platforms": [
+                "phone",
+                "tv"
+              ],
+              "label": "next.settingsSpec.account.device.advanced.groups.3.rows.1.label",
+              "control": {
+                "type": "link",
+                "label": "next.settingsSpec.account.device.advanced.groups.3.rows.1.control.label",
+                "to": "account/quality"
+              },
+              "os": [
+                "android",
+                "androidtv",
+                "firetv"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "next.settingsSpec.account.device.advanced.groups.4.title",
           "rows": [
             {
               "id": "device.connection",
               "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.2.rows.0.label",
+              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.0.label",
               "control": {
                 "type": "status"
               }
@@ -3885,7 +4389,7 @@ export const settingsSpec: readonly SettingsSection[] = [
             {
               "id": "device.serverAddress",
               "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.2.rows.1.label",
+              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.1.label",
               "control": {
                 "type": "readonly",
                 "mono": true
@@ -3894,91 +4398,53 @@ export const settingsSpec: readonly SettingsSection[] = [
             {
               "id": "device.testConnection",
               "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.2.rows.2.label",
+              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.2.label",
               "control": {
                 "type": "action",
                 "style": "glass",
-                "label": "next.settingsSpec.account.device.advanced.groups.2.rows.2.control.label"
-              }
-            }
-          ]
-        },
-        {
-          "title": "next.settingsSpec.account.device.advanced.groups.3.title",
-          "rows": [
-            {
-              "id": "device.clearCache",
-              "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.label",
-              "control": {
-                "type": "action",
-                "style": "glass",
-                "label": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.label",
-                "confirm": "next.settingsSpec.account.device.advanced.groups.3.rows.0.control.confirm"
-              }
-            }
-          ]
-        },
-        {
-          "title": "next.settingsSpec.account.device.advanced.groups.4.title",
-          "rows": [
-            {
-              "id": "device.logView",
-              "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.0.label",
-              "control": {
-                "type": "action",
-                "style": "glass",
-                "label": "next.settingsSpec.account.device.advanced.groups.4.rows.0.control.label"
-              }
-            },
-            {
-              "id": "device.logClear",
-              "scope": "device",
-              "label": "next.settingsSpec.account.device.advanced.groups.4.rows.1.label",
-              "control": {
-                "type": "action",
-                "style": "glass",
-                "label": "next.settingsSpec.account.device.advanced.groups.4.rows.1.control.label",
-                "confirm": "next.settingsSpec.account.device.advanced.groups.4.rows.1.control.confirm"
+                "label": "next.settingsSpec.account.device.advanced.groups.4.rows.2.control.label"
               }
             }
           ]
         },
         {
           "title": "next.settingsSpec.account.device.advanced.groups.5.title",
-          "platforms": [
-            "tv"
-          ],
           "rows": [
             {
-              "id": "device.matchFrameRate",
+              "id": "device.clearCache",
               "scope": "device",
-              "key": "matchFrameRate",
-              "platforms": [
-                "tv"
-              ],
               "label": "next.settingsSpec.account.device.advanced.groups.5.rows.0.label",
-              "help": "next.settingsSpec.account.device.advanced.groups.5.rows.0.help",
               "control": {
-                "type": "select",
-                "default": "off",
-                "options": [
-                  {
-                    "value": "off",
-                    "label": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.options.0.label"
-                  },
-                  {
-                    "value": "rate",
-                    "label": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.options.1.label",
-                    "hint": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.options.1.hint"
-                  },
-                  {
-                    "value": "rate_hdr",
-                    "label": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.options.2.label",
-                    "hint": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.options.2.hint"
-                  }
-                ]
+                "type": "action",
+                "style": "glass",
+                "label": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.label",
+                "confirm": "next.settingsSpec.account.device.advanced.groups.5.rows.0.control.confirm"
+              }
+            }
+          ]
+        },
+        {
+          "title": "next.settingsSpec.account.device.advanced.groups.6.title",
+          "rows": [
+            {
+              "id": "device.logView",
+              "scope": "device",
+              "label": "next.settingsSpec.account.device.advanced.groups.6.rows.0.label",
+              "control": {
+                "type": "action",
+                "style": "glass",
+                "label": "next.settingsSpec.account.device.advanced.groups.6.rows.0.control.label"
+              }
+            },
+            {
+              "id": "device.logClear",
+              "scope": "device",
+              "label": "next.settingsSpec.account.device.advanced.groups.6.rows.1.label",
+              "control": {
+                "type": "action",
+                "style": "glass",
+                "label": "next.settingsSpec.account.device.advanced.groups.6.rows.1.control.label",
+                "confirm": "next.settingsSpec.account.device.advanced.groups.6.rows.1.control.confirm"
               }
             }
           ]
@@ -3991,7 +4457,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "general",
     "navGroup": "The server",
-    "icon": "i-server",
+    "icon": "server",
     "kind": "settings",
     "title": "next.settingsSpec.server.general.title",
     "groups": [
@@ -4631,7 +5097,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "dashboard",
     "navGroup": "Status",
-    "icon": "i-pulse",
+    "icon": "pulse",
     "kind": "dashboard",
     "title": "next.settingsSpec.server.dashboard.title",
     "groups": [],
@@ -4641,7 +5107,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "history",
     "navGroup": "Status",
-    "icon": "i-clock",
+    "icon": "clock",
     "kind": "page",
     "title": "next.settingsSpec.server.history.title",
     "groups": [
@@ -5704,6 +6170,34 @@ export const settingsSpec: readonly SettingsSection[] = [
                       "label": "next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.4.control.label",
                       "to": "server/segments"
                     }
+                  },
+                  {
+                    "id": "libraries.sonicAnalysis",
+                    "scope": "server",
+                    "key": "library.sonic_analysis",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.5.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.5.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": true
+                    },
+                    "children": [
+                      {
+                        "id": "libraries.sonicStatus",
+                        "scope": "server",
+                        "enableWhen": {
+                          "id": "libraries.sonicAnalysis",
+                          "in": [
+                            true
+                          ]
+                        },
+                        "noChanged": true,
+                        "label": "next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.5.children.0.label",
+                        "control": {
+                          "type": "status"
+                        }
+                      }
+                    ]
                   }
                 ]
               },
@@ -12441,6 +12935,26 @@ export const settingsSpec: readonly SettingsSection[] = [
                 "control": {
                   "type": "status"
                 }
+              },
+              {
+                "id": "remote.identityCode",
+                "scope": "server",
+                "shapes": [
+                  "local-account"
+                ],
+                "enableWhen": {
+                  "id": "remote.ownCertificate",
+                  "in": [
+                    true
+                  ]
+                },
+                "noChanged": true,
+                "label": "next.settingsSpec.server.remote.groups.1.rows.0.children.4.label",
+                "help": "next.settingsSpec.server.remote.groups.1.rows.0.children.4.help",
+                "control": {
+                  "type": "readonly",
+                  "mono": true
+                }
               }
             ]
           }
@@ -13155,7 +13669,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "streaming",
     "navGroup": "The server",
-    "icon": "i-swap",
+    "icon": "swap",
     "kind": "settings",
     "title": "next.settingsSpec.server.streaming.title",
     "groups": [
@@ -13360,36 +13874,28 @@ export const settingsSpec: readonly SettingsSection[] = [
             }
           },
           {
-            "id": "streaming.hardwareStatus",
-            "scope": "server",
-            "label": "next.settingsSpec.server.streaming.groups.2.rows.1.label",
-            "control": {
-              "type": "status"
-            }
-          },
-          {
             "id": "streaming.transcodeLocation",
             "scope": "server",
             "key": "streaming.transcode_location",
-            "label": "next.settingsSpec.server.streaming.groups.2.rows.2.label",
-            "help": "next.settingsSpec.server.streaming.groups.2.rows.2.help",
+            "label": "next.settingsSpec.server.streaming.groups.2.rows.1.label",
+            "help": "next.settingsSpec.server.streaming.groups.2.rows.1.help",
             "control": {
               "type": "select",
               "default": "separate",
               "options": [
                 {
                   "value": "separate",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.2.control.options.0.label",
-                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.2.control.options.0.hint"
+                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.label",
+                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.0.hint"
                 },
                 {
                   "value": "memory",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.2.control.options.1.label",
-                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.2.control.options.1.hint"
+                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.label",
+                  "hint": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.1.hint"
                 },
                 {
                   "value": "folder",
-                  "label": "next.settingsSpec.server.streaming.groups.2.rows.2.control.options.2.label"
+                  "label": "next.settingsSpec.server.streaming.groups.2.rows.1.control.options.2.label"
                 }
               ]
             },
@@ -13404,8 +13910,8 @@ export const settingsSpec: readonly SettingsSection[] = [
                     "folder"
                   ]
                 },
-                "label": "next.settingsSpec.server.streaming.groups.2.rows.2.children.0.label",
-                "help": "next.settingsSpec.server.streaming.groups.2.rows.2.children.0.help",
+                "label": "next.settingsSpec.server.streaming.groups.2.rows.1.children.0.label",
+                "help": "next.settingsSpec.server.streaming.groups.2.rows.1.children.0.help",
                 "control": {
                   "type": "folder"
                 }
@@ -13415,9 +13921,90 @@ export const settingsSpec: readonly SettingsSection[] = [
           {
             "id": "streaming.transcodeStatus",
             "scope": "server",
-            "label": "next.settingsSpec.server.streaming.groups.2.rows.3.label",
+            "label": "next.settingsSpec.server.streaming.groups.2.rows.2.label",
             "control": {
               "type": "status"
+            }
+          }
+        ]
+      },
+      {
+        "title": "next.settingsSpec.server.streaming.groups.3.title",
+        "rows": [
+          {
+            "id": "streaming.hwError",
+            "scope": "server",
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.0.label",
+            "control": {
+              "type": "status"
+            }
+          },
+          {
+            "id": "streaming.hwDevices",
+            "scope": "server",
+            "noChanged": true,
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.1.label",
+            "control": {
+              "type": "list"
+            }
+          },
+          {
+            "id": "streaming.hwLimit",
+            "scope": "server",
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.2.label",
+            "control": {
+              "type": "status"
+            }
+          },
+          {
+            "id": "streaming.hwFormats",
+            "scope": "server",
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.3.label",
+            "control": {
+              "type": "table",
+              "style": "grid",
+              "noun": [
+                "next.settingsSpec.server.streaming.groups.3.rows.3.control.noun.0",
+                "next.settingsSpec.server.streaming.groups.3.rows.3.control.noun.1"
+              ],
+              "filters": [],
+              "columns": [
+                {
+                  "id": "format",
+                  "label": "next.settingsSpec.server.streaming.groups.3.rows.3.control.columns.0.label",
+                  "kind": "text",
+                  "width": "34%"
+                },
+                {
+                  "id": "decode",
+                  "label": "next.settingsSpec.server.streaming.groups.3.rows.3.control.columns.1.label",
+                  "kind": "badge",
+                  "width": "33%"
+                },
+                {
+                  "id": "encode",
+                  "label": "next.settingsSpec.server.streaming.groups.3.rows.3.control.columns.2.label",
+                  "kind": "badge"
+                }
+              ]
+            }
+          },
+          {
+            "id": "streaming.hwToneMapping",
+            "scope": "server",
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.4.label",
+            "control": {
+              "type": "status"
+            }
+          },
+          {
+            "id": "streaming.hwTest",
+            "scope": "server",
+            "label": "next.settingsSpec.server.streaming.groups.3.rows.5.label",
+            "control": {
+              "type": "action",
+              "style": "glass",
+              "label": "next.settingsSpec.server.streaming.groups.3.rows.5.control.label"
             }
           }
         ]
@@ -13431,7 +14018,7 @@ export const settingsSpec: readonly SettingsSection[] = [
             {
               "id": "streaming.hardware",
               "scope": "server",
-              "key": "streaming.hardware",
+              "key": "streaming.hardware_device",
               "enableWhen": {
                 "id": "streaming.allowConversion",
                 "in": [
@@ -13439,85 +14026,35 @@ export const settingsSpec: readonly SettingsSection[] = [
                 ]
               },
               "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.label",
-              "help": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.help",
               "control": {
                 "type": "select",
                 "default": "auto",
                 "options": [
                   {
                     "value": "auto",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.0.label"
+                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.0.label",
+                    "hint": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.0.hint"
                   },
                   {
                     "value": "software",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.1.label",
-                    "hint": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.1.hint"
-                  },
-                  {
-                    "value": "qsv",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.2.label"
-                  },
-                  {
-                    "value": "vaapi",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.3.label",
-                    "hint": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.3.hint"
-                  },
-                  {
-                    "value": "nvenc",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.4.label"
-                  },
-                  {
-                    "value": "amf",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.5.label"
-                  },
-                  {
-                    "value": "videotoolbox",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.6.label",
-                    "hint": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.6.hint"
+                    "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.control.options.1.label"
                   }
-                ]
+                ],
+                "dynamicOptions": true
               },
               "children": [
-                {
-                  "id": "streaming.hardwareDevice",
-                  "scope": "server",
-                  "key": "streaming.hardware_device",
-                  "enableWhen": {
-                    "id": "streaming.hardware",
-                    "in": [
-                      "auto",
-                      "qsv",
-                      "vaapi",
-                      "nvenc",
-                      "amf",
-                      "videotoolbox"
-                    ]
-                  },
-                  "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.0.label",
-                  "help": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.0.help",
-                  "control": {
-                    "type": "text",
-                    "secret": false,
-                    "placeholder": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.0.control.placeholder"
-                  }
-                },
                 {
                   "id": "streaming.hardwareDecode",
                   "scope": "server",
                   "key": "streaming.hardware_decode",
                   "enableWhen": {
                     "id": "streaming.hardware",
-                    "in": [
-                      "auto",
-                      "qsv",
-                      "vaapi",
-                      "nvenc",
-                      "amf",
-                      "videotoolbox"
+                    "notIn": [
+                      "software"
                     ]
                   },
-                  "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.1.label",
-                  "help": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.1.help",
+                  "label": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.0.label",
+                  "help": "next.settingsSpec.server.streaming.advanced.groups.0.rows.0.children.0.help",
                   "control": {
                     "type": "toggle",
                     "default": true
@@ -13778,24 +14315,20 @@ export const settingsSpec: readonly SettingsSection[] = [
               "key": "streaming.max_hardware_conversions",
               "enableWhen": {
                 "id": "streaming.hardware",
-                "in": [
-                  "auto",
-                  "qsv",
-                  "vaapi",
-                  "nvenc",
-                  "amf",
-                  "videotoolbox"
+                "notIn": [
+                  "software"
                 ]
               },
               "label": "next.settingsSpec.server.streaming.advanced.groups.3.rows.1.label",
               "help": "next.settingsSpec.server.streaming.advanced.groups.3.rows.1.help",
               "control": {
                 "type": "select",
-                "default": "unlimited",
+                "default": "auto",
                 "options": [
                   {
-                    "value": "unlimited",
-                    "label": "next.settingsSpec.server.streaming.advanced.groups.3.rows.1.control.options.0.label"
+                    "value": "auto",
+                    "label": "next.settingsSpec.server.streaming.advanced.groups.3.rows.1.control.options.0.label",
+                    "hint": "next.settingsSpec.server.streaming.advanced.groups.3.rows.1.control.options.0.hint"
                   },
                   {
                     "value": "1",
@@ -14219,7 +14752,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "storage",
     "navGroup": "The server",
-    "icon": "i-storage",
+    "icon": "storage",
     "kind": "settings",
     "title": "next.settingsSpec.server.storage.title",
     "groups": [
@@ -15195,7 +15728,7 @@ export const settingsSpec: readonly SettingsSection[] = [
     "scope": "server",
     "id": "troubleshooting",
     "navGroup": "The server",
-    "icon": "i-wrench",
+    "icon": "wrench",
     "kind": "settings",
     "title": "next.settingsSpec.server.troubleshooting.title",
     "groups": [
@@ -15556,17 +16089,17 @@ export const settingsSpec: readonly SettingsSection[] = [
   }
 ];
 
-export type SettingsRowLocation = Readonly<{section: SettingsSection; row: SettingsRow; group: SettingsGroup; advanced: boolean; panelId?: string; tabId?: string}>;
+export type SettingsRowLocation = Readonly<{section: SettingsSection; row: SettingsRow; group: SettingsGroup; advanced: boolean; ancestors: readonly SettingsRow[]; panelId?: string; tabId?: string}>;
 /** One index for rendering, links and search; panel rows never leak into page groups. */
 export function indexSettingsSpec(sections: readonly SettingsSection[] = settingsSpec): ReadonlyMap<string, SettingsRowLocation> {
  const result = new Map<string, SettingsRowLocation>();
  for (const section of sections) {
   const visit = (holder: SettingsHolder, panelId?: string, tabId?: string, advanced = false) => {
-   const rows = (items: readonly SettingsRow[], group: SettingsGroup, isAdvanced: boolean) => {
+   const rows = (items: readonly SettingsRow[], group: SettingsGroup, isAdvanced: boolean, ancestors: readonly SettingsRow[] = []) => {
     for (const row of items) {
      if (result.has(row.id)) throw new Error(`Duplicate Settings row: ${row.id}`);
-     result.set(row.id, {section, row, group, advanced: isAdvanced, ...(panelId ? {panelId} : {}), ...(tabId ? {tabId} : {})});
-     rows(row.children ?? [], group, isAdvanced);
+     result.set(row.id, {section, row, group, advanced: isAdvanced, ancestors, ...(panelId ? {panelId} : {}), ...(tabId ? {tabId} : {})});
+     rows(row.children ?? [], group, isAdvanced, [...ancestors, row]);
     }
    };
    for (const group of holder.groups ?? []) rows(group.rows, group, advanced);
