@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Shelf, type ShelfProps} from '../../kit/layout';
 import {Skeleton} from '../../kit/states';
+import {Icon} from '../../kit/Icon';
 import styles from './browse.module.css';
 
 type Slot<T> = Readonly<{kind: 'item'; value: T}> | Readonly<{kind: 'pending'}>;
@@ -30,7 +31,9 @@ export function PagedShelf<T>({items, getKey, renderItem, onItemFocus, onVisible
     requested.current = continuation;
     onMore();
   }, [onVisibleRange, visible, hasMore, items.length, continuation, onMore]);
-  return <div ref={root}><Shelf {...props} items={slots} itemWidth={cardWidth} getKey={slot => slot.kind === 'item' ? JSON.stringify(['entry', getKey(slot.value)]) : 'pending-page'}
+  const phoneLink = props.platform?.startsWith('phone') && props.onSeeAll;
+  return <div ref={root}><Shelf {...props} heading={phoneLink ? <button type="button" className={styles.shelfHeading} onClick={props.onSeeAll}>{props.heading}<Icon name="i-right" size={18}/></button> : props.heading}
+    onSeeAll={phoneLink ? undefined : props.onSeeAll} items={slots} itemWidth={cardWidth} getKey={slot => slot.kind === 'item' ? JSON.stringify(['entry', getKey(slot.value)]) : 'pending-page'}
     onVisibleRange={visibleRange} onItemFocus={(slot, index) => { if (slot.kind === 'item') onItemFocus?.(slot.value, index); }}
     renderItem={(slot, context) => slot.kind === 'item' ? renderItem(slot.value, {...context, key: getKey(slot.value)}) :
       <div className={styles.pendingCard} data-row-pending aria-busy="true"><Skeleton width={cardWidth} height={cardWidth / artworkRatio}/></div>} /></div>;

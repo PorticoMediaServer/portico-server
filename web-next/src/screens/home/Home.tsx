@@ -176,8 +176,10 @@ function HomeRowView(props: HomeRowProps) {
 }
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
-  const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title), subtitle: serverTextLabel(defaultI18n, row.subtitleText), platform,
-    onSeeAll: row.seeAll ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
+  const phone = platform !== 'desktop';
+  const header = {heading: serverTextLabel(defaultI18n, row.titleText, row.title),
+    subtitle: !phone || ['on_now', 'listen_next', 'continue_listening'].includes(row.id) ? serverTextLabel(defaultI18n, row.subtitleText) : undefined, platform,
+    onSeeAll: row.seeAll && (!phone || !['continue', 'continue_books', 'community_watching'].includes(row.id)) ? () => bindings.effects.openSeeAll(row.seeAll!) : undefined};
   const wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
   const ranked = row.id === 'community_watching' && !!row.period;
   const cardWidth = ranked ? platform === 'desktop' ? 262 : 186 : wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
