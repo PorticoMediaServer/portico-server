@@ -81,8 +81,8 @@ export type CustomCertificateStatus=Readonly<{serving:boolean;state:'none'|'read
 export type ConnectivityTLS=Readonly<{configured:boolean;state?:string;errorCode?:string;dnsName?:string;issuer?:string;
  notAfter?:string;tlsReady:boolean;publiclyTrusted:boolean;listenerBound:boolean;listenPort:number;routeUrl?:string;reachability?:string;customCertificate?:CustomCertificateStatus}>;
 export type ConnectivityDiscovery=Readonly<{enabled:boolean;supported:boolean;state:DiscoveryState;detail?:string;serviceType?:string}>;
-export type ConnectionDocument=Readonly<{secure:boolean;remote:boolean;plainHttpOutsideHome:boolean;clientAddress:string;accessUrls:readonly string[]}>;
-export type ConnectivityStatus=Readonly<{connection:ConnectionDocument;observedAt:string;policy:ConnectivityPolicy;tls:ConnectivityTLS;discovery:ConnectivityDiscovery;
+export type ConnectionDocument=Readonly<{secure:boolean;remote:boolean;plainHttpOutsideHome:boolean;clientAddress:string;accessUrls:readonly string[];managedHttpsOrigin?:string}>;
+export type ConnectivityStatus=Readonly<{connection:ConnectionDocument;identityCode?:string;localUrl?:string;observedAt:string;policy:ConnectivityPolicy;tls:ConnectivityTLS;discovery:ConnectivityDiscovery;
  addresses:readonly ConnectivityAddress[];interfaces:readonly ConnectivityInterface[];warnings:readonly string[];omittedAddresses:number;omittedInterfaces:number}>;
 export type AdministrationPage<T>=Readonly<{limit:number;nextCursor:string;items:readonly T[]}>;
 
@@ -306,7 +306,7 @@ export function parseConnectivityStatus(raw:unknown):ConnectivityStatus{
   const customCertificate=obj(tls.customCertificate)?keepReadable('server-administration','connectivity.customCertificate',[tls.customCertificate],entry=>parseCustomCertificate(entry as Record<string,unknown>))[0]:undefined;
   // What the server says about this very connection is only shown: when it cannot be read, nothing is claimed about it.
   const connection=keepReadable('server-administration','connectivity.connection',[raw.connection],parseConnectionDocument)[0]??NO_CONNECTION_FACTS;
- return Object.freeze({connection,observedAt:when(raw.observedAt),policy:parseConnectivityPolicy(raw.policy),
+ return Object.freeze({connection,...(typeof raw.identityCode==='string'&&/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}(-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}){2}$/.test(raw.identityCode)?{identityCode:raw.identityCode}:{}),...(localHTTPOrigin(raw.localUrl)?{localUrl:raw.localUrl as string}:{}),observedAt:when(raw.observedAt),policy:parseConnectivityPolicy(raw.policy),
   tls:Object.freeze({configured:bool(tls.configured??false),...(tls.state?{state:str(tls.state,64)}:{}),
    ...(tls.errorCode?{errorCode:str(tls.errorCode,64)}:{}),...(tls.dnsName?{dnsName:str(tls.dnsName,253)}:{}),
    ...(tls.issuer?{issuer:str(tls.issuer,253)}:{}),notAfter:optionalWhen(tls.notAfter),
@@ -359,10 +359,18 @@ const NO_CONNECTION_FACTS:ConnectionDocument=Object.freeze({secure:false,remote:
  * an advertised address that cannot be read is left out alone. Plain HTTP outside the home
  * networks is never claimed for a connection the server calls secure. The bound of 16 addresses is exact.
  */
+function managedHTTPSOrigin(raw:unknown):raw is string {
+ if(typeof raw!=='string'||raw.length>300||/[\x00-\x20\\]/.test(raw))return false;
+ try { const u=new URL(raw);return u.protocol==='https:'&&!u.username&&!u.password&&u.pathname==='/'&&!u.search&&!u.hash&&(raw===u.origin||!u.port&&raw===u.origin+':443'); } catch { return false; }
+}
+function localHTTPOrigin(raw:unknown):raw is string {
+ if(typeof raw!=='string'||raw.length>128)return false;
+ try { const u=new URL(raw);return u.protocol==='http:'&&u.hostname==='localhost'&&(!u.port||Number(u.port)>0)&&!u.username&&!u.password&&u.pathname==='/'&&!u.search&&!u.hash&&raw===u.origin; } catch { return false; }
+}
 export function parseConnectionDocument(raw:unknown):ConnectionDocument {
  if(!obj(raw))return invalid();
  const secure=raw.secure===true;
  const address=typeof raw.clientAddress==='string'&&raw.clientAddress.length<=128&&!/[\x00-\x1f]/.test(raw.clientAddress)?raw.clientAddress:'';
  const offered=raw.accessUrls===undefined||raw.accessUrls===null?[]:raw.accessUrls;if(!Array.isArray(offered)||offered.length>16)return invalid();
- return Object.freeze({secure,remote:raw.remote===true,plainHttpOutsideHome:raw.plainHttpOutsideHome===true&&!secure,clientAddress:address,accessUrls:Object.freeze(keepReadable('server-administration','connection.accessUrls',offered,x=>typeof x==='string'&&x.length>0&&x.length<=300&&!/[\x00-\x1f]/.test(x)?x:undefined))});
+ return Object.freeze({secure,remote:raw.remote===true,plainHttpOutsideHome:raw.plainHttpOutsideHome===true&&!secure,clientAddress:address,...(managedHTTPSOrigin(raw.managedHttpsOrigin)?{managedHttpsOrigin:raw.managedHttpsOrigin}:{}),accessUrls:Object.freeze(keepReadable('server-administration','connection.accessUrls',offered,x=>typeof x==='string'&&x.length>0&&x.length<=300&&!/[\x00-\x1f]/.test(x)?x:undefined))});
 }

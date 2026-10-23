@@ -2,14 +2,16 @@ import type {InventorySource,SourceSettings} from '../library-inventory.ts';
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
 import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
 import {validatePreferencePatch,type PreferenceSnapshot,type PreferenceScope,type PreferenceValue} from '../preferences.ts';
+import type {ConnectivityStatus} from '../server-administration.ts';
 import type {ReadingPreferences} from '../preference-effects.ts';
 
 export type SettingsBindingForm='runtime'|'connectivity'|'connectivityStatus'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
 export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scope?:PreferenceScope;readOnly?:boolean;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule'|'video-quality-choice'|'inherited-watched-threshold'|'surround'|'player-engine'|'tv-support'|'boolean';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
-export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
+export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;connectivityStatus?:ConnectivityStatus;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>;deviceDefaults?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
 const bindings:Readonly<Record<string,SettingsBinding>>={
+ 'remote.identityCode':{form:'connectivityStatus',key:'identityCode',readOnly:true},
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
  'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},
  'audioSubtitles.surround':{form:'device',key:'forceStereo',codec:'surround'},
@@ -200,6 +202,11 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
  return binding.codec==='number-choice'?String(v):v;
 }
 export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBindingSources,rowId?:string):SettingsBindingValue|undefined{
+ if(binding.form==='connectivityStatus'){
+  if(binding.key!=='identityCode'||!binding.readOnly)return undefined;
+  const value=sources.connectivityStatus?.identityCode;
+  return value===undefined?undefined:{current:value,effective:value,default:undefined,source:'snapshot',configOnly:false};
+ }
  if(binding.fields){
   const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key,scope:binding.scope},sources)] as const);
   if(values.some(([,value])=>!value))return undefined;

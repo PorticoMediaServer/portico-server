@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networkpolicy"
 	"strconv"
@@ -105,6 +107,8 @@ type ConnectionDocument struct {
 	PlainHTTPOutsideHome bool     `json:"plainHttpOutsideHome"`
 	ClientAddress        string   `json:"clientAddress"`
 	AccessURLs           []string `json:"accessUrls"`
+	// Observation only: this is never a registered sign-in or installation grant.
+	ManagedHTTPSOrigin string `json:"managedHttpsOrigin,omitempty"`
 }
 
 func (d Dependencies) connectionDocument(r *http.Request) ConnectionDocument {
@@ -129,12 +133,17 @@ func (d Dependencies) connectionDocument(r *http.Request) ConnectionDocument {
 			}
 		}
 	}
+	if origin, err := d.Networking.CurrentManagedHTTPS(r.Context()); err == nil {
+		out.ManagedHTTPSOrigin = origin
+	}
 	return out
 }
 
 type ConnectivityStatusDocument struct {
 	connectivity.Status
-	Connection ConnectionDocument `json:"connection"`
+	Connection   ConnectionDocument `json:"connection"`
+	IdentityCode string             `json:"identityCode,omitempty"`
+	LocalURL     string             `json:"localUrl,omitempty"`
 }
 
 func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
@@ -170,7 +179,11 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 			return ConnectivityStatusDocument{}, connectionPolicyError(err)
 		}
 		reporter := connectivity.Reporter{Advertiser: d.Access.Advertiser, Certificates: d.certificateStatus(), Custom: d.customCertificateStatus()}
-		return ConnectivityStatusDocument{Status: reporter.Report(ctx, connectivity.ProjectPolicy(document)), Connection: d.connectionDocument(r)}, nil
+		code, err := d.localIdentityCode(ctx)
+		if err != nil {
+			return ConnectivityStatusDocument{}, err
+		}
+		return ConnectivityStatusDocument{Status: reporter.Report(ctx, connectivity.ProjectPolicy(document)), Connection: d.connectionDocument(r), IdentityCode: code, LocalURL: d.LocalHTTPURL}, nil
 	}})
 }
 
@@ -239,4 +252,26 @@ func connectionPolicyError(err error) error {
 		return &apierror.Error{Code: "invalid_request"}
 	}
 	return foundationAdministrationError(err)
+}
+
+// The code follows the current canonical key and sign-in kind in one snapshot.
+// It has no setting, cache, file override, or coupling to own-address policy.
+func (d Dependencies) localIdentityCode(ctx context.Context) (string, error) {
+	if d.DB == nil {
+		return "", nil
+	}
+	tx, release, err := dbwork.BeginRead(ctx, d.DB)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	kind, err := identity.SignInKindTx(ctx, tx)
+	if err != nil || kind != identity.SignInLocal {
+		return "", err
+	}
+	code, err := networking.IdentityCodeTx(ctx, tx)
+	if errors.Is(err, networking.ErrStale) || errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return code, err
 }
