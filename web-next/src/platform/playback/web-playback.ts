@@ -164,6 +164,10 @@ export class PlayerSlot implements MediaPlayer {
   selectSidecarSubtitle(trackId: string | null): void { this.real?.selectSidecarSubtitle(trackId); }
   observe(): PlayerObservation {
     if (this.real && !this.held && this.loaded) return this.real.observe();
+    if (this.real && !this.held && this.source && 'kind' in this.source && this.localReceipt) {
+      const actual = this.real.observe();
+      if (actual.generation === this.source.generation && actual.state === 'error') return actual;
+    }
     return {generation: this.source?.generation ?? 0, state: 'idle', positionMs: this.source?.startPositionMs ?? 0, rate: this.rate};
   }
   onEvent(listener: (event: PlayerEvent) => void): () => void {

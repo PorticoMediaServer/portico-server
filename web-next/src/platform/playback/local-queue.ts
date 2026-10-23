@@ -1,4 +1,4 @@
-import {parseDownloadTitle, type DownloadTitle} from '@core/downloads.ts';
+import type {DownloadTitle} from '@core/downloads.ts';
 import type {PlayerEvent, PlayerObservation} from '@core/playback-v1/port.ts';
 import {localPlayerSource, localPlayerLoadReceipt, type LocalPlayerLoadContext} from '@core/playback-v1/local-port.ts';
 import {localPlaybackFence, localPlaybackScope, sameLocalScope, sameFence, type LocalPlaybackScope, type LocalPlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -16,6 +16,21 @@ export type WebLocalQueueSnapshot = Readonly<{
 type Port = Pick<PlayerSlot, 'canLoadLocal' | 'loadLocal' | 'loaded' | 'settling' | 'observe' | 'onEvent' | 'play' | 'pause' | 'seek' | 'unload'>;
 function unavailable(): never {throw new Error('local_playback_unavailable');}
 const id = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+/** This is an already parsed app model, not GET/downloads wire units. Preserve its actual
+ * seconds and approved metadata only; never pass it back through a millisecond wire parser. */
+function captureTitle(value: DownloadTitle): DownloadTitle {
+  if (!value || !['song', 'track', 'episode', 'movie', 'extra', 'audiobook_file'].includes(value.kind)
+    || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 1024
+    || !Number.isSafeInteger(value.year) || value.year < 0 || !Number.isFinite(value.durationSeconds) || value.durationSeconds < 0
+    || typeof value.onServer !== 'boolean') unavailable();
+  for (const field of ['parentTitle', 'groupTitle', 'artist'] as const) if (typeof value[field] !== 'string' || value[field].length > 1024) unavailable();
+  for (const field of ['parentId', 'groupId'] as const) if (value[field] !== '' && !id(value[field])) unavailable();
+  for (const field of ['groupNumber', 'number'] as const) if (value[field] !== null && (!Number.isSafeInteger(value[field]) || value[field]! < 0)) unavailable();
+  return Object.freeze({kind: value.kind, title: value.title, year: value.year, durationSeconds: value.durationSeconds,
+    parentId: value.parentId, parentTitle: value.parentTitle, groupId: value.groupId, groupTitle: value.groupTitle,
+    groupNumber: value.groupNumber, number: value.number, artist: value.artist, onServer: value.onServer});
+}
+
 
 /** The app has verified the complete group before handing this ordered preparation over.
  * The runtime preserves that order; each native load rechecks its member and receipt again. */
@@ -26,8 +41,8 @@ export function captureLocalQueue(value: WebLocalQueuePreparation, scope: LocalP
   const items = value.items.map(row => {
     if (!row || ![row.id, row.itemId, row.localSourceId].every(id) || !Number.isSafeInteger(row.revision) || row.revision < 0
       || !Number.isSafeInteger(row.durationMs) || row.durationMs < 0 || entries.has(row.id) || sources.has(row.localSourceId)) unavailable();
-    const title = parseDownloadTitle(row.title);
-    if (Math.round(title.durationSeconds * 1000) !== row.durationMs || !['song', 'track', 'episode', 'movie', 'extra', 'audiobook_file'].includes(title.kind)) unavailable();
+    const title = captureTitle(row.title);
+    if (Math.round(title.durationSeconds * 1000) !== row.durationMs) unavailable();
     entries.add(row.id);sources.add(row.localSourceId);
     return Object.freeze({id: row.id, revision: row.revision, itemId: row.itemId, title: Object.freeze({...title}), durationMs: row.durationMs, localSourceId: row.localSourceId});
   });
@@ -83,9 +98,9 @@ export class WebLocalQueue {
   }
   private read(observation: PlayerObservation) {
     const fence = this.snapshot.fence;
-    if (!this.current() || this.moving || !fence || observation.generation !== fence.generation || this.options.port.loaded !== fence.generation
+    if (!this.current() || this.moving || !fence || observation.generation !== fence.generation || observation.state !== 'error' && this.options.port.loaded !== fence.generation
       || !Number.isFinite(observation.positionMs) || observation.positionMs < 0 || !Number.isFinite(observation.rate) || observation.rate <= 0) return;
-    this.publish({observation: Object.freeze({...observation}), phase: observation.state === 'error' ? 'error' : observation.state === 'ended' ? 'ended' : 'ready'});
+    this.publish({observation: Object.freeze({...observation}), phase: observation.state === 'error' ? 'error' : observation.state === 'ended' ? 'ended' : 'ready', problem: observation.state === 'error' ? 'local_playback_failed' : undefined});
   }
   private event(event: PlayerEvent) {
     this.read(event.observation);
