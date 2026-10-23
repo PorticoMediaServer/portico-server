@@ -29,9 +29,15 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`); err != nil {
+	secret, err := ident.BrowserSetupToken(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
+	setup, err := ident.SetupWithOptions(context.Background(), identity.SetupOptions{SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Fixture"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := setup.Envelope
 	c := catalogtest.New(t, db)
 	a := c.Library("a", "A", "movie", "/a")
 	b := c.Library("b", "B", "movie", "/b")
@@ -54,10 +60,6 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader, err := tl6IssueHostedFixture(t, db, ident, "member", "reader", "member")
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner, err := ident.Issue("owner", "owner-profile", "local", "owner", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

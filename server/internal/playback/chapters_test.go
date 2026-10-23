@@ -78,7 +78,7 @@ func TestRealCurrentSourceChaptersAudioAndVideo(t *testing.T) {
 			})
 			cat.Drain()
 			item := entity.Public
-			_, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','profile',1)`)
+			_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -167,6 +167,7 @@ func TestChapterPagingUnavailableAndCurrentGeneration(t *testing.T) {
 	}
 	tx.Commit()
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "account", ProfileID: "profile"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	s := New(db)
 	session, e := s.Create(p, item, "automatic", "one")
 	if e != nil {

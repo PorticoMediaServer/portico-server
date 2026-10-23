@@ -1,8 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {browseNameId, sortDirectionKind, toolbarModel} from '../src/presentation/browse-toolbar.ts';
+import {browseNameId, decadePresets, orderFilterValues, sortDirectionKind, toolbarModel} from '../src/presentation/browse-toolbar.ts';
 import {defaultI18n} from '../../i18n/src/index.ts';
-import type {BrowseCapabilities} from '../src/browse.ts';
+import type {BrowseCapabilities, BrowseFieldCapability} from '../src/browse.ts';
+
+test('expanded Year values follow the drawn oldest-to-newest order without changing counts or other facets', () => {
+  const year: BrowseFieldCapability = {id: 'year', labelKey: 'browse.field.year', type: 'number', operators: ['in'], controlHint: 'facet-multi-select', complexity: 'quick', cost: 'indexed', applicableKinds: ['movie']};
+  const values = Object.freeze([2020, 1980, 2000, 1950, 2010, 1970, 1990].map((value, count) => Object.freeze({value: String(value), count, countIsLowerBound: count === 0})));
+  const ordered = orderFilterValues(year, values);
+  assert.deepEqual(ordered.map(v => v.value), ['1950', '1970', '1980', '1990', '2000', '2010', '2020']);
+  assert.deepEqual(values.map(v => v.value), ['2020', '1980', '2000', '1950', '2010', '1970', '1990']);
+  for (const v of ordered) assert.equal(v, values.find(original => original.value === v.value));
+  assert.equal(orderFilterValues({...year, id: 'genre'}, values), values);
+  assert.deepEqual(decadePresets(1978, 2004).map(v => [v.label, v.from, v.to]), [['1970s', 1970, 1979], ['1980s', 1980, 1989], ['1990s', 1990, 1999], ['2000s', 2000, 2009]]);
+});
 
 const has = (id: string) => defaultI18n.has(id);
 const name = (id: string, labelKey?: string) => { const key = browseNameId(id, labelKey, has); return key ? defaultI18n.t(key as never) : undefined; };

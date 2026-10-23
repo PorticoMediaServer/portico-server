@@ -134,9 +134,10 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	if e = control.UseCurrentClaims(store, runner, transport); e != nil {
 		return nil, e
 	}
-	if e = control.ConfigureClaimCleanup(keys); e != nil {
+	if e = control.ConfigureIdentityDepartures(keys); e != nil {
 		return nil, e
 	}
+	id.PrepareIdentityDeparture = control.PrepareIdentityDeparture
 	handler, e := networking.NewClaimHandler(store, runner, transport, keys, httpapi.NetworkingClaimAuthorizer(id, origins), id.Name)
 	if e != nil {
 		return nil, e
@@ -147,8 +148,6 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	}); e != nil {
 		return nil, e
 	}
-	// An approval still pending when the server stopped is waited on again.
-	handler.ResumeWebClaims(context.Background(), httpapi.NetworkingClaimResume(id))
 	return handler, nil
 }
 

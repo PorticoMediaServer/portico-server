@@ -10,8 +10,9 @@ import {PlaybackService} from '@core/index.ts';
 import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import {queueItemInput} from '@core/queue-controller.ts';
+import {offeredQualities} from '@core/playback-v1/choices.ts';
 import type {V1Http} from '@core/playback-v1/http.ts';
-import {WebPlayback, failure, type WebPlaybackNotice} from '../src/platform/playback/web-playback.ts';
+import {WebPlayback, PlayerSlot, failure, type PlaybackMediaPort, type WebPlaybackHost, type WebPlaybackNotice} from '../src/platform/playback/web-playback.ts';
 import {playbackFailure} from '../src/platform/playback/failure.ts';
 /**
  * A media element and an hls.js that do only what a test tells them to, for the web media
@@ -168,7 +169,7 @@ export const settle = async () => { for (let i = 0; i < 12; i++) await new Promi
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 type Logged = {method: string; path: string; body?: unknown};
 
-function setup(ctx: {after(fn: () => void): void}, options: {escalates?: boolean; mount?: boolean; hold?: boolean} = {}) {
+function setup(ctx: {after(fn: () => void): void}, options: {escalates?: boolean; mount?: boolean; hold?: boolean} & Pick<WebPlaybackHost, 'createRender' | 'subscribeRoute' | 'getRouteSnapshot'> = {}) {
   const clock = manualClock();
   const server = new FakePlaybackServer({now: clock.now});
   const inner = fakeHttp(server);
@@ -185,6 +186,7 @@ function setup(ctx: {after(fn: () => void): void}, options: {escalates?: boolean
     http, mediaUrl: p => new URL(p, 'https://portico.test').href, loadHls: async () => Hls, key: () => `key-${++serial}-0000000000`,
     timers: {now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer}, playerTimers: clock,
     farewell: (path, method, body) => { farewells.push({path, method, body}); },
+    createRender: options.createRender, subscribeRoute: options.subscribeRoute, getRouteSnapshot: options.getRouteSnapshot,
   });
   const playback = new PlaybackService(web.transport, () => `r${++serial}`, {queueRequired: true, startupTimeoutMs: 60_000, seekTimeoutMs: 60_000});
   const player = new V1QueuePlayer({http, api: web.transport, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10});
@@ -210,6 +212,75 @@ function setup(ctx: {after(fn: () => void): void}, options: {escalates?: boolean
   const queues = () => log.filter(r => r.method === 'POST' && r.path === '/v1/queues');
   return {clock, server, log, farewells, web, playback, player, video, instances, notices, arrive, sessions, queues};
 }
+
+test('a native paint surface belongs only to the loaded current source and disappears on hold or terminal observation', () => {
+  let loaded = 0, generation = 0, state: import('@core/playback-v1/port.ts').PlayerState = 'playing';
+  const slot = new PlayerSlot();
+  const real: PlaybackMediaPort = {
+    get loaded() { return loaded; }, settling: false, nativeSurfaceActive: true,
+    load() {}, play() {}, pause() {}, seek() {}, setRate() {}, selectSidecarSubtitle() {},
+    observe: () => ({generation, state, positionMs: 0, rate: 1}),
+    onEvent: () => () => {}, onNotice: () => () => {}, unload() {}, suspend() {}, resume() {}, dispose() {},
+  };
+  slot.mount(real);
+  const source = {url: '/first', generation: 1, mode: 'direct', startPositionMs: 0, subtitles: [], autoplay: true} as const;
+  slot.load(source); assert.equal(slot.nativeSurfaceActive, false);
+  loaded = generation = 1; assert.equal(slot.nativeSurfaceActive, true);
+  slot.load({...source, url: '/second', generation: 2}); assert.equal(slot.nativeSurfaceActive, false, 'an old native frame cannot open the new source paint hole');
+  loaded = 2; assert.equal(slot.nativeSurfaceActive, false, 'loaded and observed generation must both match');
+  generation = 2; assert.equal(slot.nativeSurfaceActive, true);
+  for (state of ['ended', 'error', 'idle']) assert.equal(slot.nativeSurfaceActive, false);
+  state = 'playing'; slot.hold(true); assert.equal(slot.nativeSurfaceActive, false);
+  slot.hold(false); assert.equal(slot.nativeSurfaceActive, true);
+  slot.unload(); assert.equal(slot.nativeSurfaceActive, false); slot.dispose();
+});
+
+test('frame commands require an unheld settled paused port with matching loaded and observed generations', async () => {
+  let loaded=0,generation=0,settling=false,state:import('@core/playback-v1/port.ts').PlayerState='paused',calls=0;
+  const slot=new PlayerSlot();
+  const real:PlaybackMediaPort={
+    get loaded(){return loaded},get settling(){return settling},
+    load(){},play(){},pause(){},seek(){},setRate(){},selectSidecarSubtitle(){},
+    stepFrame(direction,expected){assert.equal(direction,1);assert.equal(expected,2);calls++},
+    observe:()=>({generation,state,positionMs:123,rate:1}),onEvent:()=>()=>{},onNotice:()=>()=>{},unload(){},suspend(){},resume(){},dispose(){},
+  };
+  slot.mount(real);slot.load({url:'/source',generation:2,mode:'direct',startPositionMs:123,subtitles:[],autoplay:false});
+  assert.equal(slot.canStepFrame,false);loaded=2;assert.equal(slot.canStepFrame,false);generation=2;assert.equal(slot.canStepFrame,true);
+  settling=true;assert.equal(slot.canStepFrame,false);await assert.rejects(slot.stepFrame(1,2),/playback_frame_step_unavailable/);settling=false;
+  for(state of ['loading','playing','buffering','ended','error','idle'])assert.equal(slot.canStepFrame,false);
+  state='paused';slot.hold(true);assert.equal(slot.canStepFrame,false);slot.hold(false);assert.equal(slot.canStepFrame,true);
+  await assert.rejects(slot.stepFrame(1,1),/playback_frame_step_unavailable/);assert.equal(calls,0);
+  await slot.stepFrame(1,2);assert.equal(calls,1);assert.equal(slot.observe().positionMs,123,'a command receipt cannot invent a resulting frame clock');
+  real.stepFrame=()=>{slot.load({url:'/different-session-same-generation',generation:2,mode:'direct',startPositionMs:0,subtitles:[],autoplay:false});};
+  await assert.rejects(slot.stepFrame(1,2),/stale_playback_command/,'generation reuse cannot validate a replaced source');
+  slot.unload();assert.equal(slot.canStepFrame,false);slot.dispose();
+});
+
+test('a network interruption discards the actual prepared edge silently and retains the same queue session', async ctx => {
+  let route = 'ready', changed = () => {}, disposed = 0;
+  const t = setup(ctx, {
+    getRouteSnapshot: () => ({phase: route}), subscribeRoute: listener => { changed = listener; return () => {}; },
+    createRender: service => ({
+      apply(snapshot) {
+        service.ready(snapshot.intentId);
+        if (snapshot.pendingSeek) service.seekApplied(snapshot.intentId, snapshot.pendingSeek.revision, snapshot.pendingSeek.positionSeconds, 'paused');
+      }, transportPosition: () => 12, dispose() { disposed++; },
+    }),
+  });
+  t.playback.setAudioEffects({gapless: true, crossfadeSeconds: 0, normalization: 'off'});
+  await t.player.playItem('song_network'); await settle();
+  const before = t.playback.getSnapshot(), audio = before.session?.audio;
+  assert.ok(audio && audio.mode !== 'unavailable');
+  t.playback.prepareAudio({token: 'prepared-network', expiresAtMs: Date.now() + 60000, audio});
+  const args: unknown[][] = [], discard = t.playback.audioPreparationFailed.bind(t.playback);
+  t.playback.audioPreparationFailed = (...values) => { args.push(values); discard(...values); };
+  route = 'recovering'; changed(); await settle();
+  assert.deepEqual(args, [[]], 'no transient presentation text crosses the discard port');
+  assert.equal(t.playback.getSnapshot().audioEffects.prepared, undefined);
+  assert.equal(Boolean(t.playback.getSnapshot().audioEffects.notice), false);
+  assert.equal(t.playback.getSnapshot().session!.id, before.session!.id);
+  assert.ok(disposed > 0);
+});
 
 test('a start loads where the server says to resume, plays, and reports a full timeline', async ctx => {
   const t = setup(ctx);
@@ -515,7 +586,7 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
   const t = setup(ctx);
   await t.player.playEntries(['e1', 'e2'].map(queueItemInput));
   const hls = await t.arrive();
-  t.web.setAutomatic({steps: [{id: '1080', height: 1080, videoKbps: 8000}, {id: '720', height: 720, videoKbps: 4000}, {id: '480', height: 480, videoKbps: 1500}], originalKbps: 20_000});
+  t.web.setAutomatic({steps: offeredQualities({height: 1080, bitrateKbps: 20_000}), originalKbps: 20_000});
   assert.equal(t.web.automaticOn, true);
   assert.equal(t.web.automaticAt, undefined, 'it starts at Original');
   // Twelve seconds of fragments arriving at about 5 Mbps against a 20 Mbps original.
@@ -527,10 +598,11 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
     t.video.advance(1 + i);
   }
   await settle();
-  assert.equal(t.web.automaticAt?.id, '720', 'the best step the connection carries with room to spare');
+  assert.equal(t.web.automaticAt?.id, '720p-low', '4 Mbps usable includes audio: 4000+128 does not fit, 2000+128 does');
+  assert.equal(t.web.automaticAt?.audioKbps, 128);
   assert.deepEqual(t.notices, ['qualityLowered']);
   const patch = t.log.find(r => r.method === 'PATCH');
-  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'automatic', id: '720p'}, 'Automatic, on the step the connection carries');
+  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'automatic', id: '720p-low'}, 'Automatic, on the step the connection carries');
   assert.equal(t.queues().length, 1);
 });
 

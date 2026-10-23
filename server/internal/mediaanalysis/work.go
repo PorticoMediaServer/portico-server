@@ -120,6 +120,11 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	}
 	stage := ""
 	for _, op := range catalog.DeepScanOperations {
+		// Episode artwork has its own metadata publication/CAS and runs through
+		// ingestion's same durable job after these immutable analysis stages.
+		if op == catalog.EpisodeThumbnailOperation {
+			continue
+		}
 		ready, wait, code, e := due(op)
 		if e != nil {
 			return false, "", e
@@ -363,6 +368,11 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, b.ObjectID, b.AssetID, b.SourceRevision, b.Source.Incarnation, b.Source.Generation, b.PolicyRevision, stage, Algorithm, evidence, tool, b.DurationUS, jsonString(out.Summary), nowMS()); e != nil {
 		return e
+	}
+	if stage == "loudness" {
+		if e = persistFullLoudness(ctx, tx, id, out.Summary); e != nil {
+			return e
+		}
 	}
 	for _, a := range out.Artifacts {
 		if _, e = tx.ExecContext(ctx, `INSERT INTO analysis_artifacts(id,result_id,digest,size,kind,mime,ordinal,start_us,end_us,width,height) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, token(id, fmt.Sprint(a.Ordinal), a.Kind), id, a.Object.Digest, a.Object.Size, a.Kind, a.MIME, a.Ordinal, a.StartUS, a.EndUS, a.Width, a.Height); e != nil {

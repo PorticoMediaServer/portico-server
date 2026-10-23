@@ -200,6 +200,11 @@ type DeliveryInput struct {
 	AudioStream             int
 	HasAudioChoice          bool
 	PreferredAudioLanguages []string
+	// OriginalLanguage is the title's published catalogue language, supplied
+	// only by server composition; it is never a client or stream-default fact.
+	OriginalLanguage       string
+	AudioTrackChoice       string
+	PreferAudioDescription bool
 	// CarriedAudioLanguage is the language of the audio track picked in the
 	// player earlier in this playback (a queue continued); it outranks the
 	// preferred list.
@@ -301,6 +306,15 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.Outputs != nil {
 		outputs = *in.Outputs
 	}
+	if cfg.OutputFormat == "h264" {
+		filtered := []ConversionVideoOutput{}
+		for _, o := range outputs.Video {
+			if o.Codec == "h264" {
+				filtered = append(filtered, o)
+			}
+		}
+		outputs.Video = filtered
+	}
 	source := legacySource(in)
 	if in.Source != nil {
 		source = *in.Source
@@ -355,7 +369,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}
 			if err == nil {
-				p.Renditions = planAudioRenditions(p, source, client, in.Target, in.TranscodingEnabled && in.Policy.Transcode != "never")
+				p.Renditions = planAudioRenditions(p, source, client, in.Target, cfg.AudioConversionAllowed(in.TranscodingEnabled) && in.Policy.Transcode != "never")
 			}
 		}
 	}()
@@ -383,7 +397,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.HasAudioChoice {
 		explicit = in.AudioStream
 	}
-	audio, chosenBy := chooseAudio(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages)
+	audio, chosenBy := chooseAudioWithPolicy(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages, in.OriginalLanguage, in.AudioTrackChoice, in.PreferAudioDescription, client)
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
@@ -524,7 +538,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		// same reason instead of being planned and then failing to start.
 		transports = nil
 	}
-	conversionAllowed := in.TranscodingEnabled && policy.Transcode != "never"
+	conversionAllowed := cfg.AudioConversionAllowed(in.TranscodingEnabled) && policy.Transcode != "never"
 
 	// Route 2: both streams copied into HLS.
 	remuxable := false
@@ -616,7 +630,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if audioToDecode != nil && carrier != nil && !containsString(carrier.Audio, converted.Codec) {
 			rejections = append(rejections, RouteRejection{RejectAudioCodec, converted.Codec + " in " + transport})
 		}
-		if !conversionAllowed {
+		if !conversionAllowed || !audioOnly && !cfg.VideoConversionAllowed(in.TranscodingEnabled) {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
 		}
 		if transport == "" {
@@ -683,7 +697,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	}
 	if len(candidates) == 0 {
 		code := ReasonTranscodeRefused
-		if !in.TranscodingEnabled {
+		if !cfg.AudioConversionAllowed(in.TranscodingEnabled) || !audioOnly && !cfg.VideoConversionAllowed(in.TranscodingEnabled) {
 			code = ReasonTranscodeDisabledOwner
 		} else if policy.DirectStream == "never" && remuxable {
 			code = ReasonDirectStreamRefused
@@ -847,7 +861,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			p.MaxFrameRate = limit
 		}
 	}
-	p.HardwareDevice = cfg.HardwareDevice
+	p.HardwareDevice = in.Hardware.Device
 	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
 		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
 		if !p.ToneMap {

@@ -5,6 +5,8 @@ import {useRouteFade} from '../platform/route-motion';
 import {Shell} from './Shell';
 import {useShellBindings} from './bindings';
 import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
+import {webScreens} from '../route-registry-view';
+import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
 
 function RouteContent() {
@@ -13,11 +15,13 @@ function RouteContent() {
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  return <main id="portico-content" ref={content} data-route-content tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
+  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
 }
 export function ShellRoot() {
   const binding = useShellBindings();
-  if (!binding) return <RouteContent />;
+  const routeId = useRouterState({select: state => state.matches.at(-1)?.routeId ?? ''});
+  const screenId = webScreenIdForRoute(routeId);
+  if (!binding || screenId && webScreens.chrome(screenId) !== 'shell') return <RouteContent />;
   const viewer = binding.shell.identity.viewer;
   return <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>
     <Shell {...binding.shell}><RouteContent /></Shell>

@@ -5,6 +5,13 @@ package operations
 // A new registry field without an owner fails the registry contract test.
 var preferenceConsumers = func() map[string]string {
 	m := map[string]string{
+		"music.qualityHome":                   "server.playback.delivery_policy",
+		"music.qualityAway":                   "server.playback.delivery_policy",
+		"music.qualityMobile":                 "server.playback.delivery_policy",
+		"music.qualityDownloads":              "server.downloads.quality",
+		"music.neverBoost":                    "client.audio_effects",
+		"music.smoothTransitions":             "client.audio_effects",
+		"music.dsdGainDb":                     "server.playback.audio_conversion",
 		"playback.skipBackMs":                 "client.playback.controls",
 		"playback.skipForwardMs":              "client.playback.controls",
 		"playback.autoplayNext":               "client.playback.continuation",
@@ -15,7 +22,6 @@ var preferenceConsumers = func() map[string]string {
 		"playback.introSkip":                  "client.playback.markers",
 		"playback.creditsSkip":                "client.playback.markers",
 		"playback.recapSkip":                  "client.playback.markers",
-		"music.defaultSpeed":                  "server.catalog.listening_preferences",
 		"audiobooks.defaultSpeed":             "server.catalog.listening_preferences",
 		"playback.sleepTimerMinutes":          "server.catalog.listening_preferences",
 		"playback.defaultSpeed":               "client.playback.speed",
@@ -43,8 +49,22 @@ var preferenceConsumers = func() map[string]string {
 		"home.hiddenRowIds":                   "server.catalog.home_layout",
 		"appearance.showBackdrops":            "client.appearance",
 		"appearance.cardSizePercent":          "client.appearance",
-		"appearance.reduceMotion":             "client.appearance",
 		"notifications.badges":                "client.notifications",
+	}
+	for _, key := range []string{"playback.subtitleColor", "playback.subtitlePosition", "playback.subtitleFont", "playback.keepSubtitleStyling", "playback.useSystemCaptionStyle"} {
+		m[key] = "client.subtitlePreferences"
+	}
+	for _, key := range []string{"playback.preferSdhSubtitles", "playback.forcedSubtitleFallback", "playback.useUntaggedForced", "playback.audioDescription", "playback.audioTrackChoice"} {
+		m[key] = "server.playback.preference_selection"
+	}
+	for _, key := range []string{"appearance.motion", "appearance.textSize", "appearance.layout", "appearance.libraryView", "appearance.episodesLayout"} {
+		m[key] = "client.appearancePreferences"
+	}
+	for _, key := range []string{"reading.theme", "reading.font", "reading.textSize", "reading.lineSpacing", "reading.margins", "reading.alignment", "reading.layout", "reading.twoPages", "reading.tapToTurn", "reading.hyphenation", "reading.highlightColour", "reading.pdfView", "comics.fit", "comics.direction", "comics.firstPageAlone"} {
+		m[key] = "client.readingPreferences"
+	}
+	for _, key := range []string{"region.formats", "region.dateOrder", "region.firstDay", "region.sizeUnits"} {
+		m[key] = "client.regionPreferences"
 	}
 	for _, network := range []string{"home", "remote"} {
 		m["quality."+network] = "server.playback.delivery_policy"
@@ -56,11 +76,14 @@ var preferenceConsumers = func() map[string]string {
 // only from the effective registry values. Clients apply it to their renderer
 // and save edits with PATCH /v1/preferences rather than a second settings store.
 type AudioEffectPreferences struct {
-	Gapless       bool   `json:"gapless"`
-	CrossfadeMs   int    `json:"crossfadeMs"`
-	Normalization string `json:"normalization"`
+	NeverBoost         bool   `json:"neverBoost"`
+	SmoothTransitions  bool   `json:"smoothTransitions"`
+	DSDGainDB          int    `json:"dsdGainDb"`
+	Gapless            bool   `json:"gapless"`
+	CrossfadeMs        int    `json:"crossfadeMs"`
+	Normalization      string `json:"normalization"`
 }
 
 func (v PreferenceValues) AudioEffects() AudioEffectPreferences {
-	return AudioEffectPreferences{Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
+	return AudioEffectPreferences{NeverBoost: v.Bool("music.neverBoost"), SmoothTransitions: v.Bool("music.smoothTransitions"), DSDGainDB: v.Int("music.dsdGainDb"), Gapless: v.Bool("music.gapless"), CrossfadeMs: v.Int("music.crossfadeMs"), Normalization: v.Text("music.audioNormalization")}
 }

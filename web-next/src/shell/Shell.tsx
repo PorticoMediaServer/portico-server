@@ -5,18 +5,22 @@ import type {Library, Viewer} from '@core/index.ts';
 import {AccountMenu, ProfileAvatar, ProfileAvatarFace, type ProfileIdentity, type ProfileTone} from '../kit/shell';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
-import {MenuItem} from '../kit/overlays';
+import {MenuItem,Dialog} from '../kit/overlays';
+import {TextField,Button} from '../kit/controls';
 import {isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
 import {useShellScrolled} from './viewport';
 import {useSizeClass, useCoarsePointer, useWindowScrollAnchor} from '../kit/theme';
+import type {ManagementCapabilities} from '@core/profile-management.ts';
+import type {SignInKind} from '@core/app-sessions.ts';
 import styles from './shell.module.css';
 import wordmark from './wordmark.svg';
 import type {OwnerActivityProps} from './Activity';
 import {LibraryNavigation} from './LibraryNavigation';
 import {DesktopNavigation} from './DesktopNavigation';
+import {usePageWindowChrome} from './window-chrome';
 
 export type ShellIdentity = Readonly<{
-  viewer: Viewer; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string;
+  viewer: Viewer; signIn?:SignInKind; capabilities?:ManagementCapabilities; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string;
   primaryProfile?: boolean; profiles: readonly ProfileIdentity[]; canManageProfiles: boolean; accountFacts: readonly FactPart[];
   libraries: readonly Library[]; liveAvailable: boolean; unread: number; showNotificationDot: boolean;
 }>;
@@ -25,8 +29,9 @@ export type ShellProps = Readonly<{
   /** Mount owns its reads. Compact and non-owner shells do not mount it. */
   OwnerActivity: ComponentType<OwnerActivityProps>;
   dockVisible: boolean;
-  onSignOut: () => void;
+  onSignOut: () => void; onSignOutPorticoAccount?: () => void; onSwitchProfile?:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; onSwitchServer?:(serverId:string)=>Promise<void>; savedServers?:readonly {id:string;label:string}[];
   overlays?: ReactNode;
+  windowChrome?: ReactNode;
   phoneSelection?: ReactNode;
   children: ReactNode;
 }>;
@@ -34,10 +39,11 @@ const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
 const collapseMemoryKey = 'portico.next.sidebar-collapsed';
 
-export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSelection, overlays, children}: ShellProps) {
+export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers, phoneSelection, overlays, windowChrome, children}: ShellProps) {
   useWindowScrollAnchor();
   const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
   const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
+  const chrome = usePageWindowChrome(scrolled);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return window.localStorage.getItem(collapseMemoryKey) === 'true'; } catch { return false; }
   });
@@ -51,7 +57,11 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
   const lastSearch = useRef('');
   if (pathname === '/search' && typeof query.q === 'string') lastSearch.current = query.q;
   const navigate = useNavigate();
-  const home = pathname === '/', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
+  const [profileChoice,setProfileChoice]=useState<ProfileIdentity>(),[profilePin,setProfilePin]=useState(''),[profileError,setProfileError]=useState<unknown>(),[profileBusy,setProfileBusy]=useState(false);
+  const profileRequest=useRef<AbortController|undefined>(undefined);
+  useEffect(()=>()=>profileRequest.current?.abort(),[]);
+  const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(undefined);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch(error){if(!controller.signal.aborted)setProfileError(error);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
+  const home = pathname === '/', settingsArea = pathname === '/settings' || pathname === '/dashboard', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
   const {viewer} = identity;
   useEffect(() => {
     if (!pathname.startsWith('/library/')) return;
@@ -67,7 +77,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
   };
   const current = {id: viewer.profileId, username: identity.username, name: identity.profileName, initial: Array.from(identity.profileName.trim())[0] ?? '', art: identity.profileArt};
   const dashboard = () => { void navigate({to: '/dashboard', search: viewer.role === 'owner' ? {} : {section: 'streams'}}); };
-  const serverAction = !desktop && (viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'administrator')
+  const serverAction = !desktop && identity.capabilities?.manageServer === true && (viewer.role === 'owner' || viewer.role === 'admin' || viewer.role === 'administrator')
     ? <MenuItem className={styles.dashboardCard} onSelect={dashboard}>
       <span className={styles.dashboardIcon}><Icon name="i-pulse" size={22} /></span>
       <span className={styles.dashboardText}><small>{t('next.shell.server')}</small><b>{t('next.shell.dashboard')}</b></span>
@@ -75,56 +85,57 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
     </MenuItem> : undefined;
   const account = <AccountMenu open={accountOpen} onOpenChange={setAccountOpen} current={current} primary={identity.primaryProfile === true}
     notificationCount={desktop ? undefined : identity.unread} notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0}
-    profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
-      manageProfiles: () => { void navigate({to: '/profiles'}); },
-      ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/profiles', search: {add: true}}); }} : {}),
-      switchProfile: profile => { void navigate({to: '/profiles', search: {profileId: profile.id}}); },
+    serverChoices={onSwitchServer?savedServers?.map(server=>({...server,onSelect:()=>{void onSwitchServer(server.id);}})):undefined} signOutLabel={identity.serverName?t('accounts.signOut.server',{server:identity.serverName}):undefined} profiles={identity.profiles} accountFacts={identity.accountFacts} serverAction={serverAction} actions={{
+      ...(identity.canManageProfiles ? {manageProfiles: () => { void navigate({to: '/settings'}); }} : {}),
+      ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/settings'}); }} : {}),
+      switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(undefined);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
       switchServer: () => { void navigate({to: '/servers'}); }, settings: () => { void navigate({to: '/settings'}); },
       ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: () => { void navigate({to: '/feedback'}); },
-      help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,
+      help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,signOutPorticoAccount:onSignOutPorticoAccount,
     }} trigger={navigation === 'sidebar' ? <button type="button" className={styles.profileRow} aria-label={[t('web.account.switchProfileOrServer'), identity.username || t('next.shell.usernameUnavailable'), identity.serverName].join(', ')}>
       <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={34} />
       <span className={styles.profileText}><b>{identity.username || t('next.shell.usernameUnavailable')}</b><small>{identity.serverName}</small></span><Icon name="i-updown" size={18} />
     </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
       notificationDot={compact && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
-  return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible}>
+  return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible} data-window-os={chrome.os} data-window-fullscreen={chrome.fullscreen}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
+    {windowChrome && <div data-window-chrome-host data-window-no-drag>{windowChrome}</div>}
     <div className={styles.navigation} data-shell-navigation>
-      {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home} aria-label={t('next.home.shell.main')}>
-        <Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
+      {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home && !settingsArea} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
+        <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
         <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} pathname={pathname} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
-        <div className={styles.tools}>
+        <div className={styles.tools} data-window-no-drag>
           <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
           <Link className={styles.icon} to="/notifications" aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{identity.showNotificationDot && identity.unread > 0 && <span className={styles.dot} />}</Link>
-          {showOwnerActivity(viewer.role, desktop) && <OwnerActivity />}
+          {identity.capabilities?.manageServer === true && showOwnerActivity(viewer.role, desktop) && <OwnerActivity />}
           {account}
         </div>
-      </nav> : !compact ? <nav className={styles.rail} aria-label={t('next.home.shell.main')}>
-        {sizeClass === 'expanded' && <div className={styles.railBrand}>
+      </nav> : !compact ? <nav className={styles.rail} data-window-drag-region="rail-empty" aria-label={t('next.home.shell.main')}>
+        {chrome.os && sizeClass === 'medium' && <div className={styles.nativeRailMark}><span><img src={wordmark} alt={t('next.platform.appName')} /></span></div>}
+        {sizeClass === 'expanded' && <div className={styles.railBrand} data-window-no-drag>
           {navigation === 'sidebar' && <Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>}
           <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'web.shell.expand' : 'web.shell.collapse')} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}><Icon name="i-panels" size={22} /></button>
         </div>}
-        <div className={styles.railPrimary}>
+        <div className={styles.railPrimary} data-window-no-drag>
           <Link className={styles.railItem} to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span data-nav-label>{t('next.home.shell.search')}</span></Link>
           <Link className={styles.railItem} to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span data-nav-label>{t('next.home.shell.home')}</span></Link>
         </div>
         <LibraryNavigation libraries={identity.libraries} sidebar={navigation === 'sidebar'} />
-        <div className={styles.railFixed}>
+        <div className={styles.railFixed} data-window-no-drag>
           <div className={styles.railDivider} />
           {identity.liveAvailable && <Link className={styles.railItem} to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-live" size={22} /><span data-nav-label>{t('next.home.shell.live')}</span></Link>}
           <Link className={styles.railItem} to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span data-nav-label>{t('next.home.shell.saved')}</span></Link>
         </div>
-        <div className={styles.railBottom}>
+        <div className={styles.railBottom} data-window-no-drag>
           <Link className={styles.railItem} to="/notifications" data-icon-only={navigation === 'rail' || undefined} aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{navigation === 'sidebar' && <span data-nav-label>{t('next.home.shell.notifications')}</span>}{identity.showNotificationDot && identity.unread > 0 && <span data-nav-count aria-hidden="true">{identity.unread}</span>}</Link>
-          {viewer.role === 'owner' && <OwnerActivity presentation={navigation === 'sidebar' ? 'sidebar' : 'rail'} className={styles.railItem} />}
+          {identity.capabilities?.manageServer === true && viewer.role === 'owner' && <OwnerActivity presentation={navigation === 'sidebar' ? 'sidebar' : 'rail'} className={styles.railItem} />}
           <Link className={styles.railItem} to="/settings" activeProps={{'aria-current': 'page'}}><Icon name="i-settings" size={22} /><span data-nav-label>{t('next.shell.settings')}</span></Link>
           {account}
         </div>
       </nav> : <>
         {home && <header className={styles.phoneHeader}><Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link><div className={styles.phoneTools}>
-          {viewer.role === 'owner' && <button type="button" className={styles.phoneActivity} aria-label={t('next.shell.activity')} onClick={dashboard}><Icon name="i-activity" size={22} /></button>}
           {account}
         </div></header>}
         {phoneSelection ?? <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
@@ -137,6 +148,9 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
       </>}
     </div>
     {children}
+    <Dialog open={!!profileChoice&&(profileChoice.pinRequired===true||!!profileError)} onOpenChange={open=>{if(!open){profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');setProfileError(undefined);}}} title={profileChoice?.name??identity.profileName} footer={<><Button variant="glass" onClick={()=>{profileRequest.current?.abort();setProfileChoice(undefined);setProfilePin('');}}>{t('accounts.profiles.cancel')}</Button><Button disabled={profileBusy||!!profileChoice?.pinRequired&&!/^\d{4}$/.test(profilePin)} onClick={()=>{if(profileChoice)void chooseProfile(profileChoice,profilePin);}}>{t('accounts.profiles.continue')}</Button></>}>
+      {profileChoice?.pinRequired&&<TextField type="password" inputMode="numeric" maxLength={4} autoComplete="off" label={t('accounts.profiles.pinForProfile',{profile:profileChoice.name})} value={profilePin} onChange={event=>setProfilePin(event.currentTarget.value)} error={(profileError as {code?:unknown}|undefined)?.code==='profile_pin_invalid'?t('accounts.profiles.pinFailed'):undefined} />}
+    </Dialog>
     {overlays}
   </div>;
 }

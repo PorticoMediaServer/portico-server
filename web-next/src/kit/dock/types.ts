@@ -44,4 +44,6 @@ export type DockHostProps = Readonly<{
 export type MediaSurfaceProps = Readonly<{
   children: ReactNode; expanded: boolean; dockSlot: RefObject<HTMLElement | null>;
   expandedSlot: RefObject<HTMLElement | null>; hidden?: boolean; finished?: boolean; className?: string;
+  /** Actual current native frame observation from the runtime; ordinary web playback omits it. */
+  nativeRenderActive?: boolean;
 }>;

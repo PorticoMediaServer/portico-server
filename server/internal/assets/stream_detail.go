@@ -10,7 +10,7 @@ import (
 // StreamDetailVersion is bumped whenever inspect learns a new fact. Delivery
 // planning refreshes an asset whose stored detail is older, so a library scanned
 // before a fact existed gains it the first time the title is played.
-const StreamDetailVersion = 2
+const StreamDetailVersion = 4
 
 // Dynamic range families. They name what a display has to be able to do, not the
 // transfer function: Dolby Vision profile 8.1 is "dolby_vision" with an HDR10
@@ -26,6 +26,7 @@ const (
 // field is optional: zero means "not observed", and planning treats an unobserved
 // fact conservatively rather than as a match.
 type StreamDetail struct {
+	StreamBreadth
 	MaxBitRate        int64   `json:"maxBitRate,omitempty"`
 	HDR10Plus         bool    `json:"hdr10Plus,omitempty"`
 	Profile           string  `json:"profile,omitempty"`
@@ -92,6 +93,8 @@ type probeSideData struct {
 	Profile       int         `json:"dv_profile"`
 	Level         int         `json:"dv_level"`
 	Enhancement   int         `json:"el_present_flag"`
+	RPU           int         `json:"rpu_present_flag"`
+	BaseLayer     int         `json:"bl_present_flag"`
 	Compatibility int         `json:"dv_bl_signal_compatibility_id"`
 	// Mastering display metadata (rationals as ffprobe prints them, "34000/50000").
 	RedX         string `json:"red_x"`
@@ -162,7 +165,7 @@ func DynamicRangeOf(transfer string, dolbyVisionProfile int) string {
 func objectAudio(codec, profile string) string {
 	p := strings.ToLower(profile)
 	switch {
-	case strings.Contains(p, "atmos"):
+	case strings.Contains(p, "atmos"), strings.Contains(p, "joc"):
 		return "atmos"
 	case strings.Contains(p, "dts:x"), strings.Contains(p, "dts-x"):
 		return "dtsx"
@@ -192,6 +195,11 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 	switch kind {
 	case "video":
 		d.PixelFormat = streamText(s.PixelFormat, 32)
+		d.ChromaSubsampling = chromaSubsampling(s.PixelFormat)
+		d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.AvgFrameRate)
+		if d.FrameRateNumerator == 0 {
+			d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.RealFrameRate)
+		}
 		if depth, err := strconv.Atoi(s.BitsRaw); err == nil && depth > 0 && depth <= 16 {
 			d.BitDepth = depth
 		} else {
@@ -207,6 +215,9 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 		switch strings.ToLower(s.FieldOrder) {
 		case "tt", "bb", "tb", "bt":
 			d.Interlaced = true
+			d.InterlaceAnalysis = InterlaceFieldOrderInterlaced
+		case "progressive":
+			d.InterlaceAnalysis = InterlaceFieldOrderProgressive
 		}
 		if len(s.SampleAspect) <= 24 {
 			d.SampleAspectRatio = s.SampleAspect
@@ -236,6 +247,9 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 					d.DolbyVisionProfile, d.DolbyVisionLevel = side.Profile, side.Level
 					d.DolbyVisionCompatibility = side.Compatibility
 					d.EnhancementLayer = side.Enhancement != 0
+					d.DolbyVisionRPU = side.RPU != 0
+					d.DolbyVisionBaseLayer = side.BaseLayer != 0
+					d.DolbyVisionMetadataKnown = true
 				}
 			}
 		}
@@ -250,6 +264,7 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 			d.BitsPerSample = depth
 		}
 		d.ObjectAudio = objectAudio(codec, s.Profile)
+		d.AudioVariant = AudioVariant(codec, s.Profile, d.ObjectAudio)
 	}
 	return d
 }
@@ -328,4 +343,30 @@ func HDRStaticMetadata(entries []json.RawMessage) (display, cll string) {
 		}
 	}
 	return display, cll
+}
+
+func exactProbeRate(s string) (int, int) {
+	a, b, ok := strings.Cut(s, "/")
+	if !ok {
+		return 0, 0
+	}
+	n, e := strconv.Atoi(a)
+	d, f := strconv.Atoi(b)
+	if e != nil || f != nil || n <= 0 || d <= 0 || n > 1000000000 || d > 1000000000 || float64(n)/float64(d) > 1000 {
+		return 0, 0
+	}
+	return n, d
+}
+func chromaSubsampling(s string) string {
+	switch {
+	case strings.Contains(s, "420"), strings.HasPrefix(s, "nv12"), strings.HasPrefix(s, "p01"):
+		return "4:2:0"
+	case strings.Contains(s, "422"), strings.HasPrefix(s, "p21"), strings.HasPrefix(s, "yuyv"), strings.HasPrefix(s, "uyvy"):
+		return "4:2:2"
+	case strings.Contains(s, "444"), strings.HasPrefix(s, "gbr"), strings.HasPrefix(s, "rgb"), strings.HasPrefix(s, "bgr"), strings.HasPrefix(s, "p41"):
+		return "4:4:4"
+	case strings.HasPrefix(s, "gray"):
+		return "4:0:0"
+	}
+	return ""
 }

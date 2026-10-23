@@ -27,7 +27,7 @@ export function FacetChips({values, included, excluded, onValueChange, cycleExcl
     return <button type="button" key={value.value} role="checkbox" aria-checked={outside ? 'mixed' : inside} data-selected={inside || undefined}
       className={[styles.facetChip, outside && styles.excludedFacet].filter(Boolean).join(' ')}
       aria-label={t(next === 'exclude' ? 'next.browse.exclude' : next === 'clear' ? 'next.browse.clearValue' : 'next.browse.include', {value: value.label})}
-      onClick={() => onValueChange(value.value, next)}>{inside && <Icon name="i-check" size={16}/>}<span>{value.label}</span>{value.count !== undefined && <small>{defaultI18n.number(value.count)}</small>}</button>;
+      onClick={() => onValueChange(value.value, next)}>{inside && <Icon name="i-check" size={16}/>}<span>{value.label}</span>{value.count !== undefined && <small>{value.countIsLowerBound ? t('next.browse.countAtLeast', {count: value.count}) : defaultI18n.number(value.count)}</small>}</button>;
   })}{trailing}</div>;
 }
 export type MatchModeProps = Readonly<{value: FilterMatch; allowAll: boolean; allowNone?: boolean; onValueChange: (value: FilterMatch) => void}>;

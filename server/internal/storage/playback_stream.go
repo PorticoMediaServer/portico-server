@@ -66,6 +66,10 @@ func (c *Client) openPlayback(ctx context.Context, path string, size, modified i
 			return nil, e
 		}
 	}
+	managed, err := c.managedRecording(ctx, path)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	input, writer := io.Pipe()
 	timeout := c.Timeout
@@ -73,7 +77,7 @@ func (c *Client) openPlayback(ctx context.Context, path string, size, modified i
 		timeout = 30 * time.Second
 	}
 	f := &PlaybackReader{ctx: ctx, cancel: cancel, input: writer, calls: make(chan streamCall), timeout: timeout, size: size}
-	req := request{Operation: "playback-stream", Path: path, ManagedArtifact: c.managedRecording(path), Size: size, ModifiedNS: modified, Version: version}
+	req := request{Operation: "playback-stream", Path: path, ManagedArtifact: managed, Size: size, ModifiedNS: modified, Version: version}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}

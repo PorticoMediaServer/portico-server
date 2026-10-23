@@ -11,25 +11,24 @@ import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
 
 export const listeningRates=[.5,.75,1,1.25,1.5,1.75,2] as const;
-/** Audiobooks go faster than music: speech stays clear up to three times its speed. */
 export const audiobookRates=[...listeningRates,2.5,3] as const;
 export const passoutChoices=[0,30,60,90,120] as const;
-export type ListeningPreferences=Readonly<{revision:number;musicRate:number;bookRate:number;autoplayNext:boolean;passoutMinutes:number}>;
+export type ListeningPreferences=Readonly<{revision:number;bookRate:number;passoutMinutes:number}>;
 export type ListeningTarget=Readonly<{libraryId:string;kind:'library'|'song'|'artist'|'album'|'disc'|'book';id:string}>;
 export type ListeningJourney=Readonly<{target:ListeningTarget;actions:readonly ('play'|'shuffle'|'mix'|'enqueue')[];resume?:Readonly<{itemId:string;positionSeconds:number}>;resumeUnavailable:boolean}>;
 export type ListeningItem=Readonly<{itemId:string;libraryId:string;kind:string;bookId?:string;lastBookItemId?:string;bookEndAvailable?:boolean;albumId?:string;artistId?:string}>;
 export type ListeningRequest=(path:string,body?:unknown,method?:'GET'|'POST'|'PUT',signal?:AbortSignal)=>Promise<unknown>;
 export type SleepChoice='off'|'chapter'|'item'|'book'|15|30|45|60|90;
 export type ListeningTimer=Readonly<{choice:SleepChoice;label:string;deadline?:number;wallDeadline?:number;libraryId?:string;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number}>;
-export type ListeningSnapshot=Readonly<{rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
+export type ListeningSnapshot=Readonly<{eqApplied:boolean;levelingApplied:boolean;rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
 const counter=(v:unknown):v is number=>Number.isSafeInteger(v)&&Number(v)>=0;
 function bad():never{throw new Error(unreadableServerResponse);}
 export function parseListeningPreferences(v:unknown):ListeningPreferences {
- if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!audiobookRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
- return Object.freeze({revision:v.revision,musicRate:v.musicRate as number,bookRate:v.bookRate as number,autoplayNext:v.autoplayNext,passoutMinutes:v.passoutMinutes as number});
+ if(!object(v)||Object.keys(v).some(key=>!['revision','bookRate','passoutMinutes'].includes(key))||!counter(v.revision)||!audiobookRates.includes(v.bookRate as never)||!passoutChoices.includes(v.passoutMinutes as never))bad();
+ return Object.freeze({revision:v.revision,bookRate:v.bookRate as number,passoutMinutes:v.passoutMinutes as number});
 }
 export function listeningData(raw:unknown,scope:QueueScope):unknown {
  if(!object(raw)||!object(raw.scope)||(['serverId','authority','accountId','profileId'] as const).some(k=>(raw.scope as Record<string,unknown>)[k]!==scope[k]))bad();
@@ -70,7 +69,7 @@ export async function loadListeningSelection(request:ListeningRequest,scope:Queu
 }
 
 export class ListeningService {
- private state:ListeningSnapshot=Object.freeze({phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
+ private state:ListeningSnapshot=Object.freeze({eqApplied:false,levelingApplied:false,phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
  private pausedBook?:{session:string;at:number};
@@ -87,13 +86,13 @@ export class ListeningService {
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
   const timer=this.state.timer;
-  this.playback.setListeningPolicy?.({preferences:this.state.preferences?{musicRate:this.rateFor('song'),bookRate:this.rateFor('audiobook_file'),autoplayNext:this.state.preferences.autoplayNext,passoutMinutes:this.state.preferences.passoutMinutes}:null,
+  this.playback.setListeningPolicy?.({preferences:this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
    timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{})}:null});
  }
  retryContext(){if(this.disposed)return;this.itemId='';this.publish({error:null});this.observe();}
  connect(){if(this.connected||this.disposed)return;this.connected=true;this.unsubscribe=this.playback.subscribe(()=>this.observe());this.interval=setInterval(()=>this.tick(),1000);void this.refreshPreferences();this.observe();}
- async refreshPreferences(){const g=++this.prefGeneration;this.publish({phase:'loading',error:null});try{const p=parseListeningPreferences(listeningData(await this.request(routePath("get_listening_preferences"),undefined,'GET',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}catch(e){if(!this.disposed&&g===this.prefGeneration)this.publish({phase:'error',error:'Listening preferences could not be loaded. Retry before changing them or enabling automatic progression.'});}}
+ async refreshPreferences(){const g=++this.prefGeneration;this.publish({phase:'loading',error:null});try{const p=parseListeningPreferences(listeningData(await this.request(routePath("get_listening_preferences"),undefined,'GET',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}catch(e){if(!this.disposed&&g===this.prefGeneration)this.publish({phase:'error',error:'Listening preferences could not be loaded. Retry before changing them.'});}}
  async savePreferences(patch:Partial<Omit<ListeningPreferences,'revision'>>){const old=this.state.preferences;if(this.disposed||!old||this.state.phase!=='ready')throw new Error('Load listening preferences before saving.');const next=parseListeningPreferences({...old,...patch});const g=++this.prefGeneration;this.publish({phase:'saving',error:null});
   try{const p=parseListeningPreferences(listeningData(await this.request(routePath("put_listening_preferences"),next,'PUT',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.interact();this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}
   catch(e){if(this.disposed||g!==this.prefGeneration)return;const conflict=object(e)&&e.code==='listening_preferences_conflict';this.publish({phase:'error',error:conflict?'These preferences changed on another device. Reload them before saving again.':'The preference save could not be confirmed. Reload to recover its actual result.'});throw new Error(this.state.error!);}
@@ -102,15 +101,18 @@ export class ListeningService {
   * starts at; this goes on through the queue and is forgotten when the viewer starts something new. */
  async setRate(rate:number){const context=this.state.context,p=this.state.preferences;if(!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');
   if(!p)throw new Error('Load listening preferences before changing the speed.');
-  parseListeningPreferences(context.kind==='song'?{...p,musicRate:rate}:{...p,bookRate:rate});
+  if(context.kind==='song'){if(rate!==1)throw new Error('Music plays at recorded speed.');}
+  else parseListeningPreferences({...p,bookRate:rate});
   this.heldRate={run:this.run(),kind:context.kind,rate};this.interact();this.applyRate();}
  private run(){return this.playback.getSnapshot().playbackRun??0;}
- private rateFor(kind:string){const p=this.state.preferences,held=this.heldRate;if(held&&held.kind===kind&&held.run===this.run())return held.rate;return kind==='audiobook_file'?p?.bookRate??1:p?.musicRate??1;}
+ private rateFor(kind:string){if(kind!=='audiobook_file')return 1;const p=this.state.preferences,held=this.heldRate;if(held&&held.kind===kind&&held.run===this.run())return held.rate;return p?.bookRate??1;}
  interact(){if(this.disposed)return;this.lastActivity=this.now();this.activityAtMs=Date.now();this.activityRevision++;if(this.state.stopped)this.publish({stopped:false,message:null});else this.syncNativePolicy();}
  private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
   if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
  private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel?'':p.itemId??'';
+  const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;
+  if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
   // With a kind hook, an item is decided once its session exists (until then it waits).
   if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
@@ -177,10 +179,10 @@ export class ListeningService {
   const minutes=this.state.preferences?.passoutMinutes??0;
   return !minutes||this.now()+remainingSeconds*1000<this.lastActivity+minutes*60000;
  }
- /** Songs and book parts continue while autoplay is on. Preferences not read yet (or unreadable)
-  * count as the server's default, on: an album never stops after track 1 for want of a read. */
- mayAdvance(){this.tick();const c=this.state.context;return !this.disposed&&!this.state.stopped&&(!c||!['song','audiobook_file'].includes(c.kind)?!this.itemId||!!c:(this.state.preferences?.autoplayNext??true));}
- dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
+ /** Listening queues continue unless stopped by a timer or awaiting their item's context.
+  * Loading preferences does not decide whether an album or audiobook part continues. */
+ mayAdvance(){this.tick();return !this.disposed&&!this.state.stopped&&(!this.itemId||!!this.state.context);}
+ dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',eqApplied:false,levelingApplied:false,preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
 }
 
 export async function readListeningItem(request:ListeningRequest,scope:QueueScope,itemId:string,signal?:AbortSignal){return parseItem(listeningData(await request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(itemId)}),undefined,'GET',signal),scope),itemId);}

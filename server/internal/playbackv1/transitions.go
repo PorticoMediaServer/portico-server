@@ -130,7 +130,10 @@ func (p preparedRow) answer() (PreparedNext, error) {
 	if err := json.Unmarshal([]byte(p.presentation), &view); err != nil {
 		return PreparedNext{}, err
 	}
-	view.URL, view.Subtitles = "", []SubtitleFile{}
+	if view.AudioRender.playable() && view.URL != view.AudioRender.URL {
+		view.URL = ""
+	}
+	view.Subtitles = []SubtitleFile{}
 	return PreparedNext{Token: p.token, ExpiresAt: fmtMs(time.UnixMilli(p.expires)), EntryID: p.entry, ItemID: p.item, Presentation: view}, nil
 }
 
@@ -418,6 +421,9 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		return QueueReply{}, fence
 	}
 	// The previous presentation refuses new requests from here; decoded audio drains.
+	if s.Playback != nil {
+		s.Playback.ForgetPrefetch(p.media)
+	}
 	s.stopMedia(ctx, []string{old.media})
 	s.hub.wake()
 	s.sweep.kick(s)
@@ -496,23 +502,27 @@ func (s *Service) cancelPrepared(ctx context.Context, column, value, reason stri
 // conversion (converted) with the server's exact trim and gains; unavailable
 // says why neither is possible. No nulls: unknown values are absent.
 type AudioRender struct {
-	Version        int              `json:"version"`
-	Mode           string           `json:"mode"`
-	ID             string           `json:"id"`
-	Reason         string           `json:"reason,omitempty"`
-	URL            string           `json:"url,omitempty"`
-	Container      string           `json:"container,omitempty"`
-	Codec          string           `json:"codec,omitempty"`
-	DecoderConfig  string           `json:"decoderConfig,omitempty"`
-	SampleRate     int              `json:"sampleRate,omitempty"`
-	Channels       int              `json:"channels,omitempty"`
-	BitDepth       int              `json:"bitDepth,omitempty"`
-	Bytes          int64            `json:"bytes,omitempty"`
-	PrefetchBytes  int64            `json:"prefetchBytes,omitempty"`
-	DurationFrames int64            `json:"durationFrames,omitempty"`
-	Downmixed      bool             `json:"downmixed,omitempty"`
-	Trim           *AudioRenderTrim `json:"trim,omitempty"`
-	Gain           *AudioRenderGain `json:"gain,omitempty"`
+	SourceBitrateBPS  int64                           `json:"sourceBitrateBps,omitempty"`
+	ConversionGainDB  float64                         `json:"conversionGainDb,omitempty"`
+	LoudnessAppliedDB *float64                        `json:"loudnessAppliedDb,omitempty"`
+	LoudnessEnvelope  *playback.AudioLoudnessEnvelope `json:"loudnessEnvelope,omitempty"`
+	Version           int                             `json:"version"`
+	Mode              string                          `json:"mode"`
+	ID                string                          `json:"id"`
+	Reason            string                          `json:"reason,omitempty"`
+	URL               string                          `json:"url,omitempty"`
+	Container         string                          `json:"container,omitempty"`
+	Codec             string                          `json:"codec,omitempty"`
+	DecoderConfig     string                          `json:"decoderConfig,omitempty"`
+	SampleRate        int                             `json:"sampleRate,omitempty"`
+	Channels          int                             `json:"channels,omitempty"`
+	BitDepth          int                             `json:"bitDepth,omitempty"`
+	Bytes             int64                           `json:"bytes,omitempty"`
+	PrefetchBytes     int64                           `json:"prefetchBytes,omitempty"`
+	DurationFrames    int64                           `json:"durationFrames,omitempty"`
+	Downmixed         bool                            `json:"downmixed,omitempty"`
+	Trim              *AudioRenderTrim                `json:"trim,omitempty"`
+	Gain              *AudioRenderGain                `json:"gain,omitempty"`
 	// SeekIndex: a direct plan in a container with no seek index of its own
 	// (MP3, ADTS, Ogg) has the server's at this route: byte offsets at packet
 	// or page boundaries and the raw frame each starts at, so the client reads
@@ -544,7 +554,7 @@ func audioRenderOf(p *playback.AudioPlan) *AudioRender {
 	if p == nil {
 		return nil
 	}
-	out := &AudioRender{Version: p.Version, Mode: p.Mode, ID: p.ID, Reason: p.Reason, URL: p.URL, Container: p.Container, Codec: p.Codec, DecoderConfig: p.DecoderConfig,
+	out := &AudioRender{SourceBitrateBPS: p.SourceBitrateBPS, ConversionGainDB: p.ConversionGainDB, LoudnessAppliedDB: p.LoudnessAppliedDB, LoudnessEnvelope: p.LoudnessEnvelope, Version: p.Version, Mode: p.Mode, ID: p.ID, Reason: p.Reason, URL: p.URL, Container: p.Container, Codec: p.Codec, DecoderConfig: p.DecoderConfig,
 		SampleRate: p.SampleRate, Channels: p.Channels, BitDepth: p.BitDepth, Bytes: p.Bytes, PrefetchBytes: p.PrefetchBytes, DurationFrames: p.DurationFrames, Downmixed: p.Downmixed}
 	if p.Trim != nil {
 		out.Trim = &AudioRenderTrim{StartFrames: p.Trim.StartFrames, EndFrames: p.Trim.EndFrames, Source: p.Trim.Source}
@@ -569,6 +579,10 @@ type PostPlayPolicy struct {
 
 func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout) (QueuePostPlay, error) {
 	out := QueuePostPlay{Autoplay: true, CountdownMs: 10000, AutomaticAdvances: l.q.automatic}
+	if currentListeningItem(ctx, tx, l) {
+		out.CountdownMs = 0
+		return out, nil
+	}
 	if s.PostPlay == nil {
 		return out, nil
 	}

@@ -7,11 +7,11 @@ import {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, 
 import {queueItemInput} from '../src/queue-controller.ts';
 import {QueueClient} from '../src/playback-v1/queue.ts';
 import {playbackUserMessage, sessionEndMessage} from '../src/playback-messages.ts';
-import type {V1Http} from '../src/playback-v1/http.ts';
+import type {V1Http, V1Request, V1Response} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>; afterResponse?: (request: V1Request, response: V1Response) => Promise<void>} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -21,6 +21,7 @@ function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; pas
       if (body.queue) body.queue.postPlay = options.postPlay;
       else if (body.id) (body as Record<string, unknown>).postPlay = options.postPlay;
     }
+    await options.afterResponse?.(r, response);
     return response as never; }};
   const timers: {fn: () => void; ms: number}[] = [];
   let serial = 0;
@@ -41,6 +42,63 @@ function playToEnd(playback: PlaybackService) {
 }
 
 const settle = () => new Promise(r => setTimeout(r, 20));
+
+test('playItem caller lifetime refuses stale input before changing an intent or issuing a request', async () => {
+  const {player, playback, log, stop} = setup();
+  try {
+    await settle(); // The initial current-queue read is independent of a Play intent.
+    const beforeRequests = log.length;
+    const before = playback.getSnapshot();
+    const controller = new AbortController(); controller.abort();
+    for (const context of [{signal: controller.signal}, {isCurrent: () => false}]) {
+      await assert.rejects(player.playItem('movie', 17, undefined, undefined, undefined, {versionId: 'v2'}, context), {name: 'AbortError'});
+      assert.equal(log.length, beforeRequests);
+      assert.equal(playback.getSnapshot(), before);
+    }
+  } finally { stop(); }
+});
+
+test('playItem caller lifetime abandons late new-queue and current-entry starts after abort or host retirement', async () => {
+  for (const restart of [false, true]) for (const retire of ['abort', 'host'] as const) {
+    let hold = false, entered!: () => void, release!: () => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const f = setup({afterResponse: async (request, response) => {
+      if (hold && request.method === 'POST' && request.path === '/v1/playback/sessions' && response.status === 201) { entered(); await gate; }
+    }});
+    try {
+      if (restart) await f.player.playItem('movie');
+      const beforeCreates = f.log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length;
+      const controller = new AbortController(); let current = true;
+      hold = true;
+      const pending = f.player.playItem('movie', 17, undefined, undefined, undefined, {versionId: 'v2'}, {signal: controller.signal, isCurrent: () => current});
+      await reached;
+      const request = f.log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!.body as Record<string, unknown>;
+      assert.equal(request.versionId, 'v2'); assert.equal(request.startPositionMs, 17000);
+      assert.equal(f.log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, beforeCreates + (restart ? 0 : 1));
+      if (retire === 'abort') controller.abort(); else current = false;
+      release(); await pending; await settle();
+      const sessions = [...(f.server as unknown as {sessions: Map<string, {id: string; versionId: string; ended: boolean}>}).sessions.values()];
+      const chosen = sessions.find(s => s.versionId === 'v2');
+      assert.ok(chosen, 'the held request created a real chosen-version session');
+      assert.ok(chosen.ended, 'the retired caller left no chosen session holding its lease');
+      assert.notEqual(f.playback.getSnapshot().session?.id, chosen.id);
+      assert.notEqual(f.player.currentSession()?.id, chosen.id);
+    } finally { release(); f.stop(); }
+  }
+});
+
+test('playItem caller lifetime permits its own accepted output change and keeps exact version/resume choices', async () => {
+  const f = setup();
+  try {
+    for (const restart of [false, true]) {
+      const controller = new AbortController();
+      await f.player.playItem('movie', restart ? 4.5 : 27, undefined, undefined, undefined, {versionId: 'v2'}, {signal: controller.signal, isCurrent: () => true});
+      assert.equal(f.player.currentSession()?.versionId, 'v2');
+      assert.equal(f.playback.getSnapshot().session?.resumeSeconds, restart ? 4.5 : 27);
+    }
+  } finally { f.stop(); }
+});
 
 test('Play is one request: the queue is created with its first session, which the service plays', async () => {
   const {player, playback, log, stop} = setup();
@@ -467,7 +525,7 @@ test('§18: a canceled or expired edge falls back to the ordinary end and advanc
   await player.commitAudio(prepared.token);
   assert.equal(server.commits, 0);
   assert.equal(playback.getSnapshot().audioEffects.prepared, undefined, 'the edge is dropped');
-  assert.match(playback.getSnapshot().audioEffects.notice, /ordinary playback/);
+  assert.equal(playback.getSnapshot().listeningNotice, undefined, 'transient recovery is silent');
   assert.equal(playback.getSnapshot().session!.id, first.id, 'the current track keeps playing');
   // Expiry is checked before asking: no request, the same fallback.
   const again = transitionsSetup(() => clock);
@@ -479,7 +537,7 @@ test('§18: a canceled or expired edge falls back to the ordinary end and advanc
   clock += 61_000;
   await again.player.commitAudio(late.token);
   assert.equal(again.server.commits, 0);
-  assert.match(again.playback.getSnapshot().audioEffects.notice, /expired/);
+  assert.equal(again.playback.getSnapshot().listeningNotice, undefined, 'expiry is silent');
   stop(); again.stop();
 });
 

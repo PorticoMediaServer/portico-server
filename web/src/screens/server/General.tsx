@@ -53,7 +53,6 @@ export function AccountConnectionPanel() {
         {status.actions.includes('cancel') ? <Button size="sm" variant="danger" label={t('web.general.cancelRequest')} loading={state?.busy} onClick={() => void claim?.cancel()} /> : null}
         {!connected && !pending ? <ClaimConnectButton api={session.api} pin={pin} hostedOrigin={session.hostedUrl} onDone={refreshClaim} /> : null}
       </div>} /> : null}
-      {status && !connected && !pending ? <SettingsRow label={t('web.general.recoveryOwner')} help={t('web.general.recoveryOwnerHelp')} meta={status.installationAcknowledged ? t('web.general.ackOn') : t('web.general.ackOff')} /> : null}
       {status && state?.error ? <div style={{padding: 12}}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => void claim?.refresh(true)}}>{t('server.claim.checkFailed')}</Notice></div> : null}
       {status ? <details style={{padding: '4px 16px 12px', fontSize: '0.78125rem', color: 'var(--text-tertiary)'}}><summary>{t('server.technicalDetails')}</summary><div style={{marginTop: 8}}><KeyValue rows={[[t('web.general.techState'), sentence(status.state)], [t('web.general.techServer'), status.identity.serverId], [t('web.general.techGeneration'), status.identity.localGeneration], ...(status.operation ? [[t('web.general.techOperation'), status.operation.operationId] as [string, string]] : [])]} /></div></details> : null}
     </SettingsGroup>

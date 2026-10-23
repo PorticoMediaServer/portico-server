@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 // Admission failures. Each one is a policy answer, not a fault: the message is
@@ -45,6 +46,7 @@ type Admission struct {
 
 // Decision carries the clamps a permitted request still has to respect.
 type Decision struct {
+	UploadLimited bool `json:"-"`
 	// MaxVideoBitrateBPS is 0 when the account has no remote bitrate cap, or the
 	// request is not remote.
 	MaxVideoBitrateBPS int
@@ -75,9 +77,8 @@ func (e *Enforcer) AdmitAccount(ctx context.Context, tx *sql.Tx, account string)
 }
 
 // AdmitPlayback is the playback side: concurrent stream count, the schedule
-// and the remote bitrate cap. Whether the device may be used at all is not
-// decided here: a session exists only on an approved device, and every
-// request re-checks that (identity_devices.approval_state). It runs before a playback lease
+// and the remote bitrate cap. The device-bound session and current account
+// authority are checked independently on every request. It runs before a playback lease
 // exists, so the count it reads excludes the request being admitted. Whether
 // the member may see the title at all (rating, unrated, denied labels) is not
 // decided here: that is the one catalogue predicate, which the caller applies
@@ -92,24 +93,20 @@ func (e *Enforcer) AdmitPlayback(ctx context.Context, tx *sql.Tx, p identity.Pri
 	if err = withinSchedule(limits.Schedule, now); err != nil {
 		return out, err
 	}
-	if limits.MaxStreams > 0 {
-		// One stream is one count, whatever protocol holds it. Legacy
-		// playback_sessions rows back v2 occurrences and the presentations of
-		// v1 VOD/audio sessions, so those are excluded here and counted once
-		// through their v1 row instead; v1 channel sessions never create a
-		// legacy row, so without the second count they would play for free.
-		var n int
-		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE account_id=? AND state NOT IN('stopped','ended','failed') AND expires_at>? AND id NOT IN(SELECT media_session_id FROM playback_v1_sessions WHERE account_id=? AND ended_ms=0 AND COALESCE(media_session_id,'')<>'') AND id<>?`, p.AccountID, now.UTC().Format(time.RFC3339), p.AccountID, q.ReplanMediaID).Scan(&n); err != nil {
-			return out, err
+	streams, err := streamlimits.ReadTx(ctx, tx, p.AccountID)
+	if err != nil {
+		return out, err
+	}
+	if streams.EffectiveLimit != nil {
+		n, e := streamlimits.CountTx(ctx, tx, p.Authority, p.AccountID, true, now, q.ReplanSessionID, q.ReplanMediaID)
+		if e != nil {
+			return out, e
 		}
-		var v1 int
-		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_v1_sessions WHERE account_id=? AND ended_ms=0 AND id<>?`, p.AccountID, q.ReplanSessionID).Scan(&v1); err != nil {
-			return out, err
-		}
-		if n+v1 >= limits.MaxStreams {
+		if n >= int64(*streams.EffectiveLimit) {
 			return out, ErrStreamLimit
 		}
 	}
+
 	if q.Remote && limits.RemoteBitrateKbps > 0 {
 		out.MaxVideoBitrateBPS = limits.RemoteBitrateKbps * 1000
 	}

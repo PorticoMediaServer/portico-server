@@ -11,6 +11,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -36,6 +37,15 @@ func callerFrom(ctx context.Context) v1Caller {
 // Messages are US English fallbacks; clients localise by code.
 func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "access_refused", Status: 403, Message: identity.ErrAccessRefused.Error(), Retry: apierror.Never},
+		{Code: "move_collision", Status: 409, Message: identity.ErrMoveCollision.Error(), Retry: apierror.Never},
+		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
+		{Code: "move_code_invalid", Status: 410, Message: identity.ErrMoveCode.Error(), Retry: apierror.Never},
+		{Code: "account_move_waiting", Status: 403, Message: identity.ErrMoveWaiting.Error(), Retry: apierror.Never},
+		{Code: "factor_setup_required", Status: 403, Message: identity.ErrFactorSetupRequired.Error(), Retry: apierror.Never},
+		{Code: "sign_in_kind_portico", Status: 403, Message: identity.ErrSignInKindPortico.Error(), Retry: apierror.Never},
+		{Code: "sign_in_kind_local", Status: 403, Message: identity.ErrSignInKindLocal.Error(), Retry: apierror.Never},
+		{Code: "portico_services_unavailable", Status: 503, Message: hosted.ErrServicesUnavailable.Error(), Retry: apierror.SameRequest},
 		{Code: "idempotency_key_required", Status: 428, Message: "Send an Idempotency-Key with this request.", Retry: apierror.Never},
 		{Code: "session_ended", Status: 410, Message: "This playback has ended.", Retry: apierror.Never},
 		{Code: "conversion_capacity", Status: 429, Message: "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.", Retry: apierror.SameRequest},
@@ -65,8 +75,6 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "administration_unavailable", Status: 503, Message: "Administration is temporarily unavailable.", Retry: apierror.SameRequest},
 		{Code: "confirmation_mismatch", Status: 409, Message: "Type the name exactly as shown to confirm.", Retry: apierror.Never},
 		{Code: "password_change_required", Status: 403, Message: "Change your password before continuing.", Retry: apierror.Never},
-		{Code: "device_approval_pending", Status: 403, Message: "This device is waiting for approval.", Retry: apierror.Never},
-		{Code: "device_denied", Status: 403, Message: "This device is not approved.", Retry: apierror.Never},
 		{Code: "no_tuner_available", Status: 409, Message: "Every tuner is in use.", Retry: apierror.AfterRefresh},
 		// Channels on v1 sessions (§18.6).
 		{Code: "channel_unavailable", Status: 503, Message: "This channel can't be played right now.", Retry: apierror.SameRequest},
@@ -119,6 +127,8 @@ func v1Error(err error) error {
 		return &apierror.Error{Code: "invalid_request", Fields: fields, Cause: err}
 	case errors.Is(err, identity.ErrNotVisible):
 		code = "not_found"
+	case errors.Is(err, identity.ErrFactorSetupRequired):
+		code = "factor_setup_required"
 	case errors.Is(err, identity.ErrForbidden):
 		code = "not_permitted"
 	case errors.Is(err, identity.ErrUnauthorized):
@@ -290,7 +300,7 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 
 // v1AuthError keeps lane C's sign-in state codes; everything else maps as v1.
 func v1AuthError(err error) error {
-	if errors.Is(err, identity.ErrPasswordChangeRequired) || errors.Is(err, identity.ErrDevicePending) || errors.Is(err, identity.ErrDeviceDenied) {
+	if errors.Is(err, identity.ErrPasswordChangeRequired) {
 		return foundationAuthError(err)
 	}
 	return v1Error(err)

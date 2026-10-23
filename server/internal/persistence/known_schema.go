@@ -16,6 +16,7 @@ import (
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
 const knownSchemaObjects = `index access_invitation_page
+index accounts_people_username
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
@@ -73,6 +74,7 @@ index catalog_assets_duration
 index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
 index catalog_automatic_collection_entity
+index catalog_automatic_member_overrides_item
 index catalog_automatic_members_group
 index catalog_book_context_author
 index catalog_book_context_series
@@ -272,6 +274,7 @@ index content_rating_age_lookup
 index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
 index detail_jobs_due
+index direct_memberships_people_role
 index direct_one_owner
 index direct_primary_profile
 index direct_profile_pin_attempts_device
@@ -296,6 +299,8 @@ index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
 index dvr_programme_images_url
+index dvr_recording_layouts_linked_path
+index dvr_recording_layouts_live_path
 index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
@@ -312,10 +317,12 @@ index identity_browser_accounts_recent
 index identity_credential_attempts_age
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_people_activity
 index identity_devices_people_first_seen
 index identity_devices_people_name
 index identity_devices_recent
 index identity_factor_challenge_expiry
+index identity_one_move
 index identity_refresh_device
 index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry
@@ -329,6 +336,7 @@ index inventory_changes_source
 index inventory_directories_pending
 index inventory_directories_visited
 index inventory_directory_children
+index inventory_disc_facts_asset
 index inventory_integrity_runs
 index inventory_objects_analysis
 index inventory_objects_asset
@@ -361,6 +369,7 @@ index lc_ref_channel
 index lc_schedule_items
 index lc_schedule_window
 index libraries_admin_name
+index libraries_admin_position
 index library_navigation_order
 index library_sources_due
 index library_sources_library
@@ -422,6 +431,7 @@ index metadata_tags_facet
 index metadata_tags_name
 index metadata_work_expiry
 index mount_operations_retention
+index music_virtual_tracks_entity
 index networking_certificates_scope
 index networking_claim_one_active
 index networking_claim_one_installed
@@ -464,6 +474,7 @@ index play_history_account
 index play_history_library
 index play_history_listen_profile
 index play_history_recent
+index play_history_time_bucket
 index playback_admin_retention
 index playback_channel_sessions_live
 index playback_origin_associations_asset
@@ -510,6 +521,7 @@ index queue_v1_snapshots_queue
 index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
+index reading_progress_publication
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -577,6 +589,7 @@ table access_invitations
 table access_limits
 table access_receipts
 table account_portico_links
+table account_stream_limits
 table accounts
 table admin_channel_logos
 table admin_channel_numbers
@@ -586,6 +599,8 @@ table admin_dvr_groups
 table admin_receipts
 table admin_revision
 table analysis_artifacts
+table analysis_audio_envelope
+table analysis_audio_loudness
 table analysis_heads
 table analysis_marker_history
 table analysis_marker_receipts
@@ -612,6 +627,7 @@ table artwork_uploads
 table artwork_variants
 table asset_chapter_facts
 table asset_chapters
+table asset_stream_breadth
 table asset_stream_facts
 table asset_streams
 table asset_subtitle_facts
@@ -630,6 +646,8 @@ table authorization_family_grants
 table authorization_family_renewals
 table authorization_family_tokens
 table authorization_session_families
+table backup_destinations
+table backup_settings
 table book_resume
 table catalog_albums
 table catalog_artists
@@ -872,6 +890,7 @@ table dvr_private_libraries
 table dvr_programme_images
 table dvr_receipts
 table dvr_recording_grants
+table dvr_recording_layouts
 table dvr_recording_shares
 table dvr_recordings
 table dvr_retention_retry
@@ -904,16 +923,30 @@ table identity_credential_state
 table identity_device_families
 table identity_devices
 table identity_factor_challenges
+table identity_managed_route
+table identity_move_codes
+table identity_move_link_tickets
+table identity_move_waiting
+table identity_moves
+table identity_owner_completions
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
+table identity_service_outbox
+table identity_sign_in_policy
+table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
 table inventory_artwork_sources
 table inventory_changes
 table inventory_directories
 table inventory_directory_cache
+table inventory_disc_chapters
+table inventory_disc_clips
+table inventory_disc_facts
+table inventory_disc_streams
+table inventory_disc_titles
 table inventory_objects
 table inventory_operation_jobs
 table inventory_path_notices
@@ -946,6 +979,7 @@ table library_metadata_agents
 table library_navigation
 table library_navigation_revisions
 table library_network_policy
+table library_preferences
 table library_revisions
 table library_scan_policies
 table library_sources
@@ -1061,6 +1095,8 @@ table mount_revision
 table music_acoustid_health
 table music_artist_evidence
 table music_match_observations
+table music_technical_facts
+table music_virtual_tracks
 table networking_address_absence
 table networking_certificate_settings
 table networking_certificate_state
@@ -1106,6 +1142,7 @@ table personal_snapshots
 table personal_watched_intents
 table play_counts
 table play_history
+table play_history_time
 table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
@@ -1125,6 +1162,7 @@ table playback_manifest_subtitles
 table playback_marker_skips
 table playback_observations
 table playback_observed_acquisitions
+table playback_observed_output
 table playback_origin_albums
 table playback_origin_assets
 table playback_origin_associations
@@ -1165,6 +1203,9 @@ table playlist_shares
 table policy
 table portico_admitted_families
 table portico_factor_challenges
+table preference_list_items
+table preference_scopes
+table preference_values
 table prepared_media_jobs
 table prepared_media_session_pins
 table prepared_media_source_revisions
@@ -1187,6 +1228,8 @@ table queue_v1_segments
 table queue_v1_snapshots
 table queues_v1
 table quick_connect_v1
+table reading_progress
+table reading_publications
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions
@@ -1210,6 +1253,7 @@ table remote_sources
 table reset_file_sessions
 table restriction_outbox
 table restrictions
+table retained_reading_progress
 table retained_title_identities
 table retained_title_state
 table retained_title_state_counts
@@ -1237,6 +1281,12 @@ table search_history
 table segment_catchup
 table segment_files
 table segment_shows
+table server_configuration_pending
+table server_configuration_state
+table server_log_retention
+table server_setting_lists
+table server_setting_sources
+table server_settings
 table setup_rate_limits_v1
 table show_people_credits
 table social_cast_bootstraps
@@ -1329,9 +1379,6 @@ trigger api_credentials_access_tokens_list_update
 trigger api_credentials_api_keys_list_delete
 trigger api_credentials_api_keys_list_insert
 trigger api_credentials_api_keys_list_update
-trigger api_credentials_member_tokens_list_delete
-trigger api_credentials_member_tokens_list_insert
-trigger api_credentials_member_tokens_list_update
 trigger artwork_album_changed
 trigger artwork_album_insert
 trigger artwork_book_part_delete
@@ -1881,11 +1928,22 @@ trigger hosted_server_events_bound_insert
 trigger hosted_signing_revocations_bound_check
 trigger hosted_signing_revocations_bound_delete
 trigger hosted_signing_revocations_bound_insert
+trigger identity_access_tokens_disabled
+trigger identity_access_tokens_insert
 trigger identity_avatar_version
 trigger identity_devices_account_removed
 trigger identity_devices_devices_list_delete
 trigger identity_devices_devices_list_insert
 trigger identity_devices_devices_list_update
+trigger identity_kind_insert_local_fence
+trigger identity_kind_insert_portico_fence
+trigger identity_kind_local_fence
+trigger identity_kind_no_delete
+trigger identity_kind_portico_fence
+trigger identity_local_no_portico_link
+trigger identity_local_no_portico_link_update
+trigger identity_portico_no_password_insert
+trigger identity_portico_no_password_update
 trigger identity_restrictions_revision
 trigger inventory_availability_object
 trigger inventory_availability_source
@@ -1927,6 +1985,7 @@ trigger library_metadata_agents_browse_update
 trigger library_navigation_revisions_bound_check
 trigger library_navigation_revisions_bound_delete
 trigger library_navigation_revisions_bound_insert
+trigger library_preferences_configuration
 trigger library_revision_create
 trigger library_revision_update
 trigger listening_attention_book_insert

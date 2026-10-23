@@ -1,5 +1,6 @@
-import {parseSelectedViewerRecord,type SelectedViewerRecord,type SelectedViewerStorage} from '@core/viewer-selection';
-import {BrowserProtectedStore} from './server-connections';
+import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord,type SelectedViewerStorage} from '@core/viewer-selection';
+import {BrowserProtectedStore,browserAppSessions} from './server-connections';
+import type {AppSessionStore} from '@core/app-sessions.ts';
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
  * the window or restarting the computer does not sign anyone out. The server decides how long a
@@ -41,4 +42,22 @@ return {
  },
 };
 }
-export const browserViewerStorage = createBrowserViewerStorage(new BrowserProtectedStore<SelectedViewerRecord>('portico.selected-viewer.v2'));
+/** Selection is a projection of the same protected multi-server record as refresh and routes.
+ * No second credential vault can retain a signed-out family. Existing originals are untouched. */
+export function createAppViewerStorage(store:AppSessionStore):SelectedViewerStorage {
+ return {
+  async read(){const entry=await store.selected();return entry?selectedViewerRecord(entry.connection.logicalOrigin,entry.connection.session,true):null;},
+  async write(record){
+   if(!record){const entry=await store.selected();if(entry)await store.signOutServer(entry.connection.pin.serverId,entry.connection.session.sessionFamilyId);return;}
+   const state=await store.read(),entry=state.servers.find(value=>value.connection.pin.serverId===record.session.viewer.serverId);
+   if(!entry||entry.connection.session.sessionFamilyId!==record.session.sessionFamilyId||entry.connection.session.viewer.profileId!==record.session.viewer.profileId||entry.connection.logicalOrigin!==record.serverUrl)throw new Error('Save the verified server connection before selecting it.');
+   await store.select(entry.connection.pin.serverId);
+  },
+  async clearIfFamily(family){const state=await store.read();const entry=state.servers.find(value=>value.connection.pin.serverId===state.selectedServerId&&value.connection.session.sessionFamilyId===family);if(entry)await store.signOutServer(entry.connection.pin.serverId,family);},
+ };
+}
+export const browserViewerStorage:SelectedViewerStorage = {
+ read:()=>createAppViewerStorage(browserAppSessions()).read(),
+ write:record=>createAppViewerStorage(browserAppSessions()).write(record),
+ clearIfFamily:family=>createAppViewerStorage(browserAppSessions()).clearIfFamily!(family),
+};

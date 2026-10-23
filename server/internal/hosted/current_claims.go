@@ -10,10 +10,10 @@ import (
 )
 
 type currentClaims struct {
-	cleanup   *claimCleanup
-	store     *networking.SQLiteStore
-	runner    *networking.AuthorityRunner
-	transport *networking.HTTPTransport
+	departureKeys *networking.ProtectedKeys
+	store         *networking.SQLiteStore
+	runner        *networking.AuthorityRunner
+	transport     *networking.HTTPTransport
 }
 
 func (s *Service) UseCurrentClaims(store *networking.SQLiteStore, runner *networking.AuthorityRunner, transport *networking.HTTPTransport) error {

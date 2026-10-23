@@ -109,7 +109,7 @@ func credentialBucketTx(ctx context.Context, tx *sql.Tx, account string) (string
 	claim, _ := ctx.Value(issuingDeviceKey{}).(issuingDevice)
 	if id := claim.registration.InstallationID; id != "" && account != "" {
 		var known bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_devices WHERE authority='local' AND account_id=? AND installation_id=? AND approval_state='approved')`, account, id).Scan(&known); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_devices WHERE authority='local' AND account_id=? AND installation_id=?)`, account, id).Scan(&known); err != nil {
 			return "", err
 		}
 		if known {
@@ -170,6 +170,10 @@ func unknownLockedUntilTx(ctx context.Context, tx *sql.Tx, subject string) (int6
 }
 
 func unknownAttemptTx(ctx context.Context, tx *sql.Tx, subject string) error {
+	policy, err := ReadSignInPolicyTx(ctx, tx)
+	if err != nil {
+		return err
+	}
 	source, _ := credentialSource(ctx)
 	now := time.Now().Unix()
 	for _, bucket := range []string{source, "*"} {
@@ -183,10 +187,7 @@ func unknownAttemptTx(ctx context.Context, tx *sql.Tx, subject string) error {
 			attempts >>= min((now-last)/900, 32)
 		}
 		attempts++
-		delay := int64(0)
-		if attempts >= 5 {
-			delay = min(int64(60), int64(1)<<min(attempts-5, 10))
-		}
+		delay := passwordDelay(policy.Values.PasswordAttempts, attempts)
 		_, err = tx.ExecContext(ctx, `INSERT INTO identity_unknown_attempts(subject_hash,source_bucket,failed_attempts,last_failure,locked_until) VALUES(?,?,?,?,?) ON CONFLICT(subject_hash,source_bucket) DO UPDATE SET failed_attempts=excluded.failed_attempts,last_failure=excluded.last_failure,locked_until=excluded.locked_until`, subject, bucket, attempts, now, max(until, now+delay))
 		if err != nil {
 			return err
@@ -227,6 +228,9 @@ type currentPasswordProof struct {
 // must never hold SQLite's one writer or either hash slot during a cool-off.
 // The mutation rechecks this exact hash in its own transaction before writing.
 func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password string) (currentPasswordProof, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return currentPasswordProof{}, err
+	}
 	var proof currentPasswordProof
 	read, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
@@ -283,6 +287,9 @@ func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password str
 }
 
 func (s *Service) checkCurrentPasswordProofTx(ctx context.Context, tx *sql.Tx, bearer string, proof currentPasswordProof) (directCaller, error) {
+	if err := RequireSignInKindTx(ctx, tx, SignInLocal); err != nil {
+		return directCaller{}, err
+	}
 	c, err := s.directCallerTx(ctx, tx, bearer, true)
 	if err != nil || c.account.ID != proof.account {
 		return directCaller{}, ErrUnauthorized
@@ -313,6 +320,10 @@ func (s *Service) checkCurrentPasswordProofTx(ctx context.Context, tx *sql.Tx, b
 }
 
 func (s *Service) passwordAttemptTx(ctx context.Context, tx *sql.Tx, account string, outcome credentialOutcome) error {
+	policy, policyErr := ReadSignInPolicyTx(ctx, tx)
+	if policyErr != nil {
+		return policyErr
+	}
 	source, err := credentialBucketTx(ctx, tx, account)
 	if err != nil {
 		return err
@@ -338,10 +349,7 @@ func (s *Service) passwordAttemptTx(ctx context.Context, tx *sql.Tx, account str
 		return err
 	}
 	attempts++
-	delay := int64(0)
-	if attempts >= 5 {
-		delay = min(int64(60), int64(1)<<min(attempts-5, 10))
-	}
+	delay := passwordDelay(policy.Values.PasswordAttempts, attempts)
 	_, err = tx.ExecContext(ctx, `INSERT INTO identity_credential_attempts(account_id,source_bucket,failed_attempts,last_failure,locked_until) VALUES(?,?,?,?,?) ON CONFLICT(account_id,source_bucket) DO UPDATE SET failed_attempts=excluded.failed_attempts,last_failure=excluded.last_failure,locked_until=excluded.locked_until`, account, source, attempts, now, max(until, now+delay))
 	if err != nil {
 		return err
@@ -356,10 +364,7 @@ func (s *Service) passwordAttemptTx(ctx context.Context, tx *sql.Tx, account str
 		globalAttempts >>= min((now-globalLast)/900, 32)
 	}
 	globalAttempts++
-	globalDelay := int64(0)
-	if globalAttempts >= 5 {
-		globalDelay = min(int64(60), int64(1)<<min(globalAttempts-5, 10))
-	}
+	globalDelay := passwordDelay(policy.Values.PasswordAttempts, globalAttempts)
 	var priorUntil int64
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT next_allowed FROM identity_account_attempt_budget WHERE account_id=?),0)`, account).Scan(&priorUntil); err != nil {
 		return err
@@ -373,7 +378,7 @@ func (s *Service) passwordAttemptTx(ctx context.Context, tx *sql.Tx, account str
 	if _, err = tx.ExecContext(ctx, `UPDATE identity_credential_attempts SET locked_until=MAX(locked_until, ?) WHERE account_id=? AND source_bucket=?`, now+globalDelay, account, source); err != nil {
 		return err
 	}
-	if attempts == 5 {
+	if delay > 0 && passwordDelay(policy.Values.PasswordAttempts, attempts-1) == 0 {
 		return s.securityNoticeTx(ctx, tx, account, "sign_in_lockout")
 	}
 	return nil

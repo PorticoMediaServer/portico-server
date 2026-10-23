@@ -3,8 +3,8 @@ package playbackv1
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/telemetry"
 )
 
 // Options is `GET /v1/items/{itemId}/playback-options` (spec §4.1).
@@ -67,18 +68,37 @@ type Part struct {
 	SizeBytes  int64  `json:"sizeBytes"`
 }
 type VideoStream struct {
-	ID          string  `json:"id"`
-	Codec       string  `json:"codec"`
-	Profile     string  `json:"profile,omitempty"`
-	Level       int     `json:"level,omitempty"`
-	BitDepth    int     `json:"bitDepth,omitempty"`
-	Width       int     `json:"width,omitempty"`
-	Height      int     `json:"height,omitempty"`
-	Fps         float64 `json:"fps,omitempty"`
-	HDR         string  `json:"hdr,omitempty"`
-	BitrateKbps int     `json:"bitrateKbps,omitempty"`
+	Interlaced                 *bool   `json:"interlaced,omitempty"`
+	ChromaSubsampling          string  `json:"chromaSubsampling,omitempty"`
+	FrameRateNumerator         int     `json:"frameRateNumerator,omitempty"`
+	FrameRateDenominator       int     `json:"frameRateDenominator,omitempty"`
+	FrameRateMode              string  `json:"frameRateMode,omitempty"`
+	DolbyVisionProfile         int     `json:"dolbyVisionProfile,omitempty"`
+	DolbyVisionCompatibility   int     `json:"dolbyVisionCompatibility,omitempty"`
+	DolbyVisionRPU             bool    `json:"dolbyVisionRpu"`
+	DolbyVisionBaseLayer       bool    `json:"dolbyVisionBaseLayer"`
+	DolbyVisionEnhancementType string  `json:"dolbyVisionEnhancementType,omitempty"`
+	DolbyVisionCMVersion       string  `json:"dolbyVisionCmVersion,omitempty"`
+	HDR10Plus                  bool    `json:"hdr10Plus"`
+	MasterDisplay              string  `json:"masterDisplay,omitempty"`
+	MaxCLL                     string  `json:"maxCll,omitempty"`
+	ID                         string  `json:"id"`
+	Codec                      string  `json:"codec"`
+	Profile                    string  `json:"profile,omitempty"`
+	Level                      int     `json:"level,omitempty"`
+	BitDepth                   int     `json:"bitDepth,omitempty"`
+	Width                      int     `json:"width,omitempty"`
+	Height                     int     `json:"height,omitempty"`
+	Fps                        float64 `json:"fps,omitempty"`
+	HDR                        string  `json:"hdr,omitempty"`
+	BitrateKbps                int     `json:"bitrateKbps,omitempty"`
 }
 type AudioStream struct {
+	Variant        string `json:"variant,omitempty"`
+	ObjectAudio    string `json:"objectAudio,omitempty"`
+	SampleRate     int    `json:"sampleRate,omitempty"`
+	BitDepth       int    `json:"bitDepth,omitempty"`
+	DTSX           bool   `json:"dtsx"`
 	ID             string `json:"id"`
 	Codec          string `json:"codec"`
 	Channels       int    `json:"channels,omitempty"`
@@ -162,6 +182,7 @@ type MarkerFunc func(ctx context.Context, tx *sql.Tx, p identity.Principal, item
 // Service is the v1 resource layer over the existing delivery machinery. One
 // per router: it owns the event hub and the lease sweeper.
 type Service struct {
+	Traffic   *telemetry.Traffic
 	DB        *sql.DB
 	Playback  *playback.Service
 	Subtitles *subtitles.Service
@@ -194,9 +215,12 @@ type Service struct {
 	PauseQueueBuilds bool
 	// LibraryCheck and Visibility authorize queue sources and windows (library
 	// access, restrictions and member limits); HTTP composition installs them.
-	QueryKeys    func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
-	LibraryCheck LibraryCheck
-	Visibility   Visibility
+	// CastQueueAuthority rechecks the paired screen's actual adopted session
+	// in the queue writer. Nil refuses narrowed Cast queue access.
+	CastQueueAuthority func(context.Context, *sql.Tx, Caller, string) error
+	QueryKeys          func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
+	LibraryCheck       LibraryCheck
+	Visibility         Visibility
 	// Unrestricted says the caller's item fence admits every item (every
 	// library, no restrictions): such a caller sees a container as it is, so a
 	// large shuffle can use the container's cached size (queue_counts.go).
@@ -293,12 +317,14 @@ func resolutionLabel(height int) string {
 }
 
 func hdrName(transfer, detail string) string {
-	if strings.Contains(detail, "dolby_vision") || strings.Contains(detail, "\"dovi") {
+	var stored assets.Stream
+	stored.DecodeDetail(detail)
+	if stored.Detail.DynamicRange == assets.RangeDolbyVision {
 		return "dolbyvision"
 	}
 	switch transfer {
 	case "smpte2084":
-		if strings.Contains(detail, "hdr10plus") || strings.Contains(detail, "hdr10_plus") {
+		if stored.Detail.HDR10Plus {
 			return "hdr10plus"
 		}
 		return "hdr10"
@@ -411,6 +437,10 @@ func (s *Service) partAsset(ctx context.Context, item, version string, part int)
 }
 
 func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Version) error {
+	breadth, err := assets.ReadStreamBreadth(ctx, tx, asset)
+	if err != nil {
+		return err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,color_transfer,detail_json FROM asset_streams WHERE asset_id=? ORDER BY stream_index`, asset)
 	if err != nil {
 		return err
@@ -423,23 +453,17 @@ func (s *Service) streams(ctx context.Context, tx *sql.Tx, asset string, v *Vers
 		if err = rows.Scan(&index, &kind, &codec, &language, &title, &channels, &layout, &isDefault, &forced, &transfer, &detail); err != nil {
 			return err
 		}
-		var facts struct {
-			Profile     string  `json:"profile"`
-			Level       int     `json:"level"`
-			BitDepth    int     `json:"bitDepth"`
-			Width       int     `json:"width"`
-			Height      int     `json:"height"`
-			FrameRate   float64 `json:"frameRate"`
-			BitRate     int     `json:"bitRate"`
-			ObjectAudio string  `json:"objectAudio"`
-		}
-		_ = json.Unmarshal([]byte(detail), &facts)
+		var stored assets.Stream
+		stored.DecodeDetail(detail)
+		facts := stored.Detail
+		facts.StreamBreadth = breadth[index]
+
 		lower := strings.ToLower(title)
 		switch kind {
 		case "video":
-			v.Video = append(v.Video, VideoStream{ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: facts.BitRate / 1000})
+			v.Video = append(v.Video, VideoStream{Interlaced: facts.ObservedInterlaced(), ChromaSubsampling: facts.ChromaSubsampling, FrameRateNumerator: facts.FrameRateNumerator, FrameRateDenominator: facts.FrameRateDenominator, FrameRateMode: facts.FrameRateMode, DolbyVisionProfile: facts.DolbyVisionProfile, DolbyVisionCompatibility: facts.DolbyVisionCompatibility, DolbyVisionRPU: facts.DolbyVisionRPU, DolbyVisionBaseLayer: facts.DolbyVisionBaseLayer, DolbyVisionEnhancementType: facts.DolbyVisionEnhancementType, DolbyVisionCMVersion: facts.DolbyVisionCMVersion, HDR10Plus: facts.HDR10Plus, MasterDisplay: facts.MasterDisplay, MaxCLL: facts.MaxCLL, ID: streamID("v", index), Codec: codec, Profile: strings.ToLower(facts.Profile), Level: facts.Level, BitDepth: facts.BitDepth, Width: facts.Width, Height: facts.Height, Fps: facts.FrameRate, HDR: hdrName(transfer, detail), BitrateKbps: int(facts.BitRate / 1000)})
 		case "audio":
-			v.Audio = append(v.Audio, AudioStream{ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: strings.Contains(lower, "descriptive") || strings.Contains(lower, "audio description")})
+			v.Audio = append(v.Audio, AudioStream{Variant: facts.AudioVariant, ObjectAudio: facts.ObjectAudio, SampleRate: facts.SampleRate, BitDepth: facts.BitsPerSample, DTSX: facts.ObjectAudio == "dtsx", ID: streamID("a", index), Codec: codec, Channels: channels, Layout: layout, Atmos: facts.ObjectAudio == "atmos", Language: language, Title: title, Default: isDefault, Commentary: strings.Contains(lower, "commentary"), VisualImpaired: facts.AudioDescription})
 		case "subtitle":
 			if s.Subtitles == nil {
 				v.Subtitles = append(v.Subtitles, SubStream{ID: streamID("s", index), Format: codec, Source: "embedded", Language: language, Title: title, Forced: forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: isDefault})
@@ -468,8 +492,9 @@ type Reach struct {
 	AdminMaxVideoBitrateBPS int
 	// SavedQuality is the viewer's saved default quality for this reach
 	// ("original", "automatic" or a ladder id); empty applies the link/kind default.
-	SavedQuality   string
-	TransportClass string
+	SavedQuality      string
+	SavedMusicQuality string
+	TransportClass    string
 	// DeviceID is the device asking, whose capability document decides whether
 	// a previewed subtitle would be drawn by the device or burned in.
 	DeviceID string
@@ -563,7 +588,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	if preview.Quality.Mode == "" {
-		preview.Quality = savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))
+		preview.Quality = defaultQuality(reach.SavedQuality, reach.SavedMusicQuality, reach.TransportClass, kind)
 	}
 	preview.Quality.Step = ""
 	if preview.VersionID == "" && !audioOnly && len(out.Versions) > 1 {
@@ -608,6 +633,11 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	facts := SourceFacts{BitrateKbps: version.BitrateKbps}
+	if musicKind(kind) && version.SizeBytes > 0 && version.DurationMs > 0 {
+		// Round the whole-file upper bound up: truncation must not label a
+		// file just above a music ceiling as source-equivalent.
+		facts.BitrateKbps = int((version.SizeBytes*8 + version.DurationMs - 1) / version.DurationMs)
+	}
 	if len(version.Video) > 0 {
 		facts.Height = version.Video[0].Height
 		if version.Video[0].BitrateKbps > 0 {
@@ -615,6 +645,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	out.Qualities = qualityOptions(facts, audioOnly || len(version.Video) == 0)
+	if musicKind(kind) {
+		out.Qualities = musicQualityOptions(facts)
+	}
 	// Chapters and markers are the chosen version's, part after part on one
 	// timeline (each part's starts offset by the parts before it).
 	offset := int64(0)
@@ -651,7 +684,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		offset += part.DurationMs
 	}
 	done()
-	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(playback.DefaultSavedQuality(reach.SavedQuality, reach.TransportClass, audioOnly))}
+	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: defaultQuality(reach.SavedQuality, reach.SavedMusicQuality, reach.TransportClass, kind)}
 	if s.Playback != nil {
 		plan, err := s.Playback.PlanV1(ctx, p, item, choice)
 		switch {

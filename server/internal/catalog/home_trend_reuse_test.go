@@ -115,7 +115,8 @@ func TestHomeWeeklyTrendingUsesOnlyGenuineEligibleLocalSignals(t *testing.T) {
 	r := engineRequest("movies")
 	r.CommunityActivity = true
 	for _, letter := range []string{"a", "b", "c", "d"} {
-		engineExec(t, f, `INSERT INTO accounts VALUES(?,?,x'00',?,1)`, letter, letter, "profile-"+letter)
+		engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, letter, letter, "profile-"+letter)
+		shareFixtureProfiles(t, f.db)
 	}
 	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='["movies"]'`)
 	record := func(actor, item, tag string, at time.Time, completed int, position int64) {
@@ -168,11 +169,12 @@ func TestHomeWeeklyTrendingUsesOnlyGenuineEligibleLocalSignals(t *testing.T) {
 	}
 	t.Log("genuine seven-day normalized signals produce four-profile work before three-profile work; replays, eight-day, future and tiny signals do not add titles or inflate rank")
 	// A privacy opt-out is applied immediately, including to an open cursor.
-	engineExec(t, f, `INSERT INTO console_documents VALUES('profile:["local","d","profile-d"]',1,'{"privacy.showActivityToMembers":false}',0)`)
+	storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "d", ProfileID: "profile-d"}, map[string]any{"privacy.showActivityToMembers": false})
 	check("m2", "m1") // same three viewers; newest eligible activity wins.
-	engineExec(t, f, `INSERT INTO console_documents VALUES('profile:["local","c","profile-c"]',1,'{"privacy.pauseWatchHistory":true}',0)`)
+	storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "c", ProfileID: "profile-c"}, map[string]any{"privacy.pauseWatchHistory": true})
 	check() // fewer than three eligible people for either work.
-	engineExec(t, f, `DELETE FROM console_documents`)
+	storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "d", ProfileID: "profile-d"}, map[string]any{"privacy.showActivityToMembers": true})
+	storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "c", ProfileID: "profile-c"}, map[string]any{"privacy.pauseWatchHistory": false})
 	f.c.Attributes(f.items["m1"].ID, "label", "adult")
 	f.c.Drain()
 	r.Viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"adult"}}

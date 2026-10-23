@@ -1,3 +1,5 @@
+import type {ListAdminSessionsResponse} from '../../../contracts/src/types.ts';
+import {parseDashboardSessionFacts} from '../admin/activity-summary/parser.ts';
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
 import {apiRoot} from '../../../contracts/src/routes.ts';
@@ -34,7 +36,7 @@ export function url(v: unknown, what: string): string {
 }
 
 // ── Options (spec §4.1) ─────────────────────────────────────────────
-export type VideoStream = Readonly<{id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
+export type VideoStream = Readonly<{interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
 export type AudioStream = Readonly<{id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
@@ -67,7 +69,7 @@ export type PlaybackOptions = Readonly<{
   plan?: PlaybackPlan;
 }>;
 
-const qualityModes = ['original', 'fixed', 'automatic', 'limit'] as const;
+const qualityModes = ['original', 'cd-quality', 'fixed', 'automatic', 'limit'] as const;
 /** A quality in force, tolerant: anything unreadable is the original. */
 export function parseQuality(v: unknown): QualityInForce {
   if (!obj(v)) return Object.freeze({mode: 'original'});
@@ -104,7 +106,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
     chapters: Object.freeze(arr(v.chapters).filter(obj).map(c => Object.freeze({startMs: num(c.startMs), title: str(c.title), thumbnail: typeof c.thumbnail === 'string' ? c.thumbnail : undefined}))),
     markers: Object.freeze(arr(v.markers).filter(obj).map(m => Object.freeze({id: str(m.id), type: oneOf(m.type, ['intro', 'recap', 'credits', 'preview', 'commercial'] as const, 'other' as never), startMs: num(m.startMs), endMs: num(m.endMs), confidence: oneOf(m.confidence, ['detected', 'manual', 'embedded'] as const, 'other' as never), automaticSafe: bool(m.automaticSafe)}))),
     trickplay: t ? Object.freeze({url: url(t.url, 'trickplay url'), intervalMs: num(t.intervalMs), tileWidth: num(t.tileWidth), tileHeight: num(t.tileHeight), columns: num(t.columns), rows: num(t.rows)}) : undefined,
-    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'automatic' || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'automatic' | 'fixed', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), sameAsOriginal: q.sameAsOriginal === true, applicable: q.applicable !== false, dataGBPerHour: optNum(q.dataGBPerHour), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
+    qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'cd-quality' || q.mode === 'automatic' || q.mode === 'limit' && typeof q.maxAudioBitrateKbps === 'number' && Number.isFinite(q.maxAudioBitrateKbps) && q.maxAudioBitrateKbps > 0 || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'cd-quality' | 'automatic' | 'fixed' | 'limit', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), sameAsOriginal: q.sameAsOriginal === true, applicable: q.applicable !== false, dataGBPerHour: optNum(q.dataGBPerHour), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
     preferred: obj(v.preferred) ? Object.freeze({versionId: id(v.preferred.versionId, 'preferred version'), audioId: optId(v.preferred.audioId, 'preferred audio'), reason: str(v.preferred.reason), quality: parseQuality(v.preferred.quality)}) : undefined,
     plan,
   });
@@ -292,6 +294,9 @@ export function parseDevice(v: unknown): ControllableDevice {
 
 // ── Admin Now Playing (spec §14) ────────────────────────────────────
 export type AdminSession = Readonly<{
+ app?:string;platform?:string;address?:string;currentBitrateKbps?:number|null;rateWindowMs?:number;live?:boolean;
+ media?:ListAdminSessionsResponse['items'][number]['media'];delivery?:ListAdminSessionsResponse['items'][number]['delivery'];item?:ListAdminSessionsResponse['items'][number]['item'];
+
   id: string; user: string; profile: string; device: string; itemId?: string; title: string; kind: SessionKind; state: string; positionMs: number;
   /** The length of what is playing, when the server knows it (never for a channel). */
   durationMs?: number;
@@ -306,7 +311,8 @@ export function parseAdminSession(v: unknown): AdminSession {
   const d = obj(v.decision) ? v.decision : {};
   const named = (x: unknown) => (obj(x) ? str(x.name) : str(x));
   return Object.freeze({
-    id: id(v.id, 'session id'), user: named(v.user), profile: named(v.profile), device: named(v.device),
+    ...parseDashboardSessionFacts(v),
+ id: id(v.id, 'session id'), user: named(v.user), profile: named(v.profile), device: named(v.device),
     itemId: obj(v.item) && typeof v.item.id === 'string' ? v.item.id : typeof v.itemId === 'string' ? v.itemId : undefined,
     title: obj(v.item) ? str(v.item.title) : str(v.title),
     kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never), state: str(v.state), positionMs: num(v.positionMs),

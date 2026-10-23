@@ -23,8 +23,18 @@ func familyFixture(t *testing.T) (*Service, *sql.DB, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+
+	if _, err = db.Exec(`INSERT INTO networking_server_identities(server_id,public_key,key_incarnation,created_at) VALUES('srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','link-test-key','2026-10-23T00:00:00Z');
+ INSERT INTO networking_claim_identity(singleton,server_id,public_key,reset_generation) VALUES(1,'srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',0);
+ INSERT INTO configuration(key,value) VALUES('id','srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY')`); err != nil {
+		t.Fatal(err)
+	}
+
 	service, err := New(db, dir)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {

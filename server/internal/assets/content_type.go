@@ -38,7 +38,23 @@ func audioContentType(container string) string {
 		return "audio/ogg"
 	case "wav":
 		return "audio/wav"
-	case "aiff":
+	case "ape":
+		return "audio/x-ape"
+	case "wv", "wavpack":
+		return "audio/x-wavpack"
+	case "dsf":
+		return "audio/x-dsf"
+	case "dff", "dsdiff":
+		return "audio/x-dff"
+	case "mka", "matroska":
+		return "audio/x-matroska"
+	case "wma", "asf":
+		return "audio/x-ms-wma"
+	case "tta":
+		return "audio/x-tta"
+	case "mpc", "mpc8":
+		return "audio/x-musepack"
+	case "aiff", "aif":
 		return "audio/aiff"
 	}
 	return "audio/mp4"

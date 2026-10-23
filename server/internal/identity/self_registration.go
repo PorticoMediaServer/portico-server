@@ -27,7 +27,6 @@ const selfRegistrationKey = "identity.selfRegistration"
 
 type RegistrationPolicy struct {
 	SelfRegistration string `json:"selfRegistration"`
-	DeviceApproval   string `json:"deviceApproval"`
 }
 
 // RegistrationPolicySnapshot reads the two owner choices from one database
@@ -50,26 +49,19 @@ func (s *Service) RegistrationPolicySnapshot(ctx context.Context) (RegistrationP
 	if err != nil {
 		return RegistrationPolicy{}, err
 	}
-	device, err := value(deviceApprovalKey)
-	if err != nil {
-		return RegistrationPolicy{}, err
-	}
 	if !validSelfRegistration(self) {
 		self = SelfRegistrationOff
 	}
-	if !validDeviceApproval(device) {
-		device = DeviceApprovalAuto
-	}
-	return RegistrationPolicy{SelfRegistration: self, DeviceApproval: device}, nil
+	return RegistrationPolicy{SelfRegistration: self}, nil
 }
 
 // SaveRegistrationPolicy validates both choices before writing either one.
 func (s *Service) SaveRegistrationPolicy(ctx context.Context, policy RegistrationPolicy) (RegistrationPolicy, error) {
-	if !validSelfRegistration(policy.SelfRegistration) || !validDeviceApproval(policy.DeviceApproval) {
+	if !validSelfRegistration(policy.SelfRegistration) {
 		return RegistrationPolicy{}, ErrDirectInput
 	}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
-		for key, value := range map[string]string{selfRegistrationKey: policy.SelfRegistration, deviceApprovalKey: policy.DeviceApproval} {
+		for key, value := range map[string]string{selfRegistrationKey: policy.SelfRegistration} {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {
 				return err
 			}
@@ -131,6 +123,9 @@ type InvitationRedeemer func(ctx context.Context, tx *sql.Tx, code, account stri
 // signs it in. A new account is always a member with no libraries: reaching the
 // server is not evidence of what its owner wants shared.
 func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, private bool) (DirectSignIn, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return DirectSignIn{}, err
+	}
 	mode := s.SelfRegistration()
 	if mode == SelfRegistrationOff || s.SetupRequired() {
 		return DirectSignIn{}, ErrRegistrationClosed
@@ -176,6 +171,12 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	}
 	if taken {
 		return DirectSignIn{}, ErrRegistrationTaken
+	}
+	if e = RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
+		return DirectSignIn{}, e
+	}
+	if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+		return DirectSignIn{}, e
 	}
 	account, profile := Token(), Token()
 	if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,?,?,1)`, account, username, hash, profile); e != nil {

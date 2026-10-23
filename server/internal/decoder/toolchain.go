@@ -16,6 +16,11 @@ import (
 )
 
 type ToolchainFacts struct {
+	// Only a bundle's qualified packet conversion may enable this fact. A BSF
+	// name, stock dovi_rpu options or a generic device probe is insufficient.
+	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
+	DolbyVisionProfile7To81 bool `json:"dolbyVisionProfile7To81"`
+
 	BitstreamFilters map[string]bool `json:"bitstreamFilters"`
 	VulkanAvailable  bool            `json:"vulkanAvailable"`
 	OpenCLAvailable  bool            `json:"openclAvailable"`
@@ -31,6 +36,7 @@ type ToolchainFacts struct {
 
 var installedToolchain atomic.Pointer[ToolchainFacts]
 var toolchainCache sync.Map
+var toolchainRuntimeCache sync.Map
 
 // ConfigureToolchain installs the probed toolchain and reports, in the owner's
 // diagnostics, whether it converts Dolby Vision Profile 5 with its own colors.
@@ -97,8 +103,32 @@ func toneMapProbeJob(path, device, graph string) mediaexec.Job {
 	return mediaexec.Job{Executable: path, Args: []string{"-v", "error", "-nostdin", "-init_hw_device", device, "-filter_hw_device", "tone", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=1", "-vf", graph, "-frames:v", "1", "-f", "null", "-"}}
 }
 
-// ProbeToolchain runs bounded trusted introspection at startup, never on requests.
+// ProbeToolchain qualifies trusted executable inventories. Optional GPU media
+// probes run separately through ProbeToolchainRuntime after startup qualification.
+// Cold inventory facts do not grant Vulkan/OpenCL runtime availability.
 func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) {
+	return probeToolchainInventory(ctx, ffmpeg, runToolchainProbe)
+}
+
+type toolchainProbeRunner func(context.Context, mediaexec.Job) (string, error)
+
+func runToolchainProbe(ctx context.Context, job mediaexec.Job) (string, error) {
+	cmd, err := mediaexec.CommandContext(ctx, job)
+	if err != nil {
+		return "", err
+	}
+	cmd.WaitDelay = time.Second
+	buffer := &toolOutput{}
+	cmd.Stdout = buffer
+	cmd.Stderr = buffer
+	err = cmd.Run()
+	return buffer.String(), err
+}
+
+func probeToolchainInventory(ctx context.Context, ffmpeg string, runner toolchainProbeRunner) (ToolchainFacts, error) {
+	if err := ctx.Err(); err != nil {
+		return ToolchainFacts{}, err
+	}
 	path, err := exec.LookPath(ffmpeg)
 	if err != nil {
 		return ToolchainFacts{}, err
@@ -113,21 +143,11 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 	out := ToolchainFacts{Identity: identity}
 	for _, kind := range []string{"version", "encoders", "decoders", "filters", "muxers", "hwaccels", "bsfs"} {
 		run, cancel := context.WithTimeout(ctx, 5*time.Second)
-		cmd, err := mediaexec.CommandContext(run, mediaexec.Job{Executable: path, Args: []string{"-hide_banner", "-" + kind}})
-		if err != nil {
-			cancel()
-			return ToolchainFacts{}, err
-		}
-		cmd.WaitDelay = time.Second
-		buffer := &toolOutput{}
-		cmd.Stdout = buffer
-		cmd.Stderr = buffer
-		err = cmd.Run()
+		raw, err := runner(run, mediaexec.Job{Executable: path, Args: []string{"-hide_banner", "-" + kind}})
 		cancel()
 		if err != nil {
 			return ToolchainFacts{}, err
 		}
-		raw := buffer.String()
 		switch kind {
 		case "version":
 			for _, line := range strings.Split(raw, "\n") {
@@ -155,18 +175,41 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 	if out.Version == "" || len(out.Encoders) == 0 || len(out.Muxers) == 0 {
 		return ToolchainFacts{}, errors.New("incomplete toolchain probe")
 	}
+	if current, err := ffmpegIdentity(path); err != nil || current != identity {
+		return ToolchainFacts{}, errors.New("FFmpeg changed during inventory qualification")
+	}
+	toolchainCache.Store(identity, out)
+	return out, nil
+}
+
+// ProbeToolchainRuntime qualifies optional software-sandbox GPU filters for the
+// already qualified executable identity. Call it on the server lifecycle after
+// choosing the final configured or bundled tool; it is not a startup barrier.
+// Failure leaves CPU conversion available and grants no unmeasured GPU support.
+func ProbeToolchainRuntime(ctx context.Context, ffmpeg string) (ToolchainFacts, error) {
+	return probeToolchainRuntime(ctx, ffmpeg, runToolchainProbe)
+}
+
+func probeToolchainRuntime(ctx context.Context, ffmpeg string, runner toolchainProbeRunner) (ToolchainFacts, error) {
+	out, err := probeToolchainInventory(ctx, ffmpeg, runner)
+	if err != nil {
+		return ToolchainFacts{}, err
+	}
+	if cached, ok := toolchainRuntimeCache.Load(out.Identity); ok {
+		return cached.(ToolchainFacts), nil
+	}
+	path, err := exec.LookPath(ffmpeg)
+	if err != nil {
+		return ToolchainFacts{}, err
+	}
+	identity := out.Identity
+
 	probeDevice := func(device, graph string) bool {
 		bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		// Use the same permissions as a software conversion, including fallback.
-		cmd, err := mediaexec.CommandContext(bounded, toneMapProbeJob(path, device, graph))
-		if err != nil {
-			return false
-		}
-		cmd.WaitDelay = time.Second
-		buffer := &toolOutput{}
-		cmd.Stderr = buffer
-		return cmd.Run() == nil
+		_, err := runner(bounded, toneMapProbeJob(path, device, graph))
+		return err == nil
 	}
 	if out.Filters["libplacebo"] && out.HWAccels["vulkan"] {
 		out.VulkanAvailable = probeDevice("vulkan=tone", "format=yuv420p,hwupload,libplacebo=tonemapping=bt.2390:colorspace=bt709:color_primaries=bt709:color_trc=bt709:format=yuv420p,hwdownload,format=yuv420p")
@@ -174,6 +217,13 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 	if !out.VulkanAvailable && out.Filters["tonemap_opencl"] && out.HWAccels["opencl"] {
 		out.OpenCLAvailable = probeDevice("opencl=tone", "format=p010,hwupload,tonemap_opencl=tonemap=hable:desat=0:format=nv12,hwdownload,format=nv12")
 	}
+	if err := ctx.Err(); err != nil {
+		return ToolchainFacts{}, err
+	}
+	if current, err := ffmpegIdentity(path); err != nil || current != identity {
+		return ToolchainFacts{}, errors.New("FFmpeg changed during runtime qualification")
+	}
+	toolchainRuntimeCache.Store(identity, out)
 	toolchainCache.Store(identity, out)
 	return out, nil
 }

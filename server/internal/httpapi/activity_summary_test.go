@@ -34,7 +34,7 @@ func activitySummaryFixture(t *testing.T) (Dependencies, map[string]identity.Env
 	}
 	tokens := map[string]identity.Envelope{}
 	for _, role := range []string{"owner", "admin", "member"} {
-		if _, e = db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, role, role, role+"-profile"); e != nil {
+		if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, role, role, role+"-profile"); e != nil {
 			t.Fatal(e)
 		}
 		if _, e = db.Exec(`UPDATE direct_memberships SET role=? WHERE account_id=?`, role, role); e != nil {

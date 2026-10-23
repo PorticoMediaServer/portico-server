@@ -49,7 +49,7 @@ func (s *Service) RepairMissingArtworkStep(ctx context.Context) error {
 			}
 			return err
 		}
-		if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_jobs SET status='pending',attempts=0,next_attempt='' WHERE kind=? AND entity_id=? AND role=? AND subject=? AND status='complete'`, v.Target.Kind, entity, v.Role, v.Subject); err != nil {
+		if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_jobs SET status='pending',attempts=0,next_attempt='' WHERE kind=? AND entity_id=? AND role=? AND subject=? AND status='complete' AND provider<>'generated'`, v.Target.Kind, entity, v.Role, v.Subject); err != nil {
 			for _, pending := range batch[i:] {
 				s.queueMissingArtwork(pending.Target, pending.Role, pending.Subject)
 			}

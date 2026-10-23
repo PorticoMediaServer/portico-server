@@ -20,6 +20,8 @@ export type PolicyView = Readonly<{
   prompt: Readonly<{kind:'skip';marker:SegmentMarker}> | Readonly<{kind:'up-next';offer:UpNextOffer;countdown:UpNextCountdown|null;sceneAfterCredits:boolean}> | null;
   undo: Readonly<{marker:SegmentMarker;remainingSeconds:number}> | null;
   markers: readonly SegmentMarker[]; finished: boolean; replay: boolean; attention: Attention | null;
+  /** Remaining canonical post-play time, only while the expanded end card can auto-advance. */
+  endCountdown?: Readonly<{seconds: number; automatic: true}>;
 }>;
 export type PolicyResult = Readonly<{view:PolicyView;commands:readonly PolicyCommand[]}>;
 /** Deterministic extraction of the skip/credits/end-card effects. Engines execute commands only
@@ -80,8 +82,10 @@ export class PlaybackPolicy {
     }
     if (!input.ended) this.endElapsed=0;
     const show=input.expanded && !attention;
+    const endCountdown=show && input.ended && !this.advanced && !this.cancelled && post?.available && post.nextEntryId && post.autoplay && !post.passoutCheckDue
+      ? Object.freeze({seconds:Math.max(0,post.countdownSeconds-this.endElapsed),automatic:true as const}) : undefined;
     const prompt:PolicyView['prompt']=show && visibleOffer ? {kind:'up-next',offer:visibleOffer,countdown,sceneAfterCredits:!!visibleOffer.marker && followedByScene(visibleOffer.marker,input.durationSeconds)} : show && marker && !this.dismissed.has(marker.id) ? {kind:'skip',marker}:null;
-    return Object.freeze({view:Object.freeze({prompt:prompt?Object.freeze(prompt):null,undo:show && this.undo?Object.freeze({marker:this.undo.marker,remainingSeconds:(this.undo.until-now)/1000}):null,markers:input.expanded?this.markers:Object.freeze([]),finished:input.ended,replay:input.ended && (!post?.available || !post.autoplay || this.cancelled),attention}),commands:Object.freeze(commands)});
+    return Object.freeze({view:Object.freeze({prompt:prompt?Object.freeze(prompt):null,undo:show && this.undo?Object.freeze({marker:this.undo.marker,remainingSeconds:(this.undo.until-now)/1000}):null,markers:input.expanded?this.markers:Object.freeze([]),finished:input.ended,replay:input.ended && (!post?.available || !post.autoplay || this.cancelled),attention,...(endCountdown?{endCountdown}:{})}),commands:Object.freeze(commands)});
   }
   dismiss(fence: QueuePlaybackFence): boolean {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || this.frame.ended) return false;
@@ -90,10 +94,10 @@ export class PlaybackPolicy {
     if (this.offerId) this.watchedCredits=this.offerId;
     return !!marker || !!this.offerId;
   }
-  skip(fence: QueuePlaybackFence): PolicyCommand | null {
+  skip(fence: QueuePlaybackFence, expectedMarkerId?: string): PolicyCommand | null {
     if (!sameFence(this.fence,fence) || !this.frame?.expanded || this.frame.attention || this.frame.ended) return null;
     const marker=activeSegment(this.markers,this.frame.positionSeconds,this.frame.modes,this.dismissed);
-    if (!marker) return null;
+    if (!marker || expectedMarkerId !== undefined && marker.id !== expectedMarkerId) return null;
     this.dismissed.add(marker.id);
     return Object.freeze({kind:'seek',fence:this.fence!,positionSeconds:skipTarget(marker,this.frame.durationSeconds),reason:'manual-skip',markerId:marker.id});
   }

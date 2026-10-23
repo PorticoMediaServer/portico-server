@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -23,9 +24,14 @@ import (
 type ClaimRequestOwner struct {
 	Owner LocalOwner
 	Guard ClaimRequestGuard
+	// WebOrigin is captured by the HTTP edge from the actual trusted transport,
+	// never from an untrusted caller's proposed callback address.
+	WebOrigin string
 	// Resume rebuilds Guard after a server restart (ResumeWebClaims): an
 	// opaque note of the sign-in that asked, never a credential.
 	Resume string
+	// OwnerStart is a captured live family capability, never client input.
+	OwnerStart *OwnerStartAuthority
 }
 type ClaimRequestAuthorizer func(*http.Request) (ClaimRequestOwner, error)
 type ClaimExpected struct {
@@ -59,6 +65,7 @@ type ClaimStatus struct {
 	ApprovalRequest          *ClaimApprovalRequest `json:"approvalRequest,omitempty"`
 }
 type ClaimHandler struct {
+	recoveryWake        chan struct{}
 	webWatches          sync.Map
 	certificates        *CertificateManager
 	remote              *RemoteManager
@@ -85,7 +92,7 @@ func NewClaimHandler(store *SQLiteStore, runner *AuthorityRunner, transport Tran
 	if store == nil || runner == nil || transport == nil || signer == nil || authorize == nil || name == nil {
 		return nil, ErrInvalid
 	}
-	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
+	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, recoveryWake: make(chan struct{}, 1), endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
 }
 
 // HTTPRegistrar is the route binding surface shared by net/http and the API registry.
@@ -126,13 +133,16 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e = checkClaimRequest(ctx); e != nil {
 			return e
 		}
-		result, e = h.handle(ctx, w, r, actor.Owner)
+		result, e = h.handle(ctx, w, r, actor)
 		if e != nil {
 			return e
 		}
 		return checkClaimRequest(ctx)
 	})
 	if e != nil {
+		if r.Method == http.MethodPost {
+			h.wakeClaimRecovery()
+		}
 		h.failure(w, r, e)
 		return
 	}
@@ -166,7 +176,8 @@ func readClaimBody(w http.ResponseWriter, r *http.Request, out any) error {
 	// envelope string remains byte-for-byte unchanged after JSON string decoding.
 	return canonicalApprovalJSON(raw, out)
 }
-func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, owner LocalOwner) (ClaimStatus, error) {
+func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *http.Request, actor ClaimRequestOwner) (ClaimStatus, error) {
+	owner := actor.Owner
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" {
 		return h.snapshot(ctx)
 	}
@@ -180,6 +191,9 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		var body ClaimPrepareRequest
 		if e := readClaimBody(w, r, &body); e != nil {
 			return ClaimStatus{}, e
+		}
+		if body.Purpose == "switch" && actor.WebOrigin == "" {
+			return ClaimStatus{}, ErrClaimOwnerRequired
 		}
 		// Web approval (Plex-style): no account is needed to prepare. The person
 		// who approves the code on web.getportico.tv becomes the owner.
@@ -215,7 +229,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			if purpose.Purpose == "change-owner" && purpose.PreviousOwnerRole == "" {
 				purpose.PreviousOwnerRole = "admin"
 			}
-			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil {
+			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil && !(purpose.Purpose == "switch" && errors.Is(e, sql.ErrNoRows)) {
 				return ClaimStatus{}, ErrClaimOwnerRequired
 			}
 		}
@@ -240,6 +254,12 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	if r.URL.Path == "/v1/networking/claim/web-approval" {
 		address := returnOrigin(r)
+		if expected.Purpose == "switch" {
+			if actor.WebOrigin == "" {
+				return ClaimStatus{}, ErrClaimOwnerRequired
+			}
+			address = actor.WebOrigin
+		}
 		pending, e := h.beginWebClaim(ctx, expected, address)
 		if e != nil {
 			return ClaimStatus{}, e
@@ -319,9 +339,6 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 		return ClaimStatus{}, e
 	}
 	result := ClaimStatus{State: "unconfigured", Identity: ClaimIdentityExpected{id.ServerID, id.ResetGeneration}, Actions: []string{"prepare"}}
-	if !active.Valid {
-		return result, nil
-	}
 	var pending sql.NullString
 	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
 		return ClaimStatus{}, e
@@ -329,11 +346,19 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	if pending.Valid {
 		active = pending
 	}
+	// The first Local-to-Portico switch has only a pending pointer. It must be
+	// visible without inventing an active or installed central claim.
+	if !active.Valid {
+		return result, nil
+	}
 	stored, e := loadIntentTx(ctx, tx, active.String)
 	if e != nil {
 		return ClaimStatus{}, e
 	}
 	v := stored.Intent
+	if pending.Valid && (v.ServerID != id.ServerID || v.LocalGeneration != id.ResetGeneration || !bytes.Equal(v.PublicKey, id.PublicKey)) {
+		return ClaimStatus{}, ErrStale
+	}
 	result.State = string(v.Stage)
 	result.Operation = &ClaimExpected{v.OperationID, v.LocalGeneration, v.Revision}
 	result.AccountID = v.AccountID

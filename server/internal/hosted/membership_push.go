@@ -453,7 +453,7 @@ func (s *Service) applyDepartures(ctx context.Context, v networking.Intent, depa
 				}
 				continue
 			}
-			if e = identity.RevokeFamiliesMatchingTx(ctx, tx, identity.RevokedMembershipRemoved, `authority='local' AND account_id=?`, account); e != nil {
+			if e = s.identity.RevokeMemberSessionsTx(ctx, tx, account); e != nil {
 				return e
 			}
 			// Recorded as the person leaving, at the time they left (not when this
@@ -462,11 +462,19 @@ func (s *Service) applyDepartures(ctx context.Context, v networking.Intent, depa
 			if left.IsZero() {
 				left = time.Now()
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='left',revision=revision+1 WHERE account_id=? AND disabled=0`, left.UnixMilli(), account); e != nil {
+			changed, e := tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='left',revision=revision+1 WHERE account_id=? AND disabled=0`, left.UnixMilli(), account)
+			if e != nil {
 				return e
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, account); e != nil {
+			n, e := changed.RowsAffected()
+			if e != nil {
 				return e
+			}
+			// Replayed departures cannot advance the account's epoch again.
+			if n != 0 {
+				if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, account); e != nil {
+					return e
+				}
 			}
 			// An already-disabled member makes no journal row by trigger.
 			if _, e = tx.ExecContext(ctx, `INSERT INTO hosted_membership_journal(hosted_account_id) VALUES(?)`, hosted); e != nil {
@@ -485,6 +493,23 @@ func (s *Service) applyDepartures(ctx context.Context, v networking.Intent, depa
 func (s *Service) linkClaimOwnerTx(ctx context.Context, tx *sql.Tx, v networking.Intent) error {
 	if tx == nil || v.ServerID != s.identity.ID() || v.Stage != networking.Installed {
 		return networking.ErrStale
+	}
+	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+		err := s.identity.InstallOwnerClaimTx(ctx, tx, v.OperationID)
+		switch {
+		case errors.Is(err, identity.ErrMoveCollision):
+			return networking.ErrOwnerCollision
+		case errors.Is(err, identity.ErrUnauthorized), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrProfileChanged), errors.Is(err, identity.ErrMoveConfirmation), errors.Is(err, identity.ErrSignInKindLocal), errors.Is(err, identity.ErrSignInKindPortico):
+			// The central commit may already exist. Classify a rejected local
+			// capture as stale so the caller reconciles its durable deny-only
+			// intent rather than presenting a retry as a fresh authorization.
+			return networking.ErrStale
+		default:
+			return err
+		}
+	}
+	if v.Purpose != "setup" {
+		return nil
 	}
 	if v.AccountID == "" || v.AccountID == networking.UnboundAccount {
 		return nil

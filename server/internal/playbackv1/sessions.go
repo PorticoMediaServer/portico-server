@@ -200,6 +200,8 @@ type Presentation struct {
 	Linear *LinearView `json:"linear,omitempty"`
 }
 type SubtitleFile struct {
+	TimeDomain   string `json:"timeDomain"`
+	OffsetMs     int64  `json:"offsetMs"`
 	CompanionURL string `json:"companionUrl,omitempty"`
 	FontsURL     string `json:"fontsUrl,omitempty"`
 	// LinesURL (image subtitles): how many of the track's lines are forced.
@@ -224,6 +226,7 @@ type PresentationSubtitle struct {
 // Caller is who is asking: the admitted principal, its device, and admission's
 // clamps (spec §5.3).
 type Caller struct {
+	UploadLimited *bool
 	// TransportClass is the actual normalized client link declaration, independent of Remote.
 	TransportClass string
 	Principal      identity.Principal
@@ -250,19 +253,33 @@ type Caller struct {
 	// connection (quality.home or quality.remote): "original", "automatic" or
 	// a ladder id. Empty means registry default; an error retains Original.
 	SavedQuality func(ctx context.Context) (string, error)
+	// SavedMusicQuality reads the source-defined music preference for this connection.
+	SavedMusicQuality func(ctx context.Context) (string, error)
 }
 
 // defaultQuality is the quality of a start that names none: the viewer's
 // saved default for where the request comes from.
-func (c *Caller) defaultQuality(ctx context.Context, audioOnly bool) Quality {
-	if c.SavedQuality == nil {
-		return savedQuality(playback.DefaultSavedQuality("", c.TransportClass, audioOnly))
+func (c *Caller) defaultQuality(ctx context.Context, kind string) Quality {
+	music := ""
+	if musicKind(kind) && c.SavedMusicQuality != nil {
+		var err error
+		music, err = c.SavedMusicQuality(ctx)
+		if err != nil {
+			return Quality{Mode: QualityOriginal}
+		}
+		if music != "" {
+			return musicQuality(music)
+		}
 	}
-	name, err := c.SavedQuality(ctx)
-	if err != nil {
-		return Quality{Mode: QualityOriginal}
+	saved := ""
+	if c.SavedQuality != nil {
+		var err error
+		saved, err = c.SavedQuality(ctx)
+		if err != nil {
+			return Quality{Mode: QualityOriginal}
+		}
 	}
-	return savedQuality(playback.DefaultSavedQuality(name, c.TransportClass, audioOnly))
+	return defaultQuality(saved, music, c.TransportClass, kind)
 }
 
 type replanKey struct{}
@@ -660,7 +677,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
-	if !video && request.Quality.Mode == QualityFixed {
+	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
 	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
@@ -739,6 +756,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	// §18.1: an audio presentation's render plan, pinned to this presentation.
 	view.AudioRender = audioRenderOf(media.AudioPlan)
+	if choice.AudioServerRender && view.AudioRender.playable() {
+		view.URL = view.AudioRender.URL
+		view.Mode = "direct"
+	}
 	plan, err := s.Playback.SessionPlan(ctx, media.ID)
 	if err != nil {
 		return media, Presentation{}, err
@@ -790,6 +811,12 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
+	if choice.AudioServerRender && view.AudioRender.playable() {
+		// This URL names the separately pinned audio bytes. The general delivery
+		// plan may still describe the original file or another conversion.
+		view.Container = view.AudioRender.Container
+		view.BitrateKbps = 0 // source bitrate is not a measurement of converted output
+	}
 	view.VideoHeight = playback.ActivityVideoHeight(plan)
 	if plan.AudioStream >= 0 {
 		view.AudioTrackID = streamID("a", plan.AudioStream)
@@ -1007,7 +1034,7 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, sessionKind == "audio"), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}
@@ -1106,6 +1133,12 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		if _, err := tx.ExecContext(ctx, `INSERT INTO playback_v1_sessions(`+rowColumns+`) `+rowValues,
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
+		}
+
+		if c.UploadLimited != nil {
+			if _, e := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET upload_limited=? WHERE id=?`, *c.UploadLimited, r.id); e != nil {
+				return e
+			}
 		}
 		if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media.ID, view.StartPositionMs, replacing, false); err != nil {
 			return err

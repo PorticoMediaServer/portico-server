@@ -9,7 +9,7 @@ import (
 // Activity privacy anonymizes a participant, rather than hiding room occupancy
 // or removing someone from the readiness barrier.
 func watchTogetherVisible(alias string) string {
-	return `COALESCE((SELECT json_extract(d.body,'$."privacy.includeInWatchTogether"') FROM console_documents d WHERE d.scope='profile:'||json_array(` + alias + `.authority,` + alias + `.account_id,` + alias + `.profile_id)),1)<>0`
+	return `COALESCE((SELECT v.bool_value FROM preference_values v WHERE v.authority=` + alias + `.authority AND v.account_id=` + alias + `.account_id AND v.profile_id=` + alias + `.profile_id AND v.scope='profile-server' AND v.device_key='' AND v.key='privacy.includeInWatchTogether'),1)<>0`
 }
 
 // activityPrivacy is one member's name as the room sees it and whether they

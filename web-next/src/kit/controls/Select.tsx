@@ -1,4 +1,5 @@
-import {Fragment, forwardRef, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties, type RefObject, type RefCallback} from 'react';
+import {useOverlayPortalTarget} from '../overlays/portal-target';
+import {Fragment, forwardRef, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties, type RefObject, type RefCallback} from 'react';
 import {Select as SelectPrimitive} from 'radix-ui';
 import {defaultI18n} from '@i18n';
 import {Dialog} from '../overlays/Dialog';
@@ -27,6 +28,8 @@ export type SelectProps = {
   form?: string;
   id?: string;
   placeholder?: string;
+  /** A compact filter caption; option text and submitted values stay unchanged. */
+  selectedLabel?: string;
   sheetTitle?: ReactNode;
   className?: string;
   containerClassName?: string;
@@ -49,16 +52,35 @@ function tabFrom(trigger: HTMLElement, direction: number) {
   if (index >= 0) stops[index + direction]?.focus();
 }
 
-const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function ChoiceSelect({options, value, defaultValue, onValueChange, open, defaultOpen, onOpenChange, label, description, error, disabled, required, name, form, id, placeholder, sheetTitle, className, containerClassName, style, rich, 'aria-label': accessibleLabel, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy}, ref) {
+const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function ChoiceSelect({options, value, defaultValue, onValueChange, open, defaultOpen, onOpenChange, label, description, error, disabled, required, name, form, id, placeholder, selectedLabel, sheetTitle, className, containerClassName, style, rich, 'aria-label': accessibleLabel, 'aria-labelledby': labelledBy, 'aria-describedby': describedBy}, ref) {
+  const portalTarget = useOverlayPortalTarget();
   const generated = useId();
   const phone = useSyncExternalStore(subscribePhone, phoneSnapshot, desktopSnapshot);
   const [localValue, setLocalValue] = useState(defaultValue ?? '');
   const [localOpen, setLocalOpen] = useState(defaultOpen ?? false);
   const initialValue = useRef(defaultValue ?? value ?? '');
   const trigger = useRef<HTMLButtonElement | null>(null);
+  const [menu, setMenu] = useState<HTMLDivElement | null>(null), [menuFit, setMenuFit] = useState({width: 304, stacked: false});
   const tabDirection = useRef<number | null>(null);
   const currentValue = value ?? localValue;
   const currentOpen = open ?? localOpen;
+  useLayoutEffect(() => {
+    if (!currentOpen || phone || !rich) return;
+    const surface = menu; if (!surface) return;
+    const measure = () => {
+      const canvas = document.createElement('canvas').getContext('2d'); if (!canvas) return;
+      const widthOf = (element: HTMLElement | null) => {if (!element) return 0; canvas.font = getComputedStyle(element).font; return canvas.measureText(element.textContent ?? '').width;};
+      const sizes = [...surface.querySelectorAll<HTMLElement>('[data-option-value]')].map(option => {
+        const name = option.querySelector<HTMLElement>(`.${styles.optionName}`), tag = name?.querySelector<HTMLElement>(`.${styles.defaultTag}`);
+        return {name: widthOf(name?.firstElementChild as HTMLElement) + (tag ? widthOf(tag) + 22 : 0), hint: widthOf(option.querySelector<HTMLElement>(`.${styles.optionDescription}`))};
+      });
+      const natural = Math.max(264, ...sizes.map(size => size.name + size.hint + 76)), stacked = natural > 480;
+      const width = Math.min(480, stacked ? Math.max(264, ...sizes.map(size => Math.max(size.name, size.hint) + 66)) : natural);
+      setMenuFit(old => old.width === width && old.stacked === stacked ? old : {width, stacked});
+    };
+    measure(); let active = true; void document.fonts?.ready.then(() => {if (active) measure();});
+    return () => {active = false;};
+  }, [currentOpen, phone, rich, options, menu]);
   const changeValue = (next: string) => {if (value === undefined) setLocalValue(next); if (next !== currentValue) onValueChange?.(next);};
   const changeOpen = (next: boolean) => {if (open === undefined) setLocalOpen(next); onOpenChange?.(next);};
   const bindTrigger = useCallback((element: HTMLButtonElement | null) => {
@@ -87,14 +109,14 @@ const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function C
     {label && <label htmlFor={inputId} id={labelId} className={styles.fieldLabel}>{label}</label>}
     {phone ? <PhoneSelect options={options} value={currentValue} onValueChange={changeValue} open={currentOpen} onOpenChange={changeOpen}
       title={sheetTitle ?? label ?? accessibleLabel} rich={rich} trigger={trigger} bindTrigger={bindTrigger} triggerProps={triggerProps}
-      disabled={disabled} required={required} name={name} form={form} placeholder={placeholder} resetValue={initialValue.current} onReset={() => changeValue(initialValue.current)} />
+      disabled={disabled} required={required} name={name} form={form} placeholder={placeholder} selectedLabel={selectedLabel} resetValue={initialValue.current} onReset={() => changeValue(initialValue.current)} />
       : <SelectPrimitive.Root value={currentValue} onValueChange={changeValue} open={currentOpen} onOpenChange={changeOpen} disabled={disabled} required={required} name={name} form={form}>
       <SelectPrimitive.Trigger {...triggerProps} ref={bindTrigger}>
-        <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder} /></span>
+        <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder}>{selectedLabel}</SelectPrimitive.Value></span>
         <SelectPrimitive.Icon><Icon name="i-down" size={18} /></SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
-      <SelectPrimitive.Portal><div className={styles.selectPortal}>
-        <SelectPrimitive.Content position="popper" align="end" sideOffset={6} collisionPadding={8} className={styles.selectMenu} data-rich={rich || undefined}
+      <SelectPrimitive.Portal container={portalTarget}><div className={styles.selectPortal}>
+        <SelectPrimitive.Content ref={setMenu} position="popper" align="end" sideOffset={6} collisionPadding={8} className={styles.selectMenu} data-rich={rich || undefined} data-stacked-hints={rich && menuFit.stacked || undefined} style={rich ? {width: menuFit.width} : undefined}
           onKeyDown={event => {
             if (event.key !== 'Tab') return;
             event.preventDefault();
@@ -149,9 +171,10 @@ type PhoneSelectProps = {
   name?: string;
   form?: string;
   placeholder?: string;
+  selectedLabel?: string;
 };
 
-function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset, resetValue, title, rich, trigger, bindTrigger, triggerProps, disabled, required, name, form, placeholder}: PhoneSelectProps) {
+function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset, resetValue, title, rich, trigger, bindTrigger, triggerProps, disabled, required, name, form, placeholder, selectedLabel}: PhoneSelectProps) {
   const selected = options.findIndex(option => option.value === value && !option.disabled);
   const [active, setActive] = useState(selected >= 0 ? selected : moveOption(options, -1, 1));
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -180,7 +203,7 @@ function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset
     <button {...triggerProps} ref={bindTrigger} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-required={required || undefined} disabled={disabled}
       data-state={open ? 'open' : 'closed'} onClick={() => open ? onOpenChange(false) : begin()}
       onKeyDown={event => {if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {event.preventDefault(); begin(event.key === 'ArrowUp' ? -1 : 1);}}}>
-      <span className={styles.selectValue}>{options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={18} /></span>
+      <span className={styles.selectValue}>{selectedLabel ?? options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={18} /></span>
     </button>
     <select ref={element => {nativeSelect.current = element; if (element) {for (const option of element.options) option.defaultSelected = option.value === resetValue; element.value = value;}}}
       className={styles.formSelect} tabIndex={-1} aria-hidden="true" name={name} form={form} required={required} disabled={disabled} value={value}

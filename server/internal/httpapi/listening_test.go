@@ -23,7 +23,25 @@ func TestListeningHTTPPreferenceEnvelopeAndCAS(t *testing.T) {
 	if read.Code != 200 || !bytes.Contains(read.Body.Bytes(), []byte(`"profileId":"profile"`)) {
 		t.Fatal(read.Code, read.Body.String())
 	}
-	body := map[string]any{"revision": 1, "musicRate": 1.25, "bookRate": 1.5, "autoplayNext": false, "passoutMinutes": 30}
+	for _, removed := range []string{"musicRate", "autoplayNext"} {
+		if bytes.Contains(read.Body.Bytes(), []byte(`"`+removed+`"`)) {
+			t.Fatal("removed listening field returned", read.Body.String())
+		}
+	}
+	body := map[string]any{"revision": 1, "bookRate": 1.5, "passoutMinutes": 30}
+	for _, retired := range []map[string]any{{"musicRate": 1}, {"musicRate": "go"}, {"autoplayNext": true}} {
+		withRetired := make(map[string]any)
+		for key, value := range body {
+			withRetired[key] = value
+		}
+		for key, value := range retired {
+			withRetired[key] = value
+		}
+		response := f.call("PUT", "/v1/listening/preferences", withRetired)
+		if response.Code != 400 {
+			t.Fatal("removed listening field accepted", response.Code, response.Body.String())
+		}
+	}
 	for key := range body {
 		incomplete := make(map[string]any)
 		for k, v := range body {
@@ -74,7 +92,7 @@ func TestListeningSelectionCountsExactlyOnTheWire(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		c.Song(smallAlbum, i, filepath.Join("/small", fmt.Sprintf("small-%d.m4a", i)), fmt.Sprintf("small-%d", i))
 	}
-	c.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1)`)
+	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1)`)
 	owner, err := ident.Issue("owner", "owner-profile", "local", "owner", 1)
 	if err != nil {
 		t.Fatal(err)

@@ -137,9 +137,19 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 	if _, e = tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, q.Name); e != nil {
 		return SetupResult{}, e
 	}
+	kind := SignInPortico
+	if q.AuthMode == "local" {
+		kind = SignInLocal
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET sign_in_kind=excluded.sign_in_kind,revision=identity_state.revision+1`, kind); e != nil {
+		return SetupResult{}, e
+	}
 	out := SetupResult{}
 	var receipt []byte
 	if q.AuthMode == "local" {
+		if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+			return SetupResult{}, e
+		}
 		aid, pid := Token(), Token()
 		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, aid, q.Username, hash, pid); e != nil {
 			return SetupResult{}, e
@@ -416,7 +426,7 @@ func (s *Service) CompleteAccountSetup(ctx context.Context, requestID, secret st
 			return e
 		}
 		if out.Session == nil {
-			return ErrDevicePending
+			return ErrUnauthorized
 		}
 		receipt, e := s.sealSetup(*out.Session, "initialize:"+requestID)
 		if e != nil {

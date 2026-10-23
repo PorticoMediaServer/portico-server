@@ -3,7 +3,7 @@ import {parseRatingSystems, type RatingSystem} from '@core/identity-restrictions
 import {contentRatings, parseAccessDevice, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
 import {accessListPath, readAccessRecord} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists} from '@core/server-admin/panel-logic.ts';
-import {VIEWING_HOURS_MAX, dayChoiceOf, daysOfChoice, deviceFacts, newViewingHours, roleLabel, trustApplies, type DayChoice} from '@core/server-admin/people-words.ts';
+import {VIEWING_HOURS_MAX, dayChoiceOf, daysOfChoice, deviceFacts, newViewingHours, roleLabel, type DayChoice} from '@core/server-admin/people-words.ts';
 import {clockMinutes, clockText} from '@core/server-admin/panel-logic.ts';
 import {sendFresh, useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
@@ -171,35 +171,17 @@ export function AccountDevices({accountId}: {/** Absent: everyone's devices, mos
   const {t} = useI18n();
   const {api} = useSession();
   const page = async (cursor: string) => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; };
-  // A device that has just signed in and waits for approval appears here by itself.
   const read = useCursorList(page, [api, accountId], {on: DEVICE_MOVES});
-  const action = useAction();
-  // BE-API-10: one ID per logical write; retries reuse it.
-  const [opIds] = useState(createOperationIds);
-  const [blocking, setBlocking] = useState<AccessDevice>();
-  const trust = (device: AccessDevice, next: 'approved' | 'blocked') => action.run(async () => {
-    await sendFresh(device,
-      d => api.request(`/v1/admin/access/devices/${encodeURIComponent(d.id)}/trust`, 'PUT', {expectedRevision: d.revision, operationId: opIds.forPayload(JSON.stringify({id: d.id, revision: d.revision, trust: next})), trust: next}),
-      () => readAccessRecord(api, 'devices', device.id, parseAccessDevice),
-      now => trustApplies(now, next));
-    opIds.release(); setBlocking(undefined); read.reload();
-  }, t(next === 'approved' ? 'server.people.deviceApproved' : 'server.people.deviceBlocked'));
   const mine = read.data;
-  const waiting = mine?.filter(d => d.trust === 'pending').length ?? 0;
   return (
-    <SettingsGroup title={t('devices.title')} description={waiting ? t('web.access.devicesWaiting', {count: waiting}) : t('web.access.devicesLede')}>
+    <SettingsGroup title={t('devices.title')} description={t('web.access.devicesLede')}>
       {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
-      {action.error && !blocking ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
-      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
       {!mine && read.loading ? <SettingsLoading thing={t('server.thing.devices')} /> : null}
       {mine?.map(d => (
         <SettingsRow key={d.id} icon={d.platform === 'tvos' || d.platform === 'androidtv' ? 'tvDevice' : d.platform === 'web' ? 'browser' : d.platform === 'ios' || d.platform === 'android' ? 'phone' : d.platform === 'api' ? 'lock' : 'profile'} label={d.name} help={deviceFacts(t, d, {showOwner: !accountId, relative: iso => relative(Date.now() - Date.parse(iso))})}
-          state={<Status tone={d.trust === 'approved' ? 'healthy' : d.trust === 'blocked' ? 'danger' : 'warning'}>{d.trust === 'approved' ? t('web.access.trustApproved') : d.trust === 'blocked' ? t('web.access.trustBlocked') : t('web.access.trustWaiting')}</Status>}
-          control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => void trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => { action.clear(); setBlocking(d); }} /> : null}</div>} />
+          />
       ))}
       {mine && !mine.length ? <SettingsEmpty title={t('web.devices.none')} /> : null}
-      <ConfirmDialog open={!!blocking} onOpenChange={o => !o && setBlocking(undefined)} title={t('server.people.blockTitle', {name: blocking?.name ?? ''})} body={t('server.people.blockBody')} confirmLabel={t('web.access.block')} busy={action.busy} error={action.error || undefined}
-        onConfirm={() => { if (blocking) void trust(blocking, 'blocked'); }} />
       <ListPager pages={read} />
     </SettingsGroup>
   );

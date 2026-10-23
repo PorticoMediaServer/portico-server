@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"math/rand/v2"
+	"portico.local/server/internal/identity"
 	"strconv"
 	"time"
 
@@ -185,6 +186,24 @@ func nextControlDeadline(q controlSchedule, now time.Time) time.Time {
 // loop can sleep until then rather than ask the database every ten seconds
 // whether anything has changed.
 func (s *Service) currentControlStep(ctx context.Context) (time.Time, error) {
+	kind, kindErr := s.identity.SignInKind(ctx)
+	if kindErr != nil {
+		return time.Time{}, kindErr
+	}
+	if kind == identity.SignInLocal {
+		if err := s.DeliverIdentityDepartures(ctx); err != nil {
+			return time.Now().Add(time.Hour), err
+		}
+		var next sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `SELECT min(next_ms) FROM identity_service_outbox WHERE delivered_ms=0`).Scan(&next); err != nil {
+			return time.Time{}, err
+		}
+		if next.Valid {
+			return time.UnixMilli(next.Int64), nil
+		}
+		return time.Time{}, nil
+	}
+
 	eventDue, eventErr := s.sendServerEvents(ctx)
 	due, err := s.ordinaryControlStep(ctx)
 	if v, e := s.current.store.InstalledIntent(ctx); e == nil {
@@ -195,20 +214,6 @@ func (s *Service) currentControlStep(ctx context.Context) (time.Time, error) {
 		if err == nil {
 			err = memberErr
 		}
-	}
-	if networking.NeedsClaimReconciliation(err) || networking.NeedsClaimReconciliation(eventErr) {
-		_ = s.requestClaimCleanup(ctx)
-	}
-	var cleanupDue time.Time
-	needed, cleanupErr := s.cleanupNeeded(ctx)
-	if cleanupErr == nil && needed {
-		cleanupDue, cleanupErr = s.cleanupControlStep(ctx)
-	}
-	if !cleanupDue.IsZero() && (due.IsZero() || cleanupDue.Before(due)) {
-		due = cleanupDue
-	}
-	if cleanupErr != nil {
-		return due, cleanupErr
 	}
 	// Each queued event carries its own backoff; the loop only needs the earliest.
 	if !eventDue.IsZero() && (due.IsZero() || eventDue.Before(due)) {
@@ -236,7 +241,7 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 	}
 	desired, _ := strconv.ParseInt(persistence.Get(s.db, wakeRevisionKey), 10, 64)
 	checked, _ := strconv.ParseInt(persistence.Get(s.db, checkedRevisionKey), 10, 64)
-	// A wake (an erasure job, a rotated members-only label) runs the check-in now.
+	// A wake (a departure, a rotated members-only label) runs the check-in now.
 	// There is no other periodic contact with Hosted.
 	woken := desired > checked
 	if now.Before(schedule.NextHeartbeat) && !woken {
@@ -257,7 +262,6 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 			RouteLabel          string      `json:"routeLabel"`
 			MemberSequence      int64       `json:"memberSequence"`
 			MemberDigestMatches bool        `json:"memberDigestMatches"`
-			CleanupPending      bool        `json:"cleanupPending"`
 			Departures          []Departure `json:"departures"`
 			// SigningCertificate is Hosted's current root-signed documents
 			// certificate, with every key revoked so far.
@@ -292,11 +296,6 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		}
 		if e := s.applyDepartures(ctx, v, result.Departures); e != nil {
 			return e
-		}
-		if result.CleanupPending {
-			if e := s.requestClaimCleanup(ctx); e != nil {
-				return e
-			}
 		}
 		if woken {
 			if _, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `INSERT INTO configuration VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=CAST(max(CAST(value AS INTEGER),CAST(excluded.value AS INTEGER)) AS TEXT)`, checkedRevisionKey, strconv.FormatInt(desired, 10)); e != nil {

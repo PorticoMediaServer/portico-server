@@ -42,21 +42,22 @@ type Library struct {
 	Pinned bool `json:"pinned"`
 }
 type Item struct {
-	Missing     bool          `json:"missing"`
-	Watched     *bool         `json:"watched,omitempty"`
-	AddedAt     *string       `json:"addedAt"`
-	Song        *SongInfo     `json:"song,omitempty"`
-	BookFile    *BookFileInfo `json:"bookFile,omitempty"`
-	Episode     *EpisodeInfo  `json:"episode,omitempty"`
-	ID          string        `json:"id"`
-	LibraryID   string        `json:"libraryId"`
-	Title       string        `json:"title"`
-	Kind        string        `json:"kind"`
-	Year        int           `json:"year,omitempty"`
-	Duration    float64       `json:"duration"`
-	Overview    string        `json:"overview,omitempty"`
-	PosterURL   string        `json:"posterUrl,omitempty"`
-	BackdropURL string        `json:"backdropUrl,omitempty"`
+	AudioFacts  *MusicTechnicalFacts `json:"audioFacts,omitempty"`
+	Missing     bool                 `json:"missing"`
+	Watched     *bool                `json:"watched,omitempty"`
+	AddedAt     *string              `json:"addedAt"`
+	Song        *SongInfo            `json:"song,omitempty"`
+	BookFile    *BookFileInfo        `json:"bookFile,omitempty"`
+	Episode     *EpisodeInfo         `json:"episode,omitempty"`
+	ID          string               `json:"id"`
+	LibraryID   string               `json:"libraryId"`
+	Title       string               `json:"title"`
+	Kind        string               `json:"kind"`
+	Year        int                  `json:"year,omitempty"`
+	Duration    float64              `json:"duration"`
+	Overview    string               `json:"overview,omitempty"`
+	PosterURL   string               `json:"posterUrl,omitempty"`
+	BackdropURL string               `json:"backdropUrl,omitempty"`
 	// StillURL is an episode's own still; absent when it has none (never the
 	// season's or show's art).
 	StillURL        string          `json:"stillUrl,omitempty"`
@@ -315,6 +316,9 @@ func (s *Service) Get(profile, id string) (Item, error) {
 	}
 	if i.Kind == "song" {
 		i.Song, e = s.songInfo(i.ID)
+		if e == nil {
+			i.AudioFacts, e = s.musicFacts(i.ID)
+		}
 	}
 	if i.Kind == "audiobook_file" {
 		i.BookFile, e = s.bookFileInfo(i.ID)
@@ -424,6 +428,12 @@ func (s *Service) CommitMedia(ctx context.Context, job, library, path string, f 
 	var kind, root string
 	if e = tx.QueryRow(`SELECT kind,root FROM libraries WHERE id=?`, library).Scan(&kind, &root); e != nil {
 		return e
+	}
+	if kind == "book" || kind == "comic" {
+		if _, e = attachReadingTx(ctx, tx, library, kind, aid, path); e != nil {
+			return e
+		}
+		return gated3.Commit()
 	}
 	if kind != "music" && kind != "audiobook" && f.VideoCodec == "" && f.Container != "strm" && !f.InventoryOnly {
 		return errors.New("video library source has no timed video stream")

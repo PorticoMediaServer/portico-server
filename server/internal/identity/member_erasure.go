@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/preferenceownership"
 )
 
 // Deleting a member removes the person from this server: their account, their
@@ -120,9 +121,9 @@ func (s *Service) DeleteDirectMember(ctx context.Context, bearer, id string, q M
 }
 
 // EraseMemberTx removes one account and everything that belongs to it, inside
-// the caller's transaction. It is the single erasure: an owner deleting a
-// member and a Portico Account deleted at its own service both end here. The
-// owner's account is refused; it leaves by transfer.
+// the caller's transaction. Explicit People erasure and confirmed Start over
+// use this writer. A departure reported by Services retains the local data.
+// The owner's account is refused; it leaves by transfer.
 func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string) error {
 	var role string
 	if e := tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, account).Scan(&role); e != nil {
@@ -196,6 +197,9 @@ func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string)
 		if _, e = tx.ExecContext(ctx, q, account); e != nil {
 			return e
 		}
+	}
+	if e = preferenceownership.EraseAccount(ctx, tx, "local", account); e != nil {
+		return e
 	}
 	// Everything else that names the account (membership, profiles, limits,
 	// second factor, remembered sign-ins, the Portico Account link) goes with

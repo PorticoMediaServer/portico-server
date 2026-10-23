@@ -60,8 +60,6 @@ export type FakeServerOptions = Readonly<{
   itemKind?: (itemId: string) => string | undefined;
   /** The viewer the listening endpoints answer for (their `scope`). */
   viewer?: Readonly<{serverId: string; authority: string; accountId: string; profileId: string}>;
-  /** The listening preference `autoplayNext` (default true). */
-  autoplayNext?: boolean;
   /** The player engine every plan names (default `native`). */
   engine?: 'native' | 'mpv';
   /** The viewer's saved default quality that options report (default `original`). */
@@ -190,7 +188,7 @@ export class FakePlaybackServer {
     if (m === 'PUT' && pathOnly === routePath("get_device_capabilities")) { this.capabilities.set(this.o.deviceId, body); return {status: 204, headers: {}}; }
     if (m === 'GET' && pathOnly === routePath("get_events")) return this.poll(q, r.signal);
     // Listening (music and books): the viewer's preferences and an item's context.
-    if (m === 'GET' && pathOnly === routePath("get_listening_preferences")) return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {revision: 1, musicRate: 1, bookRate: 1, autoplayNext: this.o.autoplayNext ?? true, passoutMinutes: 0}}};
+    if (m === 'GET' && pathOnly === routePath("get_listening_preferences")) return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {revision: 1, bookRate: 1, passoutMinutes: 0}}};
     if ((match = /^\/v1\/items\/([^/]+)\/listening$/.exec(pathOnly)) && m === 'GET') {
       const item = decodeURIComponent(match[1]!);
       return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {itemId: item, libraryId: 'library', kind: this.kindOf(item)}}};
@@ -379,7 +377,10 @@ export class FakePlaybackServer {
       if (!queue || !this.ownsQueue(queue)) return this.error(404, 'queue_not_found');
       const itemId = this.itemOfEntry(queue, qref.entryId);
       if (!itemId) return this.error(404, 'queue_not_found');
-      s = this.newSession(itemId, {queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0});
+      s = this.newSession(itemId, {
+        queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0,
+        versionId: typeof body.versionId === 'string' ? body.versionId : 'v1', audio: body.audio, subtitles: body.subtitles, quality: body.quality ?? {mode: 'original'},
+      });
       queue.sessionId = s.id;
     } else if (typeof body.itemId === 'string' || typeof body.channelId === 'string') {
       s = this.newSession((body.itemId ?? body.channelId) as string, {

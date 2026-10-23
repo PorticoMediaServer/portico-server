@@ -43,6 +43,7 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
+	s.CastQueueAuthority = d.castQueueAuthorityTx
 	// Queue sources and windows are authorized like every other catalog read:
 	// library access, then the item's restrictions (SEC-02).
 	s.QueryKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, source playbackv1.Selector) (catalog.QueueSelection, error) {
@@ -249,7 +250,8 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
-	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
+	uploadLimited := false
+	return playbackv1.Caller{UploadLimited: &uploadLimited, Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
@@ -271,6 +273,7 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 			}
 			decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceilings.MaxVideoBitrateBPS)
 		}
+		uploadLimited = decision.UploadLimited
 		return decision.MaxVideoBitrateBPS, nil
 	}, AdmitChannel: func(ctx context.Context, channel string) error {
 		if err := d.admitChannel(q.WithContext(ctx), c.Principal, channel); err != nil {
@@ -282,6 +285,8 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 		return ceilings.MaxVideoBitrateBPS, err
 	}, SavedQuality: func(ctx context.Context) (string, error) {
 		return d.savedQuality(q.WithContext(ctx), c.Principal)
+	}, SavedMusicQuality: func(ctx context.Context) (string, error) {
+		return d.savedMusicQuality(q.WithContext(ctx), c.Principal)
 	}}
 }
 
@@ -303,6 +308,23 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 	}
 	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
 	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class), nil
+}
+
+func (d Dependencies) savedMusicQuality(q *http.Request, p identity.Principal) (string, error) {
+	if d.DB == nil {
+		return playback.QualityOriginal, nil
+	}
+	tx, done, err := dbwork.BeginRead(q.Context(), d.DB)
+	if err != nil {
+		return "", err
+	}
+	defer done()
+	values, sources, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
+	if err != nil {
+		return "", err
+	}
+	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
+	return playback.SavedMusicQualityPreference(playback.WithPreferenceSources(values, sources), class, d.deliveryContext(q).TransportClass), nil
 }
 
 // replanCeilingsAt is what admission would allow this caller's connection right
@@ -351,6 +373,11 @@ func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.
 	reach := playbackv1.Reach{SavedQuality: playback.QualityOriginal, TransportClass: d.deliveryContext(q).TransportClass, Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
 	if saved, err := d.savedQuality(q, p); err == nil {
 		reach.SavedQuality = saved
+	}
+	if saved, err := d.savedMusicQuality(q, p); err == nil {
+		reach.SavedMusicQuality = saved
+	} else {
+		reach.SavedMusicQuality = playback.QualityOriginal
 	}
 	if !reach.Remote || d.Access.Access == nil || d.DB == nil {
 		return reach

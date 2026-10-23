@@ -31,6 +31,8 @@ type serverReturnAssertion struct {
 	Kind                  string    `json:"kind"`
 	AccountID             string    `json:"accountId"`
 	Username              string    `json:"username"`
+	DisplayName           string    `json:"displayName"`
+	Email                 string    `json:"email"`
 	ServerID              string    `json:"serverId"`
 	Challenge             string    `json:"challenge"`
 	Nonce                 string    `json:"nonce"`
@@ -50,6 +52,12 @@ func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredRetu
 	if s == nil || !s.Configured() || s.identity == nil || len(q.Code) < 32 || len(q.Code) > 128 || len(q.Verifier) < 32 || len(q.Verifier) > 128 || len(q.TransactionID) > 128 || len(q.RegistrationID) > 128 || len(q.InstallationID) < 32 || len(q.InstallationID) > 128 {
 		return identity.PorticoIdentity{}, identity.ErrUnauthorized
 	}
+	// A preview confirms only the proposed move. It is not permission to use
+	// ordinary identity exchange while Local. Owner completion has a separate
+	// installed-server-authenticated transport after actual local installation.
+	if e := s.identity.RequireSignInKind(ctx, identity.SignInPortico); e != nil {
+		return identity.PorticoIdentity{}, e
+	}
 	raw, _ := json.Marshal(q)
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
@@ -63,9 +71,12 @@ func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredRetu
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, e := client.Do(req)
 	if e != nil {
-		return identity.PorticoIdentity{}, identity.ErrUnauthorized
+		return identity.PorticoIdentity{}, ErrServicesUnavailable
 	}
 	defer response.Body.Close()
+	if response.StatusCode >= 500 || response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusRequestTimeout {
+		return identity.PorticoIdentity{}, ErrServicesUnavailable
+	}
 	if response.StatusCode != 200 {
 		return identity.PorticoIdentity{}, identity.ErrUnauthorized
 	}
@@ -104,7 +115,7 @@ func (s *Service) verifyRegisteredReturn(ctx context.Context, signed Signed, q R
 		return none, identity.ErrUnauthorized
 	}
 	consent, _ := json.Marshal(signed)
-	who := identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, Consent: string(consent), SignerKeyID: signed.KeyID, Return: &identity.PorticoReturnBinding{ExpiresAt: c.ExpiresAt, Purpose: c.Purpose, InstallationID: c.InstallationID, RegistrationID: c.RegistrationID, OperationID: c.ClaimOperationID, ClaimGeneration: c.ClaimGeneration, CredentialGeneration: c.CredentialGeneration, CurrentOwnerAccountID: c.CurrentOwnerAccountID, PreviousOwnerRole: c.PreviousOwnerRole}}
+	who := identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Email: c.Email, Consent: string(consent), SignerKeyID: signed.KeyID, Return: &identity.PorticoReturnBinding{ExpiresAt: c.ExpiresAt, Purpose: c.Purpose, InstallationID: c.InstallationID, RegistrationID: c.RegistrationID, OperationID: c.ClaimOperationID, ClaimGeneration: c.ClaimGeneration, CredentialGeneration: c.CredentialGeneration, CurrentOwnerAccountID: c.CurrentOwnerAccountID, PreviousOwnerRole: c.PreviousOwnerRole}}
 	e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if e := identity.CheckPorticoReturnTx(ctx, tx, who); e != nil {
 			return e

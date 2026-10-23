@@ -106,7 +106,6 @@ type IssuedCredential struct {
 	DeviceID string
 	// AwaitingApproval is true when the owner approves new devices by hand and
 	// this credential, like any new device, waits for that approval.
-	AwaitingApproval bool
 }
 
 // IssueAPICredentialTx creates the session family a key or token authenticates
@@ -151,26 +150,11 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 	if err := s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return out, err
 	}
-	// A credential is a new device as far as the owner's approval policy is
-	// concerned: a member must not be able to step round "approve each new
-	// device" by minting a token on an approved one. The owner's own are not
-	// held for the owner's own approval.
-	state := "approved"
-	if p.Role != TierOwner {
-		policy, err := deviceApprovalPolicyTx(ctx, tx)
-		if err != nil {
-			return out, err
-		}
-		if policy == DeviceApprovalOwner {
-			state = "pending"
-		}
-	}
 	stamp := now.Format(time.RFC3339)
 	out.DeviceID, out.FamilyID = Token(), Token()
 	out.Secret = prefix + Token()
-	out.AwaitingApproval = state == "pending"
-	if _, err := tx.ExecContext(ctx, `INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,trusted,approval_state,remember_account) VALUES(?,?,?,?,?,?,?,'','',?,?,0,?,0)`,
-		out.DeviceID, "local", p.AccountID, "api-credential-"+credentialID, name, credentialDevicePlatform, "api-"+kind, stamp, stamp, state); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,remember_account) VALUES(?,?,?,?,?,?,?,'','',?,?,0)`,
+		out.DeviceID, "local", p.AccountID, "api-credential-"+credentialID, name, credentialDevicePlatform, "api-"+kind, stamp, stamp); err != nil {
 		return out, err
 	}
 	horizonText := horizon.Format(time.RFC3339)

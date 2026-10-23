@@ -112,10 +112,31 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 		return Envelope{}, ErrUnauthorized
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	horizon := now.Add(LocalSignInWindow)
+	window, err := sessionWindowTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	horizon := now.Add(window)
+	if parent, ok := ctx.Value(inheritedHorizonKey{}).(time.Time); ok {
+		if !parent.After(now) {
+			return Envelope{}, ErrUnauthorized
+		}
+		if parent.Before(horizon) {
+			horizon = parent
+		}
+	}
 	p := Principal{Viewer: Viewer{AccountID: aid, ProfileID: pid, ServerID: s.serverID, Authority: authority, Role: role}, Epoch: epoch}
 	if err := s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
+	}
+	if role != "account" {
+		missing, e := missingRequiredFactorTx(ctx, tx, aid)
+		if e != nil {
+			return Envelope{}, e
+		}
+		if missing {
+			return Envelope{}, ErrFactorSetupRequired
+		}
 	}
 	// The owner's remote sign-in policy is applied here, at the one place a
 	// session is created, rather than on each route that leads here.
@@ -158,11 +179,9 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 	return Envelope{ServerIdentity: serverIdentity, AccessToken: token, RefreshToken: refresh, DeviceID: device.ID, InstallationID: device.InstallationID, ExpiresAt: expiry, Viewer: p.Viewer, SessionFamilyID: family, TokenGeneration: 1, AuthorizationHorizon: horizonText}, nil
 }
 
-// LocalSignInWindow is how long a direct sign-in lasts without being used. Every renewal
-// starts it again, so a device that is opened at all within the window stays signed in; one
-// left in a drawer for longer asks for the password once. It is not the protection against a
-// removed person or a changed password: every request re-checks the account, the profile and
-// the epoch, and those end a session at once whatever its horizon says.
+// LocalSignInWindow is the default local idle window and maximum Portico
+// proof lifetime. Local issuance/refresh use the normalized sign-in policy;
+// refresh and descendant grants never extend a Portico admission horizon.
 const LocalSignInWindow = 90 * 24 * time.Hour
 
 func (s *Service) checkFamilyPrincipalTx(ctx context.Context, tx *sql.Tx, p Principal) error {
@@ -256,7 +275,7 @@ func (s *Service) sessionFamilyRecordTx(ctx context.Context, tx *sql.Tx, p Princ
 	}
 	// The existing approval lookup also provides accounting metadata. It does
 	// not add a statement or change the approval/authority predicates.
-	if err := tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.approval_state='approved'`, r.ID).Scan(&r.DeviceID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT d.id FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=?`, r.ID).Scan(&r.DeviceID); err != nil {
 		return FamilyState{}, ErrUnauthorized
 	}
 	return r.FamilyState, nil
@@ -297,6 +316,13 @@ func (s *Service) RenewAuthorization(ctx context.Context, bearer string, b Renew
 	r, err := s.familyTokenTx(ctx, tx, Digest(bearer))
 	if err != nil {
 		return AuthorizationEnvelope{}, err
+	}
+	// Owner completion is a single captured operation, never a renewable
+	// playback/controller family. Refuse before calling a controller verifier or
+	// looking up a historical renewal response. Existing Cast playback remains
+	// the only narrower grant that participates in this protocol.
+	if r.principal.Grant != "" && r.principal.Grant != GrantCastTarget {
+		return AuthorizationEnvelope{}, ErrForbidden
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	if r.revoked || !r.AuthorizationHorizon.After(now) {

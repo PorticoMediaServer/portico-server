@@ -7,9 +7,21 @@ import {
  parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
-const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
+const limits={accessTokens:true,maxProfiles:8,allowRemote:true,conversion:'server',maxStreams:1,maxStreamsMode:'limit',remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
+
+test('stream intent and server ceiling facts remain distinct at the client boundary', () => {
+ for (const maxStreamsMode of ['inherit','unlimited','limit']) {
+  const maxStreams=maxStreamsMode==='limit'?3:0;
+  const parsed=parseMemberLimits({...limits,maxStreamsMode,maxStreams});
+  assert.equal(parsed.maxStreamsMode,maxStreamsMode);assert.equal(parsed.maxStreams,maxStreams);
+ }
+ for (const patch of [{maxStreamsMode:'automatic',maxStreams:0},{maxStreamsMode:'limit',maxStreams:0},{maxStreamsMode:'unlimited',maxStreams:3}]) assert.throws(()=>parseMemberLimits({...limits,...patch}));
+ const document=parseLimitsDocument({accountId:'member',revision:1,limits:{...limits,maxStreamsMode:'unlimited',maxStreams:0},serverMaxStreams:2,effectiveMaxStreams:2});
+ assert.equal(document.serverMaxStreams,2);assert.equal(document.effectiveMaxStreams,2);assert.equal(document.limits.maxStreamsMode,'unlimited');
+ assert.throws(()=>parseLimitsDocument({accountId:'member',revision:1,limits:{...limits,maxStreamsMode:'inherit',maxStreams:0},serverMaxStreams:-1,effectiveMaxStreams:2}));
+});
 
 test('member limits round-trip, with the rating kept as the server stored it', () => {
  const parsed = parseMemberLimits(limits);
@@ -30,16 +42,13 @@ test('member limits round-trip, with the rating kept as the server stored it', (
   assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
-  // An absent envelope is an unrestricted one, not a parse failure.
-  const empty = parseMemberLimits({});
-  assert.equal(empty.maxContentRating, '');
-  assert.equal(empty.maximumAge, -1);
-  assert.equal(empty.allowUnrated, true);
-  assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
+  // The canonical producer publishes these permissions explicitly. Missing values
+  // must not silently grant tokens or remote access on the owner screen.
+  assert.throws(() => parseMemberLimits({}));
 });
 
 test('a limits document is pinned to the account it was read for', () => {
-  const document = parseLimitsDocument({accountId: 'member', revision: 3, updatedAt: '2026-09-16T12:00:00Z', limits}, 'member');
+  const document = parseLimitsDocument({accountId: 'member', revision: 3, updatedAt: '2026-09-16T12:00:00Z', limits,serverMaxStreams:null,effectiveMaxStreams:1}, 'member');
   assert.equal(document.revision, 3);
   assert.equal(document.updatedAt, '2026-09-16T12:00:00Z');
   assert.throws(() => parseLimitsDocument({accountId: 'other', revision: 1, limits}, 'member'));
@@ -48,11 +57,11 @@ test('a limits document is pinned to the account it was read for', () => {
 
 test('a member carries its tier and both revisions', () => {
   const member = parseAccessMember({accountId: 'a', username: 'ada', profileId: 'p', role: 'admin', disabled: false,
-    revision: 2, allowedLibraries: ['lib'], limitsRevision: 1, limits});
+    revision: 2, allowedLibraries: ['lib'], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1});
   assert.equal(member.role, 'admin');
   assert.equal(member.limitsRevision, 1);
   assert.throws(() => parseAccessMember({accountId: 'a', username: 'ada', profileId: 'p', role: 'root', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits}));
-  const page = parseAccessMemberPage({limit: 25, nextCursor: 'cursor', items: [{accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits}]});
+  const page = parseAccessMemberPage({limit: 25, nextCursor: 'cursor', items: [{accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1}]});
   assert.equal(page.items.length, 1);
   assert.equal(page.nextCursor, 'cursor');
   // A page that returns more rows than it promised is a server disagreeing with
@@ -60,7 +69,7 @@ test('a member carries its tier and both revisions', () => {
   assert.throws(() => parseAccessMemberPage({limit: 0, items: []}));
 });
 test('a member page is refused whole when one member cannot be read, so nobody with access is ever missing from it', () => {
-  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits};
+  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits,serverMaxStreams:null,effectiveMaxStreams:1};
   const page = parseAccessMemberPage({limit: 25, nextCursor: '', futureField: 1, items: [member,
     {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}]});
   assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);
@@ -92,16 +101,15 @@ test('an invitation code is accepted only where the server issues one', () => {
   assert.deepEqual([...page.items], []);
 });
 
-test('a device page carries the approval policy that governs it', () => {
-  const page = parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'living-room', accountId: 'a',
-    profileId: 'p', name: 'Living Room', platform: 'tvos', trust: 'pending', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:30:00Z', revision: 1}]});
-  assert.equal(page.approvalRequired, true);
-  assert.equal(page.items[0].trust, 'pending');
-  // A device whose trust this app cannot read is neither hidden nor listed as approved, pending or blocked: the page is refused.
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]}));
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
+test('administrative device pages describe real activity and refuse retired trust/approval policy',()=>{
+ const row={id:'living-room',accountId:'a',username:'alice',profileId:'p',profileName:'Evening',name:'Living room',platform:'tvos',app:'Portico',appVersion:'1',lastNetwork:'home',liveState:'watching',firstSeenAt:'2026-09-16T12:00:00Z',lastSeenAt:'2026-09-16T12:30:00Z',revision:1};
+ const page=parseAccessDevicePage({limit:25,items:[row]});
+ assert.equal(page.items[0].liveState,'watching');assert.equal(page.items[0].profileName,'Evening');
+ assert.equal('approvalRequired' in page,false);assert.equal('trust' in page.items[0],false);
+ assert.throws(()=>parseAccessDevicePage({limit:25,approvalRequired:false,items:[row]}));
+ assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,trust:'approved'}]}));
+ assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,liveState:'approved'}]}));
 });
-
 
 test('log records keep their sequence as a string so a long-running server does not lose precision', () => {
   const page = parseLogPage({level: 'warn', effectiveLevel: 'debug', limit: 100, nextCursor: '9007199254740993',

@@ -112,21 +112,21 @@ func TestConsolePreferenceScopeIsolationAndViewerIsolation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	result, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "device", Values: PreferencePatch{"appearance.reduceMotion": true}})
-	if e != nil || !result.Effective.Bool("appearance.reduceMotion") || !result.Effective.Bool("privacy.pauseWatchHistory") {
+	result, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "device", Values: PreferencePatch{"appearance.cardSizePercent": 125}})
+	if e != nil || !(result.Effective.Int("appearance.cardSizePercent") == 125) || !result.Effective.Bool("privacy.pauseWatchHistory") {
 		t.Fatalf("scopes did not merge: %v %+v", e, result.Effective)
 	}
 	// A device-class document belongs to that class alone; the profile document
 	// is shared across every class.
 	result, e = s.Preferences(ctx, p, "television", a)
-	if e != nil || result.Effective.Bool("appearance.reduceMotion") || !result.Effective.Bool("privacy.pauseWatchHistory") {
+	if e != nil || (result.Effective.Int("appearance.cardSizePercent") == 125) || !result.Effective.Bool("privacy.pauseWatchHistory") {
 		t.Fatalf("device document leaked across classes: %v %+v", e, result.Effective)
 	}
 	other := p
 	other.AccountID = "other"
 	other.Hash = "other-session"
 	result, e = s.Preferences(ctx, other, "web", a)
-	if e != nil || result.Effective.Bool("privacy.pauseWatchHistory") || result.Effective.Bool("appearance.reduceMotion") {
+	if e != nil || result.Effective.Bool("privacy.pauseWatchHistory") || (result.Effective.Int("appearance.cardSizePercent") == 125) {
 		t.Fatal("profile alias leaked", e)
 	}
 	// Clearing an override falls back to the registry default, not to false-by-omission.
@@ -474,47 +474,6 @@ func TestConsoleRejectsStaleSettingsAfterLegacyWriter(t *testing.T) {
 // The "require approval for new devices" switch is the identity service's own
 // value: saving the switch writes the value device registration reads, and a
 // change made on the identity side is what the switch then shows.
-func TestDeviceApprovalSwitchIsTheIdentityPolicy(t *testing.T) {
-	s, p, auth := consoleFixture(t)
-	ctx := context.Background()
-	stored := func() string {
-		var v string
-		if err := s.DB.QueryRow(`SELECT COALESCE((SELECT value FROM configuration WHERE key=?),'')`, identity.DeviceApprovalSettingKey).Scan(&v); err != nil {
-			t.Fatal(err)
-		}
-		return v
-	}
-	before, e := s.Settings(ctx, auth)
-	if e != nil || before.Effective.DeviceApprovalRequired {
-		t.Fatalf("the default must not hold devices: %+v %v", before.Effective.DeviceApprovalRequired, e)
-	}
-	v := before.Requested
-	v.DeviceApprovalRequired = true
-	after, e := s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "approval-on", Values: v})
-	if e != nil || !after.Effective.DeviceApprovalRequired {
-		t.Fatalf("turning approval on: %+v %v", after.Effective.DeviceApprovalRequired, e)
-	}
-	if got := stored(); got != identity.DeviceApprovalOwner {
-		t.Fatalf("the identity policy after turning the switch on is %q", got)
-	}
-	// Changed where the identity service changes it: the switch follows.
-	if _, e = s.DB.Exec(`UPDATE configuration SET value=? WHERE key=?`, identity.DeviceApprovalAuto, identity.DeviceApprovalSettingKey); e != nil {
-		t.Fatal(e)
-	}
-	read, e := s.Settings(ctx, auth)
-	if e != nil || read.Effective.DeviceApprovalRequired {
-		t.Fatalf("the switch did not follow the policy: %+v %v", read.Effective.DeviceApprovalRequired, e)
-	}
-	v = read.Requested
-	v.DeviceApprovalRequired = false
-	if _, e = s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: read.Revision, IdempotencyKey: "approval-off", Values: v}); e != nil {
-		t.Fatal(e)
-	}
-	if got := stored(); got != identity.DeviceApprovalAuto {
-		t.Fatalf("the identity policy after turning the switch off is %q", got)
-	}
-}
-
 func TestActivityAlertParamsAreSourceBackedAndBounded(t *testing.T) {
 	s, _, auth := consoleFixture(t)
 	ctx := context.Background()

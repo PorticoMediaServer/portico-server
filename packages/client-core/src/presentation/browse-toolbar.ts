@@ -153,7 +153,7 @@ export function fieldSelectionSummary(field: BrowseFieldCapability, predicates: 
 export function decadePresets(minYear: number, maxYear: number): readonly {label: string; from: number; to: number}[] {
   if (!Number.isFinite(minYear) || !Number.isFinite(maxYear) || maxYear < minYear) return [];
   const out: {label: string; from: number; to: number}[] = [];
-  for (let d = Math.floor(maxYear / 10) * 10; d >= Math.floor(minYear / 10) * 10; d -= 10) out.push({label: `${d}s`, from: d, to: d + 9});
+  for (let d = Math.floor(minYear / 10) * 10; d <= Math.floor(maxYear / 10) * 10; d += 10) out.push({label: `${d}s`, from: d, to: d + 9});
   return out;
 }
 
@@ -258,7 +258,7 @@ export function genreFilter(name: string): ToolbarPredicate {
   return {field: 'genre', operator: 'contains-any', value: [name]};
 }
 
-/** The order a field's counted values are listed in: decades newest first (a timeline), everything else as the server counts them (most titles first). */
+/** Year values run oldest to newest, as the expanded Year filter draws them. Other fields retain the server's counted order. */
 export function orderFilterValues<T extends Readonly<{value: string}>>(field: BrowseFieldCapability, values: readonly T[]): readonly T[] {
-  return field.id === 'year' ? [...values].sort((a, b) => Number(b.value) - Number(a.value)) : values;
+  return field.id === 'year' ? [...values].sort((a, b) => Number(a.value) - Number(b.value)) : values;
 }

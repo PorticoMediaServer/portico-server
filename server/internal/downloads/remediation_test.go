@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"context"
+	"database/sql"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/preparedmedia"
@@ -11,7 +12,7 @@ import (
 
 func TestOfflineProgressHonorsPausedHistory(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.db.Exec(`INSERT INTO console_documents VALUES(?,1,'{"privacy.pauseWatchHistory":true}',0)`, "profile:"+operations.ViewerScopeKey(h.viewer.Viewer)); err != nil {
+	if _, err := operations.New(h.db).ApplyPreferences(context.Background(), h.viewer, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "pause", Values: operations.PreferencePatch{"privacy.pauseWatchHistory": true}}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := h.service.SyncProgress(context.Background(), h.viewer, "paused-history", []ProgressEntry{{PlayID: "play-paused", ItemID: h.item, PositionSeconds: 42, Ended: true, ObservedAt: h.now.Add(-time.Minute).Format(time.RFC3339)}})
@@ -43,5 +44,30 @@ func TestEveryDownloadRungHasMatchingRecipeAndEstimate(t *testing.T) {
 		if got != want {
 			t.Fatal(rung.ID, got, want)
 		}
+	}
+}
+
+// Shared-count tests explicitly opt in. The actual default stays private.
+func shareOfflineFixture(t *testing.T, h *harness) {
+	t.Helper()
+	if _, err := operations.New(h.db).ApplyPreferences(context.Background(), h.viewer, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "share-offline-fixture", Values: operations.PreferencePatch{"privacy.showActivityToMembers": true}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOfflinePrivacyDefaultRemainsUnshared(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.service.SyncProgress(context.Background(), h.viewer, "private-offline", []ProgressEntry{{PlayID: "private-play", ItemID: h.item, PositionSeconds: 60, Ended: true, ObservedAt: h.now.Add(-time.Minute).Format(time.RFC3339)}}); err != nil {
+		t.Fatal(err)
+	}
+	var shared, personal int
+	if err := h.db.QueryRow(`SELECT count(*) FROM play_counts`).Scan(&shared); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.db.QueryRow(`SELECT count(*) FROM personal_play_counts`).Scan(&personal); err != nil {
+		t.Fatal(err)
+	}
+	if shared != 0 || personal != 1 {
+		t.Fatalf("shared=%d personal=%d", shared, personal)
 	}
 }

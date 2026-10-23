@@ -337,7 +337,8 @@ func TestRecommendationRestrictionSameAvailableChildAndCommunity(t *testing.T) {
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, f.items["e201"].Asset, true)
 	})
 	// Popular on this server needs three viewers who share their activity.
-	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["tv"]' WHERE account_id IN('b','c')`)
+	engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["tv"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	for index, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(index), key, f.items["e101"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
@@ -452,6 +453,23 @@ func TestRecommendationDiscoverUsesWholeAvailableWorksForEveryLibrary(t *testing
 	s := New(f.db)
 	now := engineRequest().Now
 	for _, library := range []string{"movies", "tv", "music", "books"} {
+		// Whole-work recommendations retain this contract for every kind of
+		// library. Music Content also has the drawn artist/genre/playlist and
+		// most-played-song rows, which are not recommendation work rails.
+		discovery, err := s.DiscoverWithRestrictions(library, "p", identity.ContentRestrictions{}, now)
+		if err != nil || len(discovery.Sections) == 0 {
+			t.Fatal("empty whole-work discovery", library, discovery, err)
+		}
+		for _, row := range discovery.Sections {
+			if row.Total < len(row.Items) {
+				t.Fatal("wrong recommendation total", row)
+			}
+			for _, entry := range row.Items {
+				if entry.Kind != "movie" && entry.Kind != "show" && entry.Kind != "album" && entry.Kind != "book" {
+					t.Fatal("recommendation is not a whole work", library, entry)
+				}
+			}
+		}
 		out, err := s.Content(ContentRequest{Viewer: Viewer{Profile: "p", Fence: "v", Libraries: []string{library}}, Library: library, Profile: "p", View: "discover", ViewerFence: "v", Now: now})
 		if err != nil {
 			t.Fatal(library, err)
@@ -464,8 +482,17 @@ func TestRecommendationDiscoverUsesWholeAvailableWorksForEveryLibrary(t *testing
 				t.Fatal("wrong total", row)
 			}
 			for _, entry := range row.Entries {
+				if library == "music" {
+					kind := map[string]string{"artists": "artist", "genres": "genre", "playlists": "playlist", "most_played_songs": "song"}[row.ID]
+					if kind != "" {
+						if entry.Kind != kind {
+							t.Fatal("wrong music discovery row kind", row.ID, entry)
+						}
+						continue
+					}
+				}
 				if entry.Kind != "movie" && entry.Kind != "show" && entry.Kind != "album" && entry.Kind != "book" {
-					t.Fatal(library, entry)
+					t.Fatal(library, row.ID, entry)
 				}
 			}
 		}
@@ -477,7 +504,8 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	s := New(f.db)
 	r := engineRequest("movies")
 	r.CommunityActivity = true
-	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(i), key, f.items["m1"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
@@ -492,10 +520,9 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	check(1)
 	for _, field := range []string{"privacy.showActivityToMembers", "privacy.pauseWatchHistory"} {
 		value := field == "privacy.pauseWatchHistory"
-		raw, _ := json.Marshal(map[string]bool{field: value})
-		engineExec(t, f, `INSERT OR REPLACE INTO console_documents VALUES(?,1,?,0)`, `profile:["local","b","q"]`, string(raw))
+		storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{field: value})
 		check(0)
-		engineExec(t, f, `DELETE FROM console_documents WHERE scope=?`, `profile:["local","b","q"]`)
+		storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{"privacy.showActivityToMembers": true, "privacy.pauseWatchHistory": false})
 		check(1)
 	}
 	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='[]' WHERE account_id='b'`)

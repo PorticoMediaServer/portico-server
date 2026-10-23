@@ -7,6 +7,10 @@ import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
 import type {ServerEvent} from '@core/playback-v1/types.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
+import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
+import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
+import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
+import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
@@ -208,7 +212,7 @@ class ChannelPort {
     return;
   }
 }
-function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
+function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, environment: import('../src/platform/playback/types.ts').WebPlaybackEnvironment = {}) {
   const clock = manualClock(), server = new FakePlaybackServer({now: clock.now, audioItem: id => id.startsWith('song') || id.startsWith('book'), itemKind: id => id.startsWith('book') ? 'audiobook_file' : undefined}), inner = fakeHttp(server);
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
@@ -230,7 +234,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
       response = {status: 200, headers: {}, body: {
         scope: {serverId: 'server', libraryId: 'library', itemId, viewerFence}, revision: `offer_${session.generation}`,
         offersRevision: 'a'.repeat(64), transcodingEnabled: true,
-        sources: [{id: `source_${itemId}`, available: true, container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080, durationMs: 7200000, factsRevision: 1, factsStatus: 'known', relation: 'unknown', boundary: 'whole_source', enabled: false, reason: 'source_selection_unavailable', streams: [{index: 1, type: 'audio', codec: 'aac', channels: 2, default: true, forced: false, enabled: true, reason: ''}], qualities: [{id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: 'original', kind: 'original', label: 'Original', enabled: true}, {id: '720p', kind: 'fixed', label: '720p', enabled: true, maxVideoBitrateBps: 4000000, maxAudioBitrateBps: 128000, targetDisplayHeight: 720}]}],
+        sources: [{id: `source_${itemId}`, available: true, container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080, durationMs: 7200000, factsRevision: 1, factsStatus: 'known', relation: 'unknown', boundary: 'whole_source', enabled: false, reason: 'source_selection_unavailable', streams: [{index: 1, type: 'audio', codec: 'aac', channels: 2, default: true, forced: false, enabled: true, reason: ''}], qualities: [{id: 'original', kind: 'original', label: 'Original', enabled: true}, {id: 'auto', kind: 'automatic', label: 'Automatic', enabled: true}, {id: '720p-high', kind: 'fixed', label: '720p', enabled: true, maxVideoBitrateBps: 4000000, maxAudioBitrateBps: 128000, targetDisplayHeight: 720}]}],
         current: {sessionId, generation: session.generation, state: session.state, sourceId: `source_${itemId}`, delivery: 'hls', audioSelection: 'server_first_audio', subtitleSelection: 'disabled', qualityId: 'original'},
         controls: [{id: 'source', enabled: false, reason: 'source_selection_unavailable'}, {id: 'audio', enabled: false, reason: 'track_selection_unavailable'}, {id: 'subtitles', enabled: false, reason: 'subtitle_delivery_unavailable'}, {id: 'quality', enabled: true, reason: ''}],
       }};
@@ -244,7 +248,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
   };
-  const runtime = new WebShellPlaybackRuntime(source, {timers: clock, playerTimers: clock, loadHls: async () => hls.Hls, nativeHls: 'never', key: () => `runtime-key-${++serial}`});
+  const runtime = new WebShellPlaybackRuntime(source, {timers: clock, playerTimers: clock, loadHls: async () => hls.Hls, nativeHls: 'never', key: () => `runtime-key-${++serial}`, ...environment});
   runtime.mount(video);
   t.after(() => runtime.dispose());
   const arrive = async () => { await settle(); const engine = hls.instances.at(-1)!; video.ready(Number(engine.config.startPosition)); await settle(); return engine; };
@@ -259,6 +263,647 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
   return {runtime, source, api, server, log, video, hls, clock, arrive, arriveLive, offers, expireLiveBookmark: () => { channels.windowStartMs = 50000; }, invalidate: () => { current = false; }, callbacks: () => [...callbacks.values()].reduce((n, v) => n + v.size, 0), intercept: (fn: typeof intercept) => { intercept = fn; }, changeViewerFence: () => { viewerFence = 'other_detail_viewer'; }};
 }
 function deferred() { let resolve!: () => void, enter!: () => void; const promise = new Promise<void>(r => { resolve = r; }), started = new Promise<void>(r => { enter = r; }); return {started, resolve, hold: async () => { enter(); await promise; }}; }
+
+const introMarker = {id: 'intro', kind: 'intro', startMs: 30000, endMs: 80000, automaticSafe: true};
+const creditsMarker = {id: 'credits', kind: 'credits', startMs: 7100000, endMs: 7200000, automaticSafe: true};
+function policyFixture(f: ReturnType<typeof setup>, markers = [introMarker, creditsMarker], postPlay: Record<string, unknown> = {}) {
+  f.intercept(async (request, response) => {
+    if (request.path.includes('/playback-offers?')) {
+      const body = response.body as {current: {sourceId: string}};
+      return {...response, body: {...body, markers: {sourceId: body.current.sourceId, revision: 'markers_1', markers}}};
+    }
+    if (request.method === 'GET' && /^\/v1\/queues\/[^/]+$/.test(request.path)) return {...response, body: {...response.body as object, postPlay: {autoplay: true, countdownMs: 5000, ...postPlay}}};
+    if (request.method === 'GET' && request.path.includes('/window?')) {
+      const body = response.body as {items: object[]};
+      return {...response, body: {...body, items: body.items.map(item => ({...item, durationMs: 7200000}))}};
+    }
+    const body = response.body as {queue?: object; window?: object[]} | undefined;
+    if (body?.queue) return {...response, body: {...body, queue: {...body.queue, postPlay: {autoplay: true, countdownMs: 5000, ...postPlay}}, ...(body.window ? {window: body.window.map(item => ({...item, durationMs: 7200000}))} : {})}};
+    return response;
+  });
+}
+async function policyQueue(f: ReturnType<typeof setup>) {
+  await f.runtime.selectionPlayback(() => true).play({context: selectionContext, items: [selectionLeaf('first'), selectionLeaf('next')], signal: new AbortController().signal});
+  await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!;
+  assert.ok(fence, 'the coherent source/queue fixture must publish a real fence');
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  f.runtime.open(fence);
+  return fence;
+}
+
+test('policy actions execute only the rendered marker and record a real manual skip on the actual session', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask', recap: 'ask', credits: 'ask'})});
+  policyFixture(f); const fence = await policyQueue(f);
+  f.video.advance(40); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'old-intro'}), /playback_policy_unavailable/);
+  const loads = f.video.loads;
+  await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});
+  assert.equal(f.video.loads, loads, 'a skip seeks the same actual media attachment');
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79);
+  assert.notEqual(f.runtime.getSnapshot().playback.positionSeconds, 79, 'the UI does not fabricate a seek landing');
+  f.video.land(79); await settle(); f.clock.advance(10000); await settle();
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 79);
+  assert.ok(f.log.some(request => request.path.endsWith('/timeline') && JSON.stringify(request.body).includes('"skipped":{"markerId":"intro","mode":"manual","positionMs":40000}')));
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /playback_policy_unavailable/);
+});
+
+test('policy dismissal is marker-scoped and automatic Undo returns to the actual pre-skip position', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask', recap: 'ask'})});
+  policyFixture(f, [introMarker, {id: 'recap', kind: 'recap', startMs: 100000, endMs: 120000, automaticSafe: true}]);
+  const fence = await policyQueue(f); f.video.advance(40); await settle();
+  await f.runtime.policyAction(fence, {kind: 'dismiss', markerId: 'intro'});
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt, null); assert.equal(f.video.seeking, false);
+  f.video.advance(105); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'dismiss', markerId: 'intro'}), /playback_policy_unavailable/);
+
+  const a = setup(t, {skipModes: () => ({intro: 'auto'})}); policyFixture(a);
+  const automatic = await policyQueue(a); a.video.advance(38); await settle();
+  assert.equal(a.runtime.getSnapshot().presentation!.policy!.undo?.marker.id, 'intro');
+  a.video.land(79); await settle(); await a.runtime.pause(automatic);
+  a.clock.advance(3000); await a.runtime.policyAction(automatic, {kind: 'undo', markerId: 'intro'});
+  assert.equal(a.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 38);
+  a.video.land(38); await settle(); await a.runtime.resume(automatic);
+  assert.equal(a.runtime.getSnapshot().presentation!.policy!.undo, null);
+  assert.equal(a.runtime.getSnapshot().playback.pendingSeek, undefined, 'the undone marker does not automatically skip again');
+});
+
+test('Undo expires on the real policy clock while paused and the quiet dock never exposes it later', async t => {
+  for (const collapsed of [false, true]) {
+    const f = setup(t, {skipModes: () => ({intro: 'auto'})}); policyFixture(f);
+    const fence = await policyQueue(f); if (collapsed) f.runtime.collapse(fence);
+    f.video.advance(38); await settle(); f.video.land(79); await settle(); await f.runtime.pause(fence);
+    if (collapsed) { f.runtime.open(fence); assert.equal(f.runtime.getSnapshot().presentation!.policy!.undo, null); }
+    else assert.ok(f.runtime.getSnapshot().presentation!.policy!.undo);
+    f.clock.advance(6000); await settle();
+    assert.equal(f.runtime.getSnapshot().presentation!.policy!.undo, null);
+    await assert.rejects(f.runtime.policyAction(fence, {kind: 'undo', markerId: 'intro'}), /playback_policy_unavailable/);
+  }
+});
+
+test('Play now uses the actual next occurrence before completion and double activation cannot move twice', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f);
+  const fence = await policyQueue(f); f.video.advance(7110); await settle();
+  const next = playbackPolicyNext(f.runtime.getSnapshot(), fence)!;
+  assert.equal(next.itemId, 'next'); assert.equal(next.title, 'Title next');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: 'unrelated'}), /playback_policy_unavailable/);
+  const play = f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId});
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId}), /stale_playback_command|playback_policy_unavailable/);
+  await play; await f.arrive();
+  const moves = f.log.filter(request => request.path.endsWith(':advance'));
+  assert.equal(moves.length, 1); assert.deepEqual(moves[0]!.body, {reason: 'next'});
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next'); assert.equal(f.video.paused, false);
+});
+
+test('Skip credits on an actual up-next offer uses its marker and never advances or guesses the next occurrence', async t => {
+  const f=setup(t,{skipModes:()=>({credits:'ask'})});
+  const credits={...creditsMarker,endMs:7150000};policyFixture(f,[credits],{startDuringCredits:true});
+  const fence=await policyQueue(f);f.video.advance(7110);await settle();
+  const before=f.runtime.getSnapshot(),prompt=before.presentation!.policy!.prompt;
+  if(prompt?.kind!=='up-next'||!prompt.offer.marker)assert.fail('genuine marked up-next offer required');
+  assert.equal(prompt.offer.marker.id,credits.id);assert.equal(prompt.sceneAfterCredits,true);
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:'old-credits'}),/playback_policy_unavailable/);
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'dismiss',markerId:credits.id}),/playback_policy_unavailable/);
+  const loads=f.video.loads;await f.runtime.policyAction(fence,{kind:'skip',markerId:prompt.offer.marker.id});
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek?.positionSeconds,7150,'canonical credits skip lands on the actual post-credits scene');
+  assert.equal(f.runtime.getSnapshot().session?.id,before.session?.id);assert.equal(f.video.loads,loads);
+  assert.equal(f.log.some(request=>request.path.endsWith(':advance')),false,'Skip credits is not Play now');
+  f.video.land(7150);await settle();f.clock.advance(10000);await settle();
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds,7150);
+  assert.ok(f.log.some(request=>request.path.endsWith('/timeline')&&JSON.stringify(request.body).includes('"skipped":{"markerId":"credits","mode":"manual","positionMs":7110000}')));
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:credits.id}),/playback_policy_unavailable/);
+});
+
+test('an overlapping up-next marker cannot dismiss or skip a different active segment', async t => {
+  const f=setup(t,{skipModes:()=>({intro:'ask',credits:'ask'})});
+  policyFixture(f,[{...introMarker,endMs:7150000},creditsMarker]);const fence=await policyQueue(f);
+  f.video.advance(7110);await settle();assert.equal(f.runtime.getSnapshot().presentation?.policy?.prompt?.kind,'up-next');
+  const seeks=f.video.seeks.length;await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:creditsMarker.id}),/playback_policy_unavailable/);
+  assert.equal(f.video.seeks.length,seeks);
+  f.video.advance(40);await settle();const prompt=f.runtime.getSnapshot().presentation?.policy?.prompt;
+  assert.equal(prompt?.kind,'skip');if(prompt?.kind==='skip')assert.equal(prompt.marker.id,introMarker.id,'the canonical expected-ID guard refuses before dismissing the unrelated active intro');
+});
+
+test('explicit automatic credits advance uses the real completion request before media end in both expanded and quiet modes', async t => {
+  for (const collapsed of [false, true]) {
+    const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
+    const fence = await policyQueue(f); if (collapsed) f.runtime.collapse(fence);
+    f.video.advance(7110); await settle();
+    assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+    f.clock.advance(5000); await f.arrive();
+    const moves = f.log.filter(request => request.path.endsWith(':advance'));
+    assert.equal(moves.length, 1); assert.deepEqual(moves[0]!.body, {reason: 'completion'});
+    assert.equal(f.runtime.getSnapshot().playback.itemId, 'next'); assert.equal(f.video.ended, false);
+    assert.equal(f.runtime.getSnapshot().presentation!.expanded, !collapsed);
+  }
+});
+
+test('Watch credits suppresses only early advance; the real confirmed end still runs its queue policy', async t => {
+  const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
+  const fence = await policyQueue(f); f.video.advance(7110); await settle();
+  const prompt = f.runtime.getSnapshot().presentation!.policy!.prompt!;
+  if (prompt.kind !== 'up-next') assert.fail('real credits offer required');
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'watch-credits', offerId: 'old-offer'}), /playback_policy_unavailable/);
+  await f.runtime.policyAction(fence, {kind: 'watch-credits', offerId: prompt.offer.id});
+  f.clock.advance(10000); await settle();
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt, null);
+  f.video.finish(); await settle(); f.clock.advance(5000); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('credits followed by a scene never auto-advance early and pausing freezes the explicit early countdown', async t => {
+  const scene = setup(t, {skipModes: () => ({credits: 'ask'})});
+  policyFixture(scene, [{...creditsMarker, endMs: 7160000}], {startDuringCredits: true});
+  await policyQueue(scene); scene.video.advance(7110); await settle();
+  const prompt = scene.runtime.getSnapshot().presentation!.policy!.prompt;
+  assert.equal(prompt?.kind === 'up-next' && prompt.sceneAfterCredits, true);
+  scene.clock.advance(10000); await settle(); assert.equal(scene.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  const paused = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(paused, [creditsMarker], {startDuringCredits: true});
+  const fence = await policyQueue(paused); paused.video.advance(7110); await settle(); await paused.runtime.pause(fence);
+  paused.clock.advance(10000); await settle(); assert.equal(paused.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await paused.runtime.resume(fence); paused.clock.advance(5000); await paused.arrive();
+  assert.equal(paused.runtime.getSnapshot().playback.itemId, 'next');
+});
+
+test('Still watching waits for confirmed completion and only the explicit current response can continue', async t => {
+  const f = setup(t); policyFixture(f, [], {passoutCheckDue: true}); const fence = await policyQueue(f);
+  const next = playbackPolicyNext(f.runtime.getSnapshot(), fence)!;
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'continue', nextEntryId: next.entryId}), /playback_policy_unavailable/);
+  f.video.finish(); await settle(); f.clock.advance(15000); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.attention, 'still-watching');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'play-now', nextEntryId: next.entryId}), /playback_policy_unavailable/);
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await f.runtime.policyAction(fence, {kind: 'continue', nextEntryId: next.entryId}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('canceling a confirmed end countdown produces real Replay without advancing or fabricating another session', async t => {
+  const f = setup(t); policyFixture(f, []); const fence = await policyQueue(f);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}), /playback_policy_unavailable/);
+  f.video.finish(); await settle();
+  await f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}); f.clock.advance(10000); await settle();
+  const snapshot = f.runtime.getSnapshot();
+  assert.equal(snapshot.fence!.sessionId, fence.sessionId); assert.equal(snapshot.presentation!.finished, true);
+  assert.ok(snapshot.presentation!.controls.includes('replay'));
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await f.runtime.replay(fence); await f.arrive(); assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 0);
+});
+
+test('a button arriving after the actual countdown deadline cannot claim it canceled an already committed advance', async t => {
+  const f = setup(t); policyFixture(f, []); const fence = await policyQueue(f);
+  f.video.finish(); await settle(); f.clock.advance(5000);
+  await assert.rejects(f.runtime.policyAction(fence, {kind: 'cancel-autoplay'}), /playback_policy_unavailable|stale_playback_command/);
+  await f.arrive(); assert.equal(f.runtime.getSnapshot().playback.itemId, 'next');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 1);
+});
+
+test('policy actions and next metadata reject stale full fences, collapsed prompts and retired authority', async t => {
+  const f = setup(t, {skipModes: () => ({intro: 'ask'})}); policyFixture(f); const fence = await policyQueue(f);
+  f.video.advance(40); await settle();
+  for (const other of [{...fence, generation: fence.generation + 1}, {...fence, sourceId: 'other'}, {...fence, entryId: 'other'}, {...fence, sessionId: 'other'}, {...fence, playback: {...fence.playback, scope: {...fence.playback.scope, profileId: 'other'}}}]) {
+    assert.equal(playbackPolicyNext(f.runtime.getSnapshot(), other), null);
+    await assert.rejects(f.runtime.policyAction(other, {kind: 'skip', markerId: 'intro'}), /stale_playback_command/);
+  }
+  const snapshot = f.runtime.getSnapshot(), view = snapshot.queueView!, next = playbackPolicyNext(snapshot, fence)!;
+  assert.ok(next); assert.equal(Object.isFrozen(next), true);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, current: {...view.current!, generation: fence.generation + 1}}}, fence), null);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, items: view.items.map(item => item.entryId === next.entryId ? {...item, title: ''} : item)}}, fence), null);
+  assert.equal(playbackPolicyNext({...snapshot, queueView: {...view, postPlay: {...view.postPlay, nextEntryId: 'other'}}}, fence), null);
+  f.runtime.collapse(fence); await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /playback_policy_unavailable/);
+  f.runtime.open(fence); f.invalidate(); await assert.rejects(f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'}), /stale_playback_command/);
+});
+
+/** The platform sender boundary; SDK transport/picker qualification stays with its owner. */
+class ControlledCastSender implements WebCastPort {
+  state: ReturnType<WebCastPort['getSnapshot']> = {available: true, phase: 'off', positionSeconds: 0, durationSeconds: 0, paused: false, audioTracks: [], textTracks: []};
+  listeners = new Set<() => void>();
+  starts: Parameters<WebCastPort['start']>[] = [];
+  commands: unknown[][] = [];
+  disposed = false;
+  private finish?: (ok: boolean) => void;
+  getSnapshot = () => this.state;
+  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  prepareOnIdle() { return () => {}; }
+  async prepareForPlayer() { return true; }
+  publish(patch: Partial<typeof this.state>) { this.state = {...this.state, ...patch}; for (const listener of [...this.listeners]) listener(); }
+  start(...args: Parameters<WebCastPort['start']>) { this.starts.push(args); this.publish({phase: 'connecting', itemId: args[0], title: args[1].title}); return new Promise<boolean>(resolve => { this.finish = resolve; }); }
+  acknowledge(ok: boolean) { this.finish?.(ok); this.finish = undefined; }
+  cancelConnecting() { this.commands.push(['cancel']); this.publish({phase: 'off'}); this.acknowledge(false); }
+  play() { this.commands.push(['play']); }
+  pause() { this.commands.push(['pause']); }
+  toggle() { this.commands.push(['toggle']); }
+  seek(seconds: number) { this.commands.push(['seek', seconds]); }
+  setAudioTrack(id: number) { this.commands.push(['audio', id]); }
+  setSubtitleTrack(id: number | null) { this.commands.push(['subtitles', id]); }
+  answerTakeover(allow: boolean) { this.commands.push(['takeover', allow]); }
+  stop() { this.commands.push(['stop']); this.publish({phase: 'off'}); }
+  dismiss() { this.commands.push(['dismiss']); this.publish({phase: 'off'}); }
+  dispose() { this.disposed = true; this.listeners.clear(); }
+}
+function castController(t: TestContext, f: ReturnType<typeof setup>) {
+  const sender = new ControlledCastSender(), errors: unknown[] = [];
+  const controller = new PlayOnController({sender, runtime: f.runtime, isCurrent: f.source.isCurrent, reportError: error => errors.push(error), now: f.clock.now, setTimer: f.clock.setTimer, clearTimer: f.clock.clearTimer, key: () => 'remote-attempt'});
+  t.after(() => controller.dispose());
+  return {controller, sender, errors};
+}
+
+test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK and use only its real clock', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const local = f.hls.instances.at(-1)!, first = f.runtime.getSnapshot(), sessionId = first.session!.id;
+  f.intercept(async (request, response) => request.path === '/v1/cast/bootstrap'
+    ? {status: 200, headers: {}, body: {bootstrap: {code: 'ABC123'}}} : response);
+  const messages: Record<string, unknown>[] = [], listeners = new Set<(namespace: string, body: string) => void>();
+  const reply = (body: unknown) => { for (const listener of [...listeners]) listener('urn:x-cast:tv.getportico.portico', JSON.stringify(body)); };
+  let picks = 0, selected: CastSession | null = null;
+  const session: CastSession = {
+    getCastDevice: () => ({friendlyName: 'Living Room'}),
+    sendMessage: async (_namespace, message) => { messages.push(message as Record<string, unknown>); },
+    addMessageListener: (_namespace, listener) => { listeners.add(listener); },
+    removeMessageListener: (_namespace, listener) => { listeners.delete(listener); }, endSession() {},
+  };
+  const context = {setOptions() {}, requestSession: () => { picks++; selected = session; return Promise.resolve(); }, getCurrentSession: () => selected, addEventListener() {}, removeEventListener() {}};
+  const browser: CastBrowser = {
+    // The already available controlled native SDK never touches a script or DOM image loader.
+    document: new Proxy({} as Document, {get() { throw new Error('unexpected_sdk_document_read'); }}),
+    navigator: {userAgent: 'Chrome/156.0 Linux'}, chrome: {},
+    cast: {framework: {CastContext: {getInstance: () => context}, CastContextEventType: {SESSION_STATE_CHANGED: 'session'}, SessionState: {SESSION_RESUMED: 'resumed', SESSION_ENDED: 'ended'}}},
+    setTimeout: f.clock.setTimer, clearTimeout: f.clock.clearTimer,
+  };
+  const sender = new WebCastSender({api: f.api, serverOrigin: 'https://portico.test', castApplicationId: 'APP123', browser});
+  assert.equal(await sender.prepareForPlayer(), true);
+  const errors: unknown[] = [];
+  const controller = new PlayOnController({sender, runtime: f.runtime, isCurrent: f.source.isCurrent, reportError: error => errors.push(error), now: f.clock.now, setTimer: f.clock.setTimer, clearTimer: f.clock.clearTimer});
+  t.after(() => controller.dispose());
+  const started = controller.startCast(); assert.equal(picks, 1, 'native picker opens synchronously in the originating click');
+  await settle(); assert.equal(sender.getSnapshot().phase, 'pairing');
+  reply({type: 'pair-pending'}); assert.equal(sender.getSnapshot().phase, 'waiting');
+  assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
+  reply({type: 'paired'}); await settle();
+  const load = messages.find(message => message.type === 'load')!;
+  assert.ok(load); assert.deepEqual(load.queue, first.session!.queue);
+  assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is not an observed receiver clock');
+  reply({type: 'loaded', itemId: 'movie', requestId: 'wrong-request'}); await settle();
+  assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
+  reply({type: 'loaded', itemId: 'movie', requestId: load.requestId}); assert.equal(await started, true); await settle();
+  assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
+  reply({type: 'status', itemId: 'movie', positionSeconds: 57, durationSeconds: 3186, paused: false, audioTracks: [], textTracks: []});
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  controller.seek(controller.getSnapshot().remote!, 100); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  controller.stop(controller.getSnapshot().remote!);
+  assert.equal(controller.getSnapshot().remote!.phase, 'stopped'); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  assert.equal(messages.some(message => 'mediaUrl' in message || 'grant' in message || 'sessionId' in message), false);
+  assert.deepEqual(errors, []);
+});
+
+test('Cast keeps the mounted local engine through pairing and waiting, handing off only on casting', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!, local = f.hls.instances[0]!;
+  const {controller, sender, errors} = castController(t, f), start = controller.startCast();
+  assert.equal(sender.starts.length, 1, 'picker call stays synchronous with the row click');
+  assert.deepEqual(sender.starts[0]![3], {queue: session.queue});
+  assert.deepEqual(Object.keys(sender.starts[0]![1]).sort(), ['artworkPath', 'kind', 'subtitle', 'title']);
+  for (const phase of ['connecting', 'pairing', 'waiting'] as const) {
+    sender.publish({phase});
+    assert.equal(f.runtime.getSnapshot().session!.id, session.id); assert.equal(local.destroyed, false);
+    assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is never a receiver clock');
+  }
+  sender.publish({phase: 'casting', device: {name: 'Living Room'}, receiver: {itemId: 'movie', positionSeconds: 27, durationSeconds: 3186, paused: false}});
+  sender.acknowledge(true); assert.equal(await start, true); await settle();
+  assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 27); assert.deepEqual(errors, []);
+});
+
+test('Cast cancellation preserves local playback and source replacement retires a pending attempt', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, {controller, sender} = castController(t, f);
+  let start = controller.startCast(); controller.stop(controller.getSnapshot().remote!);
+  assert.equal(await start, false); await settle();
+  assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.id, session);
+  assert.deepEqual(sender.commands, [['cancel']]);
+  start = controller.startCast(); await f.runtime.play('another', 10); await f.arrive();
+  assert.equal(await start, false); assert.equal(f.runtime.getSnapshot().session!.itemId, 'another');
+  f.invalidate(); f.runtime.dispose();
+  assert.equal(controller.getSnapshot().disposed, true); assert.equal(sender.disposed, true);
+  assert.throws(() => controller.openPlayOn(), /playback_authority_retired/);
+});
+
+test('Cast controls require current receiver facts and tokens, never an optimistic seek position', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const {controller, sender} = castController(t, f), start = controller.startCast();
+  sender.publish({phase: 'casting', positionSeconds: 999, durationSeconds: 9999}); sender.acknowledge(true); await start; await settle();
+  let token = controller.getSnapshot().remote!;
+  assert.equal(token.positionKnown, false); controller.seek(token, 100); assert.deepEqual(sender.commands, []);
+  sender.publish({receiver: {itemId: 'movie', positionSeconds: 40, durationSeconds: 100, paused: true}, audioTracks: [{id: 2, name: 'English', active: true}]});
+  controller.toggle(token); assert.deepEqual(sender.commands, [], 'a previous status token cannot command the receiver');
+  token = controller.getSnapshot().remote!;
+  controller.seek(token, 150); controller.seek(token, NaN); controller.audio(token, 3); controller.audio(token, 2); controller.subtitles(token, 3); controller.subtitles(token, null);
+  assert.deepEqual(sender.commands, [['seek', 100], ['audio', 2], ['subtitles', null]]);
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 40);
+});
+
+test('Cast stopped continuation uses retained receiver time, expires at fifteen seconds and never stops adopted local playback', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const {controller, sender} = castController(t, f), start = controller.startCast();
+  sender.publish({phase: 'casting', receiver: {itemId: 'movie', positionSeconds: 57, durationSeconds: 3186, paused: false}}); sender.acknowledge(true); await start; await settle();
+  sender.stop(); const token = controller.getSnapshot().remote!;
+  assert.equal(token.phase, 'stopped'); assert.equal(token.positionSeconds, 57);
+  f.clock.advance(14_999); assert.equal(controller.getSnapshot().remote!.phase, 'stopped');
+  await controller.continueHere(token); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie'); assert.equal(f.hls.instances.at(-1)!.config.startPosition, 57);
+  assert.equal(controller.getSnapshot().remote, undefined);
+  sender.publish({phase: 'casting', itemId: 'movie', receiver: {itemId: 'movie', positionSeconds: 60, durationSeconds: 3186, paused: false}});
+  sender.publish({phase: 'replaced'}); f.clock.advance(15_000);
+  assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
+});
+
+test('entry version choice uses the real grouped version id and fresh title resume under section21', async t => {
+  const f = setup(t);
+  f.intercept(async (request, response) => {
+    if (request.path === '/v1/items/movie/playback-options') {
+      const body = response.body as {versions: {id: string}[]};
+      return {...response, body: {...body, versions: [...body.versions, {...body.versions[0], id: 'v2'}]}};
+    }
+    return response;
+  });
+  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', context: selectionContext, signal: new AbortController().signal}, context => context === selectionContext);
+  await f.arrive();
+  const starts = f.log.filter(request => request.method === 'POST' && request.path.includes('/playback/sessions'));
+  assert.ok(starts.some(request => (request.body as {versionId?: string}).versionId === 'v2'));
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+  assert.equal(f.hls.instances.length, 1);
+  assert.equal(f.hls.instances[0]!.config.startPosition, 120, 'binding21 supersedes the former caller-supplied25s fixture; fresh actual Options.resume is120s');
+});
+
+test('a captured screen starts the actual item and library, preserves ordinary start-over and uses fresh explicit-version resume', async t => {
+  const f = setup(t), abort = new AbortController(), context = {signal: abort.signal, isCurrent: () => true};
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, context); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 0);
+  versionFixture(f, 120);
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 25, versionId: 'v1'}, context); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v1');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 120);
+  const before = f.log.length;
+  await f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 9}, context); await f.arrive();
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 9);
+  assert.ok(f.log.slice(before).every(request => !(request.body as {versionId?: string} | undefined)?.versionId));
+});
+
+test('foreign library and unavailable explicit version cannot replace still-playing media', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, before = f.log.length;
+  const context = {signal: new AbortController().signal, isCurrent: () => true};
+  await assert.rejects(f.runtime.playFromScreen({libraryId: 'foreign', itemId: 'movie', startSeconds: 0}, context), /invalid_playback_target/);
+  await assert.rejects(f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0, versionId: 'not-offered'}, context), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session); assert.equal(f.video.paused, false);
+  assert.ok(f.log.slice(before).every(request => request.method !== 'POST' && request.method !== 'DELETE'));
+});
+
+test('screen cancellation or navigation during real start cannot adopt late output or stop a newer Play', async t => {
+  for (const change of ['abort', 'navigation', 'new-play'] as const) {
+    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true, held = false;
+    f.intercept(async (request, response) => {
+      // Device-queue starts carry queue/entry IDs, not a top-level itemId.
+      if (!held && request.method === 'POST' && request.path === '/v1/playback/sessions') {held = true;await gate.hold();}
+      return response;
+    });
+    const pending = f.runtime.playFromScreen({libraryId: 'library', itemId: 'movie', startSeconds: 0}, {signal: abort.signal, isCurrent: () => current});
+    let settled = false; void pending.then(() => {settled = true;}, () => {settled = true;});
+    const done = assert.rejects(pending, undefined, change);
+    await gate.started;
+    assert.equal(settled, false, `${change}: the actual start remains in flight`);
+    if (change === 'navigation') current = false;
+    else if (change === 'new-play') {await f.runtime.play('newer', 20); await f.arrive();abort.abort();}
+    else abort.abort();
+    gate.resolve(); await done; await settle();
+    assert.notEqual(f.runtime.getSnapshot().session?.itemId, 'movie');
+    if (change === 'new-play') assert.equal(f.runtime.getSnapshot().session!.itemId, 'newer');
+  }
+});
+
+function versionFixture(f: ReturnType<typeof setup>, resume = 120) {
+  let positionMs: number | undefined = resume * 1000, offered = ['v2', 'v1'];
+  const handle = async (request: V1Request, response: V1Response) => {
+    if (!request.path.includes('/playback-options')) return response;
+    const body = response.body as {versions: {id: string}[]; preferred: object};
+    return {...response, body: {...body, resume: positionMs === undefined ? undefined : {positionMs, partIndex: 0},
+      versions: offered.map(id => ({...body.versions[0], id})), preferred: {...body.preferred, versionId: 'v2'}}};
+  };
+  f.intercept(handle);
+  return {handle, resume: (seconds: number | undefined) => { positionMs = seconds === undefined ? undefined : seconds * 1000; }, versions: (ids: string[]) => { offered = ids; }};
+}
+
+test('the owned chooser reads fresh File-info order and actual selected ID, then re-reads resume at the real chosen start', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), abort = new AbortController(), before = f.log.length, loads = f.video.loads;
+  const choices = await f.runtime.readVersions(fence, abort.signal); assert.ok(choices);
+  assert.equal(choices.selectedVersionId, 'v1'); assert.equal(choices.options.preferred!.versionId, 'v2');
+  assert.deepEqual(choices.versions.map(version => version.id), ['v2', 'v1']);
+  assert.equal(choices.failedVersionId, undefined); assert.equal(choices.isCurrent(), true);
+  assert.equal(f.video.loads, loads); assert.equal(f.log.slice(before).filter(request => request.method === 'POST').length, 0);
+  assert.equal(f.log.at(-1)!.path, '/v1/items/movie/playback-options', 'chooser freshness is a real options read, without a preview substituting for the selected ID');
+  fixture.resume(85);
+  await f.runtime.playVersion({choices, versionId: 'v2', signal: abort.signal}); await f.arrive();
+  assert.equal(choices.isCurrent(), false, 'accepted replacement invalidates old row facts before the promise settles');
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 85);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 85);
+  const chosen = f.log.findLast(request => request.method === 'POST' && request.path === '/v1/playback/sessions')!;
+  assert.equal((chosen.body as {versionId: string}).versionId, 'v2');
+  assert.equal((chosen.body as {startPositionMs: number}).startPositionMs, 85000);
+  const nextPlay = f.log.length; await f.runtime.play('movie'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v1', 'the next ordinary Play returns to the actual server automatic choice');
+  assert.ok(f.log.slice(nextPlay).every(request => !(request.body as {versionId?: string} | undefined)?.versionId));
+});
+
+test('a chosen version removed by the fresh click read cannot stop the still playing source', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  fixture.versions(['v1']); const before = f.log.length, session = f.runtime.getSnapshot().session!.id;
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session); assert.equal(f.video.paused, false);
+  assert.equal(f.log.slice(before).filter(request => request.method === 'POST' || request.method === 'DELETE').length, 0);
+});
+
+test('the controlled chooser row adapter preserves actual filtered order and the original command authority', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  const seen: object[] = [];
+  // Controlled canonical-formatter boundary only. No claim that these test strings are the
+  // not-yet-MAIN VS3e formatter or product copy; the adapter must preserve them exactly.
+  const rows = playbackVersionRows(choices, version => { seen.push(version); return {heading: 'heading:' + version.id, detail: 'detail:' + version.id}; });
+  assert.deepEqual(seen, choices.versions);
+  assert.deepEqual(rows, [{id: 'v2', heading: 'heading:v2', detail: 'detail:v2'}, {id: 'v1', heading: 'heading:v1', detail: 'detail:v1'}]);
+  assert.equal(Object.isFrozen(rows), true); assert.equal(Object.isFrozen(rows![0]), true);
+  await f.runtime.playVersion({choices, versionId: rows![0]!.id, signal}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2', 'the renderer retains the original WeakMap-issued object, without a copied choices wrapper');
+  assert.equal(playbackVersionRows(choices, () => { assert.fail('a stale selection cannot invoke the formatter'); }), null);
+});
+
+test('row adaptation drops stale private facts, rejects changed order and preserves unknown empty content without placeholders', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const choices = await f.runtime.readVersions(fence, new AbortController().signal); assert.ok(choices);
+  const format = () => ({heading: 'heading', detail: 'detail'});
+  assert.throws(() => playbackVersionRows({...choices, versions: [...choices.versions].reverse()}, format), /playback_version_rows_invalid/);
+  assert.throws(() => playbackVersionRows({...choices, failedVersionId: 'v1'}, format), /playback_version_rows_invalid/);
+  assert.deepEqual(playbackVersionRows(choices, () => ({heading: '', detail: ''})), choices.versions.map(version => ({id: version.id, heading: '', detail: ''})), 'unknown facts remain empty, without Version1 or other synthesized labels');
+  const single = {...choices, failedVersionId: 'v1', versions: [choices.versions[0]!]};
+  assert.equal(playbackVersionRows(single, format)!.length, 1, 'one structurally surviving row remains drawable; this test object is not command authority');
+  const stale = {...choices, isCurrent: choices.isCurrent};
+  assert.equal(playbackVersionRows(stale, () => { f.invalidate(); return format(); }), null, 'authority change during formatting cannot expose even the first completed row');
+});
+
+test('failure chooser excludes the actual failed grouped version, including when the planner prefers another version', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const signal = new AbortController().signal;
+  assert.equal(await f.runtime.readVersions(fence, signal, {excludeFailed: true}), null, 'a healthy source cannot be called the failed version');
+  // A recoverable engine event is not a failed title: exhaust the real controller's three
+  // in-place recovery plans before offering the failure destination.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    f.hls.instances.at(-1)!.error({fatal: true, type: 'otherError', details: 'internalException'});
+    await f.arrive();
+  }
+  const failedFence = f.runtime.getSnapshot().fence!;
+  if (failedFence.kind !== 'queue') assert.fail('queue fence required');
+  f.hls.instances.at(-1)!.error({fatal: true, type: 'otherError', details: 'internalException'});
+  await settle(); assert.equal(f.runtime.getSnapshot().playback.phase, 'error');
+  const choices = await f.runtime.readVersions(failedFence, signal, {excludeFailed: true}); assert.ok(choices);
+  assert.equal(choices.selectedVersionId, 'v1'); assert.equal(choices.failedVersionId, 'v1');
+  assert.equal(choices.options.preferred!.versionId, 'v2'); assert.deepEqual(choices.versions.map(version => version.id), ['v2']);
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v1', signal}), /playback_version_unavailable/);
+  await f.runtime.playVersion({choices, versionId: 'v2', signal}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+});
+
+test('copied or foreign chooser facts cannot become a version command authority', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  const before = f.log.length;
+  await assert.rejects(f.runtime.playVersion({choices: {...choices}, versionId: 'v2', signal}), /stale_playback_command/);
+  assert.equal(f.log.length, before, 'a forged structural object cannot even issue the freshness read');
+  const other = setup(t); await other.runtime.play('movie'); await other.arrive();
+  await assert.rejects(other.runtime.playVersion({choices, versionId: 'v2', signal}), /stale_playback_command/);
+});
+
+test('a new media generation retires chooser facts, and a fresh title without a resume starts at zero', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  await f.runtime.setQuality(fence, '720p-high'); await f.arrive();
+  assert.equal(choices.isCurrent(), false); await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /stale_playback_command/);
+  fixture.resume(undefined);
+  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', context: selectionContext, signal}, () => true); await f.arrive();
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 0);
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+});
+
+test('a refused actual version start rejects rather than reporting an accepted chooser selection', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  f.intercept(async (request, response) => request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {versionId?: string})?.versionId === 'v2'
+    ? {status: 422, headers: {}, body: {error: {code: 'unsupported_media', retry: 'never', requestId: 'request'}}} : fixture.handle(request, response));
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /playback_version_failed/);
+  assert.equal(choices.isCurrent(), false);
+  assert.notEqual(f.runtime.getSnapshot().session?.versionId, 'v2');
+});
+
+test('late chooser reads and click reads cannot cross abort, source replacement or authority retirement', async t => {
+  for (const stage of ['read', 'click'] as const) for (const change of ['abort', 'new-play', 'authority'] as const) {
+    const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+    if (fence.kind !== 'queue') assert.fail('queue fence required');
+    versionFixture(f); const abort = new AbortController(), choices = stage === 'click' ? await f.runtime.readVersions(fence, abort.signal) : undefined;
+    const gate = deferred(); f.intercept(async (request, response) => { if (request.path === '/v1/items/movie/playback-options') await gate.hold(); return response; });
+    const pending = stage === 'click' ? f.runtime.playVersion({choices: choices!, versionId: 'v1', signal: abort.signal}) : f.runtime.readVersions(fence, abort.signal);
+    const done = pending.then(value => { assert.equal(stage, 'read'); assert.equal(value, null); }, () => {});
+    await gate.started; const before = f.log.length;
+    if (change === 'abort') abort.abort(); else if (change === 'authority') f.invalidate(); else { await f.runtime.play('newer', 20); await f.arrive(); }
+    gate.resolve(); await done; await settle();
+    assert.equal(f.log.slice(before).some(request => request.method === 'POST' && (request.body as {versionId?: string})?.versionId), false);
+    if (change === 'new-play') assert.equal(f.runtime.getSnapshot().playback.itemId, 'newer');
+  }
+});
+
+test('accepted chooser replacement drops old facts while its actual start remains in flight; abort cannot stop a newer Play', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), abort = new AbortController(), choices = await f.runtime.readVersions(fence, abort.signal); assert.ok(choices);
+  const gate = deferred(); f.intercept(async (request, response) => { if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {versionId?: string})?.versionId === 'v2') await gate.hold(); return fixture.handle(request, response); });
+  const pending = f.runtime.playVersion({choices, versionId: 'v2', signal: abort.signal}), done = assert.rejects(pending);
+  await gate.started; assert.equal(choices.isCurrent(), false);
+  await f.runtime.play('newer', 20); await f.arrive(); const newer = f.runtime.getSnapshot().session!.id;
+  abort.abort(); gate.resolve(); await done; await settle();
+  assert.equal(f.runtime.getSnapshot().session!.id, newer); assert.equal(f.video.paused, false);
+});
+
+test('a changed genuine entry context abandons its late version POST before any engine adoption', async t => {
+  const f=setup(t),fixture=versionFixture(f),gate=deferred();let current=true,created='';
+  f.intercept(async(request,response)=>{
+    if(request.method==='POST'&&request.path==='/v1/playback/sessions'&&(request.body as {versionId?:string})?.versionId==='v2'){created=(response.body as {id:string}).id;await gate.hold();}
+    return fixture.handle(request,response);
+  });
+  const pending=f.runtime.playVersion({itemId:'movie',versionId:'v2',context:selectionContext,signal:new AbortController().signal},()=>current),rejected=assert.rejects(pending,/stale_selection_context|playback_version_failed/);
+  await gate.started;assert.ok(created);current=false;gate.resolve();await rejected;await settle();
+  assert.equal(f.hls.instances.length,0,'the obsolete genuine response never reaches a media engine');
+  assert.equal(f.server.session(created)?.ended,true);assert.equal(f.log.some(request=>request.method==='DELETE'&&request.path===`/v1/playback/sessions/${created}`),true);
+});
+
+test('the original chooser read lifetime can cancel an in-flight version command independently of its action signal', async t => {
+  const f=setup(t);await f.runtime.play('movie',25);await f.arrive();const fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')assert.fail('queue fence required');
+  const fixture=versionFixture(f),read=new AbortController(),action=new AbortController(),choices=await f.runtime.readVersions(fence,read.signal);assert.ok(choices);
+  const gate=deferred();let created='';f.intercept(async(request,response)=>{
+    if(request.method==='POST'&&request.path==='/v1/playback/sessions'&&(request.body as {versionId?:string})?.versionId==='v2'){created=(response.body as {id:string}).id;await gate.hold();}
+    return fixture.handle(request,response);
+  });
+  const engines=f.hls.instances.length,pending=f.runtime.playVersion({choices,versionId:'v2',signal:action.signal}),rejected=assert.rejects(pending);
+  await gate.started;assert.equal(choices.isCurrent(),false,'intentional output replacement is allowed while the original read controller remains alive');
+  read.abort();assert.equal(action.signal.aborted,false);gate.resolve();await rejected;await settle();
+  assert.ok(created);assert.equal(f.server.session(created)?.ended,true);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.hls.instances.length,engines,'the late response creates no new media engine; ordinary teardown may clear the old element');
+});
+
+test('unavailable or mismatched version offer never stops the existing playback or starts a source link', async t => {
+  const f = setup(t); await f.runtime.play('current', 15); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, before = f.log.length;
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'raw_source_link', context: selectionContext, signal: new AbortController().signal}, () => true), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session);
+  assert.equal(f.log.slice(before).some(request => request.method === 'POST'), false);
+  f.intercept(async (request, response) => request.path === '/v1/items/movie/playback-options' ? {...response, body: {...response.body as object, itemId: 'another'}} : response);
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: selectionContext, signal: new AbortController().signal}, () => true), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session);
+});
+
+test('version choice validates current route/viewer and cancellation after its real options read', async t => {
+  for (const change of ['context', 'abort', 'other-play'] as const) {
+    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true;
+    f.intercept(async (request, response) => { if (request.path === '/v1/items/movie/playback-options') await gate.hold(); return response; });
+    const pending = f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: selectionContext, signal: abort.signal}, () => current);
+    // Attach rejection before releasing any asynchronous cancellation.
+    const rejected = assert.rejects(pending);
+    await gate.started;
+    if (change === 'context') current = false;
+    else if (change === 'abort') abort.abort();
+    else { await f.runtime.play('newer', 40); await f.arrive(); }
+    gate.resolve(); await rejected; await settle();
+    assert.equal(f.log.some(request => request.method === 'POST' && (request.body as {itemId?: string})?.itemId === 'movie'), false);
+    if (change === 'other-play') assert.equal(f.runtime.getSnapshot().playback.itemId, 'newer');
+  }
+  const f = setup(t);
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: {...selectionContext, scope: {...selectionContext.scope, profileId: 'other'}}, signal: new AbortController().signal}, () => true), /stale_selection_context/);
+  assert.equal(f.log.some(request => request.path.includes('/items/') || request.path.includes('/playback/sessions') || request.path === '/v1/queues'), false, 'a wrong viewer cannot read title options or start playback; background capability publication is unrelated');
+});
 
 test('runtime Home play reaches the actual queue/service/element and publishes the real source fence', async t => {
   const f = setup(t); await f.runtime.play('movie', 12.5); const engine = await f.arrive();
@@ -643,6 +1288,69 @@ test('runtime resets a session speed on a new play and rejects unsupported remot
   await assert.rejects(f.runtime.onAction({kind: 'play', fence: f.runtime.getSnapshot().fence!, remote: {id: 'unbound', sequence: '1'}}), /remote_playback_binding_unavailable/);
 });
 
+test('speed shortcuts use only the current subject choices and preserve the actual playback session', async t => {
+  const f = setup(t); await f.runtime.play('movie', 5); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!, sessionId = fence.sessionId, loads = f.video.loads;
+  assert.deepEqual(f.runtime.speedChoices(fence), [.5,.75,1,1.25,1.5,1.75,2]);
+  await f.runtime.onAction({kind:'step-speed',fence,direction:-1});
+  assert.equal(f.video.playbackRate,.75); assert.equal(f.runtime.getSnapshot().playback.audioEffects.rate,.75);
+  await f.runtime.onAction({kind:'step-speed',fence,direction:1}); assert.equal(f.video.playbackRate,1);
+  for (let i=0;i<8;i++) f.runtime.stepSpeed(fence,1);
+  assert.equal(f.video.playbackRate,2); assert.equal(f.runtime.getSnapshot().session?.id,sessionId); assert.equal(f.video.loads,loads);
+  for (const rate of [NaN,Infinity,.3,2.5,0,-1]) assert.throws(()=>f.runtime.setSpeed(fence,rate),/playback_speed_unavailable/);
+  f.runtime.collapse(fence); assert.throws(()=>f.runtime.stepSpeed(fence,-1),/playback_speed_unavailable/); f.runtime.open(fence);
+  await f.runtime.play('book_file',5); await f.arrive();
+  const book=f.runtime.getSnapshot().fence!; assert.equal(f.runtime.speedChoices(book).at(-1),3);
+  f.runtime.setSpeed(book,2); f.runtime.stepSpeed(book,1); assert.equal(f.video.playbackRate,2.5);
+  assert.throws(()=>f.runtime.stepSpeed(fence,-1),/stale_playback_command/);
+  await f.runtime.play('song_one',5); await f.arrive();
+  const song=f.runtime.getSnapshot().fence!; assert.deepEqual(f.runtime.speedChoices(song),[]);
+  assert.throws(()=>f.runtime.stepSpeed(song,1),/playback_speed_unavailable/); assert.equal(f.video.playbackRate,1);
+});
+
+test('an ordinary browser without a real frame primitive never substitutes a seek or an assumed frame rate', async t => {
+  const f=setup(t); await f.runtime.play('movie',5);await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  await f.runtime.pause(fence);await settle();const seeks=f.video.seeks.length,position=f.runtime.getSnapshot().playback.positionSeconds;
+  assert.equal(f.runtime.canStepFrame(fence),false);
+  await assert.rejects(f.runtime.onAction({kind:'step-frame',fence,direction:1}),/playback_frame_step_unavailable/);
+  assert.equal(f.video.seeks.length,seeks);assert.equal(f.runtime.getSnapshot().playback.positionSeconds,position);
+});
+
+test('paused frame shortcuts call only the actual loaded generation and publish only the engine observation', async t => {
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+  const calls:{direction:number;generation:number}[]=[];
+  const f=setup(t,{}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player=new WebMediaPlayer(video,options);
+    return Object.assign(player,{stepFrame:(direction:-1|1,generation:number)=>{
+      assert.equal(player.loaded,generation);assert.equal(video.paused,true);calls.push({direction,generation});
+      // The controlled decoder reports an actual irregular PTS, never runtime 1/fps arithmetic.
+      f.video.advance(direction===1?5.037:4.991);
+    }});
+  }});
+  await f.runtime.play('movie',5);await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  assert.equal(f.runtime.canStepFrame(fence),false);await assert.rejects(f.runtime.stepFrame(fence,1),/playback_frame_step_unavailable/);
+  await f.runtime.pause(fence);await settle();assert.equal(f.runtime.canStepFrame(fence),true);const seeks=f.video.seeks.length;
+  await f.runtime.onAction({kind:'step-frame',fence,direction:1});await settle();assert.equal(f.runtime.getSnapshot().playback.positionSeconds,5.037);
+  await f.runtime.stepFrame(fence,-1);await settle();assert.equal(f.runtime.getSnapshot().playback.positionSeconds,4.991);
+  assert.deepEqual(calls,[{direction:1,generation:fence.generation},{direction:-1,generation:fence.generation}]);assert.equal(f.video.seeks.length,seeks);
+  f.runtime.collapse(fence);assert.equal(f.runtime.canStepFrame(fence),false);await assert.rejects(f.runtime.stepFrame(fence,1),/playback_frame_step_unavailable/);
+  f.runtime.open(fence);await f.runtime.seek(fence,10);assert.equal(f.runtime.canStepFrame(fence),false);
+});
+
+test('a delayed native frame command cannot publish into a replacement source or retired authority', async t => {
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');const gate=deferred();let effects=0;
+  const f=setup(t,{}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player=new WebMediaPlayer(video,options);
+    return Object.assign(player,{stepFrame:async(_direction:-1|1,generation:number)=>{await gate.hold();if(player.loaded!==generation || player.observe().state!=='paused')throw new Error('native_frame_retired');effects++;}});
+  }});
+  await f.runtime.play('movie',5);await f.arrive();const old=f.runtime.getSnapshot().fence!;await f.runtime.pause(old);await settle();
+  const pending=f.runtime.stepFrame(old,1),rejected=assert.rejects(pending,/native_frame_retired|stale_playback_command/);await gate.started;
+  await f.runtime.play('replacement',20);await f.arrive();const next=f.runtime.getSnapshot().fence!;gate.resolve();await rejected;
+  assert.equal(effects,0);assert.deepEqual(f.runtime.getSnapshot().fence,next);assert.equal(f.runtime.getSnapshot().playback.positionSeconds,20);
+  assert.equal(f.runtime.canStepFrame(old),false);await assert.rejects(f.runtime.stepFrame(old,1),/stale_playback_command/);
+  f.invalidate();assert.equal(f.runtime.canStepFrame(next),false);
+});
+
 test('runtime uses the resolved subject preference for both actual engine and service speed', async t => {
   const f = setup(t, {videoSpeed: () => 1.75, audiobookSpeed: () => 1.25});
   for (const [itemId, kind, rate] of [['movie', 'video', 1.75], ['book_file', 'audiobook', 1.25], ['song_one', 'music', 1]] as const) {
@@ -997,18 +1705,18 @@ test('runtime quality changes require current options and an enabled rung on the
   assert.ok(fence);
   assert.equal(f.runtime.getSnapshot().options, null);
   const before = f.log.length;
-  await assert.rejects(f.runtime.setQuality(fence, '720'), /playback_quality_unavailable/);
+  await assert.rejects(f.runtime.setQuality(fence, '720p-high'), /playback_quality_unavailable/);
   assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
   gate.resolve(); await settle();
   assert.ok(f.runtime.getSnapshot().options);
   // The older options endpoint offers 1080p, but this source's current offer does not.
-  await assert.rejects(f.runtime.setQuality(fence, '1080'), /playback_quality_unavailable/);
+  await assert.rejects(f.runtime.setQuality(fence, '1080p-high'), /playback_quality_unavailable/);
   assert.equal(f.log.slice(before).some(request => request.method === 'PATCH'), false);
-  await f.runtime.setQuality(fence, '720'); await settle();
+  await f.runtime.setQuality(fence, '720p-high'); await settle();
   assert.ok(f.log.slice(before).some(request => request.path === `/v1/playback/sessions/${fence.sessionId}` && request.method === 'PATCH'));
   assert.equal(f.runtime.getSnapshot().playback.session?.id, fence.sessionId);
   assert.ok((f.runtime.getSnapshot().playback.session?.generation ?? 0) > fence.generation);
-  await assert.rejects(f.runtime.setQuality(fence, '720'), /stale_playback_command/);
+  await assert.rejects(f.runtime.setQuality(fence, '720p-high'), /stale_playback_command/);
 });
 
 test('runtime Home selection binds distinct Home and detail fences to the actual queue and persistent media', async t => {
@@ -1054,7 +1762,7 @@ test('runtime accepts the same actual detail fence after refresh and a new media
   await f.offers().refresh({quiet: true}); await settle();
   assert.deepEqual(f.runtime.getSnapshot().fence, fence);
   assert.equal(f.runtime.getSnapshot().offers?.scope.viewerFence, detailViewerFence);
-  await f.runtime.setQuality(fence, '720'); await f.arrive();
+  await f.runtime.setQuality(fence, '720p-high'); await f.arrive();
   const changed = f.runtime.getSnapshot(), next = changed.fence;
   assert.ok(next); assert.equal(next.sessionId, fence.sessionId); assert.ok(next.generation > fence.generation);
   assert.equal(changed.offers?.current?.generation, next.generation);
@@ -1069,7 +1777,7 @@ test('runtime cannot rebind a changed detail fence when the media generation cha
   const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
   const first = f.runtime.getSnapshot().fence;
   assert.ok(first);
-  f.changeViewerFence(); await f.runtime.setQuality(first, '720'); await settle();
+  f.changeViewerFence(); await f.runtime.setQuality(first, '720p-high'); await settle();
   assert.equal(f.offers().getSnapshot().error?.code, 'permission_changed');
   assert.equal(f.offers().getSnapshot().data, null);
   assert.equal(f.runtime.getSnapshot().offers, null);
@@ -1111,7 +1819,7 @@ test('runtime rejects an older media-generation offer even when the real offers 
     if (request.path.includes('/playback-offers')) (response.body as {current: {generation: number}}).current.generation = first.generation;
     return response;
   });
-  await f.runtime.setQuality(first, '720'); await f.arrive();
+  await f.runtime.setQuality(first, '720p-high'); await f.arrive();
   assert.ok(f.runtime.getSnapshot().playback.session!.generation > first.generation);
   assert.equal(f.offers().getSnapshot().phase, 'ready');
   assert.equal(f.offers().getSnapshot().data?.current?.generation, first.generation);
@@ -1204,4 +1912,123 @@ test('runtime selection still requires the Home authority fence rather than the 
   await assert.rejects(f.runtime.selectionPlayback(() => true).play({context: wrong, items: [selectionLeaf('movie')], signal: new AbortController().signal}), /stale_selection_context/);
   assert.equal(f.log.length, before); assert.deepEqual(f.log.slice(before), []); assert.equal(f.hls.instances.length, 0);
   assert.equal(f.runtime.getSnapshot().fence, undefined); assert.equal(f.runtime.getSnapshot().offers, null);
+});
+
+
+test('canonical offered quality IDs reach the real replan request without suffixes or aliases', async t => {
+  for (const choice of ['original', 'automatic', '720p-high'] as const) {
+    const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+    const fence = f.runtime.getSnapshot().fence!;
+    await f.runtime.setQuality(fence, choice); await settle();
+    const patch = f.log.findLast(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${fence.sessionId}`)!;
+    assert.deepEqual((patch.body as {quality: unknown}).quality, choice === 'automatic' ? {mode:'automatic', id:'original'} : choice === 'original' ? {mode:'original'} : {mode:'fixed',id:'720p-high'});
+  }
+});
+
+test('a disabled actual source rung cannot be selected even when options offer it', async t => {
+  const f = setup(t);
+  f.intercept(async (r, response) => {
+    if (r.path.includes('/playback-offers') && response.status === 200) {
+      const body = structuredClone(response.body) as any;
+      const rung = body.sources[0].qualities.find((v: any) => v.kind === 'fixed');
+      rung.enabled = false; rung.reason = 'transcoding_disabled';
+      return {...response, body};
+    }
+    return response;
+  });
+  await f.runtime.play('movie'); await f.arrive();
+  const before = f.log.length;
+  await assert.rejects(f.runtime.setQuality(f.runtime.getSnapshot().fence!, '720p-high'), /playback_quality_unavailable/);
+  assert.equal(f.log.slice(before).some(r => r.method === 'PATCH'), false);
+});
+
+test('platform factory owns media with browser renderer disabled and publishes its capability document', async t => {
+  const {webDeclaredProfile} = await import('../../packages/client-core/src/client-profile.ts');
+  const {WebMediaPlayer} = await import('../src/platform/playback/web-media-player.ts');
+  let created = 0, asked = 0;
+  const f = setup(t, {audioEffects: () => ({gapless:true,crossfadeSeconds:0,normalization:'off'})}, {
+    createPlayer: (video, options) => { created++; return new WebMediaPlayer(video, options); },
+    createRender: null, subtitleSurface: false,
+    capabilities: async () => { asked++; return webDeclaredProfile({app:'native-test'}); },
+  });
+  await f.runtime.play('song_factory'); await f.arrive();
+  assert.equal(created, 2, 'empty stack retired before the active music stack'); assert.ok(asked > 0);
+  assert.ok(f.log.some(r => r.method === 'PUT' && r.path.endsWith('/capabilities') && (r.body as any).client.app === 'native-test'));
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+  assert.ok(f.log.some(r => r.path.endsWith('/playback-options?versionId=v1')), 'factory media receives music instead of an idle browser slot');
+});
+
+
+test('native surface paint is false until the actual current video port reports a surface', async t => {
+  const {WebMediaPlayer} = await import('../src/platform/playback/web-media-player.ts');
+  let active = false;
+  const f = setup(t, {}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player = new WebMediaPlayer(video,options);
+    Object.defineProperty(player,'nativeSurfaceActive',{get:()=>active});
+    return player;
+  }});
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false);
+  await f.runtime.play('movie'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false,'a factory alone grants no paint hole');
+  active=true; f.video.advance(10); await settle();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,true);
+  await f.runtime.play('song_surface'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false,'audio never gets a native video hole');
+  f.runtime.dispose(); assert.equal(f.runtime.getSnapshot().nativeVideoSurfaceActive,false);
+});
+
+test('device processing alone selects the renderer and preserves the actual queue/session when toggled', async t => {
+  const applied: string[] = [], equalizers: import('../src/platform/playback/audio/equalizer.ts').EqualizerSettings[] = []; let disposed=0;
+  const f=setup(t,{audioEffects:()=>({gapless:false,crossfadeSeconds:0,normalization:'off'})},{createRender:(service)=>({
+    applyEqualizer(settings){equalizers.push(settings);},
+    apply(snapshot){
+      if(!snapshot.session)return;applied.push(snapshot.session.id);
+      service.ready(snapshot.intentId);
+      if(snapshot.pendingSeek)service.seekApplied(snapshot.intentId,snapshot.pendingSeek.revision,snapshot.pendingSeek.positionSeconds,'paused');
+    },transportPosition:()=>0,dispose(){disposed++;}
+  })});
+  await f.runtime.play('song_device');await f.arrive();
+  const first=f.runtime.getSnapshot(), id=first.playback.session!.id, queue=first.session!.queue;
+  assert.equal(first.playback.audioEffects.rendering,false);assert.equal(applied.length,0);
+  const web=(f.runtime as unknown as {stack:{web: import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
+  const enabled={enabled:true,preampDb:-3,bandsDb:Array(10).fill(2)};
+  web.applyEqualizer(enabled);await settle();
+  assert.deepEqual(equalizers.at(-1),enabled,'the committed device setting reaches the actual renderer seam');
+  assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,true);assert.ok(applied.includes(id));
+  assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
+  assert.equal(f.runtime.audioEngineFacts(f.runtime.getSnapshot().fence!),undefined,'an unconfirmed renderer has no invented processing facts');
+  web.applyEqualizer({...enabled,enabled:false});await f.arrive();
+  assert.equal(equalizers.at(-1)!.enabled,false,'off reaches the graph before the ordinary path resumes');
+  assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,false);assert.ok(disposed>0);
+  assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
+  assert.deepEqual(f.runtime.getSnapshot().playback.audioEffects.settings,{gapless:false,crossfadeSeconds:0,normalization:'off'});
+});
+
+
+test('native media factory receives the validated audio plan and unchanged saved processing snapshot',async t=>{
+ const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+ const received:import('../../packages/client-core/src/index.ts').PlaybackSnapshot[]=[];
+ const settings={gapless:true,crossfadeSeconds:3,normalization:'album'} as const;
+ const f=setup(t,{audioEffects:()=>settings},{createRender:null,subtitleSurface:false,createPlayer:(video,options)=>Object.assign(new WebMediaPlayer(video,options),{applyAudioEffects:(snapshot:import('../../packages/client-core/src/index.ts').PlaybackSnapshot)=>received.push(snapshot)})});
+ await f.runtime.play('song_native_effects');await f.arrive();
+ const snapshot=received.findLast(snapshot=>snapshot.session?.audio);
+ assert.ok(snapshot);assert.equal(snapshot.session!.audio!.version,2);
+ assert.deepEqual(snapshot.audioEffects.settings,settings);
+ assert.equal(snapshot.session!.id,f.runtime.getSnapshot().playback.session!.id);
+ assert.ok(snapshot.session!.audio!.trim,'native engine sees raw/audible trim contract, not just a URL');
+});
+
+test('unsupported EQ renderer continues the same session and queue through ordinary playback without processing facts', async t => {
+  let attempts = 0;
+  const f = setup(t, {audioEffects:()=>({gapless:false,crossfadeSeconds:0,normalization:'off'})}, {createRender:()=>{attempts++;throw new Error('unsupported');}});
+  await f.runtime.play('song_unsupported_eq',12); await f.arrive();
+  const first = f.runtime.getSnapshot(), sessionId = first.session!.id, queue = first.session!.queue;
+  const web = (f.runtime as unknown as {stack:{web:import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
+  web.applyEqualizer({enabled:true,preampDb:0,bandsDb:Array(10).fill(0)});
+  await settle(); await f.arrive();
+  const current = f.runtime.getSnapshot();
+  assert.equal(attempts,1); assert.equal(current.session!.id,sessionId); assert.deepEqual(current.session!.queue,queue);
+  assert.equal(current.playback.audioEffects.rendering,false); assert.equal(current.playback.phase,'ready');
+  assert.equal(f.runtime.audioEngineFacts(current.fence!),undefined);
+  assert.equal(current.playback.error,undefined);
 });

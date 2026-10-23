@@ -11,6 +11,7 @@ func (d Dependencies) httpHandle(mux *http.ServeMux, pattern string, handler htt
 	d.httpHandler(mux, pattern, handler)
 }
 func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler http.Handler) {
+	handler = d.meteredMedia(pattern, handler)
 	if d.httpContractsPrivate {
 		mux.Handle(pattern, handler)
 		return
@@ -29,6 +30,9 @@ func (d Dependencies) httpHandler(mux *http.ServeMux, pattern string, handler ht
 }
 
 func registerHTTPContracts(registry *apikit.Registry) error {
+	if err := registerReadingHTTPContracts(registry); err != nil {
+		return err
+	}
 	if err := registerLibrariesHTTPContracts(registry); err != nil {
 		return err
 	}

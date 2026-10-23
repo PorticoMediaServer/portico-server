@@ -35,13 +35,26 @@ func fixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);
- INSERT INTO accounts VALUES('member','member',x'00','member-profile',1);
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1);
  INSERT INTO libraries(id,name,kind,root) VALUES('lib','Library','movie','/library');
  INSERT INTO libraries(id,name,kind,root) VALUES('other','Other library','movie','/other');`); err != nil {
 		t.Fatal(err)
 	}
 	return New(db), db, seedCatalogue(t, db)
+}
+
+// localFixture explicitly selects Local and supplies the same canonical key
+// publication the code issuer reads. The shared fixture otherwise tests Portico.
+func localFixture(t *testing.T) (*Store, *sql.DB, catalogueIDs) {
+	t.Helper()
+	store, db, ids := fixture(t)
+	if _, err := db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local');
+ INSERT INTO networking_server_identities(server_id,public_key,key_incarnation,created_at) VALUES('srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','local-invitation-test','2026-10-23T00:00:00Z');
+ INSERT INTO networking_claim_identity(singleton,server_id,public_key,reset_generation) VALUES(1,'srv_Wl4E3ID18LNZFgw_Gjc3R0liIOV67Gd2vD54Ubw6OAY',X'000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',0)`); err != nil {
+		t.Fatal(err)
+	}
+	return store, db, ids
 }
 
 // seedCatalogue creates the two movies the admission tests decide on, with
@@ -192,7 +205,22 @@ func TestRoleChangeRequiresRevisionAppliesLiveAndRefusesPeers(t *testing.T) {
 	}
 	// An admin may not edit a peer. The refusal is of a valid session: a
 	// refusal (403), not a failed credential (401).
-	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin-actor", Role: identity.TierAdmin}}
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin-actor','admin-actor',x'00','admin-main',1);
+ UPDATE direct_memberships SET role='admin' WHERE account_id='admin-actor'`); err != nil {
+		t.Fatal(err)
+	}
+	issuer, err := identity.New(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminSession, err := issuer.Issue("admin-actor", "admin-main", "local", identity.TierAdmin, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := issuer.Authenticate(adminSession.AccessToken)
+	if err != nil || admin.Role != identity.TierAdmin || admin.ProfileID != "admin-main" {
+		t.Fatalf("live admin fixture: %+v %v", admin, err)
+	}
 	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("an admin edited a peer: %v", err)
 	}
@@ -216,7 +244,7 @@ func TestLimitsDefaultToUnrestrictedAndRoundTrip(t *testing.T) {
 	if err != nil || first.Revision != 1 || first.Limits.MaxStreams != 0 || !first.Limits.AllowUnrated {
 		t.Fatalf("default limits: %v %+v", err, first)
 	}
-	change := LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-1", Limits: Limits{MaxStreams: 1, RemoteBitrateKbps: 4000,
+	change := LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-1", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, RemoteBitrateKbps: 4000,
 		MaxContentRating: "pg-13", Schedule: AccessSchedule{Timezone: "UTC", Windows: []ScheduleWindow{{Days: []int{3, 1}, StartMinute: 60, EndMinute: 120}}},
 		Channels: ChannelPolicy{Mode: "deny", Channels: []string{"library:news"}}, Tags: TagPolicy{DeniedLabels: []string{" Spoilers "}}}}
 	out, err := store.SetLimits(ctx, nil, "member", change)
@@ -229,7 +257,7 @@ func TestLimitsDefaultToUnrestrictedAndRoundTrip(t *testing.T) {
 	if _, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-2", Limits: DefaultLimits()}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale write was accepted: %v", err)
 	}
-	bad := LimitsChange{ExpectedRevision: 2, OperationID: "limits-write-3", Limits: Limits{MaxContentRating: "XX", Schedule: AccessSchedule{Timezone: "Mars/Olympus"}}}
+	bad := LimitsChange{ExpectedRevision: 2, OperationID: "limits-write-3", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "XX", Schedule: AccessSchedule{Timezone: "Mars/Olympus"}}}
 	var fields *ValidationError
 	if _, err = store.SetLimits(ctx, nil, "member", bad); !errors.As(err, &fields) || len(fields.Fields) != 2 {
 		t.Fatalf("validation: %v", err)
@@ -244,7 +272,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-allow-000" + string(rune('0'+i)) + "-" + id, Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}}); err != nil {
+		if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-allow-000" + string(rune('0'+i)) + "-" + id, Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}}); err != nil {
 			t.Fatalf("canonical %q was rejected: %v", id, err)
 		}
 		// Reset for the next id (each write bumps the revision).
@@ -261,7 +289,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-" + id + "-000000", Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}})
+		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-" + id + "-000000", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}})
 		var fields *ValidationError
 		if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.channelPolicy.channels" {
 			t.Fatalf("non-canonical %q: %v %+v", id, err, fields)
@@ -273,7 +301,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-empty-000000", Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{""}}}})
+		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-empty-000000", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{""}}}})
 		var fields *ValidationError
 		if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.channelPolicy.channels" {
 			t.Fatalf("non-canonical empty: %v %+v", err, fields)
@@ -284,7 +312,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	store, db, ids := fixture(t)
 	ctx := context.Background()
-	limits := Limits{MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
+	limits := Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
 	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-admission", Limits: limits}); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +332,7 @@ func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 2, OperationID: "limits-bitrate", Limits: Limits{MaxStreams: 1, RemoteBitrateKbps: 3000, AllowUnrated: true}}); err != nil {
+	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 2, OperationID: "limits-bitrate", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, RemoteBitrateKbps: 3000, AllowUnrated: true}}); err != nil {
 		t.Fatal(err)
 	}
 	decision, err := run(ids.family, true)
@@ -314,7 +342,8 @@ func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	if decision, err = run(ids.family, false); err != nil || decision.MaxVideoBitrateBPS != 0 {
 		t.Fatalf("a LAN request must not carry the remote clamp: %v %+v", err, decision)
 	}
-	// One live lease already exists, so the second is refused.
+	// One live authenticated lease already exists, so the second is refused.
+	testauth.InsertSession(t, db, "h", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
 	if _, err = db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration)
  VALUES('s','h','member','member-profile',?, ?,1,'playing','g','t','2099-01-01T00:00:00Z','r',1)`, ids.familyID, ids.asset); err != nil {
 		t.Fatal(err)
@@ -350,7 +379,7 @@ func TestScheduleWindowsWrapMidnightAndDenyOutsideHours(t *testing.T) {
 }
 
 func TestInvitationLifecycleCreatesTheAccountItDescribes(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
 	invitation, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "invite-1", Notes: note("Guest fixture"), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
 	if err != nil || invitation.Code == "" || (invitation.Notes == nil || *invitation.Notes != "Guest fixture") {
@@ -510,49 +539,63 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	}
 }
 
-// Invitations are shared as a link and code; an address is optional. Any number
-// of addressless invitations may be pending, the preview shows no address, and
-// either can be accepted as a direct account or as a Portico Account.
-func TestAddresslessInvitationsArePendingSideBySideAndAcceptEitherWay(t *testing.T) {
-	store, db, _ := fixture(t)
-	ctx := context.Background()
-	first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Notes: note("  "), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
-	if err != nil || first.Code == "" || first.Notes != nil {
-		t.Fatalf("first: %v %+v", err, first)
-	}
-	second, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-2", Role: identity.TierMember})
-	if err != nil || second.Code == "" {
-		t.Fatalf("a second addressless invitation: %v", err)
-	}
-	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Notes: note(strings.Repeat("x", 501))}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("an invalid address was accepted: %v", err)
-	}
-	page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
-	if err != nil || len(page.Items) != 2 {
-		t.Fatalf("both pending: %v %+v", err, page)
-	}
-	preview, err := store.Preview(ctx, first.Code)
-	if err != nil || preview.InviterUsername != "owner" || preview.LibraryCount != 1 {
-		t.Fatalf("preview: %v %+v", err, preview)
-	}
-	hash, err := HashPassword("Correct-Horse-9")
-	if err != nil {
-		t.Fatal(err)
-	}
-	direct, err := store.Accept(ctx, Acceptance{Code: first.Code, Username: "guest", Password: "Correct-Horse-9"}, hash)
-	if err != nil || direct.Username != "guest" {
-		t.Fatalf("direct accept: %v %+v", err, direct)
-	}
-	var linked string
-	_, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: second.Code, AccountID: "acc_portico", Username: "portico", DisplayName: "Portico"}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
-		return identity.DirectSignIn{}, tx.QueryRowContext(ctx, `SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_portico'`).Scan(&linked)
-	})
-	if err != nil || linked == "" {
-		t.Fatalf("Portico accept: %v %q", err, linked)
-	}
-	var accepted int
-	if err = db.QueryRow(`SELECT count(*) FROM access_invitations WHERE state='accepted'`).Scan(&accepted); err != nil || accepted != 2 {
-		t.Fatalf("accepted %d %v", accepted, err)
+// Addressless invitations coexist and redeem only through the selected
+// identity authority, each in its own database rather than a mixed-kind server.
+func TestAddresslessInvitationsArePendingSideBySideForSelectedKind(t *testing.T) {
+	for _, kind := range []string{"local", "portico"} {
+		t.Run(kind, func(t *testing.T) {
+			create := fixture
+			if kind == "local" {
+				create = localFixture
+			}
+			store, db, _ := create(t)
+			ctx := context.Background()
+			first, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-1", Notes: note("  "), Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+			if err != nil || first.Code == "" || first.Notes != nil {
+				t.Fatalf("first: %v %+v", err, first)
+			}
+			second, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "blank-invite-2", Role: identity.TierMember})
+			if err != nil || second.Code == "" {
+				t.Fatalf("a second addressless invitation: %v", err)
+			}
+			if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-address-invite", Notes: note(strings.Repeat("x", 501))}); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("an invalid address was accepted: %v", err)
+			}
+			page, err := store.Invitations(ctx, nil, InvitationQuery{State: "pending"})
+			if err != nil || len(page.Items) != 2 {
+				t.Fatalf("both pending: %v %+v", err, page)
+			}
+			preview, err := store.Preview(ctx, first.Code)
+			if err != nil || preview.InviterUsername != "owner" || preview.LibraryCount != 1 {
+				t.Fatalf("preview: %v %+v", err, preview)
+			}
+			for i, invite := range []Invitation{first, second} {
+				username := []string{"guest", "other_guest"}[i]
+				if kind == "local" {
+					hash, e := HashPassword("Correct-Horse-9")
+					if e != nil {
+						t.Fatal(e)
+					}
+					joined, e := store.Accept(ctx, Acceptance{Code: invite.Code, Username: username, Password: "Correct-Horse-9"}, hash)
+					if e != nil || joined.Username != username {
+						t.Fatalf("Local accept: %+v %v", joined, e)
+					}
+				} else {
+					var linked string
+					hostedID := "acc_" + username
+					_, e := store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: hostedID, Username: username, DisplayName: username}, func(ctx context.Context, tx *sql.Tx) (identity.DirectSignIn, error) {
+						return identity.DirectSignIn{}, tx.QueryRowContext(ctx, `SELECT account_id FROM account_portico_links WHERE hosted_account_id=?`, hostedID).Scan(&linked)
+					})
+					if e != nil || linked == "" {
+						t.Fatalf("Portico accept: %q %v", linked, e)
+					}
+				}
+			}
+			var accepted int
+			if err = db.QueryRow(`SELECT count(*) FROM access_invitations WHERE state='accepted'`).Scan(&accepted); err != nil || accepted != 2 {
+				t.Fatalf("accepted %d %v", accepted, err)
+			}
+		})
 	}
 }
 
@@ -789,7 +832,7 @@ func TestRatingLimitIsValidatedAndResolvedToAnAge(t *testing.T) {
 		t.Fatalf("system without a rating: %+v %v", out.Limits, err)
 	}
 	// A stored rating the table no longer knows admits all-ages titles only.
-	if got := (Limits{MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
+	if got := (Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
 		t.Fatalf("an unreadable stored rating resolved to %d", got)
 	}
 }
@@ -964,7 +1007,7 @@ func TestAnInvitationMadeForOnePorticoAccountIsOnlyThatAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, ErrInvitationRecipient) {
+	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, identity.ErrSignInKindPortico) {
 		t.Fatalf("it became a password account: %v", err)
 	}
 	if got := accounts(); got != before {
@@ -1055,7 +1098,7 @@ func TestInvitationSpentAtRegistrationOnlyWhenItIsAPlainMembersAndUnspent(t *tes
 func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
 	s, db, _ := fixture(t)
 	ctx := context.Background()
-	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxContentRating: "PG", AllowUnrated: false}})
+	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "PG", AllowUnrated: false}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -1078,9 +1121,9 @@ func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
 
 func note(v string) *string { return &v }
 func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
+	if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin'`); e != nil {
 		t.Fatal(e)
 	}
 	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin", Role: identity.TierAdmin}}
@@ -1116,7 +1159,11 @@ func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
 			t.Fatalf("preview leaked %s: %s", s, raw)
 		}
 	}
-	accepted, e := store.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_guest"}, []byte("hash"))
+	hash, e := HashPassword("Correct-Horse-9")
+	if e != nil {
+		t.Fatal(e)
+	}
+	accepted, e := store.Accept(ctx, Acceptance{Code: v.Code, Username: "fixture_guest", Password: "Correct-Horse-9"}, hash)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -1154,7 +1201,7 @@ func TestInvitationEditsLinksNotesAndTierBoundaries(t *testing.T) {
 	}
 }
 func TestInvitationFileKeySurvivesRestartAndRotationInvalidates(t *testing.T) {
-	store, db, _ := fixture(t)
+	store, db, _ := localFixture(t)
 	ctx := context.Background()
 	state := t.TempDir()
 	if e := store.LoadInvitationKey(state); e != nil {
@@ -1196,7 +1243,7 @@ func TestInvitationFileKeySurvivesRestartAndRotationInvalidates(t *testing.T) {
 func TestPeopleDevicesPageSortNetworkAndPrivacy(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
-	if _, e := db.Exec(`INSERT INTO accounts VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin';
+	if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);UPDATE direct_memberships SET role='admin' WHERE account_id='admin';
  INSERT INTO identity_devices(id,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen,last_profile_id,ip) VALUES
  ('d-a','member','i-a','Alpha','android','portico','test','2026-10-01T00:00:00Z','2026-10-03T00:00:00Z','member-profile','10.0.0.2'),
  ('d-b','member','i-b','Beta','web','portico','test','2026-10-02T00:00:00Z','2026-10-02T00:00:00Z','member-profile','192.0.2.5'),

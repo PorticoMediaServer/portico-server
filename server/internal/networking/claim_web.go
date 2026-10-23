@@ -17,10 +17,12 @@ import (
 )
 
 type localWebClaim struct {
-	Signed    claimweb.Signed `json:"signed"`
-	Code      string          `json:"code"`
-	URL       string          `json:"url"`
-	ExpiresAt time.Time       `json:"expiresAt"`
+	Signed             claimweb.Signed  `json:"signed"`
+	OwnerStart         *claimweb.Signed `json:"ownerStart,omitempty"`
+	OwnerTransactionID string           `json:"ownerTransactionId,omitempty"`
+	Code               string           `json:"code"`
+	URL                string           `json:"url"`
+	ExpiresAt          time.Time        `json:"expiresAt"`
 }
 
 func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address string) (localWebClaim, error) {
@@ -31,6 +33,11 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	}
 	if v.Stage != Prepared {
 		return out, ErrStale
+	}
+	// An unclaimed Local switch needs its distinct frozen owner start. The
+	// ordinary claim path cannot create an unbound browser continuation.
+	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+		return out, ErrInvalid
 	}
 	// Public proof and code survive a UI remount; private signing material never leaves its store.
 	var saved string
@@ -71,6 +78,9 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	out.ExpiresAt = q.ExpiresAt
 	encoded, _ := json.Marshal(out)
 	_, e = dbwork.ExecWrite(ctx, h.store.db, dbwork.ClassInteractive, `INSERT INTO networking_web_claims(operation_id,request) VALUES(?,?) ON CONFLICT(operation_id) DO NOTHING`, v.OperationID, string(encoded))
+	if e == nil {
+		h.wakeClaimRecovery()
+	}
 	return out, e
 }
 
@@ -183,6 +193,7 @@ func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected
 			if !decided {
 				// Hosted could not be asked (or the stream broke): the next wait asks again.
 				h.webWatches.CompareAndDelete(expected.OperationID, watch)
+				h.wakeClaimRecovery()
 				return
 			}
 			// A page that asks again shortly afterwards reads this answer; after
@@ -209,7 +220,7 @@ func (h *ClaimHandler) ResumeWebClaims(ctx context.Context, guard func(resume st
 	if h == nil || guard == nil {
 		return
 	}
-	rows, e := h.store.db.QueryContext(ctx, `SELECT watch FROM networking_web_claims WHERE watch<>''`)
+	rows, e := h.store.db.QueryContext(ctx, `SELECT w.watch FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')`)
 	if e != nil {
 		log.Printf("Pending Portico Account approvals could not be read: %v", e)
 		return
@@ -226,10 +237,18 @@ func (h *ClaimHandler) ResumeWebClaims(ctx context.Context, guard func(resume st
 	for _, note := range pending {
 		g := guard(note.Owner)
 		if g == nil {
+			if err := h.reconcileWebClaim(ctx, note.Expected.OperationID, nil, false); err != nil {
+				log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+			}
 			continue
 		}
-		if _, e := h.watchWebClaim(ctx, note.Expected, g, note.Owner); e != nil && e != ErrStale {
-			log.Printf("Waiting for the Portico Account approval could not resume: %v", e)
+		if _, e := h.watchWebClaim(ctx, note.Expected, g, note.Owner); e != nil {
+			if err := h.reconcileWebClaim(ctx, note.Expected.OperationID, g, false); err != nil {
+				log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+			}
+			if e != ErrStale {
+				log.Printf("Waiting for the Portico Account approval could not resume: %v", e)
+			}
 		}
 	}
 }
@@ -246,16 +265,11 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 	ctx, cancel := context.WithDeadline(context.Background(), local.ExpiresAt)
 	defer cancel()
 	withdraw := func() {
-		cleanup, stop := context.WithTimeout(context.Background(), time.Second*3)
+		cleanup, stop := context.WithTimeout(context.Background(), time.Second*8)
 		defer stop()
-		_ = h.runner.Do(cleanup, func(ctx context.Context) error {
-			v, e := h.store.Load(ctx, expected.OperationID)
-			if e != nil {
-				return e
-			}
-			_, _, e = h.store.WithdrawReplacement(ctx, v)
-			return e
-		})
+		if err := h.reconcileWebClaim(cleanup, expected.OperationID, guard, true); err != nil {
+			log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+		}
 	}
 	defer func() {
 		if !time.Now().Before(local.ExpiresAt) {
@@ -323,7 +337,7 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return ErrUnavailable
 	})
 	if e != nil {
-		if errors.Is(e, ErrOwnerCollision) {
+		if errors.Is(e, ErrOwnerCollision) || errors.Is(e, ErrClaimOwnerRequired) || errors.Is(e, ErrStale) || errors.Is(e, ErrApprovalRequired) {
 			withdraw()
 		}
 		log.Printf("Claim approval from the web could not be applied: %v", e)

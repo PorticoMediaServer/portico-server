@@ -22,6 +22,8 @@ func directBearer(r *http.Request) string {
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
+	d.accountMoveRoutes(mux)
+	d.signInPolicyRoutes(mux)
 	d.ownerResetFileRoutes(mux)
 	d.serverReturnRoutes(mux)
 	// A challenge for a Portico identity assertion: the installation asks this
@@ -30,6 +32,10 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 	// client's nonce, so the client knows the challenge is this server's
 	// before it asks Hosted for anything (INT M7).
 	d.httpHandle(mux, "POST /v1/direct/portico-challenge", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.Identity.RequireSignInKind(r.Context(), identity.SignInPortico); err != nil {
+			failure(w, err)
+			return
+		}
 		var q struct {
 			Nonce string `json:"nonce"`
 		}
@@ -81,6 +87,10 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		var out identity.DirectSignIn
 		var e error
 		if q.PorticoIdentity != nil {
+			if err := d.Identity.RequireSignInKind(r.Context(), identity.SignInPortico); err != nil {
+				failure(w, err)
+				return
+			}
 			if q.Username != "" || q.Password != "" || d.Hosted == nil {
 				failure(w, identity.ErrUnauthorized)
 				return

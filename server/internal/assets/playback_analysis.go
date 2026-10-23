@@ -17,7 +17,7 @@ import (
 )
 
 // PlaybackAnalysisRevision invalidates earlier scan results on the next bounded inventory pass.
-const PlaybackAnalysisRevision = "playback_facts:1"
+const PlaybackAnalysisRevision = "playback_facts:3"
 
 func (p Probe) analysisOutput(ctx context.Context, path string, limit int, args ...string) ([]byte, error) {
 	if p.ReadGuard != nil {
@@ -64,6 +64,12 @@ func (p Probe) AnalyzePlayback(ctx context.Context, path string, f *Facts) {
 	}
 	if video == nil {
 		return
+	}
+	boundedFrames, cancelFrames := context.WithTimeout(ctx, 12*time.Second)
+	frames, frameErr := p.analysisOutput(boundedFrames, path, 4<<20, "-select_streams", "v:0", "-read_intervals", "%+#240", "-show_frames", "-show_entries", "frame=best_effort_timestamp_time,interlaced_frame,repeat_pict", "-of", "json")
+	cancelFrames()
+	if frameErr == nil {
+		analyzeFrames(frames, &video.Detail)
 	}
 	// HDR10+ and, where the container did not carry it, HDR10 static metadata
 	// travel in the first picture (SEI in HEVC elementary and MPEG-TS sources).

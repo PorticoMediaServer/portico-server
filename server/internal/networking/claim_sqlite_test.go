@@ -706,8 +706,18 @@ func installNetworkingClaimsForTest(t *testing.T, ctx context.Context, db *sql.D
 		return e
 	}
 	if existing == 0 {
-		baseline := persistence.BaselineSQL()
-		if _, e := db.ExecContext(ctx, baseline); e != nil {
+		// Build the same fresh canonical schema atomically. Executing thousands
+		// of DDL statements as individual autocommits made these on-disk test
+		// fixtures spend their timeout in fsync before reaching an assertion.
+		tx, e := db.BeginTx(ctx, nil)
+		if e != nil {
+			return e
+		}
+		defer tx.Rollback()
+		if _, e = tx.ExecContext(ctx, persistence.BaselineSQL()); e != nil {
+			return e
+		}
+		if e = tx.Commit(); e != nil {
 			return e
 		}
 	}

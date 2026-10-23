@@ -66,6 +66,8 @@ function setup() {
   (globalThis as any).document = {visibilityState: 'visible', addEventListener() {}, removeEventListener() {}};
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
+    const asked = new Headers(init.headers).get('Range');
+    if (!asked) return new Response(files[url]!, {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);
     const last = Math.min(bytes.length - 1, b!);
     return new Response(bytes.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${bytes.length}`}});
@@ -82,6 +84,56 @@ const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r =>
  * `after`, which also runs when the test fails or times out; the timeout means a read or decode that
  * never answers fails the test instead of keeping the process (and the whole suite) alive. */
 const bounded = {timeout: 30_000};
+
+test('current-song leveling facts follow the actual deck gain rather than the saved switch', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), render = new DecodeAudioRender(t.service, (path: string) => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  const settings = {...t.get().audioEffects.settings, normalization: 'track'};
+  render.apply(t.set({audioEffects: {settings}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, false, 'unknown gain is unchanged audio even with leveling selected');
+  render.apply(t.set({session: {id: 's2', generation: 2, audio: {...t.a, gain: {trackDb: 0, trackPeak: 0.5}}}}));
+  assert.equal(render.audioFacts(), undefined, 'previous-song facts cannot describe a new deck still decoding');
+  await settle(); assert.equal(render.audioFacts()!.levelingApplied, false, 'a measured zero dB gain is unchanged');
+  render.apply(t.set({session: {id: 's3', generation: 3, audio: {...t.a, gain: {trackDb: -6, trackPeak: 0.5}}}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, true);
+  assert.ok(Math.abs(render.audioFacts()!.levelingGainDb! + 6) < .001);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's3', generation: 3}, {eqApplied: false, levelingApplied: true}]);
+  render.apply(t.set({audioEffects: {settings: {...settings, normalization: 'off'}}}));
+  assert.equal(render.audioFacts()!.levelingApplied, false);
+  render.apply(t.set({phase: 'ended'}));
+  assert.equal(render.audioFacts(), undefined);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1)!.at(-1), {eqApplied: false, levelingApplied: false});
+});
+
+test('Never boost and already baked normalization report only the actual applied node gain', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), render = new DecodeAudioRender(t.service, (path: string) => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  const settings = {...t.get().audioEffects.settings, normalization: 'track', neverBoost: true};
+  render.apply(t.set({audioEffects: {settings}, session: {id: 'positive', generation: 2, audio: {...t.a, gain: {trackDb: 6, trackPeak: .25}}}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, false);
+  assert.equal(render.audioFacts()!.levelingGainDb, 0);
+  render.apply(t.set({session: {id: 'baked', generation: 3, audio: {...t.a, mode: 'converted', loudnessAppliedDb: -8}}})); await settle();
+  assert.equal(render.audioFacts()!.levelingApplied, false, 'server baked gain is never applied again by the client');
+  assert.equal(render.audioFacts()!.levelingGainDb, 0);
+});
+
+test('autoplay refusal is fenced to the current renderer intent and a replacement gets its own resume attempt', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pending: ((error: unknown) => void)[] = [];
+  t.f.ctx.state = 'suspended'; t.f.ctx.resume = () => new Promise<void>((_, reject) => pending.push(reject));
+  const render = new DecodeAudioRender(t.service, (path: string) => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  render.apply(t.get()); await settle(); assert.equal(pending.length, 1);
+  render.apply(t.set({intentId: 2, session: {id: 'new-song', generation: 2, audio: t.b}})); await settle();
+  assert.equal(pending.length, 2, 'a replaced blocked song cannot suppress the new song resume attempt');
+  pending[0]!(new DOMException('controlled old refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.some(call => call[0] === 'pause' || call[0] === 'listeningNotice'), false);
+  pending[1]!(new DOMException('controlled current refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.filter(call => call[0] === 'pause').length, 1);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'listeningNotice'), [['listeningNotice', 'audio_autoplay_blocked']]);
+});
 
 test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
@@ -141,11 +193,10 @@ test('(b)(i) a committed edge promotes at the boundary; the engine keeps a const
   assert.equal(t.calls.filter(c => c[0] === 'ready').length, 1, 'no restart at any edge');
 });
 
-test('(h) an unavailable plan plays ordinarily and says why, quietly', async () => {
-  const {renderable, renderNotice} = await import('../../packages/client-core/src/index.ts');
+test('an unavailable effects plan retains the ordinary playback path', async () => {
+  const {renderable} = await import('../../packages/client-core/src/index.ts');
   const s = {audio: {version: 2 as const, mode: 'unavailable' as const, id: 'm', reason: 'The owner doesn’t allow converting audio, and this device can’t decode ALAC.'}};
   assert.equal(renderable(s), false, 'no effects engine: the ordinary player plays presentation.url');
-  assert.equal(renderNotice(s), s.audio.reason);
 });
 
 test('the position is what is heard: the output path’s latency is taken off the sample clock (A-17.26)', bounded, async ctx => {

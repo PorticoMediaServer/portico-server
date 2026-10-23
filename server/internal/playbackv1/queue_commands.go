@@ -655,6 +655,9 @@ func (s *Service) withLayout(ctx context.Context, q queueRow, fn func(*layout) e
 
 // Queue is GET /v1/queues/{id}: the header only (constant size).
 func (s *Service) Queue(ctx context.Context, c Caller, id string) (QueueView, error) {
+	if err := s.castQueueAuthority(ctx, c, id); err != nil {
+		return QueueView{}, err
+	}
 	q, err := s.queueFor(ctx, c, id, "", false)
 	if err != nil {
 		return QueueView{}, err
@@ -663,6 +666,10 @@ func (s *Service) Queue(ctx context.Context, c Caller, id string) (QueueView, er
 	err = s.withLayout(ctx, q, func(l *layout) error { out = s.header(l); return nil })
 	if err == nil {
 		s.withNext(ctx, c, &out, q)
+		err = s.castQueueAuthority(ctx, c, id)
+	}
+	if err != nil {
+		return QueueView{}, err
 	}
 	return out, err
 }
@@ -1151,6 +1158,9 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 // previous or a jump to an entry. With a session playing from this queue, the
 // next session starts in the same request, replacing it (slot transfer).
 func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req AdvanceRequest) (QueueReply, error) {
+	if c.Principal.Grant == identity.GrantCastTarget && (req.Reason != "completion" || req.EntryID != "") {
+		return QueueReply{}, identity.ErrForbidden
+	}
 	switch req.Reason {
 	case "completion", "next", "previous", "entry":
 	default:
@@ -1161,6 +1171,19 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 		return QueueReply{}, err
 	}
 	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+		if err := s.castQueueAuthorityTx(ctx, tx, c, id); err != nil {
+			return false, err
+		}
+		if c.Principal.Grant == identity.GrantCastTarget {
+			old, err := loadRow(ctx, tx, l.q.session)
+			if err != nil {
+				return false, err
+			}
+			entry, _, err := l.entryAtErr(l.q.current)
+			if err != nil || old.entryID != entry {
+				return false, identity.ErrForbidden
+			}
+		}
 		if req.Reason == "completion" {
 			policy, err := s.postPlayPolicy(ctx, tx, c, l)
 			if err != nil {
@@ -1356,7 +1379,7 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, sessionKind == "audio"), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}

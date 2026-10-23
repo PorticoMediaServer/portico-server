@@ -22,7 +22,7 @@ func TestAuthorityWritesAreRecognisedByTheTableTheyName(t *testing.T) {
 		`INSERT INTO authorization_family_tokens(token_hash,family_id,generation,expires_at) VALUES(?,?,1,?)`,
 		`DELETE FROM authorization_family_tokens WHERE token_hash=?`,
 		`UPDATE accounts SET epoch=epoch+1 WHERE id=?`,
-		`INSERT INTO accounts VALUES(?,?,x'00',?,1)`,
+		`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`,
 		`UPDATE direct_profiles SET allowed_libraries=? WHERE id=?`,
 		`INSERT INTO direct_memberships(account_id,role,allowed_libraries,revision,disabled) VALUES(?,'member',?,1,0)`,
 		`INSERT INTO profile_restrictions(profile_id,maximum_age,blocked_labels,allow_unrated,revision) VALUES(?,?,?,0,1)`,

@@ -14,6 +14,7 @@ export const roleLabel = (t: Translate, role: AccessTier): string => t(ROLE_IDS[
 const PLATFORM_IDS: Readonly<Record<string, MessageId>> = {
   web: 'device.platform.web', ios: 'device.platform.ios', tvos: 'device.platform.tvos', android: 'device.platform.android', androidtv: 'device.platform.androidtv',
   api: 'device.platform.api',
+  'google-cast': 'device.platform.googleCast',
 };
 /** What kind of device it is, in words; nothing for a platform this client has no word for (never the raw code). */
 export const devicePlatform = (t: Translate, platform: string): string => (PLATFORM_IDS[platform] ? t(PLATFORM_IDS[platform]!) : '');
@@ -26,9 +27,6 @@ export function deviceFacts(t: Translate, device: Pick<AccessDevice, 'username' 
     device.lastSeenAt ? t('web.devices.lastSeen', {when: options.relative(device.lastSeenAt)}) : '',
   ].filter(Boolean).join(' · ');
 }
-
-/** Whether approving or blocking still means anything for a device as it is now. */
-export const trustApplies = (now: Pick<AccessDevice, 'trust'>, next: 'approved' | 'blocked'): boolean | 'done' => (now.trust === next ? 'done' : true);
 
 // ── Viewing hours: the days of one window, as a choice an owner makes in one control ───────
 

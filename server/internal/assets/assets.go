@@ -27,6 +27,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	MusicCueTracks      []Chapter            `json:"-"`
 	VideoName           naming.Embedded      `json:"-"`
 	VideoNameSkipped    bool                 `json:"-"`
 	ArtworkObserved     bool                 `json:"-"`
@@ -93,7 +94,7 @@ func (p Probe) Inspect(ctx context.Context, path string) (Facts, error) {
 // InspectScan applies bounded local-media probing and rejects network protocols.
 // File List Only never calls this method; ReadGuard is checked again at launch.
 func (p Probe) InspectScan(ctx context.Context, path string) (Facts, error) {
-	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,mp3,flac,wav,ogg,aac,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "5000000"})
+	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-probesize", "8388608", "-analyzeduration", "5000000"})
 }
 func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error) {
 	facts, e := p.inspect(ctx, path, []string{"-f", "mov", "-enable_drefs", "0", "-use_absolute_path", "0", "-protocol_whitelist", "http,tcp", "-probesize", "8388608", "-analyzeduration", "5000000"})
@@ -167,6 +168,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 				Forced          int `json:"forced"`
 				HearingImpaired int `json:"hearing_impaired"`
 				Comment         int `json:"comment"`
+				VisualImpaired  int `json:"visual_impaired"`
 			} `json:"disposition"`
 		} `json:"streams"`
 		Chapters []struct {
@@ -189,7 +191,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	if json.Unmarshal(out.data, &detail) != nil || len(detail.Streams) != len(raw.Streams) {
 		detail.Streams = make([]probeStreamDetail, len(raw.Streams))
 	}
-	f := Facts{Container: strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")}
+	f := Facts{Container: demuxerIdentity(raw.Format.Name)}
 	f.Duration, _ = strconv.ParseFloat(raw.Format.Duration, 64)
 	if rate, e := strconv.ParseInt(detail.Format.BitRate, 10, 64); e == nil && rate > 0 && rate < 1<<40 {
 		f.BitRate = rate
@@ -208,6 +210,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	knownStreams := true
 	seenStreams := map[int]bool{}
 	for position, s := range raw.Streams {
+		s.Codec = canonicalMusicCodec(s.Codec)
 		if s.Disposition.AttachedPic != 0 {
 			f.AttachedPicture = true
 			continue
@@ -220,7 +223,9 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 					return Facts{}, errors.New("invalid probe stream index")
 				}
 				seenStreams[*s.Index] = true
-				f.Streams = append(f.Streams, Stream{Index: *s.Index, Type: s.Type, Codec: streamText(s.Codec, 64), Language: streamText(s.Tags["language"], 32), Title: streamText(s.Tags["title"], 200), Channels: s.Channels, ChannelLayout: streamText(s.ChannelLayout, 64), Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0, ColorTransfer: streamText(s.ColorTransfer, 32), ColorPrimaries: streamText(s.ColorPrimaries, 32), HearingImpaired: s.Disposition.HearingImpaired != 0, Commentary: s.Disposition.Comment != 0, Detail: streamDetail(s.Type, s.Codec, s.Width, s.Height, detail.Streams[position])})
+				factDetail := streamDetail(s.Type, s.Codec, s.Width, s.Height, detail.Streams[position])
+				factDetail.AudioDescription = s.Disposition.VisualImpaired != 0
+				f.Streams = append(f.Streams, Stream{Index: *s.Index, Type: s.Type, Codec: streamText(s.Codec, 64), Language: streamText(s.Tags["language"], 32), Title: streamText(s.Tags["title"], 200), Channels: s.Channels, ChannelLayout: streamText(s.ChannelLayout, 64), Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0, ColorTransfer: streamText(s.ColorTransfer, 32), ColorPrimaries: streamText(s.ColorPrimaries, 32), HearingImpaired: s.Disposition.HearingImpaired != 0, Commentary: s.Disposition.Comment != 0, Detail: factDetail})
 			}
 		}
 		if s.Type == "video" && f.VideoCodec == "" {
@@ -232,6 +237,9 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 			f.AudioCodec = s.Codec
 
 		}
+	}
+	if err := p.completeMusepackTimeline(ctx, path, &f); err != nil {
+		return Facts{}, err
 	}
 	if !knownStreams {
 		f.Streams = nil
@@ -278,7 +286,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 }
 func SupportedPath(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
+	case ".wmv", ".asf", ".flv", ".f4v", ".3gp", ".3g2", ".ogv", ".ogm", ".mxf", ".dv", ".rm", ".rmvb", ".m2v", ".m1v", ".y4m", ".nut", ".nsv", ".fli", ".flc", ".bik", ".smk", ".mjpeg", ".mjpg", ".264", ".h264", ".265", ".hevc", ".h266", ".vvc", ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
 		return true
 	}
 	return false
@@ -304,6 +312,12 @@ func Open(db *sql.DB, id string) (*os.File, error) {
 
 func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
+	if kind == "book" {
+		return extension == ".epub" || extension == ".pdf"
+	}
+	if kind == "comic" {
+		return extension == ".cbz" || extension == ".pdf"
+	}
 	audio := false
 	switch extension {
 	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
@@ -334,4 +348,11 @@ func OpenPlayback(db *sql.DB, session, grantHash string) (*os.File, error) {
 		return nil, errors.New("source changed; rescan required")
 	}
 	return f, nil
+}
+
+// FFmpeg reports aliases separated by commas. Preserve the demuxer's canonical
+// name; filename extensions are never media identity.
+func demuxerIdentity(raw string) string {
+	name, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(raw)), ",")
+	return streamText(name, 64)
 }

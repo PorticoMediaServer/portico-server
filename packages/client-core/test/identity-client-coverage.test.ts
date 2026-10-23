@@ -14,7 +14,7 @@ const avatar = {
 const device = {
   id: 'd1', installationId: 'i'.repeat(32), name: 'TV', platform: 'tvos', app: 'Portico',
   appVersion: '1', ip: '192.168.1.2', firstSeen: '2026-09-01T00:00:00Z', lastSeen: '2026-09-17T00:00:00Z',
-  trusted: false, approvalState: 'approved', lastProfileId: '', rememberAccount: true, current: true, sessions: 1,
+  lastProfileId: '', rememberAccount: true, current: true, sessions: 1,
 };
 const remembered = [{accountId: 'a', username: 'sam', displayName: 'Sam', avatarVersion: 1, automaticSignIn: false, lastUsed: '2026-09-17T00:00:00Z'}];
 
@@ -115,7 +115,6 @@ test('device edits go to the documented routes with exactly the documented bodie
       'GET /v1/devices': {items: [device, {...device, id: 'd2', installationId: '', current: false}]},
       '/v1/devices': device,
       '/v1/devices/d1': device,
-      '/v1/devices/d1/approval': device,
       '/v1/devices/d1/sessions/bind': undefined,
       '/v1/devices/d1/sessions': undefined,
     },
@@ -131,12 +130,11 @@ test('device edits go to the documented routes with exactly the documented bodie
   assert.deepEqual(calls[2], {path: '/v1/devices/d1/sessions/bind', method: 'POST', body: {installationId: 'i'.repeat(32), sessionFamilyId: 'fam-1'}});
   await c.editDevice('d1', {name: 'Den'});
   assert.deepEqual(calls[3].body, {name: 'Den'});
-  await c.approveDevice('d1', false);
-  assert.deepEqual(calls[4], {path: '/v1/devices/d1/approval', method: 'POST', body: {approved: false}});
+  assert.equal('approveDevice' in c,false);
   await c.signOutDevice('d1');
-  assert.equal(calls[5].path, '/v1/devices/d1/sessions');
+  assert.equal(calls[4].path, '/v1/devices/d1/sessions');
   await c.removeDevice('d1');
-  assert.equal(calls[6].method, 'DELETE');
+  assert.equal(calls[5].method, 'DELETE');
 });
 
 test('two-factor state, enrolment and verification ride the current password', async () => {

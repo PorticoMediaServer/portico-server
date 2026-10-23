@@ -24,10 +24,10 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	tx := gated.Tx()
 	defer gated.Rollback()
 	hash := Digest(secret)
-	var family, device, expiry, deviceInstallation, state string
+	var family, device, expiry, deviceInstallation string
 	var generation int64
-	err = tx.QueryRowContext(ctx, `SELECT c.family_id,c.device_id,c.generation,c.expires_at,d.installation_id,d.approval_state FROM identity_refresh_credentials c JOIN identity_devices d ON d.id=c.device_id WHERE c.token_hash=?`, hash).
-		Scan(&family, &device, &generation, &expiry, &deviceInstallation, &state)
+	err = tx.QueryRowContext(ctx, `SELECT c.family_id,c.device_id,c.generation,c.expires_at,d.installation_id FROM identity_refresh_credentials c JOIN identity_devices d ON d.id=c.device_id WHERE c.token_hash=?`, hash).
+		Scan(&family, &device, &generation, &expiry, &deviceInstallation)
 	if errors.Is(err, sql.ErrNoRows) && migratedRefreshTx(ctx, tx, hash) {
 		return Envelope{}, ErrSessionMigrated
 	}
@@ -52,17 +52,20 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	refreshUntil, err := familyTime(expiry)
-	if err != nil || !refreshUntil.After(now) || deviceInstallation != installation || state != "approved" {
+	if err != nil || !refreshUntil.After(now) || deviceInstallation != installation {
 		return Envelope{}, ErrUnauthorized
 	}
 	var p Principal
 	p.ServerID = s.serverID
 	var horizonRaw, currentHash string
 	var revoked int
-	err = tx.QueryRowContext(ctx, `SELECT f.account_id,f.profile_id,f.authority,f.role,f.epoch,f.authorization_horizon,f.revoked,t.token_hash FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=?`, family).
-		Scan(&p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &horizonRaw, &revoked, &currentHash)
+	err = tx.QueryRowContext(ctx, `SELECT f.account_id,f.profile_id,f.authority,f.role,f.epoch,f.authorization_horizon,f.revoked,t.token_hash,COALESCE((SELECT grant_kind FROM authorization_family_grants WHERE family_id=f.id),'') FROM authorization_session_families f JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=?`, family).
+		Scan(&p.AccountID, &p.ProfileID, &p.Authority, &p.Role, &p.Epoch, &horizonRaw, &revoked, &currentHash, &p.Grant)
 	if err != nil || revoked != 0 {
 		return Envelope{}, ErrUnauthorized
+	}
+	if p.Grant != "" {
+		return Envelope{}, ErrForbidden
 	}
 	p.Hash = currentHash
 	oldHorizon, err := familyTime(horizonRaw)
@@ -77,7 +80,20 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, err
 	}
-	horizon := now.Add(LocalSignInWindow)
+	window, err := sessionWindowTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	horizon := now.Add(window)
+	// A Portico assertion admits a family for at most90 days. Local refresh
+	// never moves that boundary; another live identity proof starts a new family.
+	kind, err := SignInKindTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	if kind == SignInPortico && oldHorizon.Before(horizon) {
+		horizon = oldHorizon
+	}
 
 	var currentGeneration int64
 	if err = tx.QueryRowContext(ctx, `SELECT current_generation FROM authorization_session_families WHERE id=? AND revoked=0`, family).Scan(&currentGeneration); err != nil || currentGeneration < generation {
@@ -136,11 +152,12 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	// a recovery family that is usable only on the home network.
 	var p Principal
 	var knownFamily string
-	err := tx.QueryRowContext(ctx, `SELECT f.id,f.authority,f.account_id FROM authorization_session_families f WHERE f.id IN (SELECT family_id FROM identity_refresh_predecessors WHERE predecessor_hash=? UNION SELECT family_id FROM identity_refresh_receipts WHERE predecessor_hash=?)`, predecessor, predecessor).Scan(&knownFamily, &p.Authority, &p.AccountID)
+	err := tx.QueryRowContext(ctx, `SELECT f.id,f.authority,f.account_id,COALESCE((SELECT grant_kind FROM authorization_family_grants WHERE family_id=f.id),'') FROM authorization_session_families f WHERE f.id IN (SELECT family_id FROM identity_refresh_predecessors WHERE predecessor_hash=? UNION SELECT family_id FROM identity_refresh_receipts WHERE predecessor_hash=?)`, predecessor, predecessor).Scan(&knownFamily, &p.Authority, &p.AccountID, &p.Grant)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Envelope{}, "", err
 	}
-	if err == nil {
+	if err == nil && p.Grant != "" {
+		return Envelope{}, "", ErrForbidden
 	}
 
 	var family, storedRequest, until string
@@ -172,7 +189,7 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	// in their authenticated data. Return it on an exact replay as well.
 	out.InstallationID = installation
 	var live bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN identity_refresh_credentials c ON c.family_id=f.id JOIN identity_devices d ON d.id=c.device_id JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND d.approval_state='approved' AND d.installation_id=? AND c.token_hash=? AND t.token_hash=?)`, family, installation, Digest(out.RefreshToken), Digest(out.AccessToken)).Scan(&live); err != nil || !live {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN identity_refresh_credentials c ON c.family_id=f.id JOIN identity_devices d ON d.id=c.device_id JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND d.installation_id=? AND c.token_hash=? AND t.token_hash=?)`, family, installation, Digest(out.RefreshToken), Digest(out.AccessToken)).Scan(&live); err != nil || !live {
 		return Envelope{}, "", ErrRenewalRetired
 	}
 	p = Principal{Viewer: out.Viewer, Hash: Digest(out.AccessToken)}
