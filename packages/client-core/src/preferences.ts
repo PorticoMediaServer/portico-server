@@ -188,6 +188,7 @@ export function validatePreferencePatch(registry:PreferenceRegistry,scope:Prefer
   if(value===null){out[name]=null;continue;}
   const parsed=parseValue(field,value);
   if(field.allowedValues&&typeof parsed!=='object'&&!field.allowedValues.includes(parsed as number|string))throw new Error(`${String(parsed)} is not an accepted value for ${name}.`);
+  if(typeof parsed==='number'&&(field.min!==undefined&&parsed<field.min||field.max!==undefined&&parsed>field.max))throw new Error(`${String(parsed)} is outside the accepted range for ${name}.`);
   out[name]=parsed;
  }
  return Object.freeze(out);

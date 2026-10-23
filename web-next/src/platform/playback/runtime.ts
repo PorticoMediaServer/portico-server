@@ -534,7 +534,7 @@ export class WebShellPlaybackRuntime {
         const completion = confirmed && queueState.completion?.sessionId === fence.sessionId && queueState.completion.intentId === playback.intentId ? queueState.completion : null;
         const listening = stack.queue.listening.getSnapshot();
         const listeningFinished = confirmed && stack.subject.kind !== 'video' &&
-          (!queue.next.available || listening.stopped || listening.preferences?.autoplayNext === false);
+          (!queue.next.available || listening.stopped);
         // Start the end countdown only after the actual controller has published its hold.
         // With a zero countdown, consuming an earlier raw media end loses the advance.
         const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes: this.source.settings.skipModes(), postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;

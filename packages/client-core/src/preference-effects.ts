@@ -1,4 +1,4 @@
-import {preferenceValue, type PreferenceSnapshot} from './preferences.ts';
+import {preferenceValue, validatePreferencePatch, type PreferencePatch, type PreferenceSnapshot, type PreferenceValue} from './preferences.ts';
 
 /** Registry values remain the sole defaults. These projections contain only
  * drawn controls; renderer support is reported by the actual platform. */
@@ -52,6 +52,8 @@ export function regionPreferences(snapshot: PreferenceSnapshot) {
     sizeUnits: preferenceValue<'binary' | 'decimal'>(snapshot, 'region.sizeUnits')});
 }
 
+/** Before Phase 8 only Settings reads this projection. Reader-core effects and
+ * per-book overrides belong to Phase 8; this facade stores no open-book state. */
 export function readingPreferences(snapshot: PreferenceSnapshot) {
   return Object.freeze({theme: preferenceValue<'dark' | 'black' | 'sepia' | 'light'>(snapshot, 'reading.theme'),
     font: preferenceValue<'publisher' | 'literata' | 'manrope'>(snapshot, 'reading.font'),
@@ -70,3 +72,28 @@ export function readingPreferences(snapshot: PreferenceSnapshot) {
     firstPageAlone: preferenceValue<boolean>(snapshot, 'comics.firstPageAlone')});
 }
 export type ReadingPreferences = ReturnType<typeof readingPreferences>;
+
+export type ReadingPreferencesChange = Partial<{[K in keyof ReadingPreferences]: ReadingPreferences[K] | null}>;
+
+const readingPreferenceKeys: Readonly<Record<keyof ReadingPreferences, string>> = Object.freeze({
+  theme: 'reading.theme', font: 'reading.font', textSize: 'reading.textSize',
+  lineSpacing: 'reading.lineSpacing', margins: 'reading.margins', alignment: 'reading.alignment',
+  layout: 'reading.layout', twoPages: 'reading.twoPages', tapToTurn: 'reading.tapToTurn',
+  hyphenation: 'reading.hyphenation', highlightColour: 'reading.highlightColour', pdfView: 'reading.pdfView',
+  comicFit: 'comics.fit', comicDirection: 'comics.direction', firstPageAlone: 'comics.firstPageAlone',
+});
+
+/** Pure Settings patch: only submitted facade properties are changed; null
+ * clears that profile override. PreferencesReader owns transport and revision. */
+export function readingPreferencesPatch(snapshot: PreferenceSnapshot, change: ReadingPreferencesChange): PreferencePatch {
+  if (!change || typeof change !== 'object' || Array.isArray(change)) throw new Error('Invalid Reading preference change.');
+  const patch: Record<string, PreferenceValue | null> = {};
+  for (const property of Object.keys(change)) {
+    if (!Object.prototype.hasOwnProperty.call(readingPreferenceKeys, property)) throw new Error(`Unknown Reading preference ${property}.`);
+    const name = property as keyof ReadingPreferences;
+    const value = change[name];
+    if (value === undefined) throw new Error(`No value was supplied for the Reading preference ${property}.`);
+    patch[readingPreferenceKeys[name]] = value;
+  }
+  return validatePreferencePatch(snapshot.registry, 'profile-server', patch);
+}
