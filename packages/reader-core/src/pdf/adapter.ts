@@ -47,15 +47,18 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
     try{
       const info=await engine.run(engine.document.getMetadata(),signal),toc=await outline(engine,signal);
       const labels=await engine.run(engine.document.getPageLabels(),signal);
+      const viewer=await engine.run(engine.document.getViewerPreferences(),signal),order=viewer?.get('Direction');
+      const direction=order==='R2L'?'rtl' as const:order==='L2R'?'ltr' as const:undefined;
       const fields=info.info as Record<string,unknown>;
       const title=typeof fields.Title==='string'?fields.Title.slice(0,2048):undefined,author=typeof fields.Author==='string'?fields.Author.slice(0,2048):undefined;
-      const publication:ReaderDocument<P>={id:source.id,revision:source.revision,format:'pdf',metadata:{...title?{title}:{},...author?{author}:{},pageCount:engine.document.numPages},toc,
+      const language=typeof fields.Language==='string'?fields.Language.slice(0,256):undefined;
+      const publication:ReaderDocument<P>={id:source.id,revision:source.revision,format:'pdf',metadata:{...title?{title}:{},...author?{author}:{},...language?{language}:{},...direction?{direction}:{},pageCount:engine.document.numPages},toc,
         async mount(mountOptions){
           if(closed)throw new PdfInputError('closed');
           const owner=mountOptions.container.ownerDocument,style=owner.createElement('style');style.textContent=textCss;mountOptions.container.append(style);
           const life=new AbortController(),combined=AbortSignal.any([mountOptions.signal,engine.signal,life.signal]);
           let fixed:Awaited<ReturnType<ReaderDocument<P>['mount']>>;
-          try{fixed=await mountFixed('pdf',engine.document.numPages,'ltr',async(index,{signal:pageSignal})=>{
+          try{fixed=await mountFixed('pdf',engine.document.numPages,direction??'ltr',async(index,{signal:pageSignal})=>{
             const page=await engine.page(index,pageSignal),original=page.getViewport({scale:1});
             if(original.width<=0||original.height<=0||original.width>32768||original.height>32768)throw new PdfInputError('pdf_limit');
             return {width:original.width,height:original.height,
