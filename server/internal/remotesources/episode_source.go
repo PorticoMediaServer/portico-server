@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/sourceaccess"
@@ -150,6 +152,20 @@ func (s *EpisodeReadSource) Open(ctx context.Context) (mediaanalysis.Input, erro
 	input.observed, err = reader.Observe(ctx)
 	if err == nil && (!input.observed.SizeKnown || !input.observed.ModifiedKnown || input.observed.Size != captured.Size || input.observed.ModifiedNS != captured.ModifiedNS) {
 		err = storage.ErrRemoteChanged
+	}
+	if err == nil {
+		// The helper reports the identity of the actual borrowed root and file.
+		// Matching size/mtime alone must not admit a replacement before Open.
+		root, bound := strings.CutPrefix(input.observed.RootBindingID, lease.RegistrationID+":")
+		if !bound || !storage.SameRoot(captured.Source.RootIdentity, root) {
+			err = storage.ErrRemoteChanged
+		} else {
+			fresh := storage.Snapshot{Path: captured.File, Size: input.observed.Size, ModifiedNS: input.observed.ModifiedNS, ObjectIdentity: input.observed.ObjectBindingID, ChangeToken: input.observed.ChangeToken}
+			revision, _, e := catalog.ObservationRevision(captured.Source, fresh)
+			if e != nil || revision != request.Target.SourceRevision {
+				err = storage.ErrRemoteChanged
+			}
+		}
 	}
 	if err == nil {
 		err = input.Validate(ctx)

@@ -24,6 +24,12 @@ import (
 // This executable is both the real supervised native helper and its synthetic
 // rclone child. No provider, FUSE mount or credential is needed by these tests.
 func TestMain(m *testing.M) {
+	if len(os.Args) == 2 && os.Args[1] == "--portico-storage-helper" {
+		if err := storage.Helper(os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--portico-rclone-native" {
 		if err := mounts.NativeHelper(os.Stdin, os.Stdout); err != nil {
 			os.Exit(1)
