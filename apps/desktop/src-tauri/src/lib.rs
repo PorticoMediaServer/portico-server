@@ -7,6 +7,7 @@ pub mod download_store;
 pub mod download_commands;
 pub mod mpv;
 pub mod network_cost;
+pub mod device_facts;
 mod spike;
 #[cfg(feature = "shell")]
 pub mod shell;

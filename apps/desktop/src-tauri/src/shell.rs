@@ -24,6 +24,11 @@ async fn desktop_network_cost(window:WebviewWindow)->Result<crate::network::Netw
     caller(&window)?;
     tauri::async_runtime::spawn_blocking(crate::network::current).await.map_err(|_|Error::EngineUnavailable)
 }
+#[tauri::command]
+async fn desktop_device_facts(window:WebviewWindow)->Result<crate::device_facts::DeviceFacts>{
+    caller(&window)?;
+    tauri::async_runtime::spawn_blocking(crate::device_facts::current).await.map_err(|_|Error::EngineUnavailable)
+}
 fn request_shutdown(app:&tauri::AppHandle){
     if app.state::<ShutdownState>().0.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire).is_err(){return}
     let app=app.clone();
@@ -258,7 +263,7 @@ pub fn run() {
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");

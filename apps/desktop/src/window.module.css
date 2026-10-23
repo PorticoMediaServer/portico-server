@@ -1,5 +1,5 @@
 .caption {position:fixed;z-index:60;top:0;right:0;display:flex;}
-.caption button {width:46px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:0;background:transparent;color:rgba(255,255,255,.92);}
+.caption button {width:46px;height:32px;display:grid;place-items:center;appearance:none;font:inherit;padding:0;border:0;border-radius:0;background:transparent;color:rgba(255,255,255,.92);}
 .caption button:hover,.caption button[data-hover=true] {background:rgba(255,255,255,.09);}
 .caption button.close:hover,.caption button.close[data-hover=true] {background:#c42b1c;color:#fff;}
 .caption[data-focused=false] button {color:rgba(255,255,255,.42);}
