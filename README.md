@@ -57,6 +57,10 @@ a bounded title query, reports of changed paths, outbound webhooks, an event fee
 and an MCP endpoint for assistants. These integrations do not require Hosted.
 There is no plugin, theme or custom CSS system.
 
+## Support and warranty
+
+Portico is provided **"AS IS", without warranty**, to the extent permitted by applicable law. Support is voluntary and not guaranteed, including responses, fixes, maintenance, and updates. See [SUPPORT.md](SUPPORT.md) and [LICENSE](LICENSE) for details.
+
 ## Source and feedback
 
 Go and JavaScript dependencies and tool versions are described in [BUILDING.md](BUILDING.md).
