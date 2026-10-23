@@ -675,11 +675,15 @@ export class WebShellPlaybackRuntime {
     const prompt = policy.prompt;
     let command: PolicyCommand | null = null;
     switch (action.kind) {
-      case 'skip':
+      case 'skip': {
+        const marker = prompt?.kind === 'skip' ? prompt.marker : prompt?.kind === 'up-next' ? prompt.offer.marker : undefined;
+        if (!marker || marker.id !== action.markerId || prompt?.kind === 'up-next' && marker.kind !== 'credits' && marker.kind !== 'outro') problem('playback_policy_unavailable');
+        command = this.policy.skip(fence);
+        if (command?.kind !== 'seek' || command.markerId !== action.markerId) problem('playback_policy_unavailable');
+        break;
+      }
       case 'dismiss':
-        if (prompt?.kind !== 'skip' || prompt.marker.id !== action.markerId) problem('playback_policy_unavailable');
-        if (action.kind === 'skip') command = this.policy.skip(fence);
-        else if (!this.policy.dismiss(fence)) problem('playback_policy_unavailable');
+        if (prompt?.kind !== 'skip' || prompt.marker.id !== action.markerId || !this.policy.dismiss(fence)) problem('playback_policy_unavailable');
         break;
       case 'undo':
         if (policy.undo?.marker.id !== action.markerId) problem('playback_policy_unavailable');

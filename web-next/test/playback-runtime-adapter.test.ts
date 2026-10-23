@@ -357,6 +357,25 @@ test('Play now uses the actual next occurrence before completion and double acti
   assert.equal(f.runtime.getSnapshot().playback.itemId, 'next'); assert.equal(f.video.paused, false);
 });
 
+test('Skip credits on an actual up-next offer uses its marker and never advances or guesses the next occurrence', async t => {
+  const f=setup(t,{skipModes:()=>({credits:'ask'})});
+  const credits={...creditsMarker,endMs:7150000};policyFixture(f,[credits],{startDuringCredits:true});
+  const fence=await policyQueue(f);f.video.advance(7110);await settle();
+  const before=f.runtime.getSnapshot(),prompt=before.presentation!.policy!.prompt;
+  if(prompt?.kind!=='up-next'||!prompt.offer.marker)assert.fail('genuine marked up-next offer required');
+  assert.equal(prompt.offer.marker.id,credits.id);assert.equal(prompt.sceneAfterCredits,true);
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:'old-credits'}),/playback_policy_unavailable/);
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'dismiss',markerId:credits.id}),/playback_policy_unavailable/);
+  const loads=f.video.loads;await f.runtime.policyAction(fence,{kind:'skip',markerId:prompt.offer.marker.id});
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek?.positionSeconds,7150,'canonical credits skip lands on the actual post-credits scene');
+  assert.equal(f.runtime.getSnapshot().session?.id,before.session?.id);assert.equal(f.video.loads,loads);
+  assert.equal(f.log.some(request=>request.path.endsWith(':advance')),false,'Skip credits is not Play now');
+  f.video.land(7150);await settle();f.clock.advance(10000);await settle();
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds,7150);
+  assert.ok(f.log.some(request=>request.path.endsWith('/timeline')&&JSON.stringify(request.body).includes('"skipped":{"markerId":"credits","mode":"manual","positionMs":7110000}')));
+  await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:credits.id}),/playback_policy_unavailable/);
+});
+
 test('explicit automatic credits advance uses the real completion request before media end in both expanded and quiet modes', async t => {
   for (const collapsed of [false, true]) {
     const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
