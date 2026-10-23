@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {catalogue, createI18n, enUS, messageArguments, resolveRegion} from '../../i18n/src/index.ts';
 
+test('selection visibility copy stays separate from owner-only policy copy', () => {
+  const i18n = createI18n(resolveRegion(undefined, {locales: ['en-US']}));
+  assert.equal(i18n.t('next.selection.onlyYou'), 'Only you');
+  assert.equal(i18n.t('next.selection.ownerOnly'), 'Owner only');
+  assert.equal(i18n.t('next.shell.ownerOnly'), 'Owner only');
+});
+
 test('new catalogue words follow regional spelling and fall back to the US source', () => {
   for (const [locale, color, program] of [
     ['en-US', 'Color backdrop', 'Open the program'],
