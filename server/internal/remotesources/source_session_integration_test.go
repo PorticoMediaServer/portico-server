@@ -325,6 +325,32 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if first.Binding().Sequential != sequential || second.Binding().Profile.Limits.Connections != 1 {
 				t.Fatal(first.Binding(), second.Binding())
 			}
+			childContext, cancelChild := context.WithCancel(ctx)
+			if sequential {
+				child, err := first.OpenSequential(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.Read(make([]byte, 16)); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled progressive child exposed bytes", n, err)
+				}
+				child.Close()
+			} else {
+				child, err := first.OpenRange(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.ReadAt(childContext, make([]byte, 16), 0); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled range child exposed bytes", n, err)
+				}
+				child.Close()
+			}
+			if err := first.Check(ctx); err != nil {
+				t.Fatal("child cancellation killed its Reading session", err)
+			}
+			beforeReadGets := gets.Load()
 			if sequential {
 				if _, err = first.OpenRange(ctx); !errors.Is(err, storage.ErrRemoteRange) {
 					t.Fatal("sequential became ReadAt", err)
@@ -338,8 +364,8 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err != nil || !bytes.Equal(got, payload) {
 					t.Fatal("progressive bytes", len(got), err)
 				}
-				if gets.Load() != 1 {
-					t.Fatal("from-start body replayed", gets.Load())
+				if gets.Load() != beforeReadGets+1 {
+					t.Fatal("from-start body replayed", gets.Load(), beforeReadGets)
 				}
 			} else {
 				rangeReader, err := first.OpenRange(ctx)
@@ -369,6 +395,32 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if counts := process.OperationCounts(); counts.Capacity != 1 || counts.Peak != 1 || counts.Active != 0 {
 				t.Fatal("actual source pools did not share cap1", counts)
+			}
+			for _, closedBeforeError := range []bool{false, true} {
+				failedReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+				var child io.Closer
+				if sequential {
+					child, err = failedReader.OpenSequential(ctx)
+				} else {
+					child, err = failedReader.OpenRange(ctx)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if closedBeforeError {
+					child.Close()
+				}
+				beforeErrorGets := gets.Load()
+				if err = failedReader.StopAndRecheck(ctx); err != nil {
+					t.Fatal("decode-error metadata recheck", closedBeforeError, err)
+				}
+				if gets.Load() != beforeErrorGets || failedReader.Check(ctx) == nil {
+					t.Fatal("terminal recheck reopened media or retained authority", gets.Load(), beforeErrorGets)
+				}
+				child.Close()
+				if err = second.Check(ctx); err != nil {
+					t.Fatal("decode-error reader killed another session", err)
+				}
 			}
 			if !sequential {
 				metadata, err := process.Metadata(ctx)
