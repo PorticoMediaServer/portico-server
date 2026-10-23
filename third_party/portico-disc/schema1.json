@@ -161,6 +161,13 @@
                       "type": "integer",
                       "minimum": 32,
                       "maximum": 8190
+                    },
+                    "videoRole": {
+                      "enum": [
+                        "primary",
+                        "secondary",
+                        "enhancement"
+                      ]
                     }
                   },
                   "required": [
