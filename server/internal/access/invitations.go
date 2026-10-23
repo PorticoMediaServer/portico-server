@@ -475,6 +475,9 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Acce
 		if taken {
 			return ErrConflict
 		}
+		if e = identity.ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+			return e
+		}
 		account, profile := token(), token()
 		// The direct_account_created trigger inserts the membership and primary
 		// profile; the invitation's tier and library allow list are applied on top.

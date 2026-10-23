@@ -12,7 +12,7 @@ import (
 func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	f := administrationFixtureNew(t)
 	ctx := context.Background()
-	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'portico');INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'acc_'||id FROM accounts`); e != nil {
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico';INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'acc_'||id FROM accounts`); e != nil {
 		t.Fatal(e)
 	}
 	c, e := identity.WithIssuingDevice(ctx, identity.DeviceRegistration{InstallationID: identity.Token(), Name: "Browser", Platform: "web", App: "portico"}, "192.0.2.1")

@@ -53,7 +53,8 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
+	if _, e = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local');
+ INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);
  INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('admin','admin',x'00','admin-profile',1);
  INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1);
  UPDATE direct_memberships SET role='admin' WHERE account_id='admin';`); e != nil {
@@ -214,7 +215,7 @@ func TestMemberLimitsAndRoleRoutesCarryRevisionsAndRefuseAdminPeers(t *testing.T
 	if e := json.Unmarshal(w.Body.Bytes(), &limits); e != nil || limits.Revision != 1 {
 		t.Fatalf("limits: %v %+v", e, limits)
 	}
-	body := `{"expectedRevision":1,"operationId":"limits-route-1","limits":{"maxStreams":1,"remoteBitrateKbps":4000,"maxContentRating":"PG-13","allowUnrated":true,"schedule":{"timezone":"UTC","windows":[]},"channelPolicy":{"mode":"all","channels":[]},"tagPolicy":{"deniedLabels":[]}}}`
+	body := `{"expectedRevision":1,"operationId":"limits-route-1","limits":{"maxProfiles":8,"accessTokens":true,"allowRemote":true,"conversion":"server","maxStreamsMode":"limit","maxStreams":1,"remoteBitrateKbps":4000,"maxContentRating":"PG-13","allowUnrated":true,"schedule":{"timezone":"UTC","windows":[]},"channelPolicy":{"mode":"all","channels":[]},"tagPolicy":{"deniedLabels":[]}}}`
 	if w = f.call("PUT", "/v1/admin/access/members/member/limits", f.admin, body); w.Code != 200 {
 		t.Fatalf("write: %d %s", w.Code, w.Body)
 	}
@@ -238,7 +239,7 @@ func TestMemberLimitsAndRoleRoutesCarryRevisionsAndRefuseAdminPeers(t *testing.T
 func TestMemberLimitsChannelPolicyRejectsNonCanonicalIDs(t *testing.T) {
 	f := administrationFixtureNew(t)
 	for _, id := range []string{"library:news", "live:source:ch"} {
-		body := `{"expectedRevision":1,"operationId":"canon-ok-` + id + `","limits":{"maxStreams":0,"remoteBitrateKbps":0,"maxContentRating":"","allowUnrated":true,"schedule":{"timezone":"","windows":[]},"channelPolicy":{"mode":"deny","channels":["` + id + `"]},"tagPolicy":{"deniedLabels":[]}}}`
+		body := `{"expectedRevision":1,"operationId":"canon-ok-` + id + `","limits":{"maxProfiles":8,"accessTokens":true,"allowRemote":true,"conversion":"server","maxStreamsMode":"inherit","maxStreams":0,"remoteBitrateKbps":0,"maxContentRating":"","allowUnrated":true,"schedule":{"timezone":"","windows":[]},"channelPolicy":{"mode":"deny","channels":["` + id + `"]},"tagPolicy":{"deniedLabels":[]}}}`
 		// Fresh fixture per id would be cleaner, but revisions bump: read first.
 		w := f.call("GET", "/v1/admin/access/members/member/limits", f.admin, "")
 		var doc access.LimitsDocument
@@ -252,7 +253,7 @@ func TestMemberLimitsChannelPolicyRejectsNonCanonicalIDs(t *testing.T) {
 		w := f.call("GET", "/v1/admin/access/members/member/limits", f.admin, "")
 		var doc access.LimitsDocument
 		_ = json.Unmarshal(w.Body.Bytes(), &doc)
-		body := `{"expectedRevision":` + strconv.FormatInt(doc.Revision, 10) + `,"operationId":"canon-bad-` + id + `-00000000","limits":{"maxStreams":0,"remoteBitrateKbps":0,"maxContentRating":"","allowUnrated":true,"schedule":{"timezone":"","windows":[]},"channelPolicy":{"mode":"deny","channels":["` + id + `"]},"tagPolicy":{"deniedLabels":[]}}}`
+		body := `{"expectedRevision":` + strconv.FormatInt(doc.Revision, 10) + `,"operationId":"canon-bad-` + id + `-00000000","limits":{"maxProfiles":8,"accessTokens":true,"allowRemote":true,"conversion":"server","maxStreamsMode":"inherit","maxStreams":0,"remoteBitrateKbps":0,"maxContentRating":"","allowUnrated":true,"schedule":{"timezone":"","windows":[]},"channelPolicy":{"mode":"deny","channels":["` + id + `"]},"tagPolicy":{"deniedLabels":[]}}}`
 		w = f.call("PUT", "/v1/admin/access/members/member/limits", f.admin, body)
 		if w.Code != 400 || !strings.Contains(w.Body.String(), `"code":"invalid_request"`) || !strings.Contains(w.Body.String(), "limits.channelPolicy.channels") {
 			t.Fatalf("non-canonical %q: %d %s", id, w.Code, w.Body.String())

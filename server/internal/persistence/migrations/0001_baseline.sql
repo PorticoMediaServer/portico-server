@@ -8477,3 +8477,10 @@ CREATE TABLE preference_list_items(
  UNIQUE(authority,account_id,profile_id,scope,device_key,key,value),
  FOREIGN KEY(authority,account_id,profile_id,scope,device_key,key) REFERENCES preference_values ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE account_stream_limits(
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+ mode TEXT NOT NULL CHECK(mode IN('inherit','unlimited','limit')),
+ stream_limit INTEGER,
+ CHECK((mode='limit' AND stream_limit IS NOT NULL AND stream_limit BETWEEN 1 AND 1000) OR (mode IN('inherit','unlimited') AND stream_limit IS NULL))
+) STRICT;

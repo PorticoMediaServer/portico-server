@@ -256,6 +256,10 @@ func reportHTTPFailure(status int, code string, err error) {
 	log.Printf("request failed (%d %s): %s", status, code, boundFailureDetail(err))
 }
 func failure(w http.ResponseWriter, e error) {
+	if errors.Is(e, identity.ErrFactorSetupRequired) {
+		policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: "factor_setup_required"})
+		return
+	}
 	if revisionFailure(w, e) {
 		return
 	}

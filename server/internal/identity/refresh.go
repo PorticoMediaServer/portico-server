@@ -77,7 +77,11 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, err
 	}
-	horizon := now.Add(LocalSignInWindow)
+	window, err := sessionWindowTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	horizon := now.Add(window)
 	// A Portico assertion admits a family for at most90 days. Local refresh
 	// never moves that boundary; another live identity proof starts a new family.
 	kind, err := SignInKindTx(ctx, tx)

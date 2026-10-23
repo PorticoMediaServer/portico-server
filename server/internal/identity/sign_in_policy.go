@@ -1,13 +1,52 @@
 package identity
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"time"
 	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
 )
+
+var ErrFactorSetupRequired = errors.New("Set up two-step verification to finish signing in.")
+
+type factorSetupContextKey struct{}
+
+func factorSetupContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, factorSetupContextKey{}, true)
+}
+
+func requiresFactorTx(ctx context.Context, tx *sql.Tx, account string) (bool, error) {
+	k, e := SignInKindTx(ctx, tx)
+	if e != nil || k != SignInLocal {
+		return false, e
+	}
+	p, e := ReadSignInPolicyTx(ctx, tx)
+	if e != nil {
+		return false, e
+	}
+	if p.Values.RequireTwoStep == "nobody" {
+		return false, nil
+	}
+	var role string
+	if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, account).Scan(&role); e != nil {
+		return false, e
+	}
+	return p.Values.RequireTwoStep == "everyone" || Administrative(role), nil
+}
+func missingRequiredFactorTx(ctx context.Context, tx *sql.Tx, account string) (bool, error) {
+	required, e := requiresFactorTx(ctx, tx, account)
+	if e != nil || !required {
+		return false, e
+	}
+	var confirmed bool
+	e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_account_factors WHERE account_id=? AND confirmed=1)`, account).Scan(&confirmed)
+	return !confirmed, e
+}
 
 type AttemptPolicy string
 
@@ -62,6 +101,29 @@ type SignInPolicyValues struct {
 	RememberAccounts       bool               `json:"rememberAccounts"`
 	EndedSessionsDays      EndedSessionsDays  `json:"endedSessionsDays"`
 }
+
+// UnmarshalJSON requires the complete typed policy, including false-valued
+// booleans. A partial replacement cannot silently turn remembering off.
+func (v *SignInPolicyValues) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != 9 {
+		return ErrDirectInput
+	}
+	for _, key := range []string{"staySignedInDays", "pinRememberDays", "passwordAttempts", "pinAttempts", "passwordMinLength", "memberResetCodeMinutes", "requireTwoStep", "rememberAccounts", "endedSessionsDays"} {
+		value, ok := fields[key]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return ErrDirectInput
+		}
+	}
+	type plain SignInPolicyValues
+	var out plain
+	if json.Unmarshal(raw, &out) != nil || !SignInPolicyValues(out).valid() {
+		return ErrDirectInput
+	}
+	*v = SignInPolicyValues(out)
+	return nil
+}
+
 type SignInPolicy struct {
 	Revision int64              `json:"revision,string"`
 	Values   SignInPolicyValues `json:"values"`
@@ -87,9 +149,38 @@ func ReadSignInPolicyTx(ctx context.Context, tx *sql.Tx) (out SignInPolicy, err 
 	if tx == nil {
 		return out, ErrDirectInput
 	}
+	return readSignInPolicy(ctx, tx)
+}
+
+func readSignInPolicy(ctx context.Context, reader identityReader) (out SignInPolicy, err error) {
 	v := &out.Values
-	err = tx.QueryRowContext(ctx, `SELECT revision,stay_signed_in_days,pin_remember_days,password_attempts,pin_attempts,password_min_length,member_reset_code_minutes,require_two_step,remember_accounts,ended_sessions_days FROM identity_sign_in_policy WHERE singleton=1`).Scan(&out.Revision, &v.StaySignedInDays, &v.PINRememberDays, &v.PasswordAttempts, &v.PINAttempts, &v.PasswordMinLength, &v.MemberResetCodeMinutes, &v.RequireTwoStep, &v.RememberAccounts, &v.EndedSessionsDays)
+	err = reader.QueryRowContext(ctx, `SELECT revision,stay_signed_in_days,pin_remember_days,password_attempts,pin_attempts,password_min_length,member_reset_code_minutes,require_two_step,remember_accounts,ended_sessions_days FROM identity_sign_in_policy WHERE singleton=1`).Scan(&out.Revision, &v.StaySignedInDays, &v.PINRememberDays, &v.PasswordAttempts, &v.PINAttempts, &v.PasswordMinLength, &v.MemberResetCodeMinutes, &v.RequireTwoStep, &v.RememberAccounts, &v.EndedSessionsDays)
 	return
+}
+
+func sessionWindowTx(ctx context.Context, tx *sql.Tx) (time.Duration, error) {
+	p, e := ReadSignInPolicyTx(ctx, tx)
+	if e != nil {
+		return 0, e
+	}
+	kind, e := SignInKindTx(ctx, tx)
+	if e != nil {
+		return 0, e
+	}
+	window := time.Duration(p.Values.StaySignedInDays) * 24 * time.Hour
+	if kind == SignInPortico && window > LocalSignInWindow {
+		window = LocalSignInWindow
+	}
+	return window, nil
+}
+
+func rememberAccountsTx(ctx context.Context, tx *sql.Tx) (bool, error) {
+	p, e := ReadSignInPolicyTx(ctx, tx)
+	if e != nil {
+		return false, e
+	}
+	k, e := SignInKindTx(ctx, tx)
+	return e == nil && k == SignInLocal && p.Values.RememberAccounts, e
 }
 
 // ReplaceSignInPolicyTx is compare-and-swap within the caller's authorized
@@ -125,20 +216,31 @@ func ReplaceSignInPolicyTx(ctx context.Context, tx *sql.Tx, q SignInPolicyPatch)
 	}
 	return ReadSignInPolicyTx(ctx, tx)
 }
+func (s *Service) signInPolicyOwnerTx(ctx context.Context, tx *sql.Tx, bearer string) error {
+	if _, e := s.moveOwnerTx(ctx, tx, bearer); e != nil {
+		return e
+	}
+	record, e := s.familyTokenTx(ctx, tx, Digest(bearer))
+	if e != nil {
+		return e
+	}
+	return s.RequireMainProfileTx(ctx, tx, record.principal)
+}
+
 func (s *Service) ReadSignInPolicy(ctx context.Context, bearer string) (out SignInPolicy, err error) {
 	g, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return out, e
 	}
 	defer g.Rollback()
-	if _, e = s.moveOwnerTx(ctx, g.Tx(), bearer); e != nil {
+	if e = s.signInPolicyOwnerTx(ctx, g.Tx(), bearer); e != nil {
 		return out, e
 	}
 	return ReadSignInPolicyTx(ctx, g.Tx())
 }
 func (s *Service) ChangeSignInPolicy(ctx context.Context, bearer string, q SignInPolicyPatch) (out SignInPolicy, err error) {
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
-		if _, e := s.moveOwnerTx(ctx, tx, bearer); e != nil {
+		if e := s.signInPolicyOwnerTx(ctx, tx, bearer); e != nil {
 			return e
 		}
 		var e error

@@ -77,6 +77,23 @@ func (s *Service) directSnapshotTx(ctx context.Context, tx *sql.Tx, c directCall
 		out.CanManage = !pinBlocked
 	}
 	out.Capabilities = ManagementCapabilities{ManageAccount: out.CanManage, ManagePeople: out.CanManage && Administrative(c.account.Role), ManageServer: out.CanManage && Administrative(c.account.Role), ManageSignIn: out.CanManage && c.account.Role == TierOwner}
+	var accountScope bool
+	if c.familyID == "" {
+		accountScope = true
+	} else if e := tx.QueryRowContext(ctx, `SELECT role='account' FROM authorization_session_families WHERE id=?`, c.familyID).Scan(&accountScope); e != nil {
+		return out, e
+	}
+	if accountScope {
+		missing, e := missingRequiredFactorTx(ctx, tx, c.account.ID)
+		if e != nil {
+			return out, e
+		}
+		out.TwoStepSetupRequired = missing
+		if missing {
+			out.CanManage = false
+			out.Capabilities = ManagementCapabilities{}
+		}
+	}
 	if hosted.Valid && c.account.Role == TierOwner {
 		var custodian sql.NullString
 		if e := tx.QueryRowContext(ctx, `SELECT custodian FROM hosted_membership_sync WHERE singleton=1`).Scan(&custodian); e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -384,7 +401,7 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 	}
 	trusted := false
 	if q.TrustToken != "" && validFamilyID(q.InstallationID) {
-		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>?)`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, proof.pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, proof.pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted); e != nil {
 			gated.Rollback()
 			return proof, e
 		}
@@ -453,7 +470,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	}
 	trusted := false
 	if q.TrustToken != "" && validFamilyID(q.InstallationID) {
-		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>?)`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted)
+		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>? AND EXISTS(SELECT 1 FROM identity_sign_in_policy WHERE pin_remember_days>0))`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted)
 		if e != nil {
 			return out, e
 		}
@@ -481,19 +498,11 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 		}
 		if !proof.correct {
 			attempts++
-			delay := int64(2)
-			if attempts >= 3 {
-				delay = 30
+			policy, err := ReadSignInPolicyTx(ctx, tx)
+			if err != nil {
+				return out, err
 			}
-			if attempts >= 5 {
-				delay = 300
-			}
-			if attempts >= 10 {
-				delay = 900
-			}
-			if attempts >= 15 {
-				delay = 3600
-			}
+			delay := pinDelay(policy.Values.PINAttempts, attempts)
 			if _, e = tx.ExecContext(ctx, `INSERT INTO direct_profile_pin_attempts(profile_id,device_id,failed_attempts,last_failed_ms,locked_until_ms) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,device_id) DO UPDATE SET failed_attempts=excluded.failed_attempts,last_failed_ms=excluded.last_failed_ms,locked_until_ms=excluded.locked_until_ms`, id, c.deviceID, attempts, nowMS, nowMS+delay*1000); e != nil {
 				return out, e
 			}
@@ -512,7 +521,11 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	}
 	// Choosing a profile continues the sign-in this device already holds; the
 	// remote sign-in policy judged that sign-in when it was made.
-	out.Session, e = s.IssueTx(withExistingDevice(continuedSignIn(ctx), c.deviceID), tx, c.account.ID, id, "local", role, c.epoch, time.Time{})
+	issueCtx, e := withParentPorticoHorizonTx(ctx, tx, c.familyID)
+	if e != nil {
+		return out, e
+	}
+	out.Session, e = s.IssueTx(withExistingDevice(continuedSignIn(issueCtx), c.deviceID), tx, c.account.ID, id, "local", role, c.epoch, time.Time{})
 	if e != nil {
 		return out, e
 	}
@@ -520,8 +533,12 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 		return out, e
 	}
 
-	if q.Trust {
-		proof := &DirectTrust{Authority: "local", Token: Token(), ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339), InstallationID: q.InstallationID, ServerID: s.ID(), AccountID: c.account.ID, ProfileID: id, PINRevision: pinRevision, ProfileRevision: revision, MembershipRevision: c.account.Revision}
+	policy, e := ReadSignInPolicyTx(ctx, tx)
+	if e != nil {
+		return out, e
+	}
+	if q.Trust && policy.Values.PINRememberDays > 0 {
+		proof := &DirectTrust{Authority: "local", Token: Token(), ExpiresAt: time.Now().UTC().Add(time.Duration(policy.Values.PINRememberDays) * 24 * time.Hour).Format(time.RFC3339), InstallationID: q.InstallationID, ServerID: s.ID(), AccountID: c.account.ID, ProfileID: id, PINRevision: pinRevision, ProfileRevision: revision, MembershipRevision: c.account.Revision}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE (account_id=? AND profile_id=? AND installation_id=?) OR expires_at<=?`, c.account.ID, id, q.InstallationID, time.Now().UTC().Format(time.RFC3339)); e != nil {
 			return out, e
 		}

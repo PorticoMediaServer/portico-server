@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
+	"portico.local/server/internal/testauth"
 )
 
 // A member's stream count covers every protocol that holds a slot: a v1
@@ -15,7 +17,7 @@ import (
 func TestAdmitPlaybackCountsV1SessionsOnce(t *testing.T) {
 	store, db, ids := fixture(t)
 	ctx := context.Background()
-	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-v1-count", Limits: Limits{MaxStreams: 1}}); err != nil {
+	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-v1-count", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: identity.TierMember}}
@@ -31,8 +33,8 @@ func TestAdmitPlaybackCountsV1SessionsOnce(t *testing.T) {
 	}
 	insertV1 := func(id, kind, media string, ended int64) {
 		t.Helper()
-		if _, err := db.Exec(`INSERT INTO playback_v1_sessions(id,device_id,account_id,profile_id,authority,start_key,start_digest,kind,role,state,request,revision,generation,media_session_id,lease_expires_ms,created_ms,updated_ms,ended_ms) VALUES(?,?,'member','member-profile','local',?,?,?,'local','playing','{}',1,1,?,0,0,0,?)`,
-			id, "device-"+id, "key-"+id, "digest-"+id, kind, media, ended); err != nil {
+		if _, err := db.Exec(`INSERT INTO playback_v1_sessions(id,device_id,account_id,profile_id,authority,start_key,start_digest,kind,role,state,request,revision,generation,media_session_id,lease_expires_ms,created_ms,updated_ms,ended_ms) VALUES(?,?,'member','member-profile','local',?,?,?,'local','playing','{}',1,1,?,?,0,0,?)`,
+			id, "device-"+id, "key-"+id, "digest-"+id, kind, media, time.Now().Add(time.Minute).UnixMilli(), ended); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -50,10 +52,20 @@ func TestAdmitPlaybackCountsV1SessionsOnce(t *testing.T) {
 	}
 	// A live v1 VOD session counts once, through its v1 row: its legacy
 	// presentation row must not count a second time.
+	testauth.InsertSession(t, db, "h", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
 	if _, err := db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration) VALUES('legacy-v1','h','member','member-profile',?, ?,1,'playing','g','t','2099-01-01T00:00:00Z','r',1)`, ids.familyID, ids.asset); err != nil {
 		t.Fatal(err)
 	}
 	insertV1("ps_vod", "vod", "legacy-v1", 0)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := streamlimits.CountTx(ctx, tx, "local", "member", true, time.Now(), "", "")
+	tx.Rollback()
+	if err != nil || n != 1 {
+		t.Fatalf("backing media counted twice: %d %v", n, err)
+	}
 	if err := admit(); err != ErrStreamLimit {
 		t.Fatalf("a live VOD session was double-counted or missed: %v", err)
 	}
@@ -73,7 +85,7 @@ func TestAdmitChannelEnforcesScheduleBeforePolicy(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
 	open := AccessSchedule{Timezone: "UTC", Windows: []ScheduleWindow{{Days: []int{1}, StartMinute: 600, EndMinute: 780}}}
-	limits := Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{"library:news"}}, Schedule: open}
+	limits := Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{"library:news"}}, Schedule: open}
 	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-channel-schedule", Limits: limits}); err != nil {
 		t.Fatal(err)
 	}

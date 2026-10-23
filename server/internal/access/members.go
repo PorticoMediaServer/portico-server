@@ -11,19 +11,22 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 // Member is one account as administration sees it: its tier, its library allow
 // list and the revision of its limits envelope, so a console can render the
 // people page from one list.
 type Member struct {
-	AccountID   string `json:"accountId"`
-	Username    string `json:"username"`
-	Email       string `json:"email,omitempty"`
-	DisplayName string `json:"displayName"`
-	ProfileID   string `json:"profileId"`
-	Role        string `json:"role"`
-	Disabled    bool   `json:"disabled"`
+	ServerMaxStreams    *int   `json:"serverMaxStreams"`
+	EffectiveMaxStreams *int   `json:"effectiveMaxStreams"`
+	AccountID           string `json:"accountId"`
+	Username            string `json:"username"`
+	Email               string `json:"email,omitempty"`
+	DisplayName         string `json:"displayName"`
+	ProfileID           string `json:"profileId"`
+	Role                string `json:"role"`
+	Disabled            bool   `json:"disabled"`
 	// DisabledAt and DisabledReason say when and why an account that is off
 	// was turned off: "owner" (an owner or administrator did it) or "left"
 	// (the person removed this server from their Portico Account).
@@ -113,7 +116,7 @@ func (s *Store) Member(ctx context.Context, auth Authorize, account string) (out
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		var e error
-		out, e = scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
+		out, e = readMember(ctx, tx, account)
 		return e
 	})
 	return
@@ -189,7 +192,22 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 }
 
 func readMember(ctx context.Context, tx *sql.Tx, account string) (Member, error) {
-	return scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
+	out, e := scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
+	if e != nil {
+		return out, e
+	}
+	streams, e := streamlimits.ReadTx(ctx, tx, account)
+	if e != nil {
+		return out, e
+	}
+	out.Limits.MaxStreamsMode = streams.Mode
+	out.Limits.MaxStreams = 0
+	if streams.Limit != nil {
+		out.Limits.MaxStreams = *streams.Limit
+	}
+	out.ServerMaxStreams = streams.ServerCeiling
+	out.EffectiveMaxStreams = streams.EffectiveLimit
+	return out, nil
 }
 
 // MemberNotesChange is revision-bound and never alters account identity.

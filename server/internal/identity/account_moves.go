@@ -344,6 +344,9 @@ func (s *Service) ConfirmLocalMove(ctx context.Context, bearer string, q MoveCon
 		if taken {
 			return ErrRegistrationTaken
 		}
+		if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+			return e
+		}
 		if e = s.persistDepartureTx(ctx, tx, notice, v); e != nil {
 			return e
 		}
@@ -580,6 +583,9 @@ func (s *Service) RedeemLocalMove(ctx context.Context, q LocalMoveRedemption) (o
 	}
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if e := RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
+			return e
+		}
+		if e := ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
 			return e
 		}
 		id, e := waitingCodeTx(ctx, tx, q.Code)

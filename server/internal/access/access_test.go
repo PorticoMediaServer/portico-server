@@ -216,7 +216,7 @@ func TestLimitsDefaultToUnrestrictedAndRoundTrip(t *testing.T) {
 	if err != nil || first.Revision != 1 || first.Limits.MaxStreams != 0 || !first.Limits.AllowUnrated {
 		t.Fatalf("default limits: %v %+v", err, first)
 	}
-	change := LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-1", Limits: Limits{MaxStreams: 1, RemoteBitrateKbps: 4000,
+	change := LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-1", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, RemoteBitrateKbps: 4000,
 		MaxContentRating: "pg-13", Schedule: AccessSchedule{Timezone: "UTC", Windows: []ScheduleWindow{{Days: []int{3, 1}, StartMinute: 60, EndMinute: 120}}},
 		Channels: ChannelPolicy{Mode: "deny", Channels: []string{"library:news"}}, Tags: TagPolicy{DeniedLabels: []string{" Spoilers "}}}}
 	out, err := store.SetLimits(ctx, nil, "member", change)
@@ -229,7 +229,7 @@ func TestLimitsDefaultToUnrestrictedAndRoundTrip(t *testing.T) {
 	if _, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-write-2", Limits: DefaultLimits()}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale write was accepted: %v", err)
 	}
-	bad := LimitsChange{ExpectedRevision: 2, OperationID: "limits-write-3", Limits: Limits{MaxContentRating: "XX", Schedule: AccessSchedule{Timezone: "Mars/Olympus"}}}
+	bad := LimitsChange{ExpectedRevision: 2, OperationID: "limits-write-3", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "XX", Schedule: AccessSchedule{Timezone: "Mars/Olympus"}}}
 	var fields *ValidationError
 	if _, err = store.SetLimits(ctx, nil, "member", bad); !errors.As(err, &fields) || len(fields.Fields) != 2 {
 		t.Fatalf("validation: %v", err)
@@ -244,7 +244,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-allow-000" + string(rune('0'+i)) + "-" + id, Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}}); err != nil {
+		if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-allow-000" + string(rune('0'+i)) + "-" + id, Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}}); err != nil {
 			t.Fatalf("canonical %q was rejected: %v", id, err)
 		}
 		// Reset for the next id (each write bumps the revision).
@@ -261,7 +261,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-" + id + "-000000", Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}})
+		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-" + id + "-000000", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{id}}}})
 		var fields *ValidationError
 		if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.channelPolicy.channels" {
 			t.Fatalf("non-canonical %q: %v %+v", id, err, fields)
@@ -273,7 +273,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-empty-000000", Limits: Limits{Channels: ChannelPolicy{Mode: "deny", Channels: []string{""}}}})
+		_, err = store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: current.Revision, OperationID: "canon-reject-empty-000000", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", Channels: ChannelPolicy{Mode: "deny", Channels: []string{""}}}})
 		var fields *ValidationError
 		if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.channelPolicy.channels" {
 			t.Fatalf("non-canonical empty: %v %+v", err, fields)
@@ -284,7 +284,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	store, db, ids := fixture(t)
 	ctx := context.Background()
-	limits := Limits{MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
+	limits := Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
 	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-admission", Limits: limits}); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 2, OperationID: "limits-bitrate", Limits: Limits{MaxStreams: 1, RemoteBitrateKbps: 3000, AllowUnrated: true}}); err != nil {
+	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 2, OperationID: "limits-bitrate", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "limit", MaxStreams: 1, RemoteBitrateKbps: 3000, AllowUnrated: true}}); err != nil {
 		t.Fatal(err)
 	}
 	decision, err := run(ids.family, true)
@@ -789,7 +789,7 @@ func TestRatingLimitIsValidatedAndResolvedToAnAge(t *testing.T) {
 		t.Fatalf("system without a rating: %+v %v", out.Limits, err)
 	}
 	// A stored rating the table no longer knows admits all-ages titles only.
-	if got := (Limits{MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
+	if got := (Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
 		t.Fatalf("an unreadable stored rating resolved to %d", got)
 	}
 }
@@ -1055,7 +1055,7 @@ func TestInvitationSpentAtRegistrationOnlyWhenItIsAPlainMembersAndUnspent(t *tes
 func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
 	s, db, _ := fixture(t)
 	ctx := context.Background()
-	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxContentRating: "PG", AllowUnrated: false}})
+	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxProfiles: 8, Conversion: "server", MaxStreamsMode: "inherit", MaxContentRating: "PG", AllowUnrated: false}})
 	if e != nil {
 		t.Fatal(e)
 	}
