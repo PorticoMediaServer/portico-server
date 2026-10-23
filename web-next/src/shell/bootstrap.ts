@@ -40,7 +40,7 @@ export type ShellAssembly = Readonly<{
   dispose: () => void;
 }>;
 export type ShellAssembler = (context: ShellAssemblyContext) => Promise<ShellAssembly>;
-export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error'; binding?: ShellBindings; context?: ShellAssemblyContext; error?: unknown}>;
+export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown}>;
 
 function viewerId(session: LocalSession): string { const v = session.viewer; return JSON.stringify([v.authority, v.accountId, v.profileId]); }
 export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
@@ -118,6 +118,15 @@ export class ShellBootstrap {
     ++this.epoch; this.controller?.abort(); this.controller = undefined;
     this.retire?.(); this.retire = undefined;
   }
+  /** Suspend only the mounted runtime. Durable sessions stay until an explicit
+   * admission/sign-out decides their fate. */
+  suspendForAccountEntry = () => {this.fence();this.publish({phase: 'signed-out', entry: true});};
+  resumeAfterAccountEntry = async () => {
+    const expected = this.epoch;
+    await this.running;
+    // A disposed or superseded entry may not wake a private runtime later.
+    if (this.epoch === expected) await this.start();
+  };
   private restart = () => {
     this.fence(); this.publish({phase: 'restoring'});
     const pending = this.running, expected = this.epoch;
@@ -192,6 +201,7 @@ export class ShellBootstrap {
     const display=browserServerDisplay();display.remember(api,facts.serverName);
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
+    if (!isCurrent()) return;
     const context: ShellAssemblyContext = {api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers};
     const assembly = await this.assemble(context);
     if (!isCurrent()) { assembly.dispose(); return; }
