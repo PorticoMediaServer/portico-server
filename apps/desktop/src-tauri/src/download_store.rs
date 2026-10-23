@@ -172,6 +172,47 @@ pub struct DownloadGroup {
     pub parent_id: String,
     pub group_id: String,
     pub count: u64,
+    pub revision: String,
+    pub bytes: u64,
+    pub bytes_done: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub held: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artwork_id: Option<String>,
+    pub offline_access: String,
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GroupSelector {
+    pub kind: String,
+    pub parent_id: String,
+    pub group_id: Option<String>,
+}
+impl GroupSelector {
+    fn validate(&self) -> Result<()> {
+        if !matches!(self.kind.as_str(), "episodes" | "songs")
+            || !identifier(&self.parent_id)
+            || self
+                .group_id
+                .as_ref()
+                .is_some_and(|v| !v.is_empty() && !identifier(v))
+        {
+            return Err(Error::InvalidCommand);
+        }
+        Ok(())
+    }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GroupAction {
+    Remove,
+    Pause,
+    Resume,
+    Retry,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -455,6 +496,14 @@ impl DownloadStore {
             let (id, committed) = row.map_err(unavailable)?;
             let partial = self.path(&id, false)?;
             let sealed = self.path(&id, true)?;
+            let retry = self.files.join(format!("{id}.retry"));
+            if retry.exists() {
+                if committed > 0 && !partial.exists() {
+                    std::fs::rename(&retry, &partial).map_err(unavailable)?;
+                } else {
+                    std::fs::remove_file(&retry).map_err(unavailable)?;
+                }
+            }
             // A crash after rename but before the ready transaction never grants playback.
             if sealed.exists() && !partial.exists() {
                 std::fs::rename(&sealed, &partial).map_err(unavailable)?;
@@ -720,7 +769,42 @@ impl DownloadStore {
         if entry.state == "ready" {
             return Err(Error::InvalidCommand);
         }
-        self.connection.execute("UPDATE download_entries SET held=?1,state=?2,revision=revision+1 WHERE id=?3 AND revision=?4",params![held,if held{"paused"}else{"queued"},id,expected_revision as i64]).map_err(unavailable)?;
+        if self.connection.execute("UPDATE download_entries SET held=?1,state=?2,revision=revision+1 WHERE id=?3 AND revision=?4",params![held,if held{"paused"}else{"queued"},id,expected_revision as i64]).map_err(unavailable)?!=1{return Err(Error::DownloadsConflict)}
+        self.entry(viewer, id)
+    }
+    pub fn retry(
+        &mut self,
+        viewer: &DownloadViewer,
+        id: &str,
+        expected_revision: u64,
+    ) -> Result<LocalDownload> {
+        let entry = self.entry(viewer, id)?;
+        if entry.revision != expected_revision {
+            return Err(Error::DownloadsConflict);
+        }
+        if entry.state != "failed" {
+            return Err(Error::InvalidCommand);
+        }
+        let partial = self.path(id, false)?;
+        let backup = self.files.join(format!("{id}.retry"));
+        if backup.exists() {
+            return Err(Error::DownloadsConflict);
+        }
+        open_file(&partial, false, false)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        std::fs::rename(&partial, &backup).map_err(unavailable)?;
+        let result = (|| {
+            if tx.execute("UPDATE download_entries SET bytes_done=0,held=0,state='queued',revision=revision+1 WHERE id=?1 AND revision=?2",params![id,expected_revision as i64]).map_err(unavailable)?!=1{return Err(Error::DownloadsConflict)}
+            tx.commit().map_err(unavailable)
+        })();
+        if let Err(error) = result {
+            std::fs::rename(&backup, &partial).map_err(unavailable)?;
+            return Err(error);
+        }
+        std::fs::remove_file(backup).map_err(unavailable)?;
         self.entry(viewer, id)
     }
     /// Authenticated JS transport installs the server's receipt key, independently of a receipt.
@@ -956,7 +1040,7 @@ impl DownloadStore {
             let Some((id, extension)) = name.rsplit_once('.') else {
                 continue;
             };
-            if digest(id) && matches!(extension, "part" | "media") {
+            if digest(id) && matches!(extension, "part" | "media" | "retry") {
                 let meta = std::fs::symlink_metadata(entry.path()).map_err(unavailable)?;
                 if meta.is_file() && !meta.file_type().is_symlink() {
                     used_bytes = used_bytes
@@ -997,7 +1081,7 @@ impl DownloadStore {
     /// Counts describe every persisted local row in this scope, independent of pagination.
     /// They never claim the server's full library/season/album size.
     pub fn groups(&self, viewer: &DownloadViewer) -> Result<Vec<DownloadGroup>> {
-        let mut query=self.connection.prepare("SELECT CASE t.kind WHEN 'episode' THEN 'episodes' ELSE 'songs' END,t.parent_id,t.group_id,count(*) FROM download_entries e JOIN download_titles t ON t.entry_id=e.id WHERE e.scope_id=?1 AND t.kind IN ('episode','song','track') GROUP BY 1,2,3 ORDER BY 1,2,3").map_err(unavailable)?;
+        let mut query=self.connection.prepare("SELECT CASE t.kind WHEN 'episode' THEN 'episodes' ELSE 'songs' END,t.parent_id,t.group_id,count(*) FROM download_entries e JOIN download_titles t ON t.entry_id=e.id WHERE e.scope_id=?1 AND t.kind IN ('episode','song','track') AND t.parent_id!='' GROUP BY 1,2,3 ORDER BY 1,2,3").map_err(unavailable)?;
         query
             .query_map([scope(viewer)?], |r| {
                 Ok(DownloadGroup {
@@ -1005,11 +1089,193 @@ impl DownloadStore {
                     parent_id: r.get(1)?,
                     group_id: r.get(2)?,
                     count: count(r, 3)?,
+                    revision: String::new(),
+                    bytes: 0,
+                    bytes_done: 0,
+                    quality: None,
+                    state: None,
+                    held: None,
+                    artwork_id: None,
+                    offline_access: "needsCheckIn".into(),
                 })
             })
             .map_err(unavailable)?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(unavailable)
+            .and_then(|mut groups| {
+                for group in &mut groups {
+                    group.revision = self.group_revision(
+                        viewer,
+                        &GroupSelector {
+                            kind: group.kind.clone(),
+                            parent_id: group.parent_id.clone(),
+                            group_id: Some(group.group_id.clone()),
+                        },
+                    )?;
+                    let selector = GroupSelector {
+                        kind: group.kind.clone(),
+                        parent_id: group.parent_id.clone(),
+                        group_id: Some(group.group_id.clone()),
+                    };
+                    let members = self.group_members(viewer, &selector)?;
+                    let first = members.first().ok_or(Error::DownloadsUnavailable)?;
+                    group.bytes = members.iter().try_fold(0u64, |sum, m| {
+                        sum.checked_add(m.bytes).ok_or(Error::DownloadsUnavailable)
+                    })?;
+                    group.bytes_done = members.iter().try_fold(0u64, |sum, m| {
+                        sum.checked_add(m.bytes_done)
+                            .ok_or(Error::DownloadsUnavailable)
+                    })?;
+                    group.quality = members
+                        .iter()
+                        .all(|m| m.quality == first.quality)
+                        .then(|| first.quality.clone());
+                    group.state = members
+                        .iter()
+                        .all(|m| m.state == first.state)
+                        .then(|| first.state.clone());
+                    group.held = members
+                        .iter()
+                        .all(|m| m.held == first.held)
+                        .then_some(first.held);
+                    group.artwork_id = members.iter().find_map(|m| {
+                        self.connection
+                            .query_row(
+                                "SELECT entry_id FROM download_artwork WHERE entry_id=?1",
+                                [&m.id],
+                                |r| r.get(0),
+                            )
+                            .optional()
+                            .ok()
+                            .flatten()
+                    });
+                    if members
+                        .iter()
+                        .all(|m| self.playback_file(viewer, &m.id).is_ok())
+                    {
+                        group.offline_access = "valid".into();
+                    }
+                }
+                Ok(groups)
+            })
+    }
+    pub fn group_members(
+        &self,
+        viewer: &DownloadViewer,
+        selector: &GroupSelector,
+    ) -> Result<Vec<LocalDownload>> {
+        selector.validate()?;
+        let sql = READ_ENTRY.to_owned()
+            + "WHERE e.scope_id=?1 AND t.parent_id=?2 AND (?3 IS NULL OR t.group_id=?3) AND ((?4='episodes' AND t.kind='episode') OR (?4='songs' AND t.kind IN ('song','track'))) ORDER BY t.group_number IS NULL,t.group_number,t.number IS NULL,t.number,e.id LIMIT 10001";
+        let mut query = self.connection.prepare(&sql).map_err(unavailable)?;
+        let members = query
+            .query_map(
+                params![
+                    scope(viewer)?,
+                    selector.parent_id,
+                    selector.group_id,
+                    selector.kind
+                ],
+                row_entry,
+            )
+            .map_err(unavailable)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(unavailable)?;
+        if members.is_empty() || members.len() > 10000 {
+            return Err(Error::DownloadsUnavailable);
+        }
+        Ok(members)
+    }
+    pub fn group_revision(
+        &self,
+        viewer: &DownloadViewer,
+        selector: &GroupSelector,
+    ) -> Result<String> {
+        let members = self.group_members(viewer, selector)?;
+        let mut context = Context::new(&SHA256);
+        for member in members {
+            context.update(member.id.as_bytes());
+            context.update(&member.revision.to_be_bytes());
+        }
+        Ok(hex(context.finish().as_ref()))
+    }
+    pub fn act_group(
+        &mut self,
+        viewer: &DownloadViewer,
+        selector: &GroupSelector,
+        expected: &str,
+        action: GroupAction,
+    ) -> Result<()> {
+        if !digest(expected) {
+            return Err(Error::InvalidCommand);
+        }
+        self.connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(unavailable)?;
+        let mut retries = Vec::new();
+        let result = (|| {
+            if self.group_revision(viewer, selector)? != expected {
+                return Err(Error::DownloadsConflict);
+            }
+            for entry in self.group_members(viewer, selector)? {
+                match action {
+                    GroupAction::Remove => {
+                        self.connection
+                            .execute(
+                                "INSERT OR IGNORE INTO download_garbage VALUES(?1)",
+                                [&entry.id],
+                            )
+                            .map_err(unavailable)?;
+                        self.connection
+                            .execute("DELETE FROM download_entries WHERE id=?1", [&entry.id])
+                            .map_err(unavailable)?;
+                    }
+                    GroupAction::Pause | GroupAction::Resume if entry.state != "ready" => {
+                        let held = matches!(action, GroupAction::Pause);
+                        self.connection.execute("UPDATE download_entries SET held=?1,state=?2,revision=revision+1 WHERE id=?3",params![held,if held{"paused"}else{"queued"},entry.id]).map_err(unavailable)?;
+                    }
+                    GroupAction::Retry if entry.state == "failed" => {
+                        let partial = self.path(&entry.id, false)?;
+                        let backup = self.files.join(format!("{}.retry", entry.id));
+                        if backup.exists() {
+                            return Err(Error::DownloadsConflict);
+                        }
+                        open_file(&partial, false, false)?;
+                        std::fs::rename(&partial, &backup).map_err(unavailable)?;
+                        retries.push((partial, backup));
+                        self.connection.execute("UPDATE download_entries SET bytes_done=0,held=0,state='queued',revision=revision+1 WHERE id=?1",[entry.id]).map_err(unavailable)?;
+                    }
+                    _ => {}
+                }
+            }
+            self.connection.execute_batch("COMMIT").map_err(unavailable)
+        })();
+        if let Err(error) = result {
+            let _ = self.connection.execute_batch("ROLLBACK");
+            for (partial, backup) in retries {
+                std::fs::rename(backup, partial).map_err(unavailable)?;
+            }
+            return Err(error);
+        }
+        for (_, backup) in retries {
+            std::fs::remove_file(backup).map_err(unavailable)?;
+        }
+        self.collect_garbage()
+    }
+    pub fn playable_group(
+        &self,
+        viewer: &DownloadViewer,
+        selector: &GroupSelector,
+        expected: &str,
+    ) -> Result<Vec<LocalDownload>> {
+        if self.group_revision(viewer, selector)? != expected {
+            return Err(Error::DownloadsConflict);
+        }
+        let members = self.group_members(viewer, selector)?;
+        for member in &members {
+            self.playback_file(viewer, &member.id)?;
+        }
+        Ok(members)
     }
     pub fn artwork(&self, viewer: &DownloadViewer, id: &str) -> Result<Option<DownloadArtwork>> {
         self.entry(viewer, id)?;
@@ -1189,6 +1455,11 @@ impl DownloadStore {
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                         Err(_) => return Err(Error::DownloadsUnavailable),
                     }
+                }
+                match std::fs::remove_file(self.files.join(format!("{id}.retry"))) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(_) => return Err(Error::DownloadsUnavailable),
                 }
                 self.connection
                     .execute("DELETE FROM download_garbage WHERE id=?1", [id])
@@ -1576,14 +1847,33 @@ mod tests {
             ids.push(store.enroll(input).unwrap().id);
         }
         assert_eq!(store.list(&viewer(), None, 1).unwrap().items.len(), 1);
+        let groups = store.groups(&viewer()).unwrap();
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
         assert_eq!(
-            store.groups(&viewer()).unwrap(),
-            vec![DownloadGroup {
-                kind: "songs".into(),
-                parent_id: "album".into(),
-                group_id: "disc1".into(),
-                count: 4
-            }]
+            (
+                group.kind.as_str(),
+                group.parent_id.as_str(),
+                group.group_id.as_str(),
+                group.count
+            ),
+            ("songs", "album", "disc1", 4)
+        );
+        assert_eq!((group.bytes, group.bytes_done), (20, 0));
+        assert_eq!(group.quality.as_deref(), Some("original"));
+        assert_eq!(group.offline_access, "needsCheckIn");
+        assert_eq!(
+            group.revision,
+            store
+                .group_revision(
+                    &viewer(),
+                    &GroupSelector {
+                        kind: "songs".into(),
+                        parent_id: "album".into(),
+                        group_id: Some("disc1".into())
+                    }
+                )
+                .unwrap()
         );
         assert!(store.artwork(&viewer(), &ids[0]).unwrap().is_none());
         assert_eq!(

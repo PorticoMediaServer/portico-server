@@ -12,8 +12,42 @@ use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::Equa
 
 pub struct EngineState(pub Mutex<std::result::Result<Arc<Mpv>,Error>>);
 pub struct EqualizerState(pub Mutex<std::result::Result<EqualizerStore,Error>>);
+pub struct DownloadsState(pub Arc<Mutex<std::result::Result<crate::download_commands::DownloadsSession,Error>>>);
 fn caller(window:&WebviewWindow)->Result<()> {
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
+}
+#[tauri::command]
+async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,scope:crate::download_commands::ViewerScope)->Result<String>{
+    caller(&window)?;
+    let state=state.0.clone();
+    tauri::async_runtime::spawn_blocking(move||state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.bind(scope)).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[tauri::command]
+async fn desktop_downloads_release(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String)->Result<()>{
+    caller(&window)?;
+    let state=state.0.clone();
+    tauri::async_runtime::spawn_blocking(move||{state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.release(&lease);Ok(())}).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[tauri::command]
+async fn desktop_downloads_command(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,lease:String,operation:crate::download_commands::DownloadOperation)->Result<crate::download_commands::DownloadReply>{
+    caller(&window)?;
+    let state=state.0.clone();
+    tauri::async_runtime::spawn_blocking(move||state.lock().map_err(|_|Error::DownloadsUnavailable)?.as_mut().map_err(|e|*e)?.execute(&lease,operation)).await.map_err(|_|Error::DownloadsUnavailable)?
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct LocalLoad {local_source_id:String,generation:u64,start_position_ms:f64,autoplay:bool}
+#[tauri::command]
+async fn desktop_load_local(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,lease:String,source:LocalLoad)->Result<()>{
+    caller(&window)?;
+    let downloads=state.0.clone();
+    let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
+    tauri::async_runtime::spawn_blocking(move||{
+        let mut guard=downloads.lock().map_err(|_|Error::DownloadsUnavailable)?;
+        let session=guard.as_mut().map_err(|e|*e)?;
+        let path=session.local_file(&lease,&source.local_source_id)?;
+        native.load_local(&path,source.generation,source.start_position_ms,source.autoplay)
+    }).await.map_err(|_|Error::DownloadsUnavailable)?
 }
 #[tauri::command]
 fn desktop_command(window:WebviewWindow,state:tauri::State<EngineState>,command:Command)->Result<()> {
@@ -103,14 +137,17 @@ pub fn run() {
     let builder=tauri::Builder::default()
         .manage(EngineState(Mutex::new(Err(Error::EngineUnavailable))))
         .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
+        .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
         .manage(Arc::new(crate::window::ChromeState::default()))
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
             let path=app.path().app_local_data_dir().map_err(|_|preference_error())?.join("equalizer.sqlite3");
             let store=EqualizerStore::open(&path).map_err(|_|preference_error())?;
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
+            let downloads=app.path().app_local_data_dir().map_err(|_|preference_error())?.join("offline");
+            *app.state::<DownloadsState>().0.lock().map_err(|_|preference_error())?=crate::download_commands::DownloadsSession::open(&downloads);
             let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
                 .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the

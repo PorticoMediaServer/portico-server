@@ -14,6 +14,10 @@ type Initialize = unsafe extern "C" fn(Handle) -> c_int;
 type Destroy = unsafe extern "C" fn(Handle);
 type Set = unsafe extern "C" fn(Handle, *const c_char, *const c_char) -> c_int;
 type Cmd = unsafe extern "C" fn(Handle, *const *const c_char) -> c_int;
+#[repr(C)] union NodeValue { string:*mut c_char,integer:i64,list:*mut NodeList }
+#[repr(C)] struct Node { value:NodeValue,format:c_int }
+#[repr(C)] struct NodeList { length:c_int,values:*mut Node,keys:*mut *mut c_char }
+type CmdNode = unsafe extern "C" fn(Handle,*mut Node,*mut Node)->c_int;
 type Get = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
 type Free = unsafe extern "C" fn(*mut c_void);
 type ApiVersion = unsafe extern "C" fn() -> u64;
@@ -28,6 +32,7 @@ pub struct Api {
     option: Set,
     property: Set,
     command: Cmd,
+    command_node:CmdNode,
     get: Get,
     free: Free,
     wait: Wait,
@@ -43,7 +48,7 @@ impl Api {
             if version >> 16 != 2 { return Err(Error::EngineUnavailable); }
             Ok(Arc::new(Self { create:symbol!("mpv_create",Create), initialize:symbol!("mpv_initialize",Initialize),
                 destroy:symbol!("mpv_terminate_destroy",Destroy), option:symbol!("mpv_set_option_string",Set),
-                property:symbol!("mpv_set_property_string",Set), command:symbol!("mpv_command",Cmd),
+                property:symbol!("mpv_set_property_string",Set), command:symbol!("mpv_command",Cmd),command_node:symbol!("mpv_command_node",CmdNode),
                 get:symbol!("mpv_get_property_string",Get), free:symbol!("mpv_free",Free),wait:symbol!("mpv_wait_event",Wait), _library:lib,version }))
         }
     }
@@ -242,6 +247,32 @@ impl Mpv {
         self.set("pause","yes")?;
         // loadfile argv is a null-terminated vector, never parsed as a command string.
         self.command(&["loadfile",&source.url,"replace","-1",&format!("start={}",source.start_position_ms/1000.0)])
+    }
+    /// Only the native download store can resolve this path. Fixed per-file options keep
+    /// local demuxers from following a playlist/network reference and do not alter the
+    /// next remote source's protocol allowlist. No option map is accepted from IPC.
+    pub(crate) fn load_local(&self,path:&Path,next_generation:u64,start_ms:f64,autoplay:bool)->Result<()> {
+        if next_generation==0 || next_generation>9_007_199_254_740_991 || !start_ms.is_finite() || !(0.0..=1e12).contains(&start_ms) || !path.is_absolute(){return Err(Error::InvalidSource)}
+        let mut generation=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure)}
+        if next_generation<=self.newest_generation.load(Ordering::Acquire){return Err(Error::StaleGeneration)}
+        let keys=[c("start")?,c("demuxer-lavf-o")?,c("access-references")?,c("load-unsafe-playlists")?];
+        let values=[c(&(start_ms/1000.0).to_string())?,c("protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]")?,c("no")?,c("no")?];
+        let mut option_keys=keys.iter().map(|s|s.as_ptr().cast_mut()).collect::<Vec<_>>();
+        let mut option_values=values.iter().map(|s|Node{value:NodeValue{string:s.as_ptr().cast_mut()},format:1}).collect::<Vec<_>>();
+        let mut options=NodeList{length:keys.len() as c_int,values:option_values.as_mut_ptr(),keys:option_keys.as_mut_ptr()};
+        let strings=[c("loadfile")?,c(path.to_str().ok_or(Error::InvalidSource)?)?,c("replace")?];
+        let mut args=strings.iter().map(|s|Node{value:NodeValue{string:s.as_ptr().cast_mut()},format:1}).collect::<Vec<_>>();
+        args.push(Node{value:NodeValue{integer:-1},format:4});args.push(Node{value:NodeValue{list:&mut options},format:8});
+        let mut list=NodeList{length:args.len() as c_int,values:args.as_mut_ptr(),keys:ptr::null_mut()};
+        let mut command=Node{value:NodeValue{list:&mut list},format:7};
+        self.newest_generation.store(next_generation,Ordering::Release);
+        self.drain();self.loaded.store(false,Ordering::Release);self.frame_drawn.store(false,Ordering::Release);self.failed.store(false,Ordering::Release);
+        self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
+        *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
+        self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
+        status(unsafe{(self.api.command_node)(self.handle,&mut command,ptr::null_mut())})?;
+        *generation=next_generation;Ok(())
     }
     #[cfg(debug_assertions)]
     pub fn load_spike_fixture(&self,path:&Path)->Result<()> {
