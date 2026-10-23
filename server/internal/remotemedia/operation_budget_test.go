@@ -88,6 +88,29 @@ func TestOperationBudgetNestedFenceAndExpiredScope(t *testing.T) {
 	}
 }
 
+func TestOperationBudgetProgressiveEOFKeepsExactTerminalRead(t *testing.T) {
+	budget := NewOperationBudget(context.Background(), 1)
+	scope, release, err := budget.enter(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := retainOperationBody(scope, io.NopCloser(strings.NewReader("source")), release)
+	var exact [6]byte
+	if _, err = io.ReadFull(body, exact[:]); err != nil || string(exact[:]) != "source" {
+		t.Fatal(err)
+	}
+	var extra [1]byte
+	for range 2 {
+		if n, err := body.Read(extra[:]); n != 0 || err != io.EOF {
+			t.Fatal("budget release changed a verified EOF", n, err)
+		}
+	}
+	body.Close()
+	if counts := budget.Counts(); counts.Active != 0 || counts.Peak != 1 {
+		t.Fatal(counts)
+	}
+}
+
 func TestOperationBudgetMixedEndpointsNeverReceiveIndependentPools(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

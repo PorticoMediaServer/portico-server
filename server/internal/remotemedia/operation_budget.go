@@ -103,6 +103,8 @@ type admittedBody struct {
 	release func()
 	once    sync.Once
 	stop    func() bool
+	mu      sync.Mutex
+	end     error
 }
 
 func retainOperationBody(ctx context.Context, body io.ReadCloser, release func()) io.ReadCloser {
@@ -118,14 +120,30 @@ func (b *admittedBody) Close() error {
 	var err error
 	b.once.Do(func() {
 		b.stop()
+		b.mu.Lock()
+		if b.end == nil {
+			b.end = io.ErrClosedPipe
+		}
+		b.mu.Unlock()
 		err = b.body.Close()
 		b.release()
 	})
 	return err
 }
 func (b *admittedBody) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	end := b.end
+	b.mu.Unlock()
+	if end != nil {
+		return 0, end
+	}
 	n, err := b.body.Read(p)
 	if err != nil {
+		b.mu.Lock()
+		if b.end == nil {
+			b.end = err
+		}
+		b.mu.Unlock()
 		b.Close()
 	}
 	return n, err
