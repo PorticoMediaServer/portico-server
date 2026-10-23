@@ -8,7 +8,7 @@ import {createServer} from 'vite';
 
 const root = process.cwd(), scratch = await mkdtemp(path.join(root, '.backup-controls-'));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-let server, child, browser, page, chromeLog = '';
+let server, child, browser, page, chromeLog = '', chromeError;
 const results = [], exceptions = [];
 async function connect(url) {
   const socket = new WebSocket(url);
@@ -40,14 +40,15 @@ try {
   await server.listen();const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
   const profile = path.join(scratch, 'profile');await mkdir(profile);
   child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium', ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking', '--no-first-run', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`, `--disk-cache-dir=${path.join(scratch, 'cache')}`, 'about:blank'], {env: {...process.env, TMPDIR: scratch}, stdio: ['ignore', 'ignore', 'pipe']});
+  child.on('error', error => {chromeError = error.message;});
   child.stderr.on('data', bytes => {chromeLog = (chromeLog + bytes).slice(-16000);});
   let port;
-  for (let attempt = 0; attempt < 200 && child.exitCode === null; attempt++) {try {port = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];break;} catch {await pause(50);}}
-  assert.ok(port, `Chromium started; exit=${child.exitCode}; stderr=${chromeLog}`);
+  for (let attempt = 0; attempt < 200 && child.exitCode === null && !chromeError; attempt++) {try {port = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];break;} catch {await pause(50);}}
+  assert.ok(port, `Chromium started; exit=${child.exitCode}; error=${chromeError}; stderr=${chromeLog}`);
   const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();browser = await connect(version.webSocketDebuggerUrl);
   const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, {method: 'PUT'})).json();page = await connect(target.webSocketDebuggerUrl);
   await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
-  const navigate = async query => {await page.send('Page.navigate', {url: `${origin}/test/backup-picker.html${query}`});await waitFor('!!window.backupPickerProof');};
+  const navigate = async query => {const url = `${origin}/test/backup-picker.html${query}`;await page.send('Page.navigate', {url});await waitFor(`location.href===${JSON.stringify(url)} && !!window.backupPickerProof`);};
   await navigate('');await waitFor("!!document.querySelector('[aria-pressed]')");
   await check('bounded actual filesystem request and offered file eligibility', async () => {
     const state = await evaluate("({requests:backupPickerProof.requests,labels:[...document.querySelectorAll('[aria-pressed]')].map(b=>({text:b.textContent,disabled:b.disabled})),body:document.querySelector('[role=dialog]').textContent})");
@@ -98,5 +99,10 @@ try {
   });
   assert.deepEqual(exceptions, []);console.log(JSON.stringify({browser: version.Browser, kind: 'Controlled component/parser behavior only; no live backup or UI/frame acceptance', results}, null, 2));
 } finally {
-  page?.close();try {await browser?.send('Browser.close');} catch {}browser?.close();if (child?.exitCode === null) child.kill('SIGTERM');await server?.close();await rm(scratch, {recursive: true, force: true});
+  page?.close();try {await browser?.send('Browser.close');} catch {}browser?.close();
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise(resolve => child.once('exit', resolve));child.kill('SIGTERM');
+    if (!await Promise.race([exited.then(() => true), pause(2000).then(() => false)])) {child.kill('SIGKILL');await Promise.race([exited, pause(2000)]);}
+  }
+  await server?.close();await rm(scratch, {recursive: true, force: true});
 }
