@@ -18,7 +18,7 @@ export function createDetailBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new DetailService({api: life.api, scope: context.scope, requestId: async () => { life.assert(); return crypto.randomUUID(); }});
   const options = new PlaybackOptionsClient(localV1Http(life.api));
-  const versionReads = new WeakSet<PlaybackOptions>();
+  const versionReads = new WeakMap<PlaybackOptions, DetailProjection>();
   const recommendations = createRecommendations(context);
   const view = titleView('related', ['related', 'details', 'extras'], life.assert);
   let viewIdentity = '';
@@ -77,7 +77,7 @@ export function createDetailBindings(context: ScreenContext) {
   const versions = async (data: DetailProjection, signal?: AbortSignal) => {
     current(data); const value = await options.options(data.item.id, {}, life.signal(signal)); current(data);
     if (value.itemId !== data.item.id) throw new Error('Playback options target mismatch');
-    versionReads.add(value);
+    versionReads.set(value, data);
     return value;
   };
   const binding = {
@@ -87,7 +87,7 @@ export function createDetailBindings(context: ScreenContext) {
     async chooseVersion(data: DetailProjection, captured: PlaybackOptions, signal: AbortSignal, returnFocusRef?: RefObject<HTMLElement | null>): Promise<void> {
       current(data);signal.throwIfAborted();
       const action = data.actions.find(value => value.enabled && value.playback?.itemId === data.item.id && value.id !== 'start_over');
-      if (!context.effects.chooseVersion || !action || !versionReads.has(captured) || captured.itemId !== data.item.id || captured.versions.length < 2) throw new DOMException('Version choice unavailable', 'AbortError');
+      if (!context.effects.chooseVersion || !action || versionReads.get(captured) !== data || captured.itemId !== data.item.id || captured.versions.length < 2) throw new DOMException('Version choice unavailable', 'AbortError');
       const isCurrent = () => {try {current(data);return !signal.aborted;} catch {return false;}};
       await context.effects.chooseVersion({subject: {libraryId: data.scope.libraryId, itemId: data.item.id, title: data.item.title}, options: captured,
         signal: life.signal(signal), isCurrent, returnFocusRef,

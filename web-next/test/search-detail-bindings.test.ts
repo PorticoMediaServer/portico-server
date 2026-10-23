@@ -247,6 +247,11 @@ test('Title More passes original genuine Options to the single chooser and start
     await captured.playVersion('second', signal.signal);
     assert.deepEqual(starts, [{itemId: 'one', libraryId: 'library', startSeconds: .7, versionId: 'second'}]);
     assert.equal(optionsReads, 2);
+    await binding.select({libraryId: 'library', itemId: 'one'});
+    const replacement = binding.service.getSnapshot().data!;
+    assert.notEqual(replacement, data);
+    await assert.rejects(binding.chooseVersion(replacement, original, signal.signal), {name: 'AbortError'});
+    assert.equal(captured.isCurrent(), false);
     owner.retire();assert.equal(captured.isCurrent(), false);
     const before = owner.requests();await assert.rejects(captured.playVersion('first', signal.signal), {name: 'AbortError'});assert.equal(owner.requests(), before);
     closed.resolve();await showing;
