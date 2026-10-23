@@ -16395,6 +16395,12 @@ export const schemas = {
                     "artist": {
                       "type": "string"
                     },
+                    "author": {
+                      "type": "string"
+                    },
+                    "bookTitle": {
+                      "type": "string"
+                    },
                     "episodeNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -18197,6 +18203,924 @@ export const schemas = {
     "required": [
       "scope",
       "data"
+    ],
+    "type": "object"
+  },
+  "GetAdminDashboardReportRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminDashboardReportResponse": {
+    "properties": {
+      "context": {
+        "properties": {
+          "timeZone": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeZone",
+          "until"
+        ],
+        "type": "object"
+      },
+      "history": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "kinds": {
+                  "items": {
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      },
+                      "plays": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "watchedMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "plays",
+                      "watchedMs"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial",
+                "kinds"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1201,
+            "type": "array"
+          },
+          "busiestTimes": {
+            "items": {
+              "items": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxItems": 24,
+              "minItems": 24,
+              "type": "array"
+            },
+            "maxItems": 7,
+            "minItems": 7,
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "quietestStartHour": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "top": {
+            "items": {
+              "properties": {
+                "backdropRevision": {
+                  "type": "string"
+                },
+                "countUnit": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "people": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterRevision": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "itemId",
+                "title",
+                "plays",
+                "people",
+                "countUnit"
+              ],
+              "type": "object"
+            },
+            "maxItems": 6,
+            "type": "array"
+          },
+          "topKind": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "busiestTimes",
+          "quietestStartHour",
+          "top",
+          "topKind"
+        ],
+        "type": "object"
+      },
+      "load": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "observedAt": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "period": {
+            "type": "string"
+          },
+          "series": {
+            "additionalProperties": {
+              "items": {
+                "properties": {
+                  "t": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "v": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "t",
+                  "v"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          "status": {
+            "additionalProperties": {
+              "properties": {
+                "detail": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "status",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          },
+          "window": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "window",
+          "series",
+          "status",
+          "observedAt"
+        ],
+        "type": "object"
+      },
+      "people": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "kinds": {
+                  "items": {
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      },
+                      "plays": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "watchedMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "plays",
+                      "watchedMs"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "profiles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "watchedMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profiles",
+                "plays",
+                "watchedMs",
+                "kinds"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "nextCursor": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "items",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "summary": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "converted": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "from": {
+            "type": "string"
+          },
+          "mostActive": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "plays"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "mostPlayed": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "plays"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "people": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "period": {
+            "type": "string"
+          },
+          "plays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          },
+          "watchedMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "plays",
+          "people",
+          "watchedMs",
+          "converted",
+          "mostPlayed",
+          "mostActive"
+        ],
+        "type": "object"
+      },
+      "table": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "entries": {
+            "items": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "completed": {
+                  "type": "boolean"
+                },
+                "device": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "episode": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "parentTitle": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "season": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "watchedMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "watchedMs",
+                "location",
+                "id",
+                "user",
+                "accountId",
+                "kind",
+                "title",
+                "libraryId",
+                "startedAt",
+                "positionMs",
+                "durationMs",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "entries",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "topPlayed": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "backdropRevision": {
+                  "type": "string"
+                },
+                "countUnit": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "people": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterRevision": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "itemId",
+                "title",
+                "plays",
+                "people",
+                "countUnit"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "period": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "topKind": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
+          "items",
+          "topKind"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "context",
+      "history",
+      "people",
+      "summary",
+      "topPlayed",
+      "table",
+      "load"
+    ],
+    "type": "object"
+  },
+  "GetAdminDashboardStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminDashboardStatusResponse": {
+    "properties": {
+      "alerts": {
+        "items": {
+          "properties": {
+            "action": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            "code": {
+              "type": "string"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "major": {
+              "type": "boolean"
+            },
+            "params": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "severity": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "severity",
+            "params",
+            "action",
+            "major"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "observedAt": {
+        "type": "string"
+      },
+      "scans": {
+        "items": {
+          "properties": {
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "current": {
+              "type": "string"
+            },
+            "discovered": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "libraryName": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "libraryId",
+            "libraryName",
+            "kind",
+            "discovered",
+            "analyzed",
+            "phase"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tasks": {
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "libraryName": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "processed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "state",
+                "phase"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "items"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "observedAt",
+      "alerts",
+      "scans",
+      "tasks"
     ],
     "type": "object"
   },
@@ -23598,6 +24522,276 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminPlayHistoryDashboardRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryDashboardResponse": {
+    "properties": {
+      "buckets": {
+        "items": {
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "kinds": {
+              "items": {
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchedMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "plays",
+                  "watchedMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "partial": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "partial",
+            "kinds"
+          ],
+          "type": "object"
+        },
+        "maxItems": 1201,
+        "type": "array"
+      },
+      "busiestTimes": {
+        "items": {
+          "items": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxItems": 24,
+          "minItems": 24,
+          "type": "array"
+        },
+        "maxItems": 7,
+        "minItems": 7,
+        "type": "array"
+      },
+      "from": {
+        "type": "string"
+      },
+      "period": {
+        "type": "string"
+      },
+      "quietestStartHour": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
+      "timeZone": {
+        "type": "string"
+      },
+      "top": {
+        "items": {
+          "properties": {
+            "backdropRevision": {
+              "type": "string"
+            },
+            "countUnit": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "people": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "posterRevision": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "plays",
+            "people",
+            "countUnit"
+          ],
+          "type": "object"
+        },
+        "maxItems": 6,
+        "type": "array"
+      },
+      "topKind": {
+        "type": "string"
+      },
+      "until": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "period",
+      "timeZone",
+      "from",
+      "until",
+      "buckets",
+      "busiestTimes",
+      "quietestStartHour",
+      "top",
+      "topKind"
+    ],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryPeopleRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminPlayHistoryPeopleResponse": {
+    "properties": {
+      "buckets": {
+        "items": {
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "partial": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "partial"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "from": {
+        "type": "string"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "kinds": {
+              "items": {
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchedMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "plays",
+                  "watchedMs"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "profiles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "username": {
+              "type": "string"
+            },
+            "watchedMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId",
+            "username",
+            "profiles",
+            "plays",
+            "watchedMs",
+            "kinds"
+          ],
+          "type": "object"
+        },
+        "maxItems": 100,
+        "type": "array"
+      },
+      "nextCursor": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "period": {
+        "type": "string"
+      },
+      "timeZone": {
+        "type": "string"
+      },
+      "until": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "period",
+      "timeZone",
+      "from",
+      "until",
+      "buckets",
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetAdminPlayHistoryRequest": {
     "properties": {},
     "required": [],
@@ -23605,6 +24799,28 @@ export const schemas = {
   },
   "GetAdminPlayHistoryResponse": {
     "properties": {
+      "buckets": {
+        "items": {
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "partial": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "partial"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "entries": {
         "items": {
           "properties": {
@@ -23639,6 +24855,9 @@ export const schemas = {
             "libraryId": {
               "type": "string"
             },
+            "location": {
+              "type": "string"
+            },
             "parentTitle": {
               "type": "string"
             },
@@ -23666,9 +24885,16 @@ export const schemas = {
             },
             "user": {
               "type": "string"
+            },
+            "watchedMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "watchedMs",
+            "location",
             "id",
             "user",
             "accountId",
@@ -23684,16 +24910,33 @@ export const schemas = {
         },
         "type": "array"
       },
+      "from": {
+        "type": "string"
+      },
       "nextCursor": {
+        "type": "string"
+      },
+      "period": {
+        "type": "string"
+      },
+      "timeZone": {
         "type": "string"
       },
       "total": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "until": {
+        "type": "string"
       }
     },
     "required": [
+      "period",
+      "timeZone",
+      "from",
+      "until",
+      "buckets",
       "entries",
       "nextCursor"
     ],
@@ -23706,10 +24949,35 @@ export const schemas = {
   },
   "GetAdminPlayHistorySummaryResponse": {
     "properties": {
+      "buckets": {
+        "items": {
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "partial": {
+              "type": "boolean"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end",
+            "partial"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "converted": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "from": {
+        "type": "string"
       },
       "mostActive": {
         "items": {
@@ -23764,14 +25032,24 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "timeZone": {
+        "type": "string"
+      },
+      "until": {
+        "type": "string"
+      },
       "watchedMs": {
         "maximum": 9007199254740991,
-        "minimum": 0,
+        "minimum": -9007199254740991,
         "type": "integer"
       }
     },
     "required": [
       "period",
+      "timeZone",
+      "from",
+      "until",
+      "buckets",
       "plays",
       "people",
       "watchedMs",
@@ -25447,10 +26725,38 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "buckets": {
+            "items": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "start",
+                "end",
+                "partial"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": "string"
+          },
           "observedAt": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "period": {
+            "type": "string"
           },
           "series": {
             "additionalProperties": {
@@ -25496,11 +26802,22 @@ export const schemas = {
             },
             "type": "object"
           },
+          "timeZone": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string"
+          },
           "window": {
             "type": "string"
           }
         },
         "required": [
+          "period",
+          "timeZone",
+          "from",
+          "until",
+          "buckets",
           "window",
           "series",
           "status",
@@ -31804,6 +33121,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -31871,7 +33211,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -110610,6 +111951,11 @@ export const schemas = {
                   "atmos": {
                     "type": "boolean"
                   },
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "channels": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -110632,6 +111978,11 @@ export const schemas = {
                   },
                   "layout": {
                     "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "title": {
                     "type": "string"
@@ -137150,6 +138501,13 @@ export const schemas = {
       "setupRequired": {
         "type": "boolean"
       },
+      "signIn": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
       "version": {
         "type": "string"
       }
@@ -137157,6 +138515,7 @@ export const schemas = {
     "required": [
       "id",
       "name",
+      "signIn",
       "setupRequired",
       "hostedConfigured",
       "hostedAttached",
@@ -138593,6 +139952,12 @@ export const schemas = {
       "items": {
         "items": {
           "properties": {
+            "address": {
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
             "bandwidthKbps": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -138619,6 +139984,10 @@ export const schemas = {
                 "name"
               ],
               "type": "object"
+            },
+            "currentBitrateKbps": {
+              "nullable": true,
+              "type": "number"
             },
             "decision": {
               "properties": {
@@ -138704,6 +140073,60 @@ export const schemas = {
               "required": [],
               "type": "object"
             },
+            "delivery": {
+              "properties": {
+                "audioBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "audioChannels": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "streams": {
+                  "items": {
+                    "properties": {
+                      "action": {
+                        "type": "string"
+                      },
+                      "inputCodec": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "outputCodec": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "inputCodec",
+                      "outputCodec",
+                      "action"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "videoBitrateBps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "videoHeight": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "streams"
+              ],
+              "type": "object"
+            },
             "device": {
               "properties": {
                 "id": {
@@ -138767,6 +140190,12 @@ export const schemas = {
                 "artist": {
                   "type": "string"
                 },
+                "author": {
+                  "type": "string"
+                },
+                "bookTitle": {
+                  "type": "string"
+                },
                 "episodeNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -138812,7 +140241,144 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "live": {
+              "type": "boolean"
+            },
             "location": {
+              "type": "string"
+            },
+            "media": {
+              "properties": {
+                "audio": {
+                  "properties": {
+                    "atmos": {
+                      "type": "boolean"
+                    },
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "commentary": {
+                      "type": "boolean"
+                    },
+                    "default": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "visualImpaired": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "codec",
+                    "atmos",
+                    "default",
+                    "commentary",
+                    "visualImpaired"
+                  ],
+                  "type": "object"
+                },
+                "subtitles": {
+                  "properties": {
+                    "format": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "format"
+                  ],
+                  "type": "object"
+                },
+                "video": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "bitrateKbps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "fps": {
+                      "type": "number"
+                    },
+                    "hdr": {
+                      "type": "string"
+                    },
+                    "height": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profile": {
+                      "type": "string"
+                    },
+                    "width": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "codec"
+                  ],
+                  "type": "object"
+                },
+                "videoHardware": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "platform": {
               "type": "string"
             },
             "positionMs": {
@@ -138888,6 +140454,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "rateWindowMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "startedAt": {
               "type": "string"
             },
@@ -138937,6 +140508,9 @@ export const schemas = {
             }
           },
           "required": [
+            "currentBitrateKbps",
+            "rateWindowMs",
+            "live",
             "id",
             "protocol",
             "user",
@@ -142349,6 +143923,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -142416,7 +144013,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -143992,6 +145590,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -144150,6 +145771,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session"
         ],
         "type": "object"
@@ -144208,6 +145830,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "challenge": {
             "properties": {
               "expiresAt": {
@@ -144239,6 +145884,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "challenge"
         ],
         "type": "object"
@@ -144297,6 +145943,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -144322,6 +145991,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "deviceApprovalPending",
           "deviceId",
           "installationId"
@@ -150792,6 +152462,29 @@ export const schemas = {
           "canManage": {
             "type": "boolean"
           },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
           "custodyPending": {
             "type": "boolean"
           },
@@ -150959,6 +152652,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session",
           "passwordChangeRequired"
         ],
@@ -151020,6 +152714,29 @@ export const schemas = {
           },
           "canManage": {
             "type": "boolean"
+          },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
           },
           "custodyPending": {
             "type": "boolean"
@@ -151188,6 +152905,7 @@ export const schemas = {
           "account",
           "profiles",
           "canManage",
+          "capabilities",
           "session",
           "resetFileOwnerSession"
         ],
@@ -151296,6 +153014,29 @@ export const schemas = {
       },
       "canManage": {
         "type": "boolean"
+      },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
       },
       "challenge": {
         "properties": {
@@ -151475,7 +153216,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -151654,6 +153396,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -151832,7 +153597,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -151966,6 +153732,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -152144,7 +153933,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -152957,6 +154747,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153124,6 +154937,7 @@ export const schemas = {
       "account",
       "profiles",
       "canManage",
+      "capabilities",
       "session",
       "passwordChangeRequired"
     ],
@@ -153235,6 +155049,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153302,7 +155139,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -153604,6 +155442,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -153671,7 +155532,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -153874,6 +155736,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -154052,7 +155937,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -165533,6 +167419,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "challenge": {
         "properties": {
           "expiresAt": {
@@ -165711,7 +167620,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },
@@ -172030,6 +173940,29 @@ export const schemas = {
       "canManage": {
         "type": "boolean"
       },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
       "custodyPending": {
         "type": "boolean"
       },
@@ -172097,7 +174030,8 @@ export const schemas = {
       "serverId",
       "account",
       "profiles",
-      "canManage"
+      "canManage",
+      "capabilities"
     ],
     "type": "object"
   },

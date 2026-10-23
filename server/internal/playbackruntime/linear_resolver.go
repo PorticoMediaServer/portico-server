@@ -112,10 +112,10 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 	if e := r.policy.AllowedTxContext(ctx, p, "", tx); e != nil {
 		return v, e
 	}
-	var access, gen, state, name string
+	var access, gen, state, name, number string
 	var revision int64
 	var tuners int
-	e := tx.QueryRowContext(ctx, `SELECT s.state,s.active_generation,s.revision,s.tuner_count,c.name,COALESCE(x.viewer_access,'owner-only') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE s.id=? AND c.channel_id=?`, ref.SourceID, ref.ChannelID).Scan(&state, &gen, &revision, &tuners, &name, &access)
+	e := tx.QueryRowContext(ctx, `SELECT s.state,s.active_generation,s.revision,s.tuner_count,c.name,c.number,COALESCE(x.viewer_access,'owner-only') FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE s.id=? AND c.channel_id=?`, ref.SourceID, ref.ChannelID).Scan(&state, &gen, &revision, &tuners, &name, &number, &access)
 	if errors.Is(e, sql.ErrNoRows) {
 		return v, channelFault("channel_removed", 410)
 	}
@@ -132,7 +132,7 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		return v, channelFault("guide_refresh_required", 409)
 	}
 	ref.Generation = gen
-	v = playback.LinearSelection{Reference: ref, Name: name, SourceFence: liveSourceFence(ctx, tx, r.live, ref, revision, tuners), Quality: playback.ControlQuality{Mode: "original", AllowLossy: true}}
+	v = playback.LinearSelection{Reference: ref, Name: name, Number: number, SourceFence: liveSourceFence(ctx, tx, r.live, ref, revision, tuners), Quality: playback.ControlQuality{Mode: "original", AllowLossy: true}}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var programme playback.LinearProgramme
 	var programmeFacts string
@@ -225,7 +225,7 @@ func (r *channelResolver) ResolveTx(ctx context.Context, tx *sql.Tx, p identity.
 	}
 	ref.Generation = t.Generation
 	ref.SourceID = t.ChannelID
-	v := playback.LinearSelection{Reference: ref, Name: t.Name, ItemID: t.Entry.ItemID, AssetID: t.Entry.AssetID, LibraryID: t.Entry.LibraryID, SourceFence: t.Entry.SourceFence, EntryID: t.Entry.ID, EntryStartMS: t.Entry.StartMS, EntryEndMS: t.Entry.EndMS, SourceOffsetMS: t.Entry.SourceOffsetMS, DurationMS: t.Candidate.DurationMS, Title: t.Entry.Title, LogoItemID: t.LogoItemID, Overlay: playback.LinearOverlay(t.Overlay), Quality: playback.ControlQuality{Mode: t.Quality.Mode, AllowLossy: t.Quality.AllowLossy, AllowHDRToSDR: t.Quality.AllowHDRToSDR}}
+	v := playback.LinearSelection{Reference: ref, Name: t.Name, Number: t.Number, ItemID: t.Entry.ItemID, AssetID: t.Entry.AssetID, LibraryID: t.Entry.LibraryID, SourceFence: t.Entry.SourceFence, EntryID: t.Entry.ID, EntryStartMS: t.Entry.StartMS, EntryEndMS: t.Entry.EndMS, SourceOffsetMS: t.Entry.SourceOffsetMS, DurationMS: t.Candidate.DurationMS, Title: t.Entry.Title, LogoItemID: t.LogoItemID, Overlay: playback.LinearOverlay(t.Overlay), Quality: playback.ControlQuality{Mode: t.Quality.Mode, AllowLossy: t.Quality.AllowLossy, AllowHDRToSDR: t.Quality.AllowHDRToSDR}}
 	if t.Quality.MaxBitrate > 0 {
 		s := int(t.Quality.MaxBitrate)
 		v.Quality.MaxBitrateBPS = &s
