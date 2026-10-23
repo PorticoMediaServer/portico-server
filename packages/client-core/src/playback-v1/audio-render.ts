@@ -94,7 +94,10 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
   const seekIndex = mode === 'direct' && isObj(v.seekIndex) && text(v.seekIndex.url) ? Object.freeze({url: v.seekIndex.url as string}) : undefined;
   let loudnessEnvelope:AudioRenderV2['loudnessEnvelope'];
  if(v.loudnessEnvelope!==undefined){const e=v.loudnessEnvelope;if(!isObj(e)||e.intervalMs!==100||!Array.isArray(e.startLufs)||!Array.isArray(e.endLufs)||e.startLufs.length>30||e.endLufs.length>30||[...e.startLufs,...e.endLufs].some(x=>finite(x,-120,10)===undefined))return undefined;loudnessEnvelope=Object.freeze({intervalMs:100,startLufs:Object.freeze([...e.startLufs]),endLufs:Object.freeze([...e.endLufs])});}
- if(v.loudnessAppliedDb!==undefined&&finite(v.loudnessAppliedDb,-60,30)===undefined)return undefined;
+ // A baked stream cannot also instruct the device to apply source gain.
+ // Refuse contradictory metadata instead of relying on every renderer to
+ // notice that the gain has already been applied.
+ if(v.loudnessAppliedDb!==undefined&&(finite(v.loudnessAppliedDb,-60,30)===undefined||isObj(v.gain)))return undefined;
  if(v.conversionGainDb!==undefined&&finite(v.conversionGainDb,-60,30)===undefined)return undefined;
  const plan = {
  ...(loudnessEnvelope?{loudnessEnvelope}:{}),
