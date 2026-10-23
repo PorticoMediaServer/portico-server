@@ -15,11 +15,40 @@ import (
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/downloads"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/persistence"
 )
 
+func completedLocalFoundationFixture(t *testing.T) (Dependencies, identity.Envelope) {
+	t.Helper()
+	state := t.TempDir()
+	db, e := persistence.Open(filepath.Join(state, "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { db.Close() })
+	id, e := identity.New(db, state)
+	if e != nil {
+		t.Fatal(e)
+	}
+	secret, e := id.BrowserSetupToken(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup, e := id.SetupWithOptions(context.Background(), identity.SetupOptions{RequestID: "77777777-7777-4777-8777-777777777777", SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Fixture"}, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	control, e := hosted.New(db, id, "", "", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	return Dependencies{DB: db, Identity: id, Hosted: control, Catalog: catalog.New(db), Origins: []string{"http://127.0.0.1:11111"}}, setup.Envelope
+}
+
 func TestFoundationContractAndReplay(t *testing.T) {
-	d, viewer := logoutHTTPFixture(t)
+	d, viewer := completedLocalFoundationFixture(t)
 	settleCompactCatalogue(t, d.DB)
 	h := New(d)
 	w := httptest.NewRecorder()
@@ -70,7 +99,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 	if ratings.Header().Get("ETag") == "" || held.Code != 304 || held.Body.Len() != 0 {
 		t.Fatalf("a held rating list: %d %q %s", held.Code, ratings.Header().Get("ETag"), held.Body.String())
 	}
-	restrictionsRequest := httptest.NewRequest("GET", "/v1/direct/profiles/profile/restrictions", nil)
+	restrictionsRequest := httptest.NewRequest("GET", "/v1/direct/profiles/"+viewer.Viewer.ProfileID+"/restrictions", nil)
 	restrictionsRequest.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
 	restrictions := httptest.NewRecorder()
 	h.ServeHTTP(restrictions, restrictionsRequest)
@@ -135,7 +164,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		t.Fatalf("viewer bootstrap: %d %s", bootstrap.Code, bootstrap.Body.String())
 	}
 	var startup BootstrapDocument
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &startup); err != nil || startup.Server.ID != d.Identity.ID() || startup.Me.Viewer.ProfileID != "profile" || startup.Preferences.DeviceClass != "web" || startup.HomeLayout.Revision < 1 {
+	if err := json.Unmarshal(bootstrap.Body.Bytes(), &startup); err != nil || startup.Server.ID != d.Identity.ID() || startup.Me.Viewer.ProfileID != viewer.Viewer.ProfileID || startup.Preferences.DeviceClass != "web" || startup.HomeLayout.Revision < 1 {
 		t.Fatalf("bootstrap document: %+v %v", startup, err)
 	}
 	conditionalBootstrap := httptest.NewRequest("GET", "/v1/bootstrap", nil)
@@ -219,7 +248,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-rating-systems.json", "GetRatingSystemsResponse", "GET", "/v1/rating-systems", nil, ratings, "viewer"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-direct-profile-restrictions.json", "GetDirectProfileRestrictionsResponse", "GET", "/v1/direct/profiles/profile/restrictions", nil, restrictions, "owner"); err != nil {
+		if err := contract.Record("../../testdata/contracts/get-direct-profile-restrictions.json", "GetDirectProfileRestrictionsResponse", "GET", "/v1/direct/profiles/"+viewer.Viewer.ProfileID+"/restrictions", nil, restrictions, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-direct-pin-recovery.json", "GetDirectPinRecoveryResponse", "GET", "/v1/direct/pin-recovery", nil, pinRecovery, "owner"); err != nil {
@@ -231,9 +260,6 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-direct-registration-policy.json", "GetDirectRegistrationPolicyResponse", "GET", "/v1/direct/registration-policy", nil, registration, "owner"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-direct-account.json", "GetDirectAccountResponse", "GET", "/v1/direct", nil, direct, "owner"); err != nil {
-			t.Fatal(err)
-		}
 		if err := contract.Record("../../testdata/contracts/get-devices.json", "GetDevicesResponse", "GET", "/v1/devices", nil, devices, "viewer"); err != nil {
 			t.Fatal(err)
 		}
@@ -241,6 +267,11 @@ func TestFoundationContractAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-admin-updates.json", "GetAdminUpdatesResponse", "GET", "/v1/admin/updates", nil, updates, "owner"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if value := os.Getenv("PORTICO_CONTRACT_UPDATE"); value == "1" || value == "get-direct-account" {
+		if err := contract.Record("../../testdata/contracts/get-direct-account.json", "GetDirectAccountResponse", "GET", "/v1/direct", nil, direct, "owner"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -547,7 +578,7 @@ func TestTypedPINRecoveryAndResetAuthorityAndContract(t *testing.T) {
 	if primary.Code != 200 {
 		t.Fatalf("primary PIN reset: %d %s", primary.Code, primary.Body.String())
 	}
-	if os.Getenv("PORTICO_CONTRACT_UPDATE") == "1" {
+	if value := os.Getenv("PORTICO_CONTRACT_UPDATE"); value == "1" || value == "post-direct-profile-pin-reset" {
 		if err := contract.Record("../../testdata/contracts/post-direct-profile-pin-reset.json", "PostDirectProfilePinResetResponse", "POST", "/v1/direct/profiles/profile/pin-reset", []byte(`{"pin":""}`), primary, "owner"); err != nil {
 			t.Fatal(err)
 		}

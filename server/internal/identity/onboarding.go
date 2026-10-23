@@ -147,6 +147,9 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 	out := SetupResult{}
 	var receipt []byte
 	if q.AuthMode == "local" {
+		if e = ValidateNewLocalPasswordTx(ctx, tx, q.Password); e != nil {
+			return SetupResult{}, e
+		}
 		aid, pid := Token(), Token()
 		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,?,?)`, aid, q.Username, hash, pid); e != nil {
 			return SetupResult{}, e

@@ -125,7 +125,19 @@ func TestInviteOnlyRegistrationRefusesWithoutARedeemedInvitation(t *testing.T) {
 
 func TestCapabilitiesDescribeTheServerAndNotAnAccount(t *testing.T) {
 	ctx := context.Background()
-	s, _, _ := directFixture(t)
+	s, db, _ := familyFixture(t)
+	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
+		t.Fatal(e)
+	}
+	secret, e := s.BrowserSetupToken(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Complete the real Local setup. A hand-seeded account is not a completed
+	// onboarding fixture and must not make the producer invent readiness.
+	if _, e = s.SetupWithOptions(ctx, SetupOptions{RequestID: "66666666-6666-4666-8666-666666666666", SetupToken: secret, AuthMode: "local", Username: "owner", Password: "Local-password1!", Name: "Fixture"}, true); e != nil {
+		t.Fatal(e)
+	}
 	out, e := s.Capabilities(ctx)
 	if e != nil {
 		t.Fatal(e)
