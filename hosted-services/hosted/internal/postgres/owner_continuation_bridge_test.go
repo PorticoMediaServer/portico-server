@@ -14,13 +14,16 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/httpapi"
 	"portico.local/hosted/internal/identity"
+	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/security"
 	"portico.local/hosted/internal/serverreturn"
+	"portico.local/hosted/internal/sessions"
 )
 
 func TestOwnerContinuationActualProducerBridge(t *testing.T) {
@@ -38,7 +41,14 @@ func TestOwnerContinuationActualProducerBridge(t *testing.T) {
 	}
 	dir := directory.New(f.store, keys)
 	claimHandler := &httpapi.ClaimHandler{Service: service, CaptureAuthority: f.store.CaptureClaimAuthority, Web: &httpapi.ClaimWeb{Store: f.store, Keys: keys, Audience: "https://hosted.example"}}
-	handler := (&httpapi.Handler{Identity: identity.New(f.store), Directory: dir, Claims: claimHandler, ServerReturns: &httpapi.ServerReturns{Store: f.store, Directory: dir}}).Routes()
+	ids := identity.New(f.store)
+	handler := (&httpapi.Handler{
+		Identity:  ids,
+		Security:  &postgres.AccountSecurity{Store: f.store, Keys: keys, Identity: ids, Lifetime: 15 * time.Minute},
+		Sessions:  sessions.New(f.store, keys, 15*time.Minute),
+		Directory: dir, Claims: claimHandler,
+		ServerReturns: &httpapi.ServerReturns{Store: f.store, Directory: dir},
+	}).Routes()
 	// The token is newly generated in this isolated fixture and exists only in
 	// memory and its ordinary hashed account-session row, never an artifact.
 	token := security.RandomID("")
