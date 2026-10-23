@@ -224,6 +224,7 @@ function DownloadRules({snapshot, busy, onChange, onChooseFolder}: {snapshot: Sa
 export function ServerDownloads({service, operations, effects, artwork, online, embedded = false, managed = false}: {service: DownloadsService; operations: SavedOperations; effects: SavedDownloadEffects; artwork: ArtworkForPreparation; online: boolean; embedded?: boolean; managed?: boolean}) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [qualities, setQualities] = useState<ReadonlyMap<string, string>>(new Map()), [confirmation, setConfirmation] = useState<Readonly<{item: DownloadPreparation; action: 'remove' | 'cancel'}>>();
+  const [dismissedFailure, setDismissedFailure] = useState<DownloadsSnapshot>();
   const pendingSaves = useRef(new Set<string>()), [saving, setSaving] = useState<readonly string[]>([]);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -233,7 +234,7 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     return () => { controller.abort(); if (!managed) service.stop(); };
   }, [service, operations, online, managed]);
   const act = (item: DownloadPreparation, action: DownloadAction) => {
-    if (!online || !operations.current) return;
+    if (!online || !operations.current || service.getSnapshot().busy.includes(item.id)) return;
     void operations.run(async () => {
       await service.act(item, action);
       const failure = service.getSnapshot().failure;
@@ -257,7 +258,8 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     <div className={styles.downloadHeading}><h2>{embedded ? t('downloads.onServer') : s('next.saved.prepared')}</h2>{!embedded && snapshot.usage && <span>{t('web.downloads.usage', {size: defaultI18n.bytes(snapshot.usage.profileBytes)})}</span>}</div>
     {!embedded && <p className={styles.browserNote}><Icon name="i-info" size={18} />{s('next.saved.browserNote')}</p>}
     {snapshot.phase === 'ready' && !snapshot.items.length && !snapshot.requests.length && !embedded && <StateView title={t('web.downloads.emptyTitle')} body={t('web.downloads.emptyBody')} />}
-    {snapshot.phase === 'error' && !snapshot.items.length && !embedded && <StateView title={t('downloads.serverListFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.refresh(); }}} />}
+    <Dialog open={!embedded && snapshot.phase === 'error' && snapshot !== dismissedFailure} onOpenChange={open => { if (!open) setDismissedFailure(snapshot); }} title={s('next.saved.loadFailed')} description={s('next.saved.loadFailedBody')}
+      footer={<><Button size="small" onClick={() => setDismissedFailure(snapshot)}>{t('action.close')}</Button><Button size="small" variant="primary" disabled={!online} onClick={() => { setDismissedFailure(snapshot); void service.refresh(); }}>{t('action.tryAgain')}</Button></>}><Fragment /></Dialog>
     <div className={styles.downloadList} role="list">{snapshot.items.map(item => <div key={item.id} className={styles.downloadRow} role="listitem">
       <span className={styles.art} data-shape={downloadShape(item.title)}><Artwork source={artwork(item)} alt="" /></span>
       <div className={styles.title}><b>{item.title.title}</b><DownloadFacts title={item.title} quality={item.quality === 'original' ? t('web.downloads.original') : qualities.get(item.quality)} bytes={item.artifact.bytes} browser /></div>
@@ -270,10 +272,10 @@ export function ServerDownloads({service, operations, effects, artwork, online, 
     </div>)}</div>
     {!!snapshot.requests.length && <><div className={styles.downloadHeading}><h2>{t('web.downloads.requestsTitle')}</h2></div><div className={styles.downloadList} role="list">{snapshot.requests.map(({request, title}) => <div className={styles.request} key={request.requestId} role="listitem"><b>{title}</b><span>{request.totalKnown ? t('web.downloads.requestProgress', {ready: request.ready, total: request.total}) : t('web.downloads.requestPreparing')}{request.failed > 0 && <small>{t('web.downloads.requestFailed', {failed: request.failed})}</small>}<Progress percent={request.totalKnown && request.total > 0 ? request.ready / request.total * 100 : undefined} /></span></div>)}</div></>}
     {snapshot.nextCursor && <Button size="small" className={styles.showMore} loading={snapshot.loadingMore} disabled={!online} onClick={() => { void service.loadMore(); }}>{t('action.showMore')}</Button>}
-    <Dialog open={!!confirmation} onOpenChange={open => { if (!open) setConfirmation(undefined); }} initialFocusRef={cancel}
+    <Dialog open={!!confirmation} onOpenChange={open => { if (!open && (!confirmation || !service.getSnapshot().busy.includes(confirmation.item.id))) setConfirmation(undefined); }} initialFocusRef={cancel}
       title={t(confirmation?.action === 'cancel' ? 'confirm.stopPreparing.title' : 'confirm.removePrepared.title')}
       description={t(confirmation?.action === 'cancel' ? 'confirm.stopPreparing.body' : 'confirm.removePrepared.body')}
-      footer={<><Button ref={cancel} size="small" onClick={() => setConfirmation(undefined)}>{t('action.cancel')}</Button><Button size="small" variant="primary" className={confirmation?.action === 'remove' ? styles.destructive : undefined} loading={!!confirmation && snapshot.busy.includes(confirmation.item.id)} onClick={() => { if (confirmation) act(confirmation.item, confirmation.action); }}>{t(confirmation?.action === 'cancel' ? 'web.downloads.stop' : 'action.removeShort')}</Button></>}><Fragment /></Dialog>
+      footer={<><Button ref={cancel} size="small" disabled={!!confirmation && snapshot.busy.includes(confirmation.item.id)} onClick={() => setConfirmation(undefined)}>{t('action.cancel')}</Button><Button size="small" variant="primary" disabled={!online} className={confirmation?.action === 'remove' ? styles.destructive : undefined} loading={!!confirmation && snapshot.busy.includes(confirmation.item.id)} onClick={() => { if (confirmation) act(confirmation.item, confirmation.action); }}>{t(confirmation?.action === 'cancel' ? 'web.downloads.stop' : 'action.removeShort')}</Button></>}><Fragment /></Dialog>
   </div>;
 }
 function ServerStatus({item, service}: {item: DownloadPreparation; service: DownloadsService}) {
