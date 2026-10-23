@@ -8,3 +8,8 @@ export {ReaderSearch, ReaderBookmarks} from '../../kit/reader/ReaderSearch';
 export type {ReaderSearchProps, ReaderSearchHit, ReaderBookmarkEntry} from '../../kit/reader/ReaderSearch';
 export {ReadBookHero, ReadBookFacts, ReadBookSections} from '../../kit/reader/ReadBookHero';
 export type {ReadBookHeroProps, ReadDetailFact} from '../../kit/reader/ReadBookHero';
+export {ReaderSurface} from './ReaderSurface';
+export type {ReaderSurfaceProps} from './ReaderSurface';
+export type {ReaderMountAuthority} from './mount';
+export {ReadReader} from './ReadReader';
+export type {ReadReaderProps, ReaderChromePresentation} from './ReadReader';

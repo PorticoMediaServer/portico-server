@@ -3,6 +3,8 @@ export type ReadTurn = 'next' | 'previous';
 
 /** Desktop-read 6, phone-read 5, motion 5.1. Physical arrows mirror in RTL. */
 export function readKeyTurn(key: string, direction: ReadDirection, shift = false): ReadTurn | undefined {
+  // Keep the browser/renderer text-selection shortcuts; Shift+Space is reading back.
+  if (shift && key !== ' ') return undefined;
   if (key === 'ArrowLeft') return direction === 'rtl' ? 'next' : 'previous';
   if (key === 'ArrowRight') return direction === 'rtl' ? 'previous' : 'next';
   if (key === 'PageDown' || key === ' ' && !shift) return 'next';

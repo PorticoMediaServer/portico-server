@@ -14,6 +14,9 @@ test('the same physical arrow reverses between Western comics and manga', () => 
     assert.equal(readKeyTurn(' ', direction, true), 'previous');
     assert.equal(readKeyTurn(' ', direction), 'next');
     assert.equal(readKeyTurn('Escape', direction), undefined);
+    assert.equal(readKeyTurn('ArrowLeft', direction, true), undefined);
+    assert.equal(readKeyTurn('ArrowRight', direction, true), undefined);
+    assert.equal(readKeyTurn('PageDown', direction, true), undefined);
   }
 });
 

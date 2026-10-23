@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useRef, useState, type ReactNode} from 'react';
+import type {ReaderSurfaceInput} from '@portico/reader-core';
 import {Icon, type IconName} from '../Icon';
 import {observedProgress, readerInteractiveTarget, readKeyTurn, readTapTurn, type ReadDirection, type ReadTurn} from './interaction';
 import styles from './reader.module.css';
@@ -24,42 +25,53 @@ export type ReaderChromeProps = Readonly<{
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
   panelReflows?: boolean; showPageArrows: boolean;
   /** A panel/menu or a live text selection pins chrome until it closes. */
-  holdOpen?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean;
+  holdOpen?: boolean; textSelectionActive?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean;
   /** Reader engine owns taps/selection in its iframe; forwarded fractions use the same handler. */
-  onSurfaceTap?: (handler: (fraction: number) => void) => (() => void);
+  subscribeSurfaceInput?: (listener: (input: ReaderSurfaceInput) => void) => (() => void);
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, showPageArrows, holdOpen = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, onSurfaceTap}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
-  const held = holdOpen || panel !== undefined && panel !== null || focusWithin;
+  const held = holdOpen || textSelectionActive || panel !== undefined && panel !== null || focusWithin;
   const cancel = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
   const show = useCallback(() => { cancel(); setVisible(true); }, [cancel]);
-  const [activity, setActivity] = useState(0);
-  const wake = useCallback(() => { show(); setActivity(value => value + 1); }, [show]);
+  const arm = useCallback(() => {
+    cancel();
+    if (!held) timer.current = setTimeout(() => { timer.current = undefined; setVisible(false); }, 2800);
+  }, [cancel, held]);
+  // Surface activity is deliberately not a React store update per mousemove.
+  const wake = useCallback(() => { setVisible(true); arm(); }, [arm]);
   useEffect(() => { root.current?.focus({preventScroll: true}); }, []);
   useEffect(() => {
-    cancel();
     // Read frames: never hide while a panel/menu/selection/focused control is active.
-    if (visible && !held) timer.current = setTimeout(() => { timer.current = undefined; setVisible(false); }, 2800);
+    if (visible) arm(); else cancel();
     return cancel;
-  }, [cancel, held, visible, activity]);
+  }, [arm, cancel, visible]);
   const tap = useCallback((fraction: number) => {
     const turn = readTapTurn(fraction, direction);
     if (turn === 'chrome') { if (!held) { cancel(); setVisible(value => !value); } }
-    else if (turn && tapTurnEnabled && pageTurnsEnabled) onTurn(turn);
-  }, [direction, held, cancel, onTurn, tapTurnEnabled, pageTurnsEnabled]);
-  useEffect(() => onSurfaceTap?.(tap), [onSurfaceTap, tap]);
+    else if (turn && tapTurnEnabled && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
+  }, [direction, held, cancel, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
+  const key = useCallback((input: Extract<ReaderSurfaceInput, {kind: 'key'}>) => {
+    if (input.editable || textSelectionActive || input.alt || input.ctrl || input.meta) return;
+    wake();
+    const turn = readKeyTurn(input.key, direction, input.shift);
+    if (turn && pageTurnsEnabled) { input.preventDefault(); onTurn(turn); }
+  }, [direction, onTurn, pageTurnsEnabled, textSelectionActive, wake]);
+  useEffect(() => subscribeSurfaceInput?.(input => {
+    if (input.kind === 'tap') tap(input.fraction);
+    else if (input.kind === 'activity') wake();
+    else key(input);
+  }), [subscribeSurfaceInput, tap, wake, key]);
   const shown = visible || held, progress = observedProgress(progression);
   return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
     data-chrome={shown ? 'shown' : 'hidden'} data-panel={panelReflows || undefined} dir={direction === 'rtl' ? 'rtl' : 'ltr'}
     onPointerMove={event => { if (event.pointerType === 'mouse') wake(); }}
     onKeyDown={event => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || readerInteractiveTarget(event.target)) return;
-      wake();
-      const turn = readKeyTurn(event.key, direction, event.shiftKey);
-      if (turn && pageTurnsEnabled) { event.preventDefault(); onTurn(turn); }
+      key({kind: 'key', key: event.key, shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, editable: false, preventDefault: () => event.preventDefault()});
     }}>
     <div className={styles.surface} onClick={event => {
       if (event.defaultPrevented || readerInteractiveTarget(event.target) || window.getSelection()?.toString()) return;
