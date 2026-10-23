@@ -9,7 +9,10 @@ export type WatchVersionSelection = Readonly<{
   failedVersionId?: string;
   isCurrent: () => boolean;
 }>;
-/** The canonical VS-3e adapter owns these two lines. No generic version label or tags. */
+/** Canonical §21/23 VS-3e text: edition heading leaves picture/audio/size in detail;
+ * picture heading leaves only audio/size. Audio describes this version's file default
+ * (first marked default, otherwise first actual Audio[] track in stream order), never
+ * global preferred audio or a viewer plan. No generic version label, language prefix or tags. */
 export type WatchVersionRow = Readonly<{id: string; heading: string; detail: string}>;
 export type WatchVersionBinding<Choices extends WatchVersionSelection = WatchVersionSelection> = Readonly<{
   choices: Choices;
