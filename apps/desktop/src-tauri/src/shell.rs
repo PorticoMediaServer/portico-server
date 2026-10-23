@@ -79,6 +79,7 @@ async fn desktop_installation(window:WebviewWindow)->Result<NativeInstallation>{
     let app=window.app_handle().clone();
     tauri::async_runtime::spawn_blocking(move||{
         let state=app.state::<InstallationState>();let id=state.0.lock().map_err(|_|Error::PreferencesUnavailable)?.as_ref().map_err(|error|*error)?.read()?;
+        crate::spike::record("installation-claim-ready",0);
         Ok(NativeInstallation{installation_id:id,name:crate::device_facts::current().computer_name().unwrap_or("").to_owned(),platform:std::env::consts::OS,app:"Portico",app_version:env!("CARGO_PKG_VERSION")})
     }).await.map_err(|_|Error::PreferencesUnavailable)?
 }
@@ -349,7 +350,7 @@ pub fn run() {
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the
                 // installed web caption host supplies its actual control rectangles.
                 .decorations(true)
-                .incognito(cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_DATA").is_some())
+                .incognito(cfg!(target_os="macos")&&cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_DATA").is_some())
                 .transparent(true)
                 .on_navigation(|url|boundary::local_origin("main",url.as_str(),cfg!(debug_assertions)).is_ok())
                 .on_page_load(|window,payload| {
@@ -359,6 +360,10 @@ pub fn run() {
                         let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight,rootMounted:!!document.getElementById('root')?.childElementCount,desktopHost:!!document.querySelector('[data-desktop-window-chrome]')}})}requestAnimationFrame(measure)},3000)"#);
                     }
                 });
+            // GTK uses the product's persistent WebView mode, isolated inside the
+            // owned test profile. Never reuse the user's normal credential store.
+            #[cfg(all(debug_assertions,target_os="linux"))]
+            let main=if std::env::var_os("PORTICO_SPIKE_DATA").is_some(){main.data_directory(data.join("webview"))}else{main};
             let main=main.build()?;
             crate::spike::record("window-created",0);
             crate::network::start();

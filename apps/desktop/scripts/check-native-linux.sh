@@ -53,7 +53,7 @@ else
     export PORTICO_MPV_LIBRARY=/work/no-native-library.so
     export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
     timeout 45 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- gdb --batch --return-child-result \
-      -ex "set print frame-arguments none" -ex run -ex "thread apply all backtrace 12" \
+      -ex "set print frame-arguments none" -ex run -ex "thread 1" -ex "backtrace 64" \
       --args /work/cargo-target/debug/portico-desktop
     python3 apps/desktop/test/native-startup.py
   fi
