@@ -260,8 +260,12 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.PageInfo.Revision = revision
+	hard, err := s.browseSourceFence(request.ServerID, Viewer{Profile: request.profile, Fence: request.fence, Libraries: request.libraries, Restrictions: request.restriction}, request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, nil, err
+	}
 	if anchor.Field == "lastPlayedAt" && (sorts[0].Field == "groupOrder" || sorts[0].Field == "lastPlayed") {
-		return s.acrossHistory(request, pivot, sorts[0], out, limit)
+		return s.acrossHistory(request, pivot, sorts[0], out, limit, hard)
 	}
 
 	// The group's members, and the titles that hold them or that they hold
@@ -301,8 +305,8 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		if err != nil {
 			return out, nil, err
 		}
-		if cursor.Fingerprint != revision {
-			return out, nil, ErrStaleContinuation
+		if err := validateBrowseCursor(&cursor, hard, revision); err != nil {
+			return out, nil, err
 		}
 		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
 			return out, nil, ErrCursor
@@ -358,10 +362,21 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		out.PageInfo.HasMore = start+len(selected) < total
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: hard, CacheRevision: revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
+	}
+	after, err := s.acrossRevision(request, pivot, out.Applied.Sort)
+	if err != nil {
+		return out, nil, err
+	}
+	afterHard, err := s.browseSourceFence(request.ServerID, Viewer{Profile: request.profile, Fence: request.fence, Libraries: request.libraries, Restrictions: request.restriction}, request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, nil, err
+	}
+	if after != out.PageInfo.Revision || afterHard != hard {
+		return out, nil, ErrStaleContinuation
 	}
 	return out, selected, nil
 }
@@ -415,7 +430,7 @@ func historyOrder(selection BrowseSortSelection) (index, column, direction strin
 // filters and restrictions applied as it goes, and the total is counted up to
 // the totals limit and then given as a lower bound that grows as the viewer
 // pages on.
-func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, selection BrowseSortSelection, out BrowseResult, limit int) (BrowseResult, []browseRow, error) {
+func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, selection BrowseSortSelection, out BrowseResult, limit int, hard string) (BrowseResult, []browseRow, error) {
 	kinds, err := acrossKinds(pivot)
 	if err != nil {
 		return out, nil, err
@@ -443,8 +458,8 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		if err != nil {
 			return out, nil, err
 		}
-		if cursor.Fingerprint != out.PageInfo.Revision {
-			return out, nil, ErrStaleContinuation
+		if err := validateBrowseCursor(&cursor, hard, out.PageInfo.Revision); err != nil {
+			return out, nil, err
 		}
 		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
 			return out, nil, ErrCursor
@@ -492,10 +507,21 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	}
 	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound, out.PageInfo.HasMore = total, capped && more, more
 	if more && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: hard, CacheRevision: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
+	}
+	after, err := s.acrossRevision(request, pivot, out.Applied.Sort)
+	if err != nil {
+		return out, nil, err
+	}
+	afterHard, err := s.browseSourceFence(request.ServerID, Viewer{Profile: request.profile, Fence: request.fence, Libraries: request.libraries, Restrictions: request.restriction}, request.Query, request.Rows, request.RowSources)
+	if err != nil {
+		return out, nil, err
+	}
+	if after != out.PageInfo.Revision || afterHard != hard {
+		return out, nil, ErrStaleContinuation
 	}
 	return out, selected, nil
 }
