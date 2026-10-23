@@ -11,6 +11,12 @@ test('local queues require the complete captured family and preserve producer or
   assert.throws(() => captureLocalQueue(source, {...localScope, sessionFamilyId: 'foreign'}));
   assert.throws(() => captureLocalQueue({...source, items: [source.items[0]!, source.items[0]!]}, localScope));
   assert.throws(() => captureLocalQueue({...source, items: []}, localScope));
+  const row = source.items[0]!;
+  const extra = captureLocalQueue({...source, items: [{...row, title: {...row.title, privatePath: '/native/private'} as typeof row.title}]}, localScope);
+  assert.equal(Object.hasOwn(extra.items[0]!.title, 'privatePath'), false, 'native implementation fields never enter the shared title projection');
+  assert.equal(extra.items[0]!.title.durationSeconds, 100, 'the captured app model is already in seconds');
+  assert.throws(() => captureLocalQueue({...source, items: [{...row, title: {...row.title, kind: 'album'}}]}, localScope));
+  assert.throws(() => captureLocalQueue({...source, items: [{...row, durationMs: 999}]}, localScope));
 });
 
 test('only acknowledged local loads publish a real fence; ended advances all ordered members and releases exactly once', async () => {

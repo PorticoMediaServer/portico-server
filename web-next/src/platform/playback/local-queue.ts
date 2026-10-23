@@ -19,7 +19,7 @@ const id = (value: unknown): value is string => typeof value === 'string' && /^[
 /** This is an already parsed app model, not GET/downloads wire units. Preserve its actual
  * seconds and approved metadata only; never pass it back through a millisecond wire parser. */
 function captureTitle(value: DownloadTitle): DownloadTitle {
-  if (!value || !['song', 'track', 'episode', 'movie', 'extra', 'audiobook_file'].includes(value.kind)
+  if (!value || !['song', 'episode', 'movie', 'extra', 'audiobook_file'].includes(value.kind)
     || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 1024
     || !Number.isSafeInteger(value.year) || value.year < 0 || !Number.isFinite(value.durationSeconds) || value.durationSeconds < 0
     || typeof value.onServer !== 'boolean') unavailable();

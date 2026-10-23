@@ -698,10 +698,11 @@ export class WebShellPlaybackRuntime {
   }
 
   private syncLocal(stack: Stack): void {
+    this.clearTimer(this.timer);this.timer = undefined;
     const state = stack.local?.controller.getSnapshot(), member = state?.preparation.items[state.index], title = member?.title, fence = state?.fence, observed = state?.observation;
     let presentation: WebPlaybackPresentation | undefined;
     if (title && member) {
-      const kind = title.kind === 'track' ? 'song' : title.kind as 'movie' | 'episode' | 'extra' | 'song' | 'audiobook_file';
+      const kind = title.kind as 'movie' | 'episode' | 'extra' | 'song' | 'audiobook_file';
       const item = {id: member.itemId, kind, title: title.title, durationSeconds: member.durationMs / 1000,
         ...(title.year > 0 ? {year: title.year} : {}), ...(title.artist ? {artist: title.artist} : {}),
         ...(kind === 'song' && title.parentTitle ? {album: title.parentTitle} : {}),
