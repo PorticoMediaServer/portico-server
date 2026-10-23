@@ -12,11 +12,12 @@ const (
 	SendHeartbeat ServerOperation = "heartbeat"
 	// PushMembers reports this server's Portico Account members to Hosted's
 	// discovery index (Spec — Hosted at Scale). Membership is decided here.
-	PushMembers        ServerOperation = "members-push"
-	PublishServerEvent ServerOperation = "server-event"
-	RegisterEndpoint   ServerOperation = "endpoint-register"
-	PublishRoutes      ServerOperation = "routes-publish"
-	ProveRoute         ServerOperation = "route-prove"
+	PushMembers               ServerOperation = "members-push"
+	PublishServerEvent        ServerOperation = "server-event"
+	RegisterEndpoint          ServerOperation = "endpoint-register"
+	PublishRoutes             ServerOperation = "routes-publish"
+	ProveRoute                ServerOperation = "route-prove"
+	ResolveReturnRegistration ServerOperation = "return-registration"
 )
 
 // CallServer is restricted to declared current installed-server control-plane
@@ -39,6 +40,8 @@ func (t *HTTPTransport) CallServer(ctx context.Context, v Intent, operation Serv
 		suffix = "/routes"
 	case ProveRoute:
 		suffix = "/routes/prove"
+	case ResolveReturnRegistration:
+		suffix = "/return-registration"
 	default:
 		return ErrInvalid
 	}

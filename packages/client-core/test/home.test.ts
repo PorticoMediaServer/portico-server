@@ -201,7 +201,7 @@ test('GP-RH-1: rows preserve every loaded card and stop only at the server true 
   let current = page(0, 37, 'c1');
   assert.deepEqual(homeRowPagingState(current, 25, false), {prefetch:false,skeletons:0,exhausted:false});
   assert.equal(homeRowPagingState(current, 26, false).prefetch, true);
-  assert.equal(homeRowPagingState(current, 36, true).skeletons, current.limit);
+  assert.equal(homeRowPagingState(current, 36, true).skeletons, 1, 'one non-entity tail while the next server page is pending');
   for (let from = 37; from < 1203; from += 37) {
     const prefix = current.entries.map(e => e.id);
     current = appendHomeRowPage(current, page(from, Math.min(37, 1203-from), from+37 < 1203 ? `c${from}` : ''));
