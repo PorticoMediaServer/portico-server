@@ -8,6 +8,7 @@ import type {ServerEvent} from '@core/playback-v1/types.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
+import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
@@ -294,6 +295,54 @@ function castController(t: TestContext, f: ReturnType<typeof setup>) {
   t.after(() => controller.dispose());
   return {controller, sender, errors};
 }
+
+test('the MAIN SDK, canonical sender and mounted runtime wait for receiver ACK and use only its real clock', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();
+  const local = f.hls.instances.at(-1)!, first = f.runtime.getSnapshot(), sessionId = first.session!.id;
+  f.intercept(async (request, response) => request.path === '/v1/cast/bootstrap'
+    ? {status: 200, headers: {}, body: {bootstrap: {code: 'ABC123'}}} : response);
+  const messages: Record<string, unknown>[] = [], listeners = new Set<(namespace: string, body: string) => void>();
+  const reply = (body: unknown) => { for (const listener of [...listeners]) listener('urn:x-cast:tv.getportico.portico', JSON.stringify(body)); };
+  let picks = 0, selected: CastSession | null = null;
+  const session: CastSession = {
+    getCastDevice: () => ({friendlyName: 'Living Room'}),
+    sendMessage: async (_namespace, message) => { messages.push(message as Record<string, unknown>); },
+    addMessageListener: (_namespace, listener) => { listeners.add(listener); },
+    removeMessageListener: (_namespace, listener) => { listeners.delete(listener); }, endSession() {},
+  };
+  const context = {setOptions() {}, requestSession: () => { picks++; selected = session; return Promise.resolve(); }, getCurrentSession: () => selected, addEventListener() {}, removeEventListener() {}};
+  const browser: CastBrowser = {
+    // The already available controlled native SDK never touches a script or DOM image loader.
+    document: new Proxy({} as Document, {get() { throw new Error('unexpected_sdk_document_read'); }}),
+    navigator: {userAgent: 'Chrome/156.0 Linux'}, chrome: {},
+    cast: {framework: {CastContext: {getInstance: () => context}, CastContextEventType: {SESSION_STATE_CHANGED: 'session'}, SessionState: {SESSION_RESUMED: 'resumed', SESSION_ENDED: 'ended'}}},
+    setTimeout: f.clock.setTimer, clearTimeout: f.clock.clearTimer,
+  };
+  const sender = new WebCastSender({api: f.api, serverOrigin: 'https://portico.test', castApplicationId: 'APP123', browser});
+  assert.equal(await sender.prepareForPlayer(), true);
+  const errors: unknown[] = [];
+  const controller = new PlayOnController({sender, runtime: f.runtime, isCurrent: f.source.isCurrent, reportError: error => errors.push(error), now: f.clock.now, setTimer: f.clock.setTimer, clearTimer: f.clock.clearTimer});
+  t.after(() => controller.dispose());
+  const started = controller.startCast(); assert.equal(picks, 1, 'native picker opens synchronously in the originating click');
+  await settle(); assert.equal(sender.getSnapshot().phase, 'pairing');
+  reply({type: 'pair-pending'}); assert.equal(sender.getSnapshot().phase, 'waiting');
+  assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
+  reply({type: 'paired'}); await settle();
+  const load = messages.find(message => message.type === 'load')!;
+  assert.ok(load); assert.deepEqual(load.queue, first.session!.queue);
+  assert.equal(controller.getSnapshot().remote!.positionKnown, false, 'requested start is not an observed receiver clock');
+  reply({type: 'loaded', itemId: 'movie', requestId: 'wrong-request'}); await settle();
+  assert.equal(f.runtime.getSnapshot().session!.id, sessionId); assert.equal(local.destroyed, false);
+  reply({type: 'loaded', itemId: 'movie', requestId: load.requestId}); assert.equal(await started, true); await settle();
+  assert.equal(f.runtime.getSnapshot().session, undefined); assert.equal(local.destroyed, true);
+  reply({type: 'status', itemId: 'movie', positionSeconds: 57, durationSeconds: 3186, paused: false, audioTracks: [], textTracks: []});
+  assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  controller.seek(controller.getSnapshot().remote!, 100); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  controller.stop(controller.getSnapshot().remote!);
+  assert.equal(controller.getSnapshot().remote!.phase, 'stopped'); assert.equal(controller.getSnapshot().remote!.positionSeconds, 57);
+  assert.equal(messages.some(message => 'mediaUrl' in message || 'grant' in message || 'sessionId' in message), false);
+  assert.deepEqual(errors, []);
+});
 
 test('Cast keeps the mounted local engine through pairing and waiting, handing off only on casting', async t => {
   const f = setup(t); await f.runtime.play('movie', 25); await f.arrive();

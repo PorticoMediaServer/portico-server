@@ -1,19 +1,10 @@
-import type {CastChoices, CastMetadata, CastSnapshot} from '@core/cast/index.ts';
+import type {CastChoices, CastMetadata, WebCastSender} from '../cast';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackPresentation} from './types';
 import type {WebShellPlaybackRuntime} from './runtime';
 
 /** Structural contract agreed with platform/cast. No SDK, script, receiver or URL logic here. */
-export type WebCastPort = Readonly<{
-  getSnapshot(): CastSnapshot & Readonly<{device?: Readonly<{name: string; id?: string}>; receiver?: Readonly<{itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean}>}>;
-  subscribe(listener: () => void): () => void;
-  prepareOnIdle(): () => void;
-  prepareForPlayer(): Promise<boolean>;
-  start(itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices & {queue?: {queueId: string; entryId: string}}): Promise<boolean>;
-  cancelConnecting(): void; play(): void; pause(): void; toggle(): void; seek(seconds: number): void;
-  setAudioTrack(id: number): void; setSubtitleTrack(id: number | null): void;
-  answerTakeover(allow: boolean): void; stop(): void; dismiss(): void; dispose(): void;
-}>;
+export type WebCastPort = Pick<WebCastSender, 'getSnapshot' | 'subscribe' | 'prepareOnIdle' | 'prepareForPlayer' | 'start' | 'cancelConnecting' | 'play' | 'pause' | 'toggle' | 'seek' | 'setAudioTrack' | 'setSubtitleTrack' | 'answerTakeover' | 'stop' | 'dismiss' | 'dispose'>;
 export type AirPlayPort = Readonly<{
   available(): boolean;
   subscribe(listener: () => void): () => void;
@@ -50,7 +41,7 @@ export class PlayOnController {
   private state: PlayOnSnapshot;
   private serial = 0;
   private sequence = 0;
-  private attempt?: {id: string; serial: number; source: WebPlaybackPresentation; choices: CastChoices & {queue?: {queueId: string; entryId: string}}; handedOff: boolean};
+  private attempt?: {id: string; serial: number; source: WebPlaybackPresentation; choices: CastChoices; handedOff: boolean};
   private expiry?: unknown;
   private terminalAt?: number;
   private playerOpen = false;

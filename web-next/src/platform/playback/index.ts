@@ -12,4 +12,6 @@ export type {EqualizerSettings} from './audio/equalizer.ts';
 export type {BrowserAudioFacts} from './audio/output.ts';
 export {videoPresentationLayout, VideoPresentationContinuity} from './video-presentation.ts';
 export type {PlaybackWindow, VideoPresentationLayout} from './video-presentation.ts';
+export {readPlaybackTrickplay} from './trickplay.ts';
+export type {PlaybackTrickplaySource, PlaybackTrickplaySelection} from './trickplay.ts';
 export {loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
