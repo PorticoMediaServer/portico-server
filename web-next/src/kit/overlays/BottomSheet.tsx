@@ -9,6 +9,7 @@ import type {OverlayContentSlots, OverlayStyle, OverlaySurfaceProps} from './typ
 import styles from './overlays.module.css';
 
 export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
+  backdropOpacity?: number;
   detents?: readonly number[];
   detent?: number;
   onDetentChange?: (index: number) => void;
@@ -24,7 +25,7 @@ export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
 };
 type Drag = {pointer: number; startY: number; startHeight: number; y: number; time: number; velocity: number};
 
-export function BottomSheet({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
+export function BottomSheet({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog', backdropOpacity = .64}: BottomSheetProps) {
   const id = useId(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const [active, setActive] = useState(0), [naturalHeight, setNaturalHeight] = useState(0), [element, setElement] = useState<HTMLDivElement | null>(null);
   const body = useRef<HTMLDivElement | null>(null), header = useRef<HTMLDivElement | null>(null), footerRef = useRef<HTMLElement | null>(null), scrim = useRef<HTMLDivElement | null>(null);
@@ -115,7 +116,7 @@ export function BottomSheet({open, onOpenChange, title, children, description, f
   };
   const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>{trigger && <RadixDialog.Trigger asChild ref={triggerElement}>{trigger}</RadixDialog.Trigger>}{present && <RadixDialog.Portal forceMount>
-    <RadixDialog.Overlay forceMount ref={scrim} className={styles.sheetScrim} data-state={open ? 'open' : 'closed'} />
+    <RadixDialog.Overlay forceMount ref={scrim} className={styles.sheetScrim} style={{backgroundColor: `rgba(3,8,12,${backdropOpacity})`}} data-state={open ? 'open' : 'closed'} />
     <RadixDialog.Content forceMount ref={setElement} className={classes(styles.sheet, className)} role={role} aria-modal={open || undefined} data-testid={testID} data-state={open ? 'open' : 'closed'}
       data-full-height={selected?.height === maximum || undefined} data-has-footer={footer !== undefined || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
       style={{'--overlay-sheet-height': `${maximum}px`} as OverlayStyle}

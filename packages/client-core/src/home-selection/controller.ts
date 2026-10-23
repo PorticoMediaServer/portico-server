@@ -1,7 +1,7 @@
 import {SelectionModel, selectionActions, selectionKey, summarizeSelection, type SelectionAction, type SelectionContext, type SelectionEnvironment, type SelectionIdentity, type SelectionKind, type SelectionOperation, type SelectionTarget} from '../selection-model/index.ts';
 import {selectionCapabilityNames} from '../selection-model/capabilities.ts';
 import {homeChannelSelection, homeCollectionCapabilities, homeCollectionSelection, homeEntryCapabilities, homeEntrySelection, type HomeActionPlatform} from '../home-selection.ts';
-import {entryActions, type EntryActionId} from '../presentation/entry-actions.ts';
+import {entryActions, touchEntryActions, type EntryActionId} from '../presentation/entry-actions.ts';
 import type {HomeDocument, HomeEntry, HomeRow, HomeSpotlight} from '../home.ts';
 import {DetailService} from '../detail.ts';
 import {channelOperationId, saveChannelPreference} from '../channel-guide.ts';
@@ -32,6 +32,7 @@ type CurrentMember = Readonly<{member: HomeSelectionMember; row?: HomeRow; spotl
 type Ticket = {document: HomeDocument; epoch: number; context: SelectionContext; target: SelectionTarget; model?: SelectionOperation; controller: AbortController};
 /** Shared execution only: all renderer, locale, key, gesture and haptic ownership stays in the shell. */
 export class HomeSelectionController {
+  private touchMenu = false;
   readonly selection: SelectionModel;
   private state: HomeSelectionSnapshot;
   private environment: SelectionEnvironment;
@@ -131,14 +132,14 @@ export class HomeSelectionController {
       const current = this.resolveMember(source, menu.key);
       if (!current || !this.retainsGrants(menu, current.member)) {retainedMenuWindow?.(); return;}
       if (this.windows.get(menu.windowId) === window) {
-        this.menuWindow = retainedMenuWindow; this.openMenu(menu.windowId, menu.key); return;
+        this.menuWindow = retainedMenuWindow; this.openMenu(menu.windowId, menu.key, this.touchMenu); return;
       }
       // Re-register only the proven current item. The shell owns physical order and visible windows.
       const registered = current.spotlight ? this.registerSpotlight({id: menu.windowId, spotlight: current.spotlight})
         : current.row ? this.registerWindow({id: menu.windowId, row: current.row, sectionOrder: window.order - 1,
           ...(source.kind === 'row' && source.slot === 'live' ? {channels: current.row.live!.channels.slice(current.index, current.index + 1)}
             : source.kind === 'row' && source.slot === 'entries' ? {entries: [current.member.entry!]} : {})}) : undefined;
-      if (registered?.ok) {this.menuWindow = registered.unregister; this.openMenu(menu.windowId, menu.key);}
+      if (registered?.ok) {this.menuWindow = registered.unregister; this.openMenu(menu.windowId, menu.key, this.touchMenu);}
     } finally {
       this.changing = false;
       for (const listener of this.listeners) listener();
@@ -340,7 +341,8 @@ export class HomeSelectionController {
   }
   private menuGroups(member: HomeSelectionMember) {
     const platform = this.platform();
-    return entryActions(member.entry ? homeEntryCapabilities(member.entry, platform) : member.collection ? homeCollectionCapabilities(member.collection, platform)
+    const project = this.touchMenu && this.environment.platform !== 'tv' ? touchEntryActions : entryActions;
+    return project(member.entry ? homeEntryCapabilities(member.entry, platform) : member.collection ? homeCollectionCapabilities(member.collection, platform)
       : member.channel ? {kind: 'channel', playable: member.item.capabilities.play, ...(member.item.capabilities.favorite ? {favorite: member.channel.channel.favorite} : {})} : {});
   }
   private retainsGrants(menu: HomeSelectionMenu, member: HomeSelectionMember) {
@@ -389,11 +391,11 @@ export class HomeSelectionController {
     if (!current || !this.retainsGrants(menu, current.member)) {this.closeMenu(); throw selectionExecutionError('home-offers-changed');}
     return {...menu, member: current.member, groups: this.menuGroups(current.member)};
   }
-  openMenu(windowId: string, key: string) {
+  openMenu(windowId: string, key: string, touch = this.environment.platform === 'phone-app' || this.environment.platform === 'mobile-web') {
     this.active(); const window = this.windows.get(windowId), current = window?.members.has(key) ? this.resolveMember(window.source, key) : undefined;
     if (!current) throw selectionExecutionError('unregistered-home-entry');
     if (this.state.menu && (this.state.menu.windowId !== windowId || this.state.menu.key !== key)) this.closeMenu();
-    this.menuSource = window!.source;
+    this.menuSource = window!.source; this.touchMenu = touch;
     this.publish({menu: {windowId, key, member: current.member, groups: this.menuGroups(current.member)}});
   }
   closeMenu() {this.menuSource = undefined; const cleanup = this.menuWindow; this.menuWindow = undefined; cleanup?.(); this.publish({menu: null});}

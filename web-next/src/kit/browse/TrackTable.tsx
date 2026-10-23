@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {CardTextModel, FactPart} from '@core/presentation/kit-model';
 import {Button} from '../controls';
 import {Icon} from '../Icon';
+import {TouchBrowseItem, type BrowseTouchSelection} from './TouchBrowseItem';
 import type {BrowsePlatform} from './types';
 import {trackWindow, type TrackWindow} from './model';
 import styles from './browse.module.css';
@@ -17,8 +18,10 @@ export type TrackColumnId = 'number' | 'title' | 'artist' | 'album' | 'plays' | 
 export type TrackColumn = Readonly<{id: TrackColumnId; label?: ReactNode; width?: string; sort?: string}>;
 type TrackRowAttributes = HTMLAttributes<HTMLDivElement>;
 export type TrackActions = Readonly<{
-  onPlay: (id: string) => void; onMore: (id: string) => void; onFavorite?: (id: string, favorite: boolean) => void;
+  onPlay: (id: string) => void; onMore: (id: string, anchor: HTMLElement) => void; onFavorite?: (id: string, favorite: boolean) => void;
   onAddPlaylist?: (id: string) => void; renderSelection?: (row: TrackRowData) => ReactNode;
+  isMenuOpen?: (id: string) => boolean;
+  selectionState?: BrowseTouchSelection;
   getRowProps?: (row: TrackRowData) => TrackRowAttributes;
 }>;
 export type TrackTableProps = TrackActions & Readonly<{
@@ -42,7 +45,7 @@ function RowActions({row, onMore, onFavorite, onAddPlaylist, compact = false}: P
     {onFavorite && !compact && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
       className={styles.favoriteAction} aria-label={t(row.favorite ? 'next.browse.unfavorite' : 'next.browse.favorite', {title: row.text.title})} onClick={() => onFavorite(row.id, !row.favorite)}/>}
     {onAddPlaylist && !compact && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
-    <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>
+    <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={event => onMore(row.id, event.currentTarget)}/>
   </div>;
 }
 export function TrackTable({rows, variant, label, platform = 'desktop', columns: suppliedColumns, sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
@@ -61,10 +64,10 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns:
   const cell = (row: TrackRowData, column: TrackColumn) => {
     switch (column.id) {
       case 'number': return <span className={styles.trackNumber}>{actions.renderSelection && <span className={styles.trackSelection}>{actions.renderSelection(row)}</span>}
-        <button type="button" className={styles.trackPlay} onClick={() => actions.onPlay(row.id)} aria-label={t('next.browse.play', {title: row.text.title})}>
+        <button type="button" data-track-primary className={styles.trackPlay} onClick={() => actions.onPlay(row.id)} aria-label={t('next.browse.play', {title: row.text.title})}>
           {row.playing ? <Levels/> : row.done ? <Icon name="i-check" size={18}/> : <><span className={styles.trackOrdinal}>{row.number === undefined ? undefined : defaultI18n.number(row.number)}</span><Icon name="i-play" size={16} className={styles.ordinalPlay}/></>}
         </button></span>;
-      case 'title': return <button type="button" className={styles.trackTitle} onClick={() => actions.onPlay(row.id)}>
+      case 'title': return <button type="button" data-track-primary className={styles.trackTitle} onClick={() => actions.onPlay(row.id)}>
         {row.artwork && <span className={styles.trackArtwork}>{row.artwork}</span>}<span className={styles.trackText}><b>{row.text.title}</b>
           {variant === 'top-songs' && row.text.caption.some(part => part.id === 'album') && <small><Parts parts={row.text.caption.filter(part => part.id === 'album')}/></small>}
           {row.current && row.progress !== undefined && <span className={styles.chapterTimeline}><span className={styles.chapterProgress} aria-hidden="true"><i style={{width: `${Math.max(0, Math.min(1, row.progress)) * 100}%`}}/></span>{row.remaining && <small>{row.remaining.text}</small>}</span>}
@@ -84,20 +87,20 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns:
     </div>)}</div>}
     <div className={windowed ? styles.trackViewport : undefined} style={windowed ? {height} : undefined} ref={viewport} onScroll={emitWindow} role="rowgroup">
       {startIndex > 0 && <div role="presentation" style={{height: startIndex * rowHeight}}/>}
-      {rows.map((row, index) => { const rowProps = actions.getRowProps?.(row); return <div {...rowProps} className={[styles.trackRow, rowProps?.className].filter(Boolean).join(' ')} key={row.id} role="row" aria-rowindex={startIndex + index + (variant === 'chapters' || platform === 'phone' ? 1 : 2)} aria-current={row.current || undefined} data-playing={row.playing || undefined} data-favorite={row.favorite || undefined} data-done={row.done || undefined} data-current={row.current || undefined} style={{...rowProps?.style, ...style}}>
+      {rows.map((row, index) => { const rowProps = actions.getRowProps?.(row); return <TouchBrowseItem itemId={row.id} onMore={actions.onMore} selectionState={actions.selectionState} moreExpanded={actions.isMenuOpen?.(row.id)} {...rowProps} className={[styles.trackRow, rowProps?.className].filter(Boolean).join(' ')} key={row.id} role="row" aria-rowindex={startIndex + index + (variant === 'chapters' || platform === 'phone' ? 1 : 2)} aria-current={row.current || undefined} data-playing={row.playing || undefined} data-favorite={row.favorite || undefined} data-done={row.done || undefined} data-current={row.current || undefined} style={{...rowProps?.style, ...style}}>
         {columns.map(column => <div key={column.id} role="cell" data-column={column.id}>{cell(row, column)}</div>)}
-      </div>; })}
+      </TouchBrowseItem>; })}
       {totalCount > startIndex + rows.length && <div role="presentation" style={{height: (totalCount - startIndex - rows.length) * rowHeight}}/>}
     </div>
   </div>;
 }
-export type SongRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'onPlay'> & Readonly<{row: TrackRowData; onPlay: (id: string) => void; onMore?: (id: string) => void; selection?: ReactNode; context?: 'list' | 'search'}>;
-export function SongRow({row, onPlay, onMore, selection, context = 'list', className, ...props}: SongRowProps) {
-  return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context} data-selectable={!!selection || undefined} data-artwork={!!row.artwork || undefined}>
+export type SongRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'onPlay'> & Readonly<{row: TrackRowData; onPlay: (id: string) => void; onMore?: (id: string, anchor: HTMLElement) => void; selection?: ReactNode; selectionState?: BrowseTouchSelection; moreExpanded?: boolean; context?: 'list' | 'search'}>;
+export function SongRow({row, onPlay, onMore, selection, selectionState, context = 'list', className, ...props}: SongRowProps) {
+  return <TouchBrowseItem itemId={row.id} onMore={onMore} selectionState={selectionState} {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context} data-selectable={!!selection || undefined} data-artwork={!!row.artwork || undefined}>
     {context !== 'search' && <span className={styles.songNumber}>{selection ?? (row.playing ? <Levels/> : row.number === undefined ? undefined : defaultI18n.number(row.number))}</span>}
-    <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}</span>}
+    <button type="button" data-track-primary className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}</span>}
       <span className={styles.songText}><b>{row.text.title}</b>{row.text.caption.length > 0 && <small><Parts parts={row.text.caption}/></small>}</span><span className={styles.songDuration}>{rowDuration(row)}</span></button>
     {context === 'search' && selection && <span className={styles.songSelection}>{selection}</span>}
-    {onMore && <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>}
-  </div>;
+    {onMore && <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={event => onMore(row.id, event.currentTarget)}/>}
+  </TouchBrowseItem>;
 }

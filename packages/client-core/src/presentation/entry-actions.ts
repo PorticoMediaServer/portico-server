@@ -131,6 +131,22 @@ export function entryActions(c: EntryCapabilities): readonly EntryActionGroup[] 
   return Object.freeze(groups.filter(g => g.actions.length));
 }
 
+/** Q6/select17: touch menus keep only the drawn title actions in their drawn order.
+ * File info and version selection still require their real caller dispatch/facts;
+ * this projection never turns the existing title-details route into File info.
+ * TV keeps entryActions unchanged. */
+export function touchEntryActions(c: EntryCapabilities): readonly EntryActionGroup[] {
+  const offered = entryActions({...c, progressSeconds: 0, queue: false, group: false});
+  const byId = new Map(offered.flatMap(group => group.actions).map(action => [action.id, action]));
+  const ordered: readonly EntryActionId[] = ['play', 'watchlist', 'watched', 'favorite', 'rate', 'addToPlaylist', 'addToCollection', 'download', 'removeFromContinueWatching', 'notInterested', 'details'];
+  const actions = ordered.flatMap(id => {const action = byId.get(id); return action ? [{...action, ...(id === 'rate' ? {label: 'entry.rate' as const} : {})}] : [];});
+  const manage = offered.find(group => group.id === 'manage')?.actions.filter(action => action.id !== 'separateArtist') ?? [];
+  return Object.freeze([
+    ...(actions.length ? [{id: 'personal' as const, actions}] : []),
+    ...(manage.length ? [{id: 'manage' as const, title: 'next.selection.owner' as const, actions: manage}] : []),
+  ]);
+}
+
 /** The groups flattened, with the group each action starts (for menus that draw separators). */
 export function entryActionList(groups: readonly EntryActionGroup[]): readonly (EntryAction & {group: EntryActionGroupId; groupStart: boolean; groupTitle?: MessageId})[] {
   return groups.flatMap(g => g.actions.map((a, i) => ({...a, group: g.id, groupStart: i === 0, ...(i === 0 && g.title ? {groupTitle: g.title} : {})})));

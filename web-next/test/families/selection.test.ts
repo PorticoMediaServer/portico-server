@@ -21,8 +21,8 @@ test('hold feedback uses supplied progress without manufacturing unknown progres
   assert.equal(holdProgress(2), 1);
 });
 
-test('hold feedback copy is the exact catalogued frame copy', () => {
-  assert.equal(selectionMessages['next.selection.keepHolding'], 'Keep holding to select');
+test('Q6 retires the old selection-hold hint from the catalogue', () => {
+  assert.equal(Object.hasOwn(selectionMessages, 'next.selection.keepHolding'), false);
 });
 
 test('all owned product messages have valid ICU syntax and keep fixture domain copy outside production', () => {

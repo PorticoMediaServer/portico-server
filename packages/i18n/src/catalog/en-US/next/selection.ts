@@ -1,5 +1,4 @@
 export const selectionMessages = {
-  'next.selection.keepHolding': 'Keep holding to select',
   'next.selection.select': 'Select',
   'next.selection.selected': '{count, number} selected',
   'next.selection.selectedItems': '{items} selected',

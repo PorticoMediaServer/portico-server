@@ -36,7 +36,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     routes: {openEntry: entry => router.navigate(entryDestination(entry)), openCollection: collection => router.navigate(seeAllDestination({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId})),
       openDestination: destination => router.navigate({to: '/saved', search: {resourceId: destination.id}})}, reportError});
   const anchor: {current: HTMLElement | null} = {current: null};
-  const source: SelectionRendererSource = {controller, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible};
+  const source: SelectionRendererSource = {controller, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible, touchMenu: () => anchor.current?.dataset.touchMenu === 'true' || window.matchMedia('(any-pointer: coarse)').matches};
   let acceptedContext = JSON.stringify(currentContext()), acceptedEnvironment = JSON.stringify(environment());
   const sync = () => {
     if (retired || !context.isCurrent()) return;
@@ -110,7 +110,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     },
     openMore: (row: HomeRow, entry: ContentEntry, element: HTMLElement) => perform(() => {
       const item = homeEntrySelection(entry, platform); if (!item) throw new Error('home-library-identity-required');
-      anchor.current = element; controller.openMenu(windowId(row), controller.key(item));
+      anchor.current = element; controller.openMenu(windowId(row), controller.key(item), source.touchMenu?.() ?? false);
     }),
     phoneSelection: (): ReactNode => controller.getSnapshot().selection.active ? <SelectionPhoneBar source={source} /> : undefined,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },

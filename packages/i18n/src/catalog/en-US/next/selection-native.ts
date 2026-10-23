@@ -1,6 +1,5 @@
 export const selectionNativeMessages = {
   'next.selection.native.gallery': 'Selection',
-  'next.selection.native.hold': 'Keep holding to select',
   'next.selection.native.selected': '{count, number} selected',
   'next.selection.native.cancel': 'Cancel',
   'next.selection.native.done': 'Done',

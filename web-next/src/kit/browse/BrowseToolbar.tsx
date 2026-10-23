@@ -5,6 +5,7 @@ import {sortDirectionKind} from '@core/presentation/browse-toolbar';
 import type {BrowseToolbarModel} from '@core/presentation/kit-model';
 import {Button, Chip, Segmented} from '../controls';
 import {MenuRow, Popover} from '../overlays';
+import {useSizeClass} from '../theme';
 import {Icon, type IconName} from '../Icon';
 import type {AppliedChip, BrowseLabels, BrowsePlatform, BrowseView, CardSizeControl, SaveViewControl} from './types';
 import styles from './browse.module.css';
@@ -86,17 +87,19 @@ export type BrowseToolbarProps = Readonly<{
   onQuickChange: (id: string, checked: boolean) => void; onFilters: () => void; filtersOpen?: boolean;
   onSortChange: (value: BrowseSortSelection) => void; onReshuffle?: () => void; view?: BrowseView; cardSize?: CardSizeControl;
   save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
+  onSelect?: () => void;
   onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
 }>;
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
-  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className}: BrowseToolbarProps) {
+  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, onSelect, selection, actions, className}: BrowseToolbarProps) {
+  const sizeClass = useSizeClass();
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={labels.sort} onReshuffle={onReshuffle}/>;
   const filters = <FiltersButton count={applied.length} open={filtersOpen} onClick={onFilters}/>;
   return <div className={[styles.toolbar, className].filter(Boolean).join(' ')} data-platform={platform} data-sticky={sticky || undefined} style={{top: topInset}}>
     {selection ?? <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       {platform === 'phone' && sort}<span className={styles.separator} aria-hidden="true"/>
-      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
+      {onSelect && platform !== 'tv' && sizeClass !== 'compact' && <Button variant="glass" size="small" onClick={onSelect}>{t('next.selection.select')}</Button>}{actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
       {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <span className={styles.resultCount}>{resultCount}</span>}{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
     </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{view && <ViewToggle {...view}/>}</span></div>}

@@ -60,12 +60,12 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   }, [artworkRef, hasAuxiliary]);
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
-  const touch = useTouchHold(anchor => {if (!selection?.active && onMore) touchMenuHaptic(); holdCard(onMore ? () => onMore(anchor as HTMLButtonElement) : undefined, selection);}, !disabled && (!!onMore || !!selection?.active));
+  const touch = useTouchHold(anchor => {if (!selection?.active && onMore) {anchor.dataset.touchMenu = 'true'; touchMenuHaptic();} holdCard(onMore ? () => onMore(anchor as HTMLButtonElement) : undefined, selection);}, !disabled && (!!onMore || !!selection?.active));
   const click = (event: MouseEvent<HTMLButtonElement>) => {
-    if (touch.consumeClick()) { event.preventDefault(); return; }
+    if (touch.consumeClick() && event.detail !== 0) { event.preventDefault(); return; }
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
-  return <SelectionHoldFeedback active={touch.phase === 'pending' || !selection?.active && (touch.phase === 'fired' || !!props.moreExpanded)} progress={touch.phase === 'fired' || props.moreExpanded ? 1 : 0}><article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, touch.phase === 'pending' && styles.holding, props.moreExpanded && styles.menuOpen, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}>
+  return <SelectionHoldFeedback active={touch.phase === 'pending' || !selection?.active && (touch.phase === 'fired' || !!props.moreExpanded)} progress={touch.phase === 'fired' || props.moreExpanded ? 1 : 0}><article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, touch.phase !== 'idle' && !selection?.active && styles.holding, props.moreExpanded && styles.menuOpen, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}>
     <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={props.onBlur}
       {...touch.handlers}
       onKeyDown={event => {if (event.key === 'Escape' && selection?.active) {event.preventDefault(); event.stopPropagation(); selection.onExit();}}}

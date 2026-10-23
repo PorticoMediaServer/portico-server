@@ -26,6 +26,7 @@ export type SelectionRendererSource = Readonly<{
   editorAudience: EditorAudience;
   dockVisible: () => boolean;
   reportError: (error: unknown) => void;
+  touchMenu?: () => boolean;
 }>;
 const t = defaultI18n.t;
 const menuIcons: Record<EntryActionId, IconName> = {
@@ -74,11 +75,23 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
   }, [controller, source]);
   const menu = snapshot.menu;
   const rating = menu?.member.entry && homeEntryCapabilities(menu.member.entry, {platform: 'web', playbackAvailable: true, queueAvailable: true}).rating;
-  const entries: MenuEntry[] = menu?.groups.flatMap(group => [
-    ...(group.title ? [{id: 'group:' + group.id, section: true as const, label: t(group.title), ownerOnly: group.id === 'manage'}] : group.id === 'play' ? [] : [{id: 'group:' + group.id, separator: true as const}]),
+  const entries: MenuEntry[] = menu?.groups.flatMap((group, groupIndex) => [
+    ...(group.title ? [{id: 'group:' + group.id, section: true as const, label: t(group.title), ownerOnly: group.id === 'manage'}] : groupIndex === 0 ? [] : [{id: 'group:' + group.id, separator: true as const}]),
     ...group.actions.map(action => ({id: action.id, label: action.id === 'rate' && rating != null ? t(action.label, {stars: defaultI18n.number(rating / 2)}) : t(action.label), icon: menuIcons[action.id],
       selected: action.selected, destructive: action.destructive, onSelect: () => run(source, () => controller.executeMenu(action.id))})),
   ]) ?? [];
+  if (menu) {
+    const index = entries.findIndex(entry => entry.id === 'details' || entry.id === 'group:manage');
+    entries.splice(index < 0 ? entries.length : index, 0, {id: 'select', label: t('next.selection.select'), icon: 'i-check', onSelect: () => run(source, () => {
+      const current = controller.getSnapshot();
+      if (current.menu?.key !== menu.key || current.menu.windowId !== menu.windowId) return;
+      if (!current.selection.selectedKeys.includes(menu.key)) {
+        const result = controller.toggle(menu.windowId, menu.key);
+        if (!result.ok) throw Object.assign(new Error(result.reason), {code: result.reason});
+      }
+      controller.closeMenu();
+    })});
+  }
   const dialogSummary = summarizeSelection(snapshot.displayMembers.map(member => member.item));
   const editor = snapshot.editor, deletion = snapshot.deletion;
   const editorResult = editor && editorResultView(editor.receipts);
@@ -92,8 +105,8 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
       actions={actionsFor(source, snapshot)} typeCount={summary.types.length} selectAll={{kind: 'row'}}
       onSelectAll={() => run(source, () => { const result = controller.selectRow(); if (!result.ok) throw Object.assign(new Error(result.reason), {code: result.reason}); })}
       onExit={() => controller.clear()} /></div>}
-    <Menu open={!!menu} onOpenChange={open => { if (!open) controller.closeMenu(); }} title={t('next.home.moreFor', {title: menu ? selectionMemberDisplay(menu.member).title : ''})}
-      anchorRef={source.anchor} items={entries} width={300} />
+    <Menu open={!!menu} onOpenChange={open => { if (!open) controller.closeMenu(); }} title={source.touchMenu?.() ? menu ? selectionMemberDisplay(menu.member).title : '' : t('next.home.moreFor', {title: menu ? selectionMemberDisplay(menu.member).title : ''})}
+      anchorRef={source.anchor} items={entries} width={300} touchContext={source.touchMenu?.() ?? false} />
     {snapshot.mixedEdit && <MixedEditExplainer open onOpenChange={open => { if (!open) controller.closeEditor(); }} anchorRef={source.anchor}
       types={dialogSummary.types} reason={snapshot.editExplanation === 'no-bulk-fields' ? 'no-bulk-fields' : 'mixed-types'} onKeepOnly={kind => { controller.keepOnly(kind); }} />}
     {editor?.preview && editor.phase !== 'uncertain' && editor.phase !== 'error' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
