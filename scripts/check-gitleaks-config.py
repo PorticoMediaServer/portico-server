@@ -13,9 +13,11 @@ import tempfile
 def main():
     binary = Path(sys.argv[1]).resolve()
     config = Path(".gitleaks.toml").resolve()
+    ignore = Path(".gitleaksignore").resolve()
     expression = "this.api," + "proof=this.moveProof;"
     account = "web-next/src/platform/account-entry.ts"
     helper = "scripts/check-gitleaks-config.py"
+    services = "web-next/test/services-links-browser.mjs"
     with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as scratch:
         root = Path(scratch)
         (root / account).parent.mkdir(parents=True)
@@ -26,11 +28,20 @@ def main():
             (root / name).write_text(
                 first_line + '\nconst apiKey="' + secrets.token_urlsafe(32) + '";\n'
             )
+        (root / services).parent.mkdir(parents=True, exist_ok=True)
+        (root / services).write_text(
+            '\n' * 69 + 'const password="' + secrets.token_urlsafe(32) + '";\n'
+        )
         report = root / "findings.json"
+        command = [
+            str(binary), "dir", ".", "--config", str(config), "--redact",
+            "--no-banner", "--exit-code=0", "--report-format=json",
+            "--report-path=" + str(report),
+        ]
+        if ignore.exists():
+            command += ["--gitleaks-ignore-path", str(ignore)]
         result = subprocess.run(
-            [str(binary), "dir", ".", "--config", str(config), "--redact",
-             "--no-banner", "--exit-code=0", "--report-format=json",
-             "--report-path=" + str(report)],
+            command,
             cwd=root, capture_output=True, text=True,
         )
         if result.returncode:
@@ -44,6 +55,7 @@ def main():
             ("generic-api-key", "other.ts", 1),
             ("generic-api-key", "other.ts", 2),
             ("generic-api-key", helper, 2),
+            ("generic-api-key", services, 70),
         }
         if actual != expected:
             print(json.dumps({"expectedLocations": sorted(expected), "actualLocations": sorted(actual)}))

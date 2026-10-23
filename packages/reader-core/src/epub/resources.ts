@@ -1,6 +1,7 @@
 import type {ReaderResource,ReaderSource} from '../ports.ts';
 import {ReaderError,throwIfAborted} from '../errors.ts';
 import {safeArchivePath,type EpubAssets} from './archive.ts';
+import {abortScope} from '../abort.ts';
 
 /** One immutable publication index; no HTTP client, URL or credentials. */
 export function resourceAssets(source:ReaderSource):EpubAssets {
@@ -17,9 +18,11 @@ export function resourceAssets(source:ReaderSource):EpubAssets {
   }
   return {entries:Object.freeze([...entries.values()]),
     async read(path,callerSignal) {
-      const signal=AbortSignal.any([callerSignal,life.signal]);throwIfAborted(signal);current();
+      const scope=abortScope([callerSignal,life.signal]),signal=scope.signal;
+      try {throwIfAborted(signal);current();
       const entry=entries.get(safeArchivePath(path));if(!entry)return new Uint8Array();
       const bytes=await resources.read(path,signal);throwIfAborted(signal);current();
       if(!(bytes instanceof Uint8Array)||bytes.length!==entry.size)throw new ReaderError('invalid_book');return bytes;
+      } finally {scope.dispose();}
     },dispose(){if(closed)return;closed=true;life.abort();entries.clear();}};
 }

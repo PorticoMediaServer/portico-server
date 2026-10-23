@@ -1,5 +1,6 @@
 // Foliate paginator, MIT, Copyright (c) 2022 John Factotum.
-// Pinned upstream and lifecycle-only changes: see SOURCES.md and LICENSE.
+// Pinned upstream and scoped adaptations: see SOURCES.md and LICENSE.
+import { unprefixEpubCss, lastLinearIndex } from './compat.js'
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const debounce = (f, wait, immediate) => {
@@ -676,9 +677,8 @@ export class Paginator extends HTMLElement {
             if (detail.type !== 'text/css') return
             const w = innerWidth
             const h = innerHeight
-            detail.data = Promise.resolve(detail.data).then(data => data
+            detail.data = Promise.resolve(detail.data).then(data => unprefixEpubCss(data)
                 // unprefix as most of the props are (only) supported unprefixed
-                .replace(/(?<=[{\s;])-epub-/gi, '')
                 // replace vw and vh as they cause problems with layout
                 .replace(/(\d*\.?\d+)vw/gi, (_, d) => parseFloat(d) * w / 100 + 'px')
                 .replace(/(\d*\.?\d+)vh/gi, (_, d) => parseFloat(d) * h / 100 + 'px')
@@ -1120,7 +1120,7 @@ export class Paginator extends HTMLElement {
         return this.goTo({ index })
     }
     lastSection() {
-        const index = this.sections.findLastIndex(section => section.linear !== 'no')
+        const index = lastLinearIndex(this.sections)
         return this.goTo({ index })
     }
     getContents() {

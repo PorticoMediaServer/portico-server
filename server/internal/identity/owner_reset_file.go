@@ -357,22 +357,29 @@ func (s *Service) resetCredentialTx(ctx context.Context, tx *sql.Tx, account str
 		}
 	}
 	if turnOff {
-		var enabled bool
-		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_account_factors WHERE account_id=?)`, account).Scan(&enabled); e != nil {
+		if e := disableResetFactorTx(ctx, tx, account); e != nil {
 			return e
-		}
-		if enabled {
-			if e := twoFactorResetNoticeTx(ctx, tx, account); e != nil {
-				return e
-			}
-		}
-		for _, table := range []string{"identity_account_factors", "identity_recovery_codes", "identity_factor_challenges"} {
-			if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE account_id=?`, account); e != nil {
-				return e
-			}
 		}
 	}
 	for _, table := range []string{"identity_credential_attempts", "identity_account_attempt_budget"} {
+		if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE account_id=?`, account); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+func disableResetFactorTx(ctx context.Context, tx *sql.Tx, account string) error {
+	var enabled bool
+	if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_account_factors WHERE account_id=?)`, account).Scan(&enabled); e != nil {
+		return e
+	}
+	if enabled {
+		if e := twoFactorResetNoticeTx(ctx, tx, account); e != nil {
+			return e
+		}
+	}
+	for _, table := range []string{"identity_account_factors", "identity_recovery_codes", "identity_factor_challenges"} {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE account_id=?`, account); e != nil {
 			return e
 		}
