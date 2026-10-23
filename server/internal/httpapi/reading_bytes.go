@@ -18,7 +18,13 @@ import (
 )
 
 func (d Dependencies) readingService() *reading.Service {
+	if d.Reading != nil {
+		return d.Reading
+	}
 	return &reading.Service{DB: d.DB, Storage: d.Storage, Mounts: d.Mounts, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
+		if d.Identity == nil {
+			return identity.ErrUnauthorized
+		}
 		live, err := d.Identity.PrincipalByDigestTx(ctx, tx, p.Hash)
 		if err != nil {
 			return err
@@ -33,6 +39,21 @@ func (d Dependencies) readingService() *reading.Service {
 			return err
 		}
 		return contentaccess.VisibleItemTx(ctx, tx, live, item)
+	}, Visible: func(ctx context.Context, tx *sql.Tx, p identity.Principal, itemSQL string) (string, []any, error) {
+		if d.Identity == nil {
+			return "", nil, identity.ErrUnauthorized
+		}
+		live, err := d.Identity.PrincipalByDigestTx(ctx, tx, p.Hash)
+		if err != nil {
+			return "", nil, err
+		}
+		if live.Viewer != p.Viewer {
+			return "", nil, identity.ErrUnauthorized
+		}
+		if err = live.PermitsRequest(ctx); err != nil {
+			return "", nil, err
+		}
+		return contentaccess.VisibleItemsSQL(ctx, tx, live, itemSQL, func(library string) error { return d.allowedLibraryTx(ctx, live, library, tx) })
 	}}
 }
 
@@ -78,9 +99,14 @@ func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (
 		policyError(w, "revision_mismatch")
 		return nil, false
 	}
-	f, err := d.readingService().Open(r.Context(), p, r.PathValue("id"), r.URL.Query().Get("sourceId"), match[1:len(match)-1])
+	f, err := d.readingService().OpenSession(r.Context(), p, r.URL.Query().Get("sessionId"))
 	if err != nil {
 		readingFailure(w, err)
+		return nil, false
+	}
+	if f.ItemID != r.PathValue("id") || f.SourceID != r.URL.Query().Get("sourceId") || f.Revision != match[1:len(match)-1] {
+		f.Close()
+		policyError(w, "revision_mismatch")
 		return nil, false
 	}
 	readingHeaders(w, f.Revision)

@@ -25,6 +25,7 @@ type Session struct {
 	timer        *time.Timer
 	mu           sync.Mutex
 	closed       bool
+	active       int
 }
 
 func (s *Session) close() {
@@ -44,8 +45,31 @@ func (s *Session) touch() bool {
 	if s.closed || s.life.Err() != nil {
 		return false
 	}
-	s.timer.Reset(sessionIdle)
+	if s.active == 0 {
+		s.timer.Reset(sessionIdle)
+	}
 	return true
+}
+
+func (s *Session) claim() (func(), bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.life.Err() != nil {
+		return nil, false
+	}
+	s.active++
+	s.timer.Stop()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			s.active--
+			if !s.closed && s.active == 0 {
+				s.timer.Reset(sessionIdle)
+			}
+		})
+	}, true
 }
 
 func (s *Service) BeginSession(ctx context.Context, p identity.Principal, item, sourceID string) (*Session, error) {
@@ -57,6 +81,11 @@ func (s *Service) BeginSession(ctx context.Context, p identity.Principal, item, 
 	if err = f.Validate(); err != nil {
 		return nil, err
 	}
+	return s.captureSession(p, f)
+}
+
+func (s *Service) captureSession(p identity.Principal, f *Source) (*Session, error) {
+	item := f.ItemID
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	if s.sessionsClosed {
@@ -89,6 +118,40 @@ func (s *Service) BeginSession(ctx context.Context, p identity.Principal, item, 
 	return out, nil
 }
 
+// Prepare inspects exactly the selected publication and captures its reader
+// lifecycle from that same physical acquisition. No second source/version is
+// substituted between manifest metadata and later per-session reads.
+func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourceID string) (*Session, Publication, error) {
+	f, err := s.Open(ctx, p, item, sourceID, "")
+	if err != nil {
+		return nil, Publication{}, err
+	}
+	defer f.Close()
+	document, err := Inspect(f)
+	if err != nil {
+		return nil, Publication{}, err
+	}
+	session, err := s.captureSession(p, f)
+	return session, document, err
+}
+
+func (s *Service) SessionProgress(ctx context.Context, p identity.Principal, id string) (*Progress, error) {
+	f, err := s.OpenSession(ctx, p, id)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return s.Progress(f.ctx, p, f.ItemID, f.SourceID)
+}
+func (s *Service) SaveSessionProgress(ctx context.Context, p identity.Principal, id string, expected int64, location Location) (*Progress, bool, error) {
+	f, err := s.OpenSession(ctx, p, id)
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	return s.SaveProgress(f.ctx, p, f.ItemID, f.SourceID, f.Revision, expected, location)
+}
+
 func (s *Service) findSession(p identity.Principal, id string) (*Session, error) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
@@ -110,12 +173,17 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	if err != nil {
 		return nil, err
 	}
+	release, ok := session.claim()
+	if !ok {
+		return nil, identity.ErrForbidden
+	}
 	request, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(session.life, cancel)
 	f, err := s.Open(request, p, session.selection.ItemID, session.selection.SourceID, session.selection.Revision)
 	if err != nil {
 		stop()
 		cancel()
+		release()
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			session.close()
 		}
@@ -125,10 +193,11 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 		f.Close()
 		stop()
 		cancel()
+		release()
 		session.close()
 		return nil, ErrChanged
 	}
-	f.onClose = func() { stop(); cancel() }
+	f.onClose = func() { stop(); cancel(); release() }
 	f.onFailure = session.close
 	return f, nil
 }

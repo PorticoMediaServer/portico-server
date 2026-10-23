@@ -25,24 +25,26 @@ import (
 // transaction as selection: live session, library permission and title fence.
 // The service never treats a filesystem observation as actor authorization.
 type Authorization func(context.Context, *sql.Tx, identity.Principal, string, string) error
+type Visibility func(context.Context, *sql.Tx, identity.Principal, string) (string, []any, error)
 type Service struct {
 	DB             *sql.DB
 	Storage        *storage.Client
 	Mounts         *mounts.Service
 	Authorize      Authorization
+	Visible        Visibility
 	sessionMu      sync.Mutex
 	sessions       map[string]*Session
 	sessionsClosed bool
 }
 
 type Selection struct {
-	ItemID, SourceID, Format, Title, Revision                                                            string
+	ItemID, SourceID, Format, Title, Language, Revision                                                  string
 	Entity, Asset, Size, ModifiedNS                                                                      int64
 	library, token, path, root, relative, rootID, rootIdentity, incarnation, object, inventory, evidence string
 	generation                                                                                           int64
 }
 
-const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json
+const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json
  FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id
  JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
@@ -50,7 +52,7 @@ const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,cl.library_id
  JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
  JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
- AND lib.kind IN('book','comic') AND link.available=1 AND a.available=1 AND available.available=1
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')
  ORDER BY a.id,o.id LIMIT 1`
@@ -58,7 +60,7 @@ const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,cl.library_id
 func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
 	var v Selection
 	v.ItemID = item
-	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(&v.Entity, &v.Asset, &v.Format, &v.Title, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence)
+	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrUnavailable
 	}

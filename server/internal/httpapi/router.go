@@ -47,6 +47,7 @@ import (
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
@@ -109,6 +110,7 @@ type Dependencies struct {
 	DB                *sql.DB
 	Identity          *identity.Service
 	Catalog           *catalog.Service
+	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service
 	Hosted            *hosted.Service
@@ -807,6 +809,9 @@ func New(d Dependencies) http.Handler {
 		})
 	}
 	d.v1 = newPlaybackV1(d)
+	if d.Reading == nil {
+		d.Reading = d.readingService()
+	}
 	if d.v1 != nil {
 		d.v1.Traffic = d.streamTraffic
 	}
