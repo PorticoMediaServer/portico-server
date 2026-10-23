@@ -21,10 +21,12 @@ export function homePlaybackItem(document: HomeDocument, entry: ContentEntry, ta
 
 /** Fields stay semantic. In particular, the old joined subtitle is never parsed. */
 export function homeCardSubject(entry: ContentEntry): CardSubject {
-  const episode = entry.kind !== 'episode' ? undefined : entry.absoluteNumber !== undefined
+  const episode = entry.kind !== 'episode' ? undefined : entry.dateBased === true
+    ? {mode: 'date' as const, day: entry.airDate}
+    : entry.absoluteNumber !== undefined
     ? {mode: 'absolute' as const, number: entry.absoluteNumber}
     : entry.airDate && entry.episodeNumber === undefined ? {mode: 'date' as const, day: entry.airDate}
-    : entry.seasonNumber === 0 ? {mode: 'special' as const}
+    : entry.special === true || entry.seasonNumber === 0 ? {mode: 'special' as const}
     : {mode: 'seasonal' as const, season: entry.seasonNumber, episode: entry.episodeNumber};
   return {id: entry.id, kind: entry.kind, title: entry.displayTitle ?? entry.title,
     seasonNumber: entry.seasonNumber, year: entry.year, contentRating: entry.contentRating, durationSeconds: entry.duration,
