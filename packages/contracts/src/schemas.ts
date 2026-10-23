@@ -15190,6 +15190,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "kind": {
+                "enum": [
+                  "rclone",
+                  "webdav",
+                  "sftp",
+                  "smb"
+                ],
                 "type": "string"
               },
               "mountId": {
@@ -32919,6 +32925,19 @@ export const schemas = {
                           },
                           "type": "array"
                         },
+                        "dolbyVisionProfile8Compatibility": {
+                          "items": {
+                            "enum": [
+                              1,
+                              2,
+                              4
+                            ],
+                            "type": "integer"
+                          },
+                          "maxItems": 3,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
                         "dolbyVisionProfiles": {
                           "items": {
                             "maximum": 9007199254740991,
@@ -33214,6 +33233,19 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "dolbyVisionProfile8Compatibility": {
+                          "items": {
+                            "enum": [
+                              1,
+                              2,
+                              4
+                            ],
+                            "type": "integer"
+                          },
+                          "maxItems": 3,
+                          "type": "array",
+                          "uniqueItems": true
                         },
                         "dolbyVisionProfiles": {
                           "items": {
@@ -112672,6 +112704,9 @@ export const schemas = {
                   "objectAudio": {
                     "type": "string"
                   },
+                  "profile": {
+                    "type": "string"
+                  },
                   "sampleRate": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -138313,6 +138348,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "kind": {
+                "enum": [
+                  "rclone",
+                  "webdav",
+                  "sftp",
+                  "smb"
+                ],
                 "type": "string"
               },
               "mountId": {
@@ -138424,6 +138465,12 @@ export const schemas = {
               "type": "boolean"
             },
             "kind": {
+              "enum": [
+                "rclone",
+                "webdav",
+                "sftp",
+                "smb"
+              ],
               "type": "string"
             },
             "mountId": {
@@ -141716,6 +141763,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "objectAudio": {
+                      "type": "string"
+                    },
+                    "profile": {
                       "type": "string"
                     },
                     "sampleRate": {
@@ -171889,6 +171939,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "kind": {
+                "enum": [
+                  "rclone",
+                  "webdav",
+                  "sftp",
+                  "smb"
+                ],
                 "type": "string"
               },
               "mountId": {
@@ -176989,6 +177045,19 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "dolbyVisionProfile8Compatibility": {
+                      "items": {
+                        "enum": [
+                          1,
+                          2,
+                          4
+                        ],
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
                     "dolbyVisionProfiles": {
                       "items": {
                         "maximum": 9007199254740991,
@@ -177284,6 +177353,19 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "dolbyVisionProfile8Compatibility": {
+                      "items": {
+                        "enum": [
+                          1,
+                          2,
+                          4
+                        ],
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
                     },
                     "dolbyVisionProfiles": {
                       "items": {
@@ -182382,6 +182464,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "kind": {
+                "enum": [
+                  "rclone",
+                  "webdav",
+                  "sftp",
+                  "smb"
+                ],
                 "type": "string"
               },
               "mountId": {

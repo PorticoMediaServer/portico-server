@@ -16844,6 +16844,12 @@
                     "type": "boolean"
                   },
                   "kind": {
+                    "enum": [
+                      "rclone",
+                      "webdav",
+                      "sftp",
+                      "smb"
+                    ],
                     "type": "string"
                   },
                   "mountId": {
@@ -35225,6 +35231,19 @@
                               },
                               "type": "array"
                             },
+                            "dolbyVisionProfile8Compatibility": {
+                              "items": {
+                                "enum": [
+                                  1,
+                                  2,
+                                  4
+                                ],
+                                "type": "integer"
+                              },
+                              "maxItems": 3,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
                             "dolbyVisionProfiles": {
                               "items": {
                                 "maximum": 9007199254740991,
@@ -35521,6 +35540,19 @@
                                     "type": "string"
                                   },
                                   "type": "array"
+                                },
+                                "dolbyVisionProfile8Compatibility": {
+                                  "items": {
+                                    "enum": [
+                                      1,
+                                      2,
+                                      4
+                                    ],
+                                    "type": "integer"
+                                  },
+                                  "maxItems": 3,
+                                  "type": "array",
+                                  "uniqueItems": true
                                 },
                                 "dolbyVisionProfiles": {
                                   "items": {
@@ -116874,6 +116906,9 @@
                       "objectAudio": {
                         "type": "string"
                       },
+                      "profile": {
+                        "type": "string"
+                      },
                       "sampleRate": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -143141,6 +143176,12 @@
                     "type": "boolean"
                   },
                   "kind": {
+                    "enum": [
+                      "rclone",
+                      "webdav",
+                      "sftp",
+                      "smb"
+                    ],
                     "type": "string"
                   },
                   "mountId": {
@@ -143252,6 +143293,12 @@
                   "type": "boolean"
                 },
                 "kind": {
+                  "enum": [
+                    "rclone",
+                    "webdav",
+                    "sftp",
+                    "smb"
+                  ],
                   "type": "string"
                 },
                 "mountId": {
@@ -159773,6 +159820,9 @@
                           "type": "string"
                         },
                         "objectAudio": {
+                          "type": "string"
+                        },
+                        "profile": {
                           "type": "string"
                         },
                         "sampleRate": {
@@ -190295,6 +190345,12 @@
                     "type": "boolean"
                   },
                   "kind": {
+                    "enum": [
+                      "rclone",
+                      "webdav",
+                      "sftp",
+                      "smb"
+                    ],
                     "type": "string"
                   },
                   "mountId": {
@@ -195467,6 +195523,19 @@
                           },
                           "type": "array"
                         },
+                        "dolbyVisionProfile8Compatibility": {
+                          "items": {
+                            "enum": [
+                              1,
+                              2,
+                              4
+                            ],
+                            "type": "integer"
+                          },
+                          "maxItems": 3,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
                         "dolbyVisionProfiles": {
                           "items": {
                             "maximum": 9007199254740991,
@@ -195763,6 +195832,19 @@
                                 "type": "string"
                               },
                               "type": "array"
+                            },
+                            "dolbyVisionProfile8Compatibility": {
+                              "items": {
+                                "enum": [
+                                  1,
+                                  2,
+                                  4
+                                ],
+                                "type": "integer"
+                              },
+                              "maxItems": 3,
+                              "type": "array",
+                              "uniqueItems": true
                             },
                             "dolbyVisionProfiles": {
                               "items": {
@@ -200956,6 +201038,12 @@
                     "type": "boolean"
                   },
                   "kind": {
+                    "enum": [
+                      "rclone",
+                      "webdav",
+                      "sftp",
+                      "smb"
+                    ],
                     "type": "string"
                   },
                   "mountId": {
@@ -257780,6 +257868,9 @@
                                     "type": "string"
                                   },
                                   "objectAudio": {
+                                    "type": "string"
+                                  },
+                                  "profile": {
                                     "type": "string"
                                   },
                                   "sampleRate": {
@@ -376148,6 +376239,9 @@
                                 "objectAudio": {
                                   "type": "string"
                                 },
+                                "profile": {
+                                  "type": "string"
+                                },
                                 "sampleRate": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -398330,6 +398424,19 @@
                                         },
                                         "type": "array"
                                       },
+                                      "dolbyVisionProfile8Compatibility": {
+                                        "items": {
+                                          "enum": [
+                                            1,
+                                            2,
+                                            4
+                                          ],
+                                          "type": "integer"
+                                        },
+                                        "maxItems": 3,
+                                        "type": "array",
+                                        "uniqueItems": true
+                                      },
                                       "dolbyVisionProfiles": {
                                         "items": {
                                           "maximum": 9007199254740991,
@@ -398626,6 +398733,19 @@
                                               "type": "string"
                                             },
                                             "type": "array"
+                                          },
+                                          "dolbyVisionProfile8Compatibility": {
+                                            "items": {
+                                              "enum": [
+                                                1,
+                                                2,
+                                                4
+                                              ],
+                                              "type": "integer"
+                                            },
+                                            "maxItems": 3,
+                                            "type": "array",
+                                            "uniqueItems": true
                                           },
                                           "dolbyVisionProfiles": {
                                             "items": {
@@ -399178,6 +399298,19 @@
                                   },
                                   "type": "array"
                                 },
+                                "dolbyVisionProfile8Compatibility": {
+                                  "items": {
+                                    "enum": [
+                                      1,
+                                      2,
+                                      4
+                                    ],
+                                    "type": "integer"
+                                  },
+                                  "maxItems": 3,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
                                 "dolbyVisionProfiles": {
                                   "items": {
                                     "maximum": 9007199254740991,
@@ -399474,6 +399607,19 @@
                                         "type": "string"
                                       },
                                       "type": "array"
+                                    },
+                                    "dolbyVisionProfile8Compatibility": {
+                                      "items": {
+                                        "enum": [
+                                          1,
+                                          2,
+                                          4
+                                        ],
+                                        "type": "integer"
+                                      },
+                                      "maxItems": 3,
+                                      "type": "array",
+                                      "uniqueItems": true
                                     },
                                     "dolbyVisionProfiles": {
                                       "items": {
@@ -465843,6 +465989,12 @@
                               "type": "boolean"
                             },
                             "kind": {
+                              "enum": [
+                                "rclone",
+                                "webdav",
+                                "sftp",
+                                "smb"
+                              ],
                               "type": "string"
                             },
                             "mountId": {
@@ -466006,6 +466158,12 @@
                             "type": "boolean"
                           },
                           "kind": {
+                            "enum": [
+                              "rclone",
+                              "webdav",
+                              "sftp",
+                              "smb"
+                            ],
                             "type": "string"
                           },
                           "mountId": {
@@ -466189,6 +466347,12 @@
                               "type": "boolean"
                             },
                             "kind": {
+                              "enum": [
+                                "rclone",
+                                "webdav",
+                                "sftp",
+                                "smb"
+                              ],
                               "type": "string"
                             },
                             "mountId": {
@@ -466404,6 +466568,12 @@
                               "type": "boolean"
                             },
                             "kind": {
+                              "enum": [
+                                "rclone",
+                                "webdav",
+                                "sftp",
+                                "smb"
+                              ],
                               "type": "string"
                             },
                             "mountId": {
@@ -466617,6 +466787,12 @@
                               "type": "boolean"
                             },
                             "kind": {
+                              "enum": [
+                                "rclone",
+                                "webdav",
+                                "sftp",
+                                "smb"
+                              ],
                               "type": "string"
                             },
                             "mountId": {
