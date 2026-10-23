@@ -301,7 +301,7 @@ type PeopleDeviceQuery struct{ Cursor, Limit, Account, Sort string }
 
 const peopleDeviceColumns = `d.id,d.account_id,a.username,d.last_profile_id,d.name,d.platform,d.app,d.app_version,d.first_seen,d.last_seen,d.revision,COALESCE(p.name,''),d.ip,
  CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
- WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END,m.access_tokens,m.max_profiles`
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
 const peopleDeviceTables = `identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN direct_profiles p ON p.id=d.last_profile_id AND p.account_id=d.account_id AND p.deleted=0`
 
 func scanPeopleDevice(row interface{ Scan(...any) error }, networks []netip.Prefix) (PeopleDevice, error) {
