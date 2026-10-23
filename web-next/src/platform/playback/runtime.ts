@@ -416,6 +416,11 @@ export class WebShellPlaybackRuntime {
     const service = this.groupServices.get(this.group);if (!service) problem('group_playback_unavailable');
     if (!await service.transport(command, seconds === undefined ? {} : {positionUs: String(Math.round(seconds * 1e6))})) problem('group_transport_refused');return true;
   }
+  /** Current room occurrence only; equal title IDs do not prove a room's source was adopted. */
+  groupPlaybackMatches(fence: PlaybackFence, groupId: string, entryId: string): boolean {
+    const active = this.group?.active();
+    return this.matches(fence) && !!this.group?.matches(fence) && active?.id === groupId && active.timeline.currentEntryId === entryId;
+  }
   private readonly groupServices = new WeakMap<RuntimeGroupBinding, GroupSessionService>();
 
   /** A chooser reads real current options without stopping the playing source. Its owner keeps

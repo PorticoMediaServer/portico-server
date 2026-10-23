@@ -2222,12 +2222,17 @@ test('Together loads a paused room paused before the first picture and sends use
 test('Together read-only members cannot issue local transport, and the same title in another room is admitted afresh', async t => {
   const f = await runtimeRoom(t, true, false), first = f.runtime.getSnapshot().fence!;
   assert.deepEqual(f.errors, []);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'group_entry'), true);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'foreign_room', 'group_entry'), false);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'foreign_entry'), false);
   assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('pause'), false);
   await assert.rejects(f.runtime.pause(first), /playback_command_unavailable/);
   assert.equal(f.log.filter(request => request.path.endsWith('/transport')).length, 0);
   await f.nextRoom();
   const second = f.runtime.getSnapshot().fence!;
   assert.notEqual(second.sessionId, first.sessionId, 'room occurrence cannot inherit a same-item old engine fence');
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'group_entry'), false);
+  assert.equal(f.runtime.groupPlaybackMatches(second, 'room_second', 'group_entry'), true);
   await assert.rejects(f.runtime.pause(first), /stale_playback_command/);
   assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 2);
 });

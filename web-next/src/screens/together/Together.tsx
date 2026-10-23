@@ -34,7 +34,8 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   const art = current?.backdropUrl ?? current?.posterUrl;
   const source = useMemo(() => binding.artwork.foreground(art, 1120, 16 / 9, {group: 'playback', priority: 'normal'}), [binding, art]);
   const act = (action: () => unknown | Promise<unknown>) => {if (!binding.isCurrent() || group && binding.getSnapshot().room.group?.id !== group.id) return;try {void Promise.resolve(action()).catch(binding.reportError);} catch (error) {binding.reportError(error);}};
-  const openPlayer = () => {const value = binding.runtime.getSnapshot();if (group && value.fence?.kind === 'queue' && value.fence.itemId === group.timeline.itemId) binding.runtime.open(value.fence);};
+  const currentPlayback = !!group && !!playback.fence && binding.runtime.groupPlaybackMatches(playback.fence, group.id, group.timeline.currentEntryId);
+  const openPlayer = () => {const value = binding.runtime.getSnapshot();if (group && value.fence && binding.runtime.groupPlaybackMatches(value.fence, group.id, group.timeline.currentEntryId)) binding.runtime.open(value.fence);};
   const ask = (kind: 'leave' | 'end', button: HTMLButtonElement) => {trigger.current = button;setConfirm(kind);};
   const entries: MenuEntry[] = group && queue && menu ? [
     {id: 'play', label: t('web.together.watchThis'), disabled: !group.permissions.canControl, onSelect: () => act(() => binding.service.transport('set-queue-position', {entryId: menu}))},
@@ -67,12 +68,12 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
           <section>
             <div className={styles.now}><Artwork source={source} alt="" saturation={.85} brightness={.7} /><div className={styles.nowText}>
               <span className={styles.status}>{t(stateKey(group))}</span><b>{identity?.title}</b><small>{identity?.subtitle.map(part => part.text).join(' ')}
-                {playback.fence?.kind === 'queue' && playback.fence.itemId === group.timeline.itemId && playback.presentation && <>{identity?.subtitle.length ? <i /> : null}{t('web.together.positionOf', {position: watchClock(playback.presentation.positionSeconds), duration: watchClock(playback.presentation.durationSeconds)})}</>}
-              </small>{playback.presentation && playback.fence?.kind === 'queue' && playback.fence.itemId === group.timeline.itemId && playback.presentation.durationSeconds > 0 && <div className={styles.progress}><i style={{width: `${Math.min(1, playback.presentation.positionSeconds / playback.presentation.durationSeconds) * 100}%`}} /></div>}
+                {currentPlayback && playback.presentation && <>{identity?.subtitle.length ? <i /> : null}{t('web.together.positionOf', {position: watchClock(playback.presentation.positionSeconds), duration: watchClock(playback.presentation.durationSeconds)})}</>}
+              </small>{playback.presentation && currentPlayback && playback.presentation.durationSeconds > 0 && <div className={styles.progress}><i style={{width: `${Math.min(1, playback.presentation.positionSeconds / playback.presentation.durationSeconds) * 100}%`}} /></div>}
             </div></div>
             <div className={styles.actions}>{group.permissions.canControl && <button type="button" className={styles.primary} disabled={room.busy || !group.timeline.itemId}
               onClick={() => act(() => binding.service.transport(group.timeline.state === 'playing' ? 'pause' : 'play'))}><Icon name={group.timeline.state === 'playing' ? 'i-pause' : 'i-play'} size={18} />{t(group.timeline.state === 'playing' ? 'web.together.pauseAll' : 'web.together.playAll')}</button>}
-              {!phone && <button type="button" onClick={openPlayer} disabled={playback.fence?.kind !== 'queue' || playback.fence.itemId !== group.timeline.itemId}>{t('web.together.openPlayer')}</button>}</div>
+              {!phone && <button type="button" onClick={openPlayer} disabled={!currentPlayback}>{t('web.together.openPlayer')}</button>}</div>
             {!phone && <p className={styles.readiness}>{t('web.together.waiting', {ready: group.readiness.ready, total: group.readiness.memberCount, count: Math.max(0, group.readiness.memberCount - group.readiness.ready)})}</p>}
             {!phone && <><h3>{t('web.together.queue')}<small>{queue ? t('web.person.titles', {count: queue.entries.length}) : ''}</small></h3>
             <div className={styles.list}>{queue?.entries.map(entry => {const raw = !entry.unavailable && entry.itemId ? snapshot.items.get(entry.itemId) : undefined;
