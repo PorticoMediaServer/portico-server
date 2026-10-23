@@ -79,4 +79,10 @@ func TestConversionSettingsCompleteDocumentRejectsOmissionAndNull(t *testing.T) 
 	if err := json.Unmarshal(raw, &request); err != nil {
 		t.Fatal("complete default settings refused", err)
 	}
+	fields["hdrToneMapping"] = values.HDRToneMapping
+	fields["transcodingEnabled"] = true
+	retired, _ := json.Marshal(body)
+	if json.Unmarshal(retired, &request) == nil {
+		t.Fatal("retired independent conversion gate accepted")
+	}
 }

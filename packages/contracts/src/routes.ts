@@ -7626,6 +7626,28 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_settings_configuration",
+    "method": "GET",
+    "path": "/v1/admin/settings/configuration",
+    "summary": "Read settings values, defaults and configuration sources",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_setup_state",
     "method": "GET",
     "path": "/v1/setup/state",
@@ -18304,6 +18326,7 @@ export const routePaths = {
   "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
   "get_server": "/v1/server",
   "get_server_metadata_attention": "/v1/admin/metadata/attention",
+  "get_settings_configuration": "/v1/admin/settings/configuration",
   "get_setup_state": "/v1/setup/state",
   "get_shows_id_episodes": "/v1/shows/{id}/episodes",
   "get_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
