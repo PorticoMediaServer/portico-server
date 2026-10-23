@@ -12,10 +12,18 @@ func analyzeDolbyVisionFrames(raw []byte, d *StreamDetail) {
 			Width     int    `json:"width"`
 			Height    int    `json:"height"`
 			Side      []struct {
-				Type            string `json:"side_data_type"`
-				RPUType         *int   `json:"rpu_type"`
-				BaseDepth       *int   `json:"bl_bit_depth"`
-				DisableResidual *int   `json:"disable_residual_flag"`
+				Type                   string `json:"side_data_type"`
+				RPUType                *int   `json:"rpu_type"`
+				BaseDepth              *int   `json:"bl_bit_depth"`
+				DisableResidual        *int   `json:"disable_residual_flag"`
+				NLQMethod              *int   `json:"nlq_method_idc"`
+				CoefficientDenominator *int   `json:"coef_log2_denom"`
+				Components             []struct {
+					Offset    *uint64 `json:"nlq_offset"`
+					Maximum   *uint64 `json:"vdr_in_max"`
+					Slope     *uint64 `json:"linear_deadzone_slope"`
+					Threshold *uint64 `json:"linear_deadzone_threshold"`
+				} `json:"components"`
 			} `json:"side_data_list"`
 		} `json:"frames"`
 	}
@@ -32,14 +40,24 @@ func analyzeDolbyVisionFrames(raw []byte, d *StreamDetail) {
 			}
 			d.DolbyVisionMetadataKnown = true
 			d.DolbyVisionRPU, d.DolbyVisionBaseLayer = true, true
-			// The residual flag is parsed from the actual RPU. It is not
-			// inferred from profile 7, a neighbouring PID, or a filename.
-			if d.DolbyVisionProfile == 7 && d.EnhancementLayer && side.DisableResidual != nil {
-				switch *side.DisableResidual {
-				case 0:
+			// Match libdovi's RpuDataNlq::is_mel across all three
+			// components. MEL also enables residual parsing; the header's
+			// disable_residual_flag alone cannot distinguish MEL and FEL.
+			if d.DolbyVisionProfile == 7 && d.EnhancementLayer && side.DisableResidual != nil && *side.DisableResidual == 0 && side.NLQMethod != nil && *side.NLQMethod == 0 && side.CoefficientDenominator != nil && *side.CoefficientDenominator >= 0 && *side.CoefficientDenominator <= 32 && len(side.Components) == 3 {
+				complete, mel := true, true
+				one := uint64(1) << uint(*side.CoefficientDenominator)
+				for _, c := range side.Components {
+					if c.Offset == nil || c.Maximum == nil || c.Slope == nil || c.Threshold == nil {
+						complete = false
+						break
+					}
+					mel = mel && *c.Offset == 0 && *c.Maximum == one && *c.Slope == 0 && *c.Threshold == 0
+				}
+				if complete {
 					d.DolbyVisionEnhancementType = "FEL"
-				case 1:
-					d.DolbyVisionEnhancementType = "MEL"
+					if mel {
+						d.DolbyVisionEnhancementType = "MEL"
+					}
 				}
 			}
 			// ffprobe's frame metadata does not expose the complete CM

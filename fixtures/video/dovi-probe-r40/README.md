@@ -2,7 +2,7 @@ These two short Dolby Vision profile 7 files are retained procedural test
 outputs, not licensed film samples. The base picture is mathematical testsrc2;
 the enhancement picture and RPU metadata are synthetic. Each contains 24 HEVC
 pictures with B-frame reordering and one authored variable presentation interval.
-The MEL/FEL names describe the synthetic RPU residual flag, not mastered FEL
+The MEL/FEL names describe the synthetic RPU NLQ coefficients, not mastered FEL
 residual image reconstruction.
 
 Generator: scripts/qualify-hdr-video.py with
