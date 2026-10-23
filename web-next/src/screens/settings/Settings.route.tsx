@@ -18,11 +18,11 @@ import {SettingsScreen, type SettingsBindings} from './Settings';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
 import {readingSettingsAdapter} from './reading-adapter';
+import {hasWebPreferenceEffect} from './effects';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
 const noPreferences = () => () => {};
-const playbackEffects = new Set(['playback.defaultSpeed', 'playback.introSkip', 'playback.creditsSkip', 'playback.recapSkip', 'playback.passoutProtection', 'playback.passoutAfterEpisodes', 'playback.skipBackMs', 'playback.skipForwardMs', 'audiobooks.defaultSpeed', 'accessibility.reducedMotion']);
 
 export function SettingsEntry() {
   const protectedContext = useProtectedWebScreenContext();
@@ -53,9 +53,10 @@ export function SettingsEntry() {
       preferences: snapshot, reader, isCurrent: current, reportError, reading: readingSettingsAdapter,
       environment: {...(platform?.environment ?? {platform: 'web' as const, os: 'browser' as const}), role, signIn: identity.signIn}, device: platform?.device,
       eligibility: {library: () => undefined, hasEngine: (row: Parameters<SettingsController['eligible']>[0]) => {
+        if (row.control.options?.some(option => option.sets)) return hasWebPreferenceEffect(row);
         const binding = settingsBinding(row.id);
         if (!binding) return row.id === 'device.name' && !!platform?.device?.getSnapshot().facts.name || row.id === 'device.appVersion' && !!platform?.device?.getSnapshot().facts.appVersion;
-        if (binding.form === 'preferences') return playbackEffects.has(binding.key) || binding.key.startsWith('subtitles.');
+        if (binding.form === 'preferences') return hasWebPreferenceEffect(row);
         return binding.form !== 'library' && binding.form !== 'remote' && binding.form !== 'managedRoute';
       }},
     };
