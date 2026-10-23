@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {runtimeTestPassword} from './services-test-password.mjs';
 
 export async function runServicesAuthProof({driver, port, capture, report}) {
   assert.equal(port, 19495);
@@ -24,7 +25,7 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
     await driver.fill('input[name=email]', recipient);
     await driver.fill('input[name=username]', 'harbourview' + Date.now().toString().slice(-5));
     await driver.fill('input[name=name]', 'Alex');
-    await driver.fill('input[name=new-password]', 'K7qm-4Txp-29Hd-P8m');
+    await driver.fill('input[name=new-password]', runtimeTestPassword());
     await driver.evaluate('document.activeElement.blur()'); await capture('hosted-create');
     await driver.clickText('Continue');
     await driver.waitFor("document.querySelector('input[autocomplete=one-time-code]')", 30000);

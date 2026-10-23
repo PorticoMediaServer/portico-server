@@ -6,6 +6,7 @@ import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ChromeDriver} from '../../web/test/integration/chrome-driver.mjs';
+import {runtimeTestPassword} from './services-test-password.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const scratch = process.env.TMPDIR;
@@ -102,7 +103,7 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
   await driver.navigate(`http://127.0.0.1:${port}/test/services-links.html`);
   await driver.waitFor("document.querySelector('h1')?.textContent==='Choose a new password'", 45000);
   await driver.evaluate('document.fonts.ready');
-  const password = 'K7qm-4Txp-29Hd-P8m'; // Real Strong value; the frame's 12-dot/Strong inconsistency is logged separately.
+  const password = runtimeTestPassword(); // Real Strong value; the frame's illustrative dot-count inconsistency is held separately.
   await driver.fill('input[name=new-password]', password); await driver.fill('input[name=confirm-password]', password);
   await driver.waitFor("document.body.innerText.includes('Strong')");
   await driver.clickSelector('button[aria-label="Show password"]');
