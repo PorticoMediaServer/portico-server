@@ -61,10 +61,11 @@ function BoundSignIn({entry, form, takeReturn}: {entry: BrowserAccountEntry; for
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
     busy={busy} error={failure} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={() => {
-    const epoch = input.inputEpoch, server = state.server, origin = state.origin;
+    const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin;
+    if (!serverId) return;
     void entry.preparePorticoSignIn(browserAccountOrigin(import.meta.env, location)).then(url => {
       const current = entry.getSnapshot();
-      if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === 'portico' && current.server?.id === server.id && current.origin === origin) location.assign(url);
+      if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === 'portico' && current.server?.id === serverId && current.origin === origin) location.assign(url);
     }).catch(failure => {if (alive.current) setError(failure);});
   }} />;
   return <AuthStage legal={false}><AuthError error={failure} />{Boolean(failure) && <>
