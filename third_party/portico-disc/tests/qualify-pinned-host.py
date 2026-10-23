@@ -96,7 +96,7 @@ def main():
             compare = json.loads(json.dumps(actual))
             if role_facts:
                 streams = compare["titles"][0]["streams"]
-                if [s.pop("videoRole", None) for s in streams] != ["primary", "enhancement"]:
+                if [s.get("videoRole") for s in streams] != ["primary", "enhancement"]:
                     raise ValueError("actual libbluray STN roles not retained")
             if compare != f["expected"]:
                 raise ValueError("existing source facts changed: " + f["id"])
