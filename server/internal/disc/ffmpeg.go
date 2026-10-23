@@ -54,7 +54,9 @@ func (p Probe) FFmpegInput(path string, t Title, positionMs int64, seek *Seek) (
 		if t.Title < 1 {
 			return Input{}, ErrProtocol
 		}
-		args := []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "dvdvideo,ffmetadata", "-f", "dvdvideo", "-title", strconv.Itoa(t.Title), "-angle", "1", "-preindex", "0"}
+		// dvdvideo opens its MPEG-PS child with the same format whitelist.
+		// Keep this additional demuxer confined to the selected DVD job.
+		args := []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "dvdvideo,mpeg,ffmetadata", "-f", "dvdvideo", "-title", strconv.Itoa(t.Title), "-angle", "1", "-preindex", "0"}
 		if positionMs > 0 {
 			args = append(args, "-ss", strconv.FormatFloat(float64(positionMs)/1000, 'f', 3, 64))
 		}
