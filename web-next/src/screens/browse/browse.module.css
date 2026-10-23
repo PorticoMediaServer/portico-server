@@ -48,7 +48,12 @@
 .homeRowHeader { padding: 104px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .homeRowHeader h1 { margin: 14px 0 12px; font-size: var(--type-lockup-long-size); line-height: calc(var(--type-lockup-long-size) * .98); font-weight: var(--type-lockup-long-weight); letter-spacing: var(--type-lockup-long-tracking); }
 .homeRowHeader p { max-width: 760px; margin: 0; color: var(--color-text-secondary); font-size: var(--type-synopsis-size); line-height: var(--type-synopsis-line); }
+.homeRowHeader strong { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
 .homeRowActions { display: flex; gap: 12px; margin: 26px 0 20px; }
-@media (max-width: 599px) { .homeRowHeader { padding: 22px 20px 0; } }
+@media (max-width: 599px) {
+  .homeRowHeader { position: relative; padding: 98px 20px 0; }
+  .homeRowHeader > button { position: absolute; top: 0; left: 16px; height: 58px; padding-inline: 0; }
+  .homeRowHeader h1 { margin: 0 0 8px; font-size: var(--type-display-size); line-height: calc(var(--type-display-size) * 1.05); letter-spacing: var(--type-banner-title-tracking); }
+}
 .shelfHeading { border: 0; padding: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; display: inline-flex; align-items: center; gap: 1px; cursor: pointer; text-align: left; }
 .shelfHeading svg { flex: none; color: var(--color-text-tertiary); }

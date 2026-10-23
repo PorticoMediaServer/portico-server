@@ -169,3 +169,20 @@ func TestToolchainInventoryRejectsChangedExecutable(t *testing.T) {
 		t.Fatal("published changed-executable inventory", facts, err)
 	}
 }
+
+func TestToolchainInventoryCancellationAfterLastCommand(t *testing.T) {
+	path := fakeFFmpeg(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := startupInventory(t, func(context.Context, mediaexec.Job) (string, error) { t.Fatal("unexpected GPU probe"); return "", nil })
+	facts, err := probeToolchainInventory(ctx, path, func(ctx context.Context, job mediaexec.Job) (string, error) {
+		raw, err := runner(ctx, job)
+		if slices.Contains(job.Args, "-bsfs") {
+			cancel()
+		}
+		return raw, err
+	})
+	if !errors.Is(err, context.Canceled) || facts.Identity != "" {
+		t.Fatal("cancelled final inventory was admitted", facts, err)
+	}
+}

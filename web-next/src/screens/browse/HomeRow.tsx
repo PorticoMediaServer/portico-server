@@ -5,6 +5,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {StateView} from '../../kit/states';
 import {LibraryBrowse, type LibraryBrowseBindings} from './Library';
+import {homeRowReasonParts} from './home-row-reason';
 import styles from './browse.module.css';
 
 export type HomeRowBindings = Readonly<{row: HomeRow; browse: LibraryBrowseBindings; onBack: () => void; onPlay?: () => void; onShuffle?: () => void}>;
@@ -17,7 +18,7 @@ export function HomeRowScreen({row, browse, onBack, onPlay, onShuffle}: HomeRowB
   return <section className={styles.homeRow}>
     <header className={styles.homeRowHeader}><Button variant="text" size="small" icon="i-left" onClick={onBack}>{defaultI18n.t('next.home.shell.home')}</Button>
       <h1>{serverTextLabel(defaultI18n, row.titleText, row.title)}</h1>
-      {row.why && <p>{serverTextLabel(defaultI18n, row.why)}</p>}
+      {row.why && <p>{homeRowReasonParts(row, defaultI18n).map((part, index) => part.titleId ? <strong key={index}>{part.text}</strong> : part.text)}</p>}
       {(onPlay || onShuffle) && <div className={styles.homeRowActions}>{onPlay && <Button variant="primary" size="hero" icon="i-play" onClick={onPlay}>{defaultI18n.t('action.play')}</Button>}{onShuffle && <Button variant="glass" size="hero" icon="i-shuffle" onClick={onShuffle}>{defaultI18n.t('title.shuffle')}</Button>}</div>}
     </header>
     <LibraryBrowse {...browse} showSaveView={false}/>
