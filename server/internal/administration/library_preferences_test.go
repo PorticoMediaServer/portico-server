@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -86,5 +87,33 @@ func TestLibrarySettingsDescribeManagedRestrictionsAndHideRetiringLibrary(t *tes
 	}
 	if _, err = s.SaveLibrarySettings(context.Background(), allow, library, Change[LibrarySettings]{ExpectedRevision: doc.Revision, OperationID: "retired-library-settings", Settings: doc.Settings}); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
+	}
+}
+
+func TestLibraryProducerDefaultsResetEffectivePolicyThroughCAS(t *testing.T) {
+	s, db, root := newService(t)
+	library, _, _ := seedLibrary(t, db, root)
+	ctx := context.Background()
+	doc, err := s.LibrarySettingsFor(ctx, allow, library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Defaults.ContinueWatching.VideoPlayedThreshold != 95 || doc.Defaults.Providers[0].Language != "en" || doc.Defaults.Providers[0].Region != "US" {
+		t.Fatal("factory reset defaults", doc.Defaults)
+	}
+	changed := doc.Settings
+	changed.LocalTags = "off"
+	changed.GroupCollections = false
+	changed.ContinueWatching.VideoPlayedThreshold = 80
+	saved, err := s.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: doc.Revision, OperationID: "defaults-edit", Settings: changed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(saved.Defaults, doc.Defaults) {
+		t.Fatal("current overrides changed factory defaults")
+	}
+	reset, err := s.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: saved.Revision, OperationID: "defaults-reset", Settings: saved.Defaults})
+	if err != nil || !reflect.DeepEqual(reset.Settings, reset.Defaults) {
+		t.Fatal(reset.Settings, reset.Defaults, err)
 	}
 }

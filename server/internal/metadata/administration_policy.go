@@ -18,6 +18,21 @@ type LibraryProviderPolicy struct {
 	Consent          bool
 }
 
+// DefaultAdministrationPolicy is the factory reset policy from the library
+// agent and provider defaults, before a per-library edit. Resetting this
+// selection never changes the independent provider-consent authority.
+func DefaultAdministrationPolicy(kind string) LibraryProviderPolicy {
+	p := LibraryProviderPolicy{Providers: []string{}, RefreshMode: "replace_unlocked"}
+	switch kind {
+	case "movie", "tv", "anime":
+		p.Providers = defaultScreenProviders(kind)
+		p.Language, p.Region = LibraryAgentOptions(kind)[0].DefaultLanguage, "US"
+	case "music":
+		p.Providers = []string{"musicbrainz"}
+	}
+	return p
+}
+
 // AdministrationPolicyTx reads effective runtime policy; old admin JSON never
 // overrides this state or establishes remote-provider consent.
 func AdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind string) (LibraryProviderPolicy, error) {
