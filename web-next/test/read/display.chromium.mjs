@@ -180,7 +180,7 @@ try {
     assert.equal(frame.hostname, '127.0.0.1');
     await call('Network.enable');
     await call('Network.setBlockedURLs', {urls: ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.avif']});
-    await call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1330, deviceScaleFactor: 1, mobile: false});
+    await call('Emulation.setDeviceMetricsOverride', {width: phone ? 1600 : 1440, height: 1330, deviceScaleFactor: 1, mobile: false});
     await call('Page.navigate', {url: frame.href});
     await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
     await evaluate(`Promise.all([document.fonts.load('600 22px Literata', 'Aa'),document.fonts.load('700 13px Manrope', 'Page')]).then(()=>document.fonts.ready)`);
@@ -195,7 +195,7 @@ try {
   result = {...result, reference};
   console.log('READER_DISPLAY_BROWSER ' + JSON.stringify(result));
 } catch (error) {
-  result = {status: 'FAIL', observations, errors, failure: String(error.stack ?? error)};
+  result = {...result, status: 'FAIL', observations, errors, failure: String(error.stack ?? error)};
   throw error;
 } finally {
   for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Browser closed')); }
