@@ -9,7 +9,7 @@ import {openGenre} from './genre-binding';
 
 export function createShowBindings(context: ScreenContext) {
   const life = screenLifetime(context), service = new ShowWorkspaceService({api: life.api, scope: context.scope});
-  const episode = createDetailBindings(context), primary = createDetailBindings(context);
+  const episode = createDetailBindings(context), primary = createDetailBindings(context), listedPlayback = createDetailBindings(context);
   const recommendations = createRecommendations(context);
   const view = titleView('episodes', ['episodes', 'related', 'details'], life.assert);
   let viewIdentity = '';
@@ -17,6 +17,7 @@ export function createShowBindings(context: ScreenContext) {
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {libraryId: data.scope.libraryId, showId: data.show.id, title: data.show.title}; });
   let personal: ContainerState | undefined, busy = false, intent = 0;
   let selection: AbortController | undefined;
+  let playbackRequest: AbortController | undefined;
   const listeners = new Set<() => void>(), publish = () => { for (const listener of listeners) listener(); };
   const current = (data: ShowWorkspaceData) => {
     life.assert();
@@ -33,6 +34,7 @@ export function createShowBindings(context: ScreenContext) {
     personal: {getSnapshot: () => personal, getBusy: () => busy, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }},
     async select(route: ShowWorkspaceRoute, signal?: AbortSignal) {
       life.assert(); signal?.throwIfAborted(); const generation = ++intent;
+      playbackRequest?.abort(); listedPlayback.service.cancel();
       selection?.abort(); const controller = new AbortController(); selection = controller;
       const active = life.signal(signal ? AbortSignal.any([controller.signal, signal]) : controller.signal);
       const cancel = () => { if (generation === intent) { service.cancel(); episode.service.cancel(); primary.service.cancel(); } };
@@ -53,6 +55,22 @@ export function createShowBindings(context: ScreenContext) {
       if (anchor.expandedEpisodeId === entry.id) { service.updateAnchor({...anchor, expandedEpisodeId: null}); episode.service.cancel(); return; }
       service.updateAnchor({...anchor, expandedEpisodeId: entry.id, focusedEpisodeId: entry.id});
       await episode.select({libraryId: data.scope.libraryId, itemId: entry.id});
+    },
+    async playEpisode(data: ShowWorkspaceData, entry: ContentEntry, signal?: AbortSignal) {
+      current(data); signal?.throwIfAborted();
+      if (!data.episodes.sections.some(section => section.entries.includes(entry)) || entry.available !== true || entry.playback?.itemId !== entry.id) throw new DOMException('Episode playback changed', 'AbortError');
+      playbackRequest?.abort(); const controller = new AbortController(); playbackRequest = controller;
+      const active = life.signal(signal ? AbortSignal.any([controller.signal, signal]) : controller.signal);
+      try {
+        // A tile's old offer does not authorize a later start. Read the episode's
+        // current actions without changing the episode panel or its expansion.
+        await listedPlayback.select({libraryId: data.scope.libraryId, itemId: entry.id}, active);
+        current(data); active.throwIfAborted();
+        const fresh = listedPlayback.service.getSnapshot().data;
+        const action = fresh?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
+        if (!fresh || !action) throw new DOMException('Episode playback unavailable', 'AbortError');
+        await listedPlayback.play(fresh, action.id, undefined, active);
+      } finally { if (playbackRequest === controller) playbackRequest = undefined; }
     },
     closeEpisode() { life.assert(); service.updateAnchor({...service.getSnapshot().anchor, expandedEpisodeId: null}); episode.service.cancel(); },
     async revalidate(refresh?: Parameters<ShowWorkspaceService['revalidate']>[0]) {
@@ -86,8 +104,8 @@ export function createShowBindings(context: ScreenContext) {
       await saveShowSettings(api, data.scope.libraryId, data.show.id, settings);
       current(data); signal?.throwIfAborted(); await service.refresh();
     },
-    cancel() { intent++; selection?.abort(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
-    dispose() { intent++; selection?.abort(); subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
+    cancel() { intent++; selection?.abort(); playbackRequest?.abort(); listedPlayback.service.cancel(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
+    dispose() { intent++; selection?.abort(); playbackRequest?.abort(); subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); listedPlayback.dispose(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;

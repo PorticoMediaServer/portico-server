@@ -31,6 +31,13 @@ const detailPage = (id: string) => ({scope: {serverId: 'server', libraryId: 'lib
   item: {id, libraryId: 'library', kind: 'movie', title: id, durationMs: 1000, progressMs: 0, available: true},
   personal: {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: []},
   actions: [], metadata: {status: 'unavailable', ratings: [], genres: [], credits: []}});
+const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewerFence: 'show-fence'}, revision: {catalog: 3, viewer: 2},
+  show: {id: 'show', libraryId: 'library', title: 'show', libraryKind: 'tv', providerMatchStatus: 'unresolved'},
+  seasons: [{id: 'season', showId: 'show', number: 1, title: 'season'}], seasonTotalCount: 1, nextSeasonCursor: '', groups: [], selected: {seasonId: 'season'},
+  episodes: {scope: {serverId: 'server', libraryId: 'library', libraryKind: 'tv', view: 'season', entityId: 'season', viewerFence: 'show-fence'}, revision: {catalog: 3, viewer: 2},
+    heading: {key: 'entity.title', fallback: 'show'}, navigation: [], query: {sort: 'episode', direction: 'asc', category: '', q: '', limit: 40, searchMode: 'none'},
+    sorts: [{id: 'episode', labelKey: 'sort.episode', directions: ['asc']}], filters: [], sections: [{id: 'episodes', type: 'list', heading: {key: 'content.episodes', fallback: 'episodes'},
+      entries: [{id: 'one', kind: 'episode', title: 'one', libraryId: 'library', available: true, navigation: {view: 'item', entityId: 'one'}, playback: {itemId: 'one', startMs: 10}}], totalCount: 1, nextCursor: ''}]}});
 
 test('domain factory creation is inert and disposal erases all private snapshots', () => {
   const owner = setup(async () => { throw new Error('No constructor request is authorized'); });
@@ -63,6 +70,43 @@ test('a family or profile handover refuses even a newly invoked old service requ
   await assert.rejects(binding.select('one'), {name: 'AbortError'});
   await assert.rejects(binding.recent(), {name: 'AbortError'});
   assert.equal(owner.requests(), 0);
+  binding.dispose();
+});
+
+test('an episode tile reads current playback permission and resume without opening its panel', async () => {
+  const starts: unknown[] = [];
+  let allowed = true;
+  const owner = setup(async path => path.includes('/show-workspace') ? showPage() : {...detailPage('one'), actions: [{id: 'resume', labelKey: 'entry.resume', enabled: allowed, playback: {itemId: 'one', startMs: 725}}]});
+  const binding = createShowBindings({...owner.context, effects: {...owner.context.effects, play: async target => { starts.push(target); }}});
+  await binding.service.select({libraryId: 'library', showId: 'show'});
+  const data = binding.service.getSnapshot().data!;
+  assert.ok(data);
+  const entry = data.episodes.sections[0].entries[0];
+  await binding.playEpisode(data, entry);
+  assert.deepEqual(starts, [{itemId: 'one', libraryId: 'library', startSeconds: 0.725}]);
+  assert.equal(binding.service.getSnapshot().anchor.expandedEpisodeId, null);
+  assert.equal(binding.episode.service.getSnapshot().data, null);
+  allowed = false;
+  await assert.rejects(binding.playEpisode(data, entry), {name: 'AbortError'});
+  assert.equal(starts.length, 1);
+  binding.dispose();
+});
+
+test('a late episode permission read cannot play after its show page is replaced', async () => {
+  const pending = deferred<unknown>(); let detailSignal: AbortSignal | undefined, starts = 0;
+  const owner = setup(async (path, _method, _body, signal) => {
+    if (path.includes('/show-workspace')) return showPage();
+    detailSignal = signal; return pending.promise;
+  });
+  const binding = createShowBindings({...owner.context, effects: {...owner.context.effects, play: async () => { starts++; }}});
+  await binding.service.select({libraryId: 'library', showId: 'show'});
+  const data = binding.service.getSnapshot().data!, entry = data.episodes.sections[0].entries[0];
+  const refused = assert.rejects(binding.playEpisode(data, entry), {name: 'AbortError'});
+  binding.cancel();
+  assert.equal(detailSignal?.aborted, true);
+  pending.resolve({...detailPage('one'), actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 0}}]});
+  await refused;
+  assert.equal(starts, 0);
   binding.dispose();
 });
 
