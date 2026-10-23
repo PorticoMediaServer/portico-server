@@ -27,6 +27,7 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 	for i, f := range doc.Frames {
 		if f.Interlaced != 0 {
 			d.Interlaced = true
+			d.InterlaceAnalysis = InterlaceDecodedInterlaced
 		}
 		timestamp, e := strconv.ParseFloat(f.Timestamp, 64)
 		if e != nil || math.IsNaN(timestamp) || math.IsInf(timestamp, 0) {
@@ -48,7 +49,9 @@ func analyzeFrames(raw []byte, d *StreamDetail) {
 		}
 		previous = timestamp
 	}
-	d.InterlaceAnalysis = "decoded_frames"
+	if d.InterlaceAnalysis == "" {
+		d.InterlaceAnalysis = "decoded_frames"
+	}
 	if valid && steps >= 8 {
 		if variable {
 			d.FrameRateMode = "variable"

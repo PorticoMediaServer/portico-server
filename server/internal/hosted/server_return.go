@@ -52,16 +52,11 @@ func (s *Service) ExchangeRegisteredReturn(ctx context.Context, q RegisteredRetu
 	if s == nil || !s.Configured() || s.identity == nil || len(q.Code) < 32 || len(q.Code) > 128 || len(q.Verifier) < 32 || len(q.Verifier) > 128 || len(q.TransactionID) > 128 || len(q.RegistrationID) > 128 || len(q.InstallationID) < 32 || len(q.InstallationID) > 128 {
 		return identity.PorticoIdentity{}, identity.ErrUnauthorized
 	}
-	if kind, e := s.identity.SignInKind(ctx); e != nil {
+	// A preview confirms only the proposed move. It is not permission to use
+	// ordinary identity exchange while Local. Owner completion has a separate
+	// installed-server-authenticated transport after actual local installation.
+	if e := s.identity.RequireSignInKind(ctx, identity.SignInPortico); e != nil {
 		return identity.PorticoIdentity{}, e
-	} else if kind == identity.SignInLocal {
-		var confirmed bool
-		if e = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_moves WHERE to_kind='portico' AND stage='preview' AND owner_confirmed=1)`).Scan(&confirmed); e != nil {
-			return identity.PorticoIdentity{}, e
-		}
-		if !confirmed || q.Purpose != "switch" {
-			return identity.PorticoIdentity{}, identity.ErrSignInKindLocal
-		}
 	}
 	raw, _ := json.Marshal(q)
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
