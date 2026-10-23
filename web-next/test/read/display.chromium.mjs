@@ -123,6 +123,7 @@ try {
   observations.push('DOM-and-forwarded-page-dismiss-no-turn-and-forwarded-escape');
   await call('Emulation.setDeviceMetricsOverride', {width: 820, height: 600, deviceScaleFactor: 1, mobile: false});
   await click(trigger);
+  await evaluate('Promise.all(document.querySelector("[data-reader-panel]").getAnimations().map(animation => animation.finished))');
   const scroll = await evaluate('(()=>{const p=document.querySelector("[data-reader-panel]");p.scrollTop=p.scrollHeight;return{width:p.getBoundingClientRect().width,client:p.clientHeight,scroll:p.scrollHeight,top:p.scrollTop}})()');
   assert.equal(scroll.width, 360); assert.ok(scroll.scroll > scroll.client && scroll.top > 0);
   await click('[data-reader-panel] p button'); observations.push('short-window-controls-scroll-and-settings-reachable');
