@@ -91,7 +91,7 @@ func TestObservedInterlaceNormalizedReadback(t *testing.T) {
 		if (observed != nil) != (state == assets.InterlaceFieldOrderProgressive || state == assets.InterlaceFieldOrderInterlaced || state == assets.InterlaceDecodedInterlaced) {
 			t.Fatal(state, observed)
 		}
-		if observed != nil && *observed != (state != assets.InterlaceFieldOrderProgressive) {
+		if observed != nil && (facts.Video.Interlaced != *observed || *observed != (state != assets.InterlaceFieldOrderProgressive)) {
 			t.Fatal(state, *observed)
 		}
 	}
