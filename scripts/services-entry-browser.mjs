@@ -10,7 +10,13 @@ import {pathToFileURL} from 'node:url';
 const repository = process.env.PORTICO_SERVER_REPO, scratch = process.env.TMPDIR;
 assert(repository && path.isAbsolute(repository) && scratch && path.isAbsolute(scratch));
 const {ChromeDriver} = await import(pathToFileURL(path.join(repository, 'web/test/integration/chrome-driver.mjs')));
-const origin = 'http://127.0.0.1:19495', api = 'http://127.0.0.1:19410';
+const origin = process.env.PORTICO_SERVICES_WEB_ORIGIN ?? 'http://127.0.0.1:19495';
+const api = process.env.PORTICO_SERVICES_API_ORIGIN ?? 'http://127.0.0.1:19410';
+for (const value of [origin, api]) {
+  const url = new URL(value);
+  assert.equal(url.protocol, 'http:'); assert.equal(url.hostname, '127.0.0.1');
+  assert.equal(url.origin, value); assert(url.port && Number(url.port) > 0 && Number(url.port) <= 65535);
+}
 const browser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 assert(browser && path.isAbsolute(browser));
 const profile = mkdtempSync(path.join(scratch, 'services-boot-browser-'));
