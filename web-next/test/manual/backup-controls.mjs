@@ -8,7 +8,7 @@ import {createServer} from 'vite';
 
 const root = process.cwd(), scratch = await mkdtemp(path.join(root, '.backup-controls-'));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-let server, child, browser, page;
+let server, child, browser, page, chromeLog = '';
 const results = [], exceptions = [];
 async function connect(url) {
   const socket = new WebSocket(url);
@@ -39,10 +39,11 @@ try {
   server = await createServer({root: path.join(root, 'web-next'), configFile: path.join(root, 'web-next/vite.config.ts'), cacheDir: path.join(scratch, 'vite'), server: {host: '127.0.0.1', port: 0, strictPort: false, watch: {ignored: ['**/.backup-controls-*/**']}}});
   await server.listen();const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
   const profile = path.join(scratch, 'profile');await mkdir(profile);
-  child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium', ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking', '--no-first-run', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`, `--disk-cache-dir=${path.join(scratch, 'cache')}`, 'about:blank'], {env: {...process.env, TMPDIR: scratch}, stdio: ['ignore', 'ignore', 'ignore']});
+  child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium', ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-background-networking', '--no-first-run', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`, `--disk-cache-dir=${path.join(scratch, 'cache')}`, 'about:blank'], {env: {...process.env, TMPDIR: scratch}, stdio: ['ignore', 'ignore', 'pipe']});
+  child.stderr.on('data', bytes => {chromeLog = (chromeLog + bytes).slice(-16000);});
   let port;
-  for (let attempt = 0; attempt < 100; attempt++) {try {port = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];break;} catch {await pause(50);}}
-  assert.ok(port, 'Chromium started');
+  for (let attempt = 0; attempt < 200 && child.exitCode === null; attempt++) {try {port = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];break;} catch {await pause(50);}}
+  assert.ok(port, `Chromium started; exit=${child.exitCode}; stderr=${chromeLog}`);
   const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();browser = await connect(version.webSocketDebuggerUrl);
   const target = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, {method: 'PUT'})).json();page = await connect(target.webSocketDebuggerUrl);
   await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
