@@ -10,8 +10,9 @@ import {randomId} from '@core/random-id.ts';
 import {defaultI18n} from '@i18n';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {SettingPresentation} from '../../kit/settings';
-import type {SettingsPageSnapshot} from './Settings';
+import type {SettingsContext, SettingsPageSnapshot} from './Settings';
 import {settingsServerHeader} from './server-header';
+import {configurationFieldEligible, settingsRowEligible, type SettingsEligibility} from './eligibility';
 
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
@@ -32,11 +33,17 @@ function documentForm<T extends object, S>(form: DraftForm<T, S>): DocumentForm 
     },
   };
 }
+/** Supplied by the checked Reading facade adapter; the UI owns no row/key map. */
+export type ReadingSettingsAdapter = Readonly<{
+  read: (rowId: string, snapshot: PreferenceSnapshot) => SettingsBindingValue;
+  patch: (rowId: string, value: SettingsValue | null, snapshot: PreferenceSnapshot) => PreferencePatch;
+}>;
 export type SettingsControllerOptions = Readonly<{
   api: Pick<HttpLocalApi, 'request'>; serverId: string; viewerId: string;
   role: 'owner' | 'admin' | 'member'; mainProfile: boolean;
   capabilities: Readonly<{manageServer: boolean; managePeople: boolean; manageSignIn: boolean}>;
   preferences: PreferenceSnapshot; isCurrent: () => boolean; reportError: (error: unknown) => void;
+  eligibility: SettingsEligibility; reading: ReadingSettingsAdapter;
 }>;
 
 /** One selected session owns every document and pending write. No constructor fetches. */
@@ -88,15 +95,22 @@ export class SettingsController {
     if (section.id === 'signin') return this.options.capabilities.manageSignIn;
     return this.options.capabilities.manageServer && (this.options.role === 'owner' || section.id === 'dashboard' || section.id === 'libraries');
   };
+  eligible = (row: SettingsRow, context?: SettingsContext): boolean => {
+    const location = settingsRowIndex.get(row.id);
+    return !!location && this.current() && settingsRowEligible(row, context ?? {section: location.section, panelId: location.panelId, tabId: location.tabId}, this.options.eligibility);
+  };
   private sources(): SettingsBindingSources {
     return {configuration: this.configuration, preferences: this.preferences,
       forms: Object.fromEntries(Object.entries(this.forms).map(([name, form]) => [name, form.value()]))};
   }
-  private read(row: SettingsRow): SettingsBindingValue | undefined {
+  private read(row: SettingsRow, context?: SettingsContext): SettingsBindingValue | undefined {
+    if (!this.eligible(row, context)) return undefined;
+    const location = settingsRowIndex.get(row.id)!;
+    if (location.section.scope === 'account' && location.section.id === 'reading') return this.options.reading.read(row.id, this.preferences);
     const options = row.control.options;
     if (options?.some(option => option.sets)) {
       const ids = [...new Set(options.flatMap(option => Object.keys(option.sets ?? {})))];
-      const values = new Map(ids.map(id => [id, settingsRowIndex.get(id)?.row]).map(([id, row]) => [id, row ? this.read(row as SettingsRow) : undefined]));
+      const values = new Map(ids.map(id => [id, settingsRowIndex.get(id)?.row]).map(([id, row]) => [id, row ? this.read(row as SettingsRow, context) : undefined]));
       if (ids.some(id => !values.get(id))) return undefined;
       const defaultsKnown = ids.every(id => values.get(id)!.default !== undefined);
       return {current: exactPresetValue(options, id => values.get(id)?.current), effective: exactPresetValue(options, id => values.get(id)?.effective),
@@ -105,10 +119,10 @@ export class SettingsController {
     const binding = settingsBinding(row.id);
     return binding && readSettingsBinding(binding, this.sources(), row.id);
   }
-  rowState = (row: SettingsRow): SettingPresentation => {
+  rowState = (row: SettingsRow, context?: SettingsContext): SettingPresentation => {
     const location = settingsRowIndex.get(row.id);
     if (!location || !this.sectionVisible(location.section) || row.platforms && !row.platforms.includes('web') || location.group.platforms && !location.group.platforms.includes('web')) return {present: false};
-    const value = this.read(row);
+    const value = this.read(row, context);
     if (!value || value.configOnly) return {present: false};
     const current = value.current as SettingsValue;
     const option = row.control.options?.find(option => option.value === current);
@@ -118,7 +132,7 @@ export class SettingsController {
       disabled: this.writing || !this.current(), saving: this.writing,
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
-  configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];
+  configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible)).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];
   load = (): Promise<void> => {
     if (!this.current() || this.loaded) return Promise.resolve();
     if (this.loading) return this.loading;
@@ -150,16 +164,26 @@ export class SettingsController {
     }
     return scope;
   }
-  private write = async (row: SettingsRow, value: SettingsValue, reset: boolean) => {
-    if (this.writing || !this.current() || !this.rowState(row).present) return;
+  private write = async (row: SettingsRow, value: SettingsValue, reset: boolean, context?: SettingsContext) => {
+    if (this.writing || !this.current() || !this.rowState(row, context).present) return;
     this.writing = true; this.rowErrors.delete(row.id); this.publish({saveState: 'saving'});
     try {
-      const sets = row.control.options?.some(option => option.sets) ? presetPatch(row.control.options, value, id => {const row = settingsRowIndex.get(id)?.row; return row && this.read(row)?.current;}) : {[row.id]: value};
+      const sets = row.control.options?.some(option => option.sets) ? presetPatch(row.control.options, value, id => {const row = settingsRowIndex.get(id)?.row; return row && this.read(row, context)?.current;}) : {[row.id]: value};
       const patches = new Map<SettingsBindingForm, Record<string, unknown>>(), preferencePatches = new Map<PreferenceScope, Record<string, unknown>>();
       const sources = this.sources();
       for (const [id, next] of Object.entries(sets)) {
         const target = settingsRowIndex.get(id)?.row, binding = settingsBinding(id);
-        if (!target || !binding) throw new Error('settings_binding_unavailable');
+        if (!target || !this.eligible(target, context)) throw new Error('settings_binding_unavailable');
+        const location = settingsRowIndex.get(id)!;
+        if (location.section.scope === 'account' && location.section.id === 'reading') {
+          const patch = this.options.reading.patch(id, reset ? null : next, this.preferences);
+          for (const [key, value] of Object.entries(patch)) {
+            const scope = this.preferenceScope(target, key);
+            preferencePatches.set(scope, {...preferencePatches.get(scope), [key]: value});
+          }
+          continue;
+        }
+        if (!binding) throw new Error('settings_binding_unavailable');
         const patch = settingsBindingPatch(binding, next, sources);
         if (patch.form === 'preferences') {
           for (const [key, value] of Object.entries(patch.values)) {
@@ -185,8 +209,8 @@ export class SettingsController {
       if (this.current()) {this.rowErrors.set(row.id, error); this.publish({saveState: undefined}); this.options.reportError(error);}
     } finally {this.writing = false; this.publish({});}
   };
-  change = (row: SettingsRow, value: SettingsValue) => {void this.write(row, value, false);};
-  reset = (row: SettingsRow) => {const value = this.read(row)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true);};
+  change = (row: SettingsRow, value: SettingsValue, context?: SettingsContext) => {void this.write(row, value, false, context);};
+  reset = (row: SettingsRow, context?: SettingsContext) => {const value = this.read(row, context)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true, context);};
   dispose = () => {
     this.closed = true; this.lifetime.abort(); this.console.dispose(); this.preferencesReader.dispose();
     for (const form of Object.values(this.forms)) form.dispose();

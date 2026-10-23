@@ -8,6 +8,7 @@ import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
 import {useShellWidth} from '../../shell/viewport';
+import {configurationFieldEligible} from './eligibility';
 
 const t = defaultI18n.t;
 export type SettingsContext = Readonly<{section: SettingsSection; panelId?: string; tabId?: string; recordId?: string}>;
@@ -18,6 +19,7 @@ export type SettingsBindings = Readonly<{
   accountName: string; serverName: string; role: 'owner' | 'admin' | 'member';
   subscribe: (listener: () => void) => () => void; getSnapshot: () => SettingsPageSnapshot;
   sectionVisible: (section: SettingsSection) => boolean;
+  eligible: (row: SettingsRow, context: SettingsContext) => boolean;
   audience: (section: SettingsSection) => ServerAudience;
   serverHealth?: () => 'normal' | 'attention' | undefined;
   /** Approved uptime, free-space and database facts, in order, from checked live readers. */
@@ -39,7 +41,13 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   const [configurationKey, setConfigurationKey] = useState<string>();
   const opener = useRef<HTMLElement | null>(null), heading = useRef<HTMLDivElement>(null);
-  const selected = settingsRoute(route, bindings.sectionVisible);
+  const rowState = (row: SettingsRow, context: SettingsContext): SettingPresentation => bindings.eligible(row, context) ? bindings.rowState(row, context) : {present: false};
+  const rowContext = (row: SettingsRow, section: SettingsSection): SettingsContext => {
+    const location = settingsRowIndex.get(row.id);
+    return {section, panelId: location?.panelId, tabId: location?.tabId,
+      recordId: panel?.id === location?.panelId && route.scope === section.scope && route.section === section.id ? panel?.recordId : undefined};
+  };
+  const selected = settingsRoute(route, bindings.sectionVisible, (row, section) => rowState(row, rowContext(row, section)).present);
   const section = settingsSpec.find(section => section.scope === selected.scope && section.id === selected.section)!;
   const context: SettingsContext = {section};
   const openPanel = (id: string, recordId?: string) => {
@@ -47,9 +55,8 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel({id, recordId, tab: section.panels[id].tabs?.[0]?.id});
   };
-  const rowState = (row: SettingsRow, context: SettingsContext) => bindings.rowState(row, context);
-  const matches = searchSettings(query, t, (row, owner) => bindings.sectionVisible(owner) && rowState(row, {section: owner}).present);
-  const configuration = bindings.configurationMatches?.(query) ?? [];
+  const matches = searchSettings(query, t, (row, owner) => bindings.sectionVisible(owner) && rowState(row, rowContext(row, owner)).present);
+  const configuration = (bindings.configurationMatches?.(query) ?? []).filter(field => configurationFieldEligible(field, (row, context) => bindings.eligible(row, rowContext(row, context.section))));
   const configurationGroups: SettingsSearchGroup[] = configuration.filter(fact => fact.configOnly).length ? [{id: 'configuration', label: t('next.settings.configurationFile'), icon: 'i-server', area: 'server', configuration: true, rows: configuration.filter(fact => fact.configOnly).map(fact => ({id: fact.key, label: fact.label, description: fact.key}))}] : [];
   const groups: SettingsSearchGroup[] = settingsSpec.map(section => ({id: `${section.scope}/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), area: section.scope,
     rows: matches.filter(hit => hit.section === section).map(hit => ({id: hit.rowId, label: hit.label, description: hit.context.join(' · ')}))})).filter(group => group.rows.length);
@@ -57,20 +64,23 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
     if (id === 'configuration') {setConfigurationKey(row); setCompactPage(true); return;}
     const [scope, page] = id.split('/');
     if (scope !== 'account' && scope !== 'server') return;
-    navigate({scope, section: page, ...(row ? {row} : {})}); setConfigurationKey(undefined); setPanel(undefined); setAdvanced(false); setCompactPage(true);
+    const location = row && settingsRowIndex.get(row);
+    navigate({scope, section: page, ...(row ? {row} : {})}); setConfigurationKey(undefined);
+    setPanel(current => current && location && location.panelId === current.id && selected.scope === scope && selected.section === page ? {...current, tab: location.tabId} : undefined);
+    setAdvanced(false); setCompactPage(true);
   };
   useEffect(() => {void bindings.load();}, [bindings]);
   useEffect(() => {
     const found = selected.row && settingsRowIndex.get(selected.row);
     if (!found) return;
     if (found.advanced) setAdvanced(true);
-    if (found.panelId) setPanel({id: found.panelId, tab: found.tabId});
+    if (found.panelId) setPanel(current => ({id: found.panelId!, tab: found.tabId, ...(current?.id === found.panelId ? {recordId: current.recordId} : {})}));
     setCompactPage(true);
     const frame = requestAnimationFrame(() => document.getElementById(found.row.id)?.scrollIntoView({block: 'center', behavior: 'instant'}));
     return () => cancelAnimationFrame(frame);
   }, [selected.scope, selected.section, selected.row]);
   const rows = (holder: Parameters<typeof SettingsRows>[0]['holder'], context: SettingsContext) => <SettingsRows holder={holder} state={row => rowState(row, context)}
-    change={(row, value) => bindings.change(row, value, context)} reset={row => bindings.reset(row, context)} renderSpecial={(row, state) => bindings.special(row, state, context, openPanel)}
+    change={(row, value) => {if (rowState(row, context).present) bindings.change(row, value, context);}} reset={row => {if (rowState(row, context).present) bindings.reset(row, context);}} renderSpecial={(row, state) => rowState(row, context).present ? bindings.special(row, state, context, openPanel) : null}
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
     account={settingsSpec.filter(section => section.scope === 'account' && bindings.sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
