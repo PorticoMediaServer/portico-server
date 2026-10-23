@@ -52,6 +52,7 @@ func parse(in SourceInput) (out parsedSource, result error) {
 	keys := map[string]bool{}
 	byKey := map[string]parsedChannel{}
 	groups, enabled := map[string]bool{}, map[string]bool{}
+	include := sourceChannelSelection(in.configuration)
 	for _, v := range in.EnabledGroups {
 		groups[v] = true
 	}
@@ -162,7 +163,7 @@ func parse(in SourceInput) (out parsedSource, result error) {
 					keys[ch.key] = true
 					byKey[ch.key] = ch
 					out.choices = append(out.choices, ch)
-					if in.configuration != nil && (!filterMatch(ch.group, in.configuration.Filters.Categories) || !filterMatch(ch.country, in.configuration.Filters.Countries) || !filterMatch(ch.name, in.configuration.Filters.Keywords)) {
+					if !include(ch) {
 						continue
 					}
 					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
@@ -183,7 +184,9 @@ func parse(in SourceInput) (out parsedSource, result error) {
 	if pending {
 		skip("live.import.channelAddressMissing")
 	}
-	if len(out.channels) == 0 {
+	// A valid source may have no included channels. In particular, an empty
+	// explicit Groups/Chosen channels selection must never turn into All.
+	if len(out.choices) == 0 {
 		return out, ErrInvalid
 	}
 	channelGuide := map[string]string{}

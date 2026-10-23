@@ -324,7 +324,7 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 				if _, e := tx.ExecContext(ctx, `INSERT INTO live_channel_attributes VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, id(in.ID, c.key), c.country, c.catchup, c.catchupSource, c.catchupDays); e != nil {
 					return ErrUnavailable
 				}
-				if in.configuration != nil && !in.configuration.Logos.OverwriteExisting {
+				if in.configuration != nil && in.configuration.Logos.Mode != "replace" {
 					var previous string
 					e := tx.QueryRowContext(ctx, `SELECT l.url FROM live_sources s JOIN live_channel_logos l ON l.generation_id=s.active_generation WHERE s.id=? AND l.channel_id=?`, in.ID, id(in.ID, c.key)).Scan(&previous)
 					if e == nil {

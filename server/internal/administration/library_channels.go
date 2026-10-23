@@ -682,7 +682,7 @@ func (s *Service) importLogosBatch(ctx context.Context, auth Authorize, source, 
 		if err != nil {
 			return err
 		}
-		if !document.Settings.Logos.OverwriteExisting {
+		if document.Settings.Logos.Mode != "replace" {
 			rows, err := tx.QueryContext(ctx, `SELECT l.channel_id FROM live_channel_logos l JOIN admin_channel_logos a ON a.channel_id='live:'||?||':'||l.channel_id WHERE l.generation_id=?`, source, generation)
 			if err != nil {
 				return err

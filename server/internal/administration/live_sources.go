@@ -75,17 +75,7 @@ type LiveSourceSettings = livechannels.LiveSourceSettings
 
 // DefaultLiveSourceSettings is the answer before any owner write.
 func DefaultLiveSourceSettings() LiveSourceSettings {
-	return LiveSourceSettings{
-		EnabledGroups: []string{}, EnabledChannels: []string{},
-		Kind: "playlist",
-		Filters: SourceFilters{
-			Categories: FilterRule{Mode: "include", Values: []string{}},
-			Countries:  FilterRule{Mode: "include", Values: []string{}},
-			Keywords:   FilterRule{Mode: "exclude", Values: []string{}},
-		},
-		Logos:     LogoImport{Enabled: true},
-		Numbering: ChannelNumbering{Mode: "source", StartAt: 100, Step: 1},
-	}
+	return livechannels.DefaultLiveSourceSettings()
 }
 
 func normalizeFilter(r *FilterRule) {
@@ -138,6 +128,12 @@ func validateFilter(r FilterRule, field string, fields *[]string) {
 
 func validateLiveSourceSettings(v *LiveSourceSettings) error {
 	fields := []string{}
+	if !oneOf(v.ChannelSelection, "all", "groups", "picked", "filter") {
+		fields = append(fields, "settings.channelSelection")
+	}
+	if !oneOf(v.Logos.Mode, "follow", "import", "replace", "none") {
+		fields = append(fields, "settings.logoImport.mode")
+	}
 	for _, list := range [][]string{v.EnabledGroups, v.EnabledChannels} {
 		if len(list) > 100000 {
 			fields = append(fields, "settings.enabledChannels")
@@ -281,7 +277,7 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	if err != nil {
 		return out, err
 	}
-	settings, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings())
+	settings, revision, err := livechannels.ReadLiveSourceSettingsTx(ctx, tx, id)
 	if err != nil {
 		return out, err
 	}
@@ -296,7 +292,7 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	if settings.UserAgent != "" {
 		effective.UserAgent = settings.UserAgent
 	}
-	effective.LogoImport = defaults.LogoImport && settings.Logos.Enabled
+	effective.LogoImport = settings.Logos.Enabled(defaults.LogoImport)
 	effective.ImportLimits = livechannels.SourceImportLimits(defaults.ImportLimits, settings.ImportLimits)
 	out.Settings, out.Revision, out.Digest, out.Effective = settings, revision, digestOf(settings), effective
 	return out, nil
@@ -346,17 +342,14 @@ func (s *Service) SaveLiveSourceConfiguration(ctx context.Context, auth Authoriz
 				return invalid("settings.guideSourceId")
 			}
 		}
-		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
+		_, err = livechannels.ReplaceLiveSourceSettingsTx(ctx, tx, id, change.ExpectedRevision, value)
+		if errors.Is(err, livechannels.ErrConflict) {
+			return ErrConflict
+		}
 		if err != nil {
 			return err
 		}
-		if revision != change.ExpectedRevision {
-			return ErrConflict
-		}
 		at := s.milliseconds()
-		if err = writeDocument(ctx, tx, scope, revision+1, value, at); err != nil {
-			return err
-		}
 		if out, err = s.liveSourceDocument(ctx, tx, id); err != nil {
 			return err
 		}
@@ -401,7 +394,7 @@ func channelMapPage(ctx context.Context, tx *sql.Tx, id string, after int64, siz
 	if out.Generation == "" {
 		return out, nil
 	}
-	settings, _, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings())
+	settings, _, err := livechannels.ReadLiveSourceSettingsTx(ctx, tx, id)
 	if err != nil {
 		return out, err
 	}
@@ -507,7 +500,6 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 			numbers[o.Number] = true
 		}
 	}
-	scope := liveSourceScope(id)
 	digest := digestOf(change)
 	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		stored, replayed, err := receipt[ChannelMapPage](ctx, tx, "channel-map:"+id, change.OperationID, digest)
@@ -521,7 +513,7 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if _, _, err = liveSourceExists(ctx, tx, id); err != nil {
 			return err
 		}
-		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
+		settings, revision, err := livechannels.ReadLiveSourceSettingsTx(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -542,11 +534,7 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		}
 		// The overrides are configuration for this source, so they move its
 		// revision: a client that renumbered must reload before the next write.
-		settings, _, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
-		if err != nil {
-			return err
-		}
-		if err = writeDocument(ctx, tx, scope, revision+1, settings, at); err != nil {
+		if _, err = livechannels.ReplaceLiveSourceSettingsTx(ctx, tx, id, revision, settings); err != nil {
 			return err
 		}
 		if out, err = channelMapPage(ctx, tx, id, 0, DefaultPageSize); err != nil {

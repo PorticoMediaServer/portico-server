@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -33,19 +32,26 @@ type SourceFilters struct {
 	Keywords   FilterRule `json:"keywords"`
 }
 type LogoImport struct {
-	Enabled           bool `json:"enabled"`
-	OverwriteExisting bool `json:"overwriteExisting"`
+	Mode string `json:"mode"`
 }
+
+// Enabled resolves the source's explicit choice, or the server's choice when
+// the source follows it. An explicit import does not inherit the server switch.
+func (v LogoImport) Enabled(server bool) bool {
+	return v.Mode == "import" || v.Mode == "replace" || v.Mode == "follow" && server
+}
+
 type ChannelNumbering struct {
 	Mode    string `json:"mode"`
 	StartAt int    `json:"startAt"`
 	Step    int    `json:"step"`
 }
 type LiveSourceSettings struct {
-	configured      bool
-	EnabledGroups   []string `json:"enabledGroups"`
-	EnabledChannels []string `json:"enabledChannels"`
-	Kind            string   `json:"kind"`
+	configured       bool
+	ChannelSelection string   `json:"channelSelection"`
+	EnabledGroups    []string `json:"enabledGroups"`
+	EnabledChannels  []string `json:"enabledChannels"`
+	Kind             string   `json:"kind"`
 	// Null-able overrides: a nil value inherits the server default.
 	StreamBufferMs *int             `json:"streamBufferMs"`
 	RetryWindowMs  *int             `json:"retryWindowMs"`
@@ -87,23 +93,9 @@ func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDe
 	if err != nil {
 		return LiveDefaults{}, LiveSourceSettings{}, err
 	}
-	v := LiveSourceSettings{Logos: LogoImport{Enabled: true}, Numbering: ChannelNumbering{Mode: "source", StartAt: 100, Step: 1}}
-	for _, entry := range []struct {
-		scope  string
-		target any
-	}{{"live-source:" + sid, &v}} {
-		var raw string
-		e := tx.QueryRowContext(ctx, `SELECT body FROM admin_documents WHERE scope=?`, entry.scope).Scan(&raw)
-		if e == nil {
-			if entry.scope == "live-source:"+sid {
-				v.configured = true
-			}
-			if json.Unmarshal([]byte(raw), entry.target) != nil {
-				return d, v, ErrInvalid
-			}
-		} else if !errors.Is(e, sql.ErrNoRows) {
-			return d, v, e
-		}
+	v, _, err := ReadLiveSourceSettingsTx(ctx, tx, sid)
+	if err != nil {
+		return LiveDefaults{}, LiveSourceSettings{}, err
 	}
 	if v.StreamBufferMs != nil {
 		d.StreamBufferMs = *v.StreamBufferMs
@@ -114,6 +106,7 @@ func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDe
 	if v.UserAgent != "" {
 		d.UserAgent = v.UserAgent
 	}
+	d.LogoImport = v.Logos.Enabled(d.LogoImport)
 	d.ImportLimits = d.ImportLimits.effective()
 	return d, v, nil
 }
@@ -155,11 +148,13 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 	if requested.Programmes > 0 {
 		in.Limits.Programmes = min(in.Limits.Programmes, requested.Programmes)
 	}
-	if v.configured || in.EnabledGroups == nil {
-		in.EnabledGroups = v.EnabledGroups
-	}
-	if v.configured || in.EnabledChannels == nil {
-		in.EnabledChannels = v.EnabledChannels
+	if v.configured {
+		in.EnabledGroups, in.EnabledChannels = nil, nil
+		if v.ChannelSelection == "groups" {
+			in.EnabledGroups = v.EnabledGroups
+		} else if v.ChannelSelection == "picked" {
+			in.EnabledChannels = v.EnabledChannels
+		}
 	}
 	if in.remote {
 		in.parseContext = ctx
@@ -210,6 +205,32 @@ func (s *Store) Preview(ctx context.Context, a Authority, in SourceInput) (Previ
 	e = s.snapshot(ctx, a, true, func(*sql.Tx) error { return nil })
 	return value, e
 }
+
+// sourceChannelSelection is applied before guide parsing, including its disk
+// spool. Inactive choices stay saved but cannot narrow the chosen mode.
+func sourceChannelSelection(v *LiveSourceSettings) func(parsedChannel) bool {
+	if v == nil || v.ChannelSelection == "all" {
+		return func(parsedChannel) bool { return true }
+	}
+	selected := map[string]bool{}
+	if v.ChannelSelection == "groups" {
+		for _, value := range v.EnabledGroups {
+			selected[value] = true
+		}
+		return func(ch parsedChannel) bool { return selected[ch.group] }
+	} else if v.ChannelSelection == "picked" {
+		for _, value := range v.EnabledChannels {
+			selected[value] = true
+		}
+		return func(ch parsedChannel) bool { return selected[ch.key] }
+	} else if v.ChannelSelection == "filter" {
+		return func(ch parsedChannel) bool {
+			return filterMatch(ch.group, v.Filters.Categories) && filterMatch(ch.country, v.Filters.Countries) && filterMatch(ch.name, v.Filters.Keywords)
+		}
+	}
+	return func(parsedChannel) bool { return false }
+}
+
 func applyConfiguration(data *parsedSource, v *LiveSourceSettings, days int) {
 	if v == nil {
 		return
@@ -217,14 +238,8 @@ func applyConfiguration(data *parsedSource, v *LiveSourceSettings, days int) {
 	kept := data.channels[:0]
 	enabled := map[string]bool{}
 	for _, ch := range data.channels {
-		if !filterMatch(ch.group, v.Filters.Categories) || !filterMatch(ch.country, v.Filters.Countries) || !filterMatch(ch.name, v.Filters.Keywords) {
-			continue
-		}
 		if v.Numbering.Mode == "sequential" {
 			ch.number = fmt.Sprint(v.Numbering.StartAt + len(kept)*v.Numbering.Step)
-		}
-		if !v.Logos.Enabled {
-			ch.logo = ""
 		}
 		enabled[ch.key] = true
 		kept = append(kept, ch)

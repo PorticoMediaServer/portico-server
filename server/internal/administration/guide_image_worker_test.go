@@ -198,7 +198,12 @@ func TestGuideImageImportStoresValidatesAndCleansUp(t *testing.T) {
 	}
 
 	// With logo import switched off, a fresh job completes with nothing fetched.
-	if _, err = db.Exec(`INSERT INTO admin_documents VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET revision=excluded.revision,body=excluded.body,updated_ms=excluded.updated_ms`, "live-source:"+source, 2, `{"kind":"playlist","logoImport":{"enabled":false}}`, time.Now().UnixMilli()); err != nil {
+	config, err := admin.LiveSourceConfiguration(context.Background(), nil, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Settings.Logos.Mode = "none"
+	if _, err = admin.SaveLiveSourceConfiguration(context.Background(), nil, source, Change[LiveSourceSettings]{ExpectedRevision: config.Revision, OperationID: "guide-images-source-off", Settings: config.Settings}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.Save(context.Background(), authority, livechannels.SourceInput{ID: source, ExpectedRevision: republished.Revision, RequestID: strings.Repeat("12", 24), Name: "Icons", Playlist: playlist, Guide: guide}); err != nil {

@@ -171,7 +171,7 @@ func (s *Store) directoryRevision(ctx context.Context, tx *sql.Tx, scope Directo
 	// SaveChannelMap advances this document atomically for every override write,
 	// including deletion. A max(updated_ms) over remaining overrides misses clears
 	// and same-millisecond changes. Read one revision per authorized source instead.
-	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.revision,s.state,s.active_generation,s.name,COALESCE(a.revision,0) FROM live_sources s LEFT JOIN admin_documents a ON a.scope='live-source:'||s.id WHERE s.id IN (SELECT value FROM json_each(?)) ORDER BY s.id`, mustJSON(scope.AllowedLiveSources))
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.revision,s.state,s.active_generation,s.name,COALESCE(a.revision,1) FROM live_sources s LEFT JOIN live_source_preferences a ON a.source_id=s.id WHERE s.id IN (SELECT value FROM json_each(?)) ORDER BY s.id`, mustJSON(scope.AllowedLiveSources))
 	if err != nil {
 		return "", err
 	}
