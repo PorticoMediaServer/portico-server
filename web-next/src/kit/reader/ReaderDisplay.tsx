@@ -1,4 +1,4 @@
-import {useCallback, useId, useLayoutEffect, useRef, type RefObject} from 'react';
+import {useCallback, useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject} from 'react';
 import {RadioGroup} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
 import {Segmented, Switch} from '../controls';
@@ -39,6 +39,18 @@ export type ReaderDisplayControlsProps = Readonly<{
   twoPages?: ReaderTwoPages;
 }>;
 
+/** Commit before keyup, including when a fast next key would overtake roving focus. */
+function moveChoice(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')].filter(choice => !choice.disabled);
+  const index = choices.indexOf(event.target as HTMLButtonElement);
+  if (index < 0) return;
+  const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+  const direction = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : (event.key === 'ArrowRight' ? 1 : -1) * (rtl ? -1 : 1);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? choices.length - 1 : (index + direction + choices.length) % choices.length;
+  event.preventDefault(); choices[next]?.focus(); choices[next]?.click();
+}
+
 /** Frame-backed controls only: the core supplies values and applies book-local overrides. */
 export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSettings, layout = 'desktop', twoPages}: ReaderDisplayControlsProps) {
   const id = useId();
@@ -48,14 +60,14 @@ export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSe
   };
   return <div className={styles.controls} data-layout={layout}>
     <section className={styles.group} aria-labelledby={`${id}-page`}><h3 id={`${id}-page`}>{themes.label}</h3>
-      <RadioGroup.Root className={styles.themes} value={themes.value} onValueChange={themes.onChange} aria-labelledby={`${id}-page`} orientation="horizontal">
+      <RadioGroup.Root className={styles.themes} value={themes.value} onValueChange={themes.onChange} onKeyDownCapture={moveChoice} aria-labelledby={`${id}-page`} orientation="horizontal">
         {themes.options.map(option => <RadioGroup.Item key={option.value} className={styles.theme} value={option.value} disabled={option.disabled} data-tone={option.tone}>
           <span aria-hidden="true">{copy.sample}</span>{option.label}
         </RadioGroup.Item>)}
       </RadioGroup.Root>
     </section>
     <section className={styles.group} aria-labelledby={`${id}-font`}><h3 id={`${id}-font`}>{fonts.label}</h3>
-      <RadioGroup.Root className={styles.fonts} value={fonts.value} onValueChange={fonts.onChange} aria-labelledby={`${id}-font`}>
+      <RadioGroup.Root className={styles.fonts} value={fonts.value} onValueChange={fonts.onChange} onKeyDownCapture={moveChoice} aria-labelledby={`${id}-font`} orientation={layout === 'tablet' ? 'horizontal' : 'vertical'}>
         {fonts.options.map(option => <RadioGroup.Item key={option.value} className={styles.font} value={option.value} disabled={option.disabled} data-face={option.face}>
           <span className={styles.fontDesktop}>{option.label}{option.description && <small>{option.description}</small>}</span>
           <span className={styles.fontCompact}><span aria-hidden="true">{copy.sample}</span><small>{option.compactLabel}</small></span>
