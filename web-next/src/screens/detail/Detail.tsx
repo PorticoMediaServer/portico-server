@@ -12,6 +12,7 @@ import {Lockup, Shelf} from '../../kit/layout';
 import {PosterCard, SquareCard} from '../../kit/cards';
 import {Menu, MenuItem, FileInfo, Dialog, type FileInfoAction} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
+import {Icon} from '../../kit/Icon';
 import {useShellWidth} from '../../shell/viewport';
 import {entryCard, fileFacts, titlePageFacts, calendarDate, instantDate} from './model';
 import type {DetailBindings} from './bindings';
@@ -65,7 +66,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
   return <header className={styles.hero}>
     {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
     <div className={styles.copy}>
-      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}>{data.collections[0].name}</button>}
+      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}><Icon name="i-layers" size={18} />{data.collections[0].name}</button>}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} genres={<GenreNames names={metadata.genres.map(value => value.name)} onOpen={binding.context.effects.openBrowse ? genre => runScreenCommand(binding.context, () => binding.browseGenre(data, genre)) : undefined} />} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
