@@ -16,6 +16,11 @@ import (
 )
 
 type ToolchainFacts struct {
+	// Only a bundle's qualified packet conversion may enable this fact. A BSF
+	// name, stock dovi_rpu options or a generic device probe is insufficient.
+	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
+	DolbyVisionProfile7To81 bool `json:"dolbyVisionProfile7To81"`
+
 	BitstreamFilters map[string]bool `json:"bitstreamFilters"`
 	VulkanAvailable  bool            `json:"vulkanAvailable"`
 	OpenCLAvailable  bool            `json:"openclAvailable"`

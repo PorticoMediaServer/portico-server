@@ -28,6 +28,15 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	if e != nil {
 		return out, e
 	}
+	// The detail advertises only ready selected objects, just like Search.
+	// Stored provider/folder hints do not identify an immutable representation.
+	target := artworkTarget{Kind: "item", ID: item}
+	artwork, e := s.resolveArtwork([]artworkTarget{target})
+	if e != nil {
+		return out, e
+	}
+	art := artwork[target]
+	out.Item.PosterURL, out.Item.BackdropURL, out.Item.StillURL = art.PosterURL, art.BackdropURL, art.StillURL
 	out.Personal, e = readPersonal(s.read(), profile, item)
 	if e != nil {
 		return out, e
