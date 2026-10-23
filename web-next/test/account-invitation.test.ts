@@ -18,6 +18,8 @@ function response() {
 function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const calls: {path: string; body?: unknown}[] = [], retired: string[] = [], admitted: string[] = [], tokens: string[] = [];
   let currentOrigin = origin, previewAnswer: unknown = preview, failSignIn = false;
+  let family = 'issued-family', token = 'issued-access';
+  let retirementGate: Promise<void> | undefined, releaseRetirement: (() => void) | undefined;
   let signInGate: Promise<void> | undefined, releaseSignIn: (() => void) | undefined;
   let probeGate: Promise<void> | undefined, releaseProbe: (() => void) | undefined;
   const connection = {pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {}};
@@ -29,7 +31,7 @@ function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
     if (path === '/v1/system') return system;
     if (path === '/v1/access/invitations/preview') return previewAnswer;
     if (path === '/v1/access/invitations/accept') return {accountId: 'created-account', profileId: 'main', username: 'new_user', role: 'member', allowedLibraries: []};
-    if (path === '/v1/direct/sign-in') {if (signInGate) await signInGate; if (failSignIn) throw new Error('offline after membership creation'); return response();}
+    if (path === '/v1/direct/sign-in') {if (signInGate) await signInGate; if (failSignIn) throw new Error('offline after membership creation'); const result = response();result.session.sessionFamilyId = family;result.session.accessToken = token;return result;}
     throw new Error('Unexpected endpoint: ' + path);
   }) as HttpLocalApi['request'];
   const storage = {read: async () => undefined, change: async () => {}};
@@ -40,9 +42,10 @@ function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
     actions: {} as never, environment: () => ({storage}), restore: async () => undefined,
     inspect: async () => pin, connect: (async () => ({api, connection})) as never,
     remember: async (_api, session, _env, _hosted, current) => {assert.equal(current?.(), true); admitted.push(session.sessionFamilyId);},
-    retire: async (_api, session) => {retired.push(session.sessionFamilyId);}, invitationDestination: destination,
+    retire: async (_api, session) => {retired.push(session.sessionFamilyId);if (retirementGate) await retirementGate;}, invitationDestination: destination,
   }, probe);
-  return {entry, calls, retired, admitted, tokens, preview: (value: unknown) => {previewAnswer = value;}, failSignIn: (value: boolean) => {failSignIn = value;},
+  return {entry, calls, retired, admitted, tokens, successorGrant: () => {family = 'successor-family';token = 'successor-access';},
+    holdRetirement: () => {retirementGate = new Promise(resolve => {releaseRetirement = resolve;});}, releaseRetirement: () => {releaseRetirement?.();}, preview: (value: unknown) => {previewAnswer = value;}, failSignIn: (value: boolean) => {failSignIn = value;},
     holdSignIn: () => {signInGate = new Promise(resolve => {releaseSignIn = resolve;});}, releaseSignIn: () => {releaseSignIn?.(); signInGate = undefined;},
     holdProbe: () => {probeGate = new Promise(resolve => {releaseProbe = resolve;});}, releaseProbe: () => {releaseProbe?.();}};
 }
@@ -92,5 +95,20 @@ test('a Local join grant returned after leaving entry is retired without durable
   assert.equal(f.calls.some(value => value.path === '/v1/direct/sign-in'), true);
   f.entry.cancel(); f.releaseSignIn(); await joining;
   assert.deepEqual(f.retired, ['issued-family']); assert.deepEqual(f.admitted, []); assert.equal(f.entry.getSnapshot().phase, 'welcome');
-  assert.equal(f.tokens.at(-1), ''); f.entry.dispose();
+  assert.deepEqual(f.tokens, [], 'an abandoned pre-admission result cannot publish even a token clear'); f.entry.dispose();
+});
+
+
+test('late cleanup cannot clear a successor admitted through the same captured API object', async () => {
+  const f = fixture();await f.entry.inspectInvitation(link);f.holdSignIn();f.holdRetirement();
+  const abandoned = f.entry.joinLocal('new_user', 'long enough password');
+  for (let n = 0; n < 100 && !f.calls.some(value => value.path === '/v1/direct/sign-in'); n++) await new Promise(resolve => setImmediate(resolve));
+  assert.ok(f.calls.some(value => value.path === '/v1/direct/sign-in'));
+  f.entry.cancel();f.releaseSignIn();
+  for (let n = 0; n < 100 && f.retired.length === 0; n++) await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.retired, ['issued-family']);
+  f.successorGrant();await f.entry.inspectInvitation(link);await f.entry.joinLocal('new_user', 'long enough password');
+  assert.deepEqual(f.admitted, ['successor-family']);assert.deepEqual(f.tokens, ['successor-access']);
+  f.releaseRetirement();await abandoned;
+  assert.deepEqual(f.tokens, ['successor-access']);assert.equal(f.entry.getSnapshot().phase, 'ready');f.entry.dispose();
 });

@@ -103,7 +103,7 @@ export class BrowserAccountEntry {
    if(!op.current())return;
    this.session=result.session;
    this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:result.passwordChangeRequired?'password-change':result.accountScoped?'profiles':'ready'});
-  }catch(error){await this.retire(api,result.session);api.setAccessToken('');throw error;}
+  }catch(error){await this.retire(api,result.session);if(op.current())api.setAccessToken('');throw error;}
  }
  /** The link code is not posted until the kind, private-key proof, link id and
   * all remembered ownership of this origin have passed the normal entry guard. */
