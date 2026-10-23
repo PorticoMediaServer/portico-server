@@ -1,6 +1,7 @@
 import {formatAudioSource, formatDeliveryTarget, formatSubtitleSource, formatVideoSource, formatCodec} from './format';
 import type {DashboardSession as AdminSession} from './bindings';
 import type {DashboardHistory} from '@core/admin/dashboard.ts';
+import type {ReportInterval} from '@core/report-context.ts';
 import type {TelemetryPoint} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 
@@ -100,6 +101,27 @@ export function historyAxisTicks(history: Pick<DashboardHistory, 'period' | 'tim
     } else if (i === 0 || month(history.buckets[i - 1].start) !== month(bucket.start)) ticks.push({f, text: format(bucket.start, {month: 'short'})});
   });
   return thinTicks(ticks, 854);
+}
+/** loadTicks presentation on genuine returned bucket starts. The server alone resolves calendars. */
+export function loadAxisTicks(interval: ReportInterval, from: number, until: number, width: number): readonly AxisTick[] {
+  if (interval.period === 'live') return ['2m', '1m 40s', '1m 20s', '1m', '40s', '20s', 'Now'].map((text, k) => ({f: k / 6, text: defaultI18n.t(`next.dashboard.axis.${text}` as 'next.dashboard.axis.Now')}));
+  const format = (stamp: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(defaultI18n.locale, {...options, timeZone: interval.timeZone}).format(Date.parse(stamp));
+  const number = (stamp: string, unit: 'hour' | 'month') => Number(new Intl.DateTimeFormat('en-US', {timeZone: interval.timeZone, [unit]: 'numeric', hourCycle: 'h23'}).format(Date.parse(stamp)));
+  const month = (stamp: string) => format(stamp, {month: 'numeric', year: 'numeric'});
+  let ticks: AxisTick[] = [];
+  interval.buckets.forEach((bucket, i) => {
+    const f = until === from ? .5 : (Date.parse(bucket.start) - from) / (until - from);
+    if (f < 0 || f > 1) return;
+    if (interval.period === '12h' || interval.period === '24h') {
+      if (number(bucket.start, 'hour') % (interval.period === '12h' ? 2 : 4) === 0) ticks.push({f, text: format(bucket.start, {hour: 'numeric'})});
+    } else if (interval.period === '7d') ticks.push({f, text: format(bucket.start, {weekday: 'short'})});
+    else if (interval.period === '30d' || interval.period === '90d') {
+      if (new Intl.DateTimeFormat('en-US', {weekday: 'short', timeZone: interval.timeZone}).format(Date.parse(bucket.start)) === 'Mon') ticks.push({f, text: format(bucket.start, {month: 'short', day: 'numeric'})});
+    } else if (interval.period === '1y' && (i === 0 || month(interval.buckets[i - 1].start) !== month(bucket.start))) ticks.push({f, text: format(bucket.start, {month: 'short'})});
+    else if (interval.period === 'all' && (number(bucket.start, 'month') - 1) % 2 === 0) ticks.push({f, text: format(bucket.start, {month: 'short', year: 'numeric'})});
+  });
+  if (interval.period === '90d') ticks = ticks.filter((_, i) => (ticks.length - 1 - i) % 2 === 0);
+  return thinTicks(ticks, width);
 }
 export const hours = (milliseconds: number) => milliseconds / 3_600_000;
 export function clock(milliseconds: number): string {

@@ -2,7 +2,7 @@ import {useCallback, useEffect, useId, useRef, useState, type CSSProperties} fro
 import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {MessageId} from '@i18n';
 import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from '@core/admin/dashboard.ts';
-import type {TelemetryReading, TelemetryWindow} from '@core/telemetry.ts';
+import type {TelemetryReading} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
@@ -15,6 +15,7 @@ import {Range, ReadFeedback, Section, t} from './shared';
 import {Chart, type ChartSeries} from './Chart';
 import {SessionCard} from './SessionCard';
 import {Analytics} from './Analytics';
+import {useDashboardReport, type DashboardReportController} from './use-report';
 import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = Readonly<{bindings: DashboardBindings; embedded?: boolean; initialSection?: 'streams' | 'activity' | 'updates'}>;
@@ -24,12 +25,16 @@ export function DashboardScreen({bindings: b, embedded = false, initialSection}:
   const statusLoad = useCallback((signal: AbortSignal) => b.read.status(signal), [b]);
   const status = useDashboardRead(b, statusLoad, allowed && b.role === 'owner', 10000);
   useEffect(() => {if (initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection]);
-  if (!allowed) return <p role="status">{t('next.dashboard.restricted')}</p>;
+  if (!allowed) return null;
   return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
     {b.role === 'owner' && <Status bindings={b} status={status} />}
     <div data-dashboard-section="streams"><NowPlaying bindings={b} /></div>
-    {b.role === 'owner' && <><Load bindings={b} /><div data-dashboard-section="activity"><Analytics bindings={b} /></div><Tasks status={status} /></>}
+    {b.role === 'owner' && <><OwnerReport bindings={b} /><Tasks status={status} /></>}
   </div>;
+}
+function OwnerReport({bindings}: {bindings: DashboardBindings}) {
+  const report = useDashboardReport(bindings);
+  return <><Load bindings={bindings} report={report} /><div data-dashboard-section="activity"><Analytics bindings={bindings} report={report} /></div></>;
 }
 function NowPlaying({bindings: b}: {bindings: DashboardBindings}) {
   const [cursor, setCursor] = useState(''), [expanded, setExpanded] = useState(false);
@@ -58,11 +63,10 @@ function loadSeries(reading: TelemetryReading | undefined, kind: LoadKind): Char
   if (!reading) return [];
   return DASHBOARD_LOAD_SERIES[kind].metrics.filter(metric => reading.status[metric]?.status !== 'unavailable' && reading.series[metric]?.length).map(metric => ({key: metric, label: t(seriesNames[metric]), points: reading.series[metric]}));
 }
-function Load({bindings: b}: {bindings: DashboardBindings}) {
-  const [kind, setKind] = useState<LoadKind>('bandwidth'), [range, setRange] = useState<TelemetryWindow>('live'), id = useId();
+function Load({bindings: b, report}: {bindings: DashboardBindings; report: DashboardReportController}) {
+  const [kind, setKind] = useState<LoadKind>('bandwidth'), id = useId(), range = report.query.window;
   const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
-  const historicalLoad = useCallback((signal: AbortSignal) => b.read.telemetry(range, signal), [b, range]);
-  const live = useDashboardRead(b, liveLoad, true, 2000), historical = useDashboardRead(b, historicalLoad, range !== 'live', 60000);
+  const live = useDashboardRead(b, liveLoad, true, 2000), historical = {...report.state, value: report.state.value?.load};
   useEffect(() => {if (live.value && !loadSeries(live.value, kind).length) {const available = loadKinds.find(k => loadSeries(live.value, k).length); if (available) setKind(available);}}, [live.value, kind]);
   const detail = range === 'live' ? live : historical, series = loadSeries(detail.value, kind);
   const format = (value: number, selected = kind) => selected === 'bandwidth' ? fmtMbps(value) : selected === 'conversions' ? t(range === 'live' ? 'next.dashboard.running' : 'next.dashboard.averageCount', {value: range === 'live' ? String(Math.round(value)) : value.toFixed(1)}) : fmtPct(value);
@@ -73,10 +77,10 @@ function Load({bindings: b}: {bindings: DashboardBindings}) {
       return <button type="button" className={styles.tile} key={k} id={`${id}-${k}`} role="tab" aria-selected={kind === k} aria-controls={`${id}-panel`} tabIndex={kind === k ? 0 : -1} onClick={() => setKind(k)} onKeyDown={event => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return; event.preventDefault();
         const keys = loadKinds.filter(key => loadSeries(live.value, key).length), next = keys[(keys.indexOf(k) + (event.key === 'ArrowLeft' ? keys.length - 1 : 1)) % keys.length]; setKind(next); document.getElementById(`${id}-${next}`)?.focus();
-      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{k === 'conversions' ? String(Math.round(current)) : current.toFixed(1)}<small>{t(k === 'bandwidth' ? 'next.dashboard.unit.mbps' : k === 'conversions' ? 'next.dashboard.unit.running' : 'next.dashboard.unit.percent')}</small></strong><small>{available.map(s => <span key={s.key} data-series={s.key}><i />{k === 'bandwidth' ? `${s.label} ${s.points.at(-1)!.v.toFixed(1)}` : k === 'conversions' ? t(s.key === 'hardwareConversions' ? 'next.dashboard.hardwareCount' : 'next.dashboard.processorCount', {value: Math.round(s.points.at(-1)!.v)}) : s.key === 'cpu' || s.key === 'memory' ? t('next.dashboard.systemCurrent', {value: s.points.at(-1)!.v.toFixed(1)}) : t('next.dashboard.portico')}</span>)}</small><Chart kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} step={k === 'conversions'} compact /></button>;
+      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{k === 'conversions' ? String(Math.round(current)) : current.toFixed(1)}<small>{t(k === 'bandwidth' ? 'next.dashboard.unit.mbps' : k === 'conversions' ? 'next.dashboard.unit.running' : 'next.dashboard.unit.percent')}</small></strong><small>{available.map(s => <span key={s.key} data-series={s.key}><i />{k === 'bandwidth' ? `${s.label} ${s.points.at(-1)!.v.toFixed(1)}` : k === 'conversions' ? t(s.key === 'hardwareConversions' ? 'next.dashboard.hardwareCount' : 'next.dashboard.processorCount', {value: Math.round(s.points.at(-1)!.v)}) : s.key === 'cpu' || s.key === 'memory' ? t('next.dashboard.systemCurrent', {value: s.points.at(-1)!.v.toFixed(1)}) : t('next.dashboard.portico')}</span>)}</small><Chart interval={live.value!} kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} step={k === 'conversions'} compact /></button>;
     })}</div>
-    <div className={`${styles.card} ${styles.loadDetail}`} style={{'--load-index': loadKinds.indexOf(kind)} as CSSProperties} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => setRange(value as TelemetryWindow)} /></div></div>
-      <ReadFeedback state={detail} /><Chart kind={kind} title={t(`next.dashboard.${kind}`)} series={series} format={format} formatAverage={value => kind === 'conversions' ? value.toFixed(1) : format(value)} step={kind === 'conversions' && range === 'live'} />
+    <div className={`${styles.card} ${styles.loadDetail}`} style={{'--load-index': loadKinds.indexOf(kind)} as CSSProperties} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range load value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => report.change({window: value as typeof range})} /></div></div>
+      <ReadFeedback state={detail} />{detail.value && <Chart interval={detail.value} kind={kind} title={t(`next.dashboard.${kind}`)} series={series} format={format} formatAverage={value => kind === 'conversions' ? value.toFixed(1) : format(value)} step={kind === 'conversions' && range === 'live'} />}
     </div>
   </Section>;
 }

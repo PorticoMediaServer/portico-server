@@ -1,16 +1,15 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {defaultI18n} from '@i18n';
-import type {PlayHistoryEntry, PlayHistoryFilters, PlayHistoryPeriod} from '@core/play-history.ts';
+import type {PlayHistoryEntry, PlayHistoryPeriod} from '@core/play-history.ts';
 import {SettingsTable, type TableQuery} from '../../kit/settings';
-import type {DashboardBindings} from './bindings';
+import type {DashboardBindings, DashboardFilters} from './bindings';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead} from './use-read';
 import {mediaKinds} from './model';
-import {formatHistoryDuration} from './format';
+import {formatHistoryDuration, formatHistoryStarted} from './format';
 import {mediaLabel, ReadFeedback, Section, t} from './shared';
 import styles from './dashboard.module.css';
 export function HistoryScreen({bindings: b, embedded = false}: {bindings: DashboardBindings; embedded?: boolean}) {
   const current = useDashboardAuthority(b);
-  if (!current || !b.isMainProfile() || b.role !== 'owner') return <p role="status">{t('next.dashboard.ownerOnly')}</p>;
+  if (!current || !b.isMainProfile() || b.role !== 'owner') return null;
   return <div className={styles.dashboard}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.history')}</h2>}<HistoryTable bindings={b} /></div>;
 }
 function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
@@ -18,7 +17,7 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   const [settledQuery, settle] = useState(query), [cursor, setCursor] = useState(''), [rows, setRows] = useState<readonly PlayHistoryEntry[]>([]), [total, setTotal] = useState<number | undefined>();
   const seen = useRef<unknown>(undefined);
   useEffect(() => {if (query === settledQuery) return; const timer = setTimeout(() => {settle(query); setCursor(''); setRows([]); setTotal(undefined);}, query.search === settledQuery.search ? 0 : 250); return () => clearTimeout(timer);}, [query, settledQuery]);
-  const filters: PlayHistoryFilters = useMemo(() => ({period: settledQuery.filters.range as PlayHistoryPeriod, ...(settledQuery.filters.media === 'all' ? {} : {media: settledQuery.filters.media}), ...(settledQuery.filters.person === 'all' ? {} : {accountId: settledQuery.filters.person}), search: settledQuery.search, sort: ({played: 'started', for: 'watched', where: 'location'} as Record<string,string>)[settledQuery.sort.by] ?? settledQuery.sort.by, direction: settledQuery.sort.direction}), [settledQuery]);
+  const filters: DashboardFilters = useMemo(() => ({period: settledQuery.filters.range as PlayHistoryPeriod, ...(settledQuery.filters.media === 'all' ? {} : {media: settledQuery.filters.media}), ...(settledQuery.filters.person === 'all' ? {} : {accountId: settledQuery.filters.person}), search: settledQuery.search, sort: ({played: 'started', for: 'watched', where: 'location'} as Record<string,string>)[settledQuery.sort.by] ?? settledQuery.sort.by, direction: settledQuery.sort.direction}), [settledQuery]);
   const load = useCallback((signal: AbortSignal) => b.read.plays(filters, cursor, signal), [b, filters, cursor]);
   const state = useDashboardRead(b, load, true, cursor ? 0 : 30000);
   useEffect(() => {
@@ -32,15 +31,15 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {
       title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
-      person: {title: entry.user || t('next.dashboard.removedPerson'), avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
+      person: {title: entry.user, avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
       // The platform wire identifier is not an app display name. Actual app waits for the checked producer.
       player: {title: '', meta: entry.device},
-      played: {title: defaultI18n.date(Date.parse(entry.startedAt), 'medium'), meta: defaultI18n.time(Date.parse(entry.startedAt))},
-      for: {title: entry.completed ? t('next.dashboard.finished') : entry.watchedMs !== undefined ? formatHistoryDuration(entry.watchedMs / 1000) : '—', ...(entry.durationSeconds > 0 ? {meta: entry.completed ? formatHistoryDuration(entry.durationSeconds) : t('next.dashboard.ofDuration', {duration: formatHistoryDuration(entry.durationSeconds, true)})} : entry.kind === 'channel' ? {meta: t('next.dashboard.live')} : {})},
-      where: {title: entry.location === 'local' ? t('next.dashboard.home') : entry.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation'), tone: 'quiet' as const},
+      played: {title: formatHistoryStarted(entry.startedAt, b.context.timeZone, b.context.until)},
+      for: {title: entry.completed ? t('next.dashboard.finished') : entry.watchedMs !== undefined ? formatHistoryDuration(entry.watchedMs / 1000) : '', ...(entry.durationSeconds > 0 ? {meta: entry.completed ? formatHistoryDuration(entry.durationSeconds) : t('next.dashboard.ofDuration', {duration: formatHistoryDuration(entry.durationSeconds, true)})} : entry.kind === 'channel' ? {meta: t('next.dashboard.live')} : {})},
+      ...(entry.location === 'local' || entry.location === 'remote' ? {where: {title: t(entry.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away'), tone: 'quiet' as const}} : {}),
     }};
   }), [rows, b]);
-  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback state={state} /><SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+  return <Section title={t('next.dashboard.playsHeading')}><ReadFeedback state={state} />{!state.failed && <SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
     columns={[
       {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
       {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},
@@ -51,8 +50,8 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
     ]} query={query} onQueryChange={next => {if (next.filters.person === '__more') people.loadMore(); else setQuery(next);}} filters={[
       {id: 'media', label: t('next.dashboard.media'), options: ['all', ...mediaKinds].map(kind => ({value: kind, label: mediaLabel(kind)}))},
       {id: 'person', label: t('next.dashboard.person'), options: [{value: 'all', label: t('next.dashboard.everyone')}, ...people.items.map(p => ({value: p.accountId, label: p.username})), ...(people.nextCursor ? [{value: '__more', label: t('next.dashboard.more')}] : [])]},
-      {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value: value === 'today' ? '24h' : value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
+      {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
     ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
-    emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />
+    emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={rows.length > 0 && !!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />}
   </Section>;
 }

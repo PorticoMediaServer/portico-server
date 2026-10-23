@@ -207,3 +207,21 @@
 .shelfAmbient { position: absolute; pointer-events: none; inset: -24px 0 -16px; overflow: hidden; mask-image: linear-gradient(transparent, black 30%, black 62%, transparent); opacity: .34; }
 .shelfAmbient img { width: 100%; height: 100%; object-fit: cover; filter: blur(40px) saturate(1.5); mask-image: linear-gradient(90deg, transparent, black 22%, black 48%, transparent); }
 .dashboard [data-series='other'] { --series-color: var(--color-text-tertiary); color: var(--color-text-tertiary); }
+
+/* Section17: the phone4 content is shared with the desktop dialog. Canonical type projections are steward-owned. */
+.stopDialog { font-family: var(--font); }
+.stopDialog h2 { font-size: var(--type-stop-title-size); line-height: var(--type-stop-title-line); font-weight: var(--type-stop-title-weight); letter-spacing: var(--type-stop-title-tracking); margin-right: 0; }
+.stopDialog > p, .stopDialog > div:first-child > p { font-size: var(--type-stop-body-size); line-height: var(--type-stop-body-line); font-weight: var(--type-stop-body-weight); }
+.stopBody { overflow: auto; }
+.viewerMessage { margin-top: 16px; }
+.viewerMessage label { display: block; color: var(--color-text-secondary); font-size: var(--type-chip-size); line-height: var(--type-chip-line); font-weight: var(--type-chip-weight); }
+.viewerMessage textarea { display: block; width: 100%; min-height: 88px; box-sizing: border-box; resize: vertical; margin-top: 8px; padding: 12px 14px; border: 0; border-radius: var(--radius-panel); color: var(--color-text); background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); font-family: var(--font); font-size: var(--type-stop-field-size); line-height: var(--type-stop-field-line); font-weight: var(--type-stop-field-weight); }
+.viewerMessage textarea::placeholder { color: var(--color-text-tertiary); }
+.viewerMessage textarea:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.viewerMessage > small { display: flex; justify-content: space-between; gap: 12px; margin-top: 7px; color: var(--color-text-tertiary); font-size: var(--type-report-detail-size); line-height: var(--type-report-detail-line); font-weight: var(--type-report-detail-weight); }
+@media (max-width: 650px) {
+  .stopBody .viewerMessage { margin: 16px 20px 0; }
+  .stopDialog .stopFooter { padding: 18px 20px 0; position: relative; margin-top: 0; background: none; }
+  .stopFooter > button { flex: 1; }
+  .stopDialog .stopBody { padding-bottom: 0; }
+}

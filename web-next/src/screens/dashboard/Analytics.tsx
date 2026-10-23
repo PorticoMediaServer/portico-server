@@ -1,11 +1,12 @@
-import {useCallback, useState, type CSSProperties} from 'react';
+import {useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {DashboardHistory, DashboardTopKind} from '@core/admin/dashboard.ts';
 import type {PlayHistoryPeriod} from '@core/play-history.ts';
 import {Select, Button, Segmented} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import type {DashboardBindings} from './bindings';
-import {useDashboardAccounts, useDashboardRead} from './use-read';
+import {useDashboardAccounts} from './use-read';
+import type {DashboardReportController} from './use-report';
 import {fmtDur, fmtHrs, formatHourOrdinal, formatQuietHours, niceScale} from './format';
 import {curveSegments, historyAxisTicks, plotLine, hours, mediaKinds, quietestHours} from './model';
 import {mediaLabel, Range, ReadFeedback, Section, t} from './shared';
@@ -14,24 +15,27 @@ const historyKinds = mediaKinds;
 const ranges = ['7d', '30d', '90d', 'all'] as const;
 const duration = (ms: number) => fmtHrs(hours(ms));
 const watchedDuration = (ms: number) => fmtDur(hours(ms));
-export function Analytics({bindings: b}: {bindings: DashboardBindings}) {
-  const [peopleRange, setPeopleRange] = useState<PlayHistoryPeriod>('7d'), [showAll, setShowAll] = useState(false), [peopleCursor, setPeopleCursor] = useState('');
-  const peopleLoad = useCallback((signal: AbortSignal) => b.read.people({period: peopleRange}, peopleCursor, signal), [b, peopleRange, peopleCursor]);
-  const people = useDashboardRead(b, peopleLoad, true, 60000);
-  const [historyRange, setHistoryRange] = useState<PlayHistoryPeriod>('30d'), [media, setMedia] = useState('all'), [person, setPerson] = useState('all');
-  const historyLoad = useCallback((signal: AbortSignal) => b.read.history({period: historyRange, ...(media === 'all' ? {} : {media}), ...(person === 'all' ? {} : {accountId: person})}, 'movies', signal), [b, historyRange, media, person]);
-  const history = useDashboardRead(b, historyLoad, true, 60000);
-  const [topKind, setTopKind] = useState<DashboardTopKind>('movies'), [topRange, setTopRange] = useState<PlayHistoryPeriod>('30d'), [topPerson, setTopPerson] = useState('all');
-  const topLoad = useCallback((signal: AbortSignal) => b.read.history({period: topRange, ...(topPerson === 'all' ? {} : {accountId: topPerson})}, topKind, signal), [b, topRange, topPerson, topKind]);
-  const top = useDashboardRead(b, topLoad, true, 60000);
+export function Analytics({bindings: b, report}: {bindings: DashboardBindings; report: DashboardReportController}) {
+  const [showAll, setShowAll] = useState(false);
+  const {query, change, state} = report;
+  const peopleRange = query.peoplePeriod, historyRange = query.period, media = query.media ?? 'all', person = query.accountId ?? 'all', topKind = query.topKind, topRange = query.topPeriod, topPerson = query.topAccountId ?? 'all';
+  const setPeopleRange = (peoplePeriod: PlayHistoryPeriod) => change({peoplePeriod, peopleCursor: undefined});
+  const setPeopleCursor = (peopleCursor: string) => change({peopleCursor});
+  const setHistoryRange = (period: PlayHistoryPeriod) => change({period});
+  const setMedia = (value: string) => change({media: value === 'all' ? undefined : value});
+  const setPerson = (value: string) => change({accountId: value === 'all' ? undefined : value});
+  const setTopKind = (topKind: DashboardTopKind) => change({topKind});
+  const setTopRange = (topPeriod: PlayHistoryPeriod) => change({topPeriod});
+  const setTopPerson = (value: string) => change({topAccountId: value === 'all' ? undefined : value});
+  const people = {...state, value: state.value?.people}, history = {...state, value: state.value?.history}, top = {...state, value: state.value?.topPlayed};
   const accounts = useDashboardAccounts(b);
-  const peopleOptions = [{value: 'all', label: t('next.dashboard.everyone')}, ...accounts.items.map(p => ({value: p.accountId, label: p.username || t('next.dashboard.removedPerson')})), ...(accounts.nextCursor ? [{value: '__more', label: t('next.dashboard.more')}] : [])];
-  const firstTop = top.value?.top[0], topBackdrop = firstTop ? b.artwork(firstTop.itemId, 'backdrop', firstTop.backdropRevision) : undefined;
+  const peopleOptions = [{value: 'all', label: t('next.dashboard.everyone')}, ...accounts.items.map(p => ({value: p.accountId, label: p.username})), ...(accounts.nextCursor ? [{value: '__more', label: t('next.dashboard.more')}] : [])];
+  const firstTop = top.value?.items[0], topBackdrop = firstTop ? b.artwork(firstTop.itemId, 'backdrop', firstTop.backdropRevision) : undefined;
   const peoplePage = people.value?.items ?? [], maxTime = Math.max(1, ...peoplePage.map(p => p.watchedMs));
   return <>
     <Section title={t('next.dashboard.people')} actions={<Range value={peopleRange} values={ranges} onChange={value => {setPeopleRange(value as PlayHistoryPeriod); setPeopleCursor('');}} />}>
       <ReadFeedback state={people} />{people.value && <div className={styles.peopleCard}><div className={styles.legend}>{mediaKinds.map(kind => <span key={kind} data-series={kind}><i />{mediaLabel(kind)}</span>)}<small>{t('next.dashboard.timeWatched')}</small></div>
-        <ol className={styles.peopleList}>{(showAll ? peoplePage : peoplePage.slice(0, 6)).map((p, index) => <li key={p.accountId} className={styles.personRow}><span>{index + 1}</span><span className={styles.avatar} aria-hidden="true">{p.username.slice(0, 1)}</span><div className={styles.personName}><b>{p.username || t('next.dashboard.removedPerson')}</b><small>{p.profiles.filter(name => name !== p.username).join(', ')}</small></div><span>{t('next.dashboard.plays', {count: p.plays})}</span><div className={styles.barTrack}><span className={styles.peopleBar} style={{width: `${p.kinds.filter(k => mediaKinds.some(kind => kind === k.kind)).reduce((sum, k) => sum + k.watchedMs, 0) / maxTime * 100}%`}} role="img" aria-label={`${p.username}: ${watchedDuration(p.watchedMs)}`}>{mediaKinds.flatMap(kind => p.kinds.filter(k => k.kind === kind && k.watchedMs / p.watchedMs > .004)).map(k => <i key={k.kind} data-series={k.kind} style={{flexGrow: k.watchedMs}} title={`${mediaLabel(k.kind)}: ${watchedDuration(k.watchedMs)}`} />)}</span></div><b>{watchedDuration(p.watchedMs)}</b></li>)}</ol>
+        <ol className={styles.peopleList}>{(showAll ? peoplePage : peoplePage.slice(0, 6)).map((p, index) => <li key={p.accountId} className={styles.personRow}><span>{index + 1}</span><span className={styles.avatar} aria-hidden="true">{p.username.slice(0, 1)}</span><div className={styles.personName}><b>{p.username}</b><small>{p.profiles.filter(name => name !== p.username).join(', ')}</small></div><span>{t('next.dashboard.plays', {count: p.plays})}</span><div className={styles.barTrack}><span className={styles.peopleBar} style={{width: `${p.kinds.filter(k => mediaKinds.some(kind => kind === k.kind)).reduce((sum, k) => sum + k.watchedMs, 0) / maxTime * 100}%`}} role="img" aria-label={`${p.username}: ${watchedDuration(p.watchedMs)}`}>{mediaKinds.flatMap(kind => p.kinds.filter(k => k.kind === kind && k.watchedMs / p.watchedMs > .004)).map(k => <i key={k.kind} data-series={k.kind} style={{flexGrow: k.watchedMs}} title={`${mediaLabel(k.kind)}: ${watchedDuration(k.watchedMs)}`} />)}</span></div><b>{watchedDuration(p.watchedMs)}</b></li>)}</ol>
         {!peoplePage.length && <p className={styles.empty}>{t('next.dashboard.nothing')}</p>}
         {peoplePage.length > 6 && <Button size="xs" variant="text" className={styles.showAll} onClick={() => setShowAll(!showAll)} aria-expanded={showAll}>{showAll ? t('next.dashboard.fewer') : t('next.dashboard.showAll', {count: peoplePage.length})}<Icon name={showAll ? 'i-up' : 'i-down'} size={16} /></Button>}
         {showAll && people.value.nextCursor && <Button size="xs" onClick={() => setPeopleCursor(people.value!.nextCursor)}>{t('next.dashboard.more')}</Button>}
@@ -41,7 +45,7 @@ export function Analytics({bindings: b}: {bindings: DashboardBindings}) {
       <ReadFeedback state={history} />{history.value && <HistoryCharts history={history.value} media={media} />}
     </Section>
     <Section title={t('next.dashboard.top')} actions={<><Segmented aria-label={t('next.dashboard.media')} value={topKind} onValueChange={value => setTopKind(value as DashboardTopKind)} items={['movies', 'tv', 'music'].map(kind => ({value: kind, label: mediaLabel(kind)}))} /><Select aria-label={t('next.dashboard.person')} value={topPerson} options={peopleOptions} onValueChange={value => value === '__more' ? accounts.loadMore() : setTopPerson(value)} /><Range value={topRange} values={ranges} onChange={value => setTopRange(value as PlayHistoryPeriod)} /></>}>
-      <ReadFeedback state={top} />{top.value && (top.value.top.length ? <div className={styles.rankedShelf}>{topBackdrop && <div className={styles.shelfAmbient} aria-hidden="true"><img src={topBackdrop} alt="" /></div>}<ol className={styles.shelf} data-square={topKind === 'music' || undefined}>{top.value.top.map((item, index) => {
+      <ReadFeedback state={top} />{top.value && (top.value.items.length ? <div className={styles.rankedShelf}>{topBackdrop && <div className={styles.shelfAmbient} aria-hidden="true"><img src={topBackdrop} alt="" /></div>}<ol className={styles.shelf} data-square={topKind === 'music' || undefined}>{top.value.items.map((item, index) => {
         const art = b.artwork(item.itemId, topKind === 'music' ? 'square' : 'poster', item.posterRevision);
         return <li key={item.itemId}><span className={styles.rank} aria-hidden="true">{index + 1}</span><div className={styles.rankedArt}>{art && <img src={art} alt="" loading="lazy" />}</div><h4>{item.title}</h4><p>{t('next.dashboard.plays', {count: item.plays})}</p>{topPerson === 'all' && <p>{t('next.dashboard.peopleCount', {count: item.people})}</p>}</li>;
       })}</ol></div> : <p className={styles.empty}>{t('next.dashboard.nothing')}</p>)}
