@@ -1,6 +1,7 @@
 import type {ReaderSource} from '../ports.ts';
 import {archiveLimits,checkAbort,ComicInputError,naturalCompare,readDirectory,readEntry,type ArchiveLimits,type ZipEntry} from './zip.ts';
 import {comicInfo,rasterInfo,type RasterInfo} from './image.ts';
+import {abortScope} from '../abort.ts';
 
 export type ComicPage=Readonly<{index:number;name:string;bytes:Uint8Array;image:RasterInfo}>;
 export type ComicPageProvider=Readonly<{
@@ -23,10 +24,12 @@ export async function openComicArchive(source:ReaderSource,signal:AbortSignal,li
       if(closed)throw new ComicInputError('closed');
       if(source.id!==id||source.revision!==revision||source.size!==size)throw new ComicInputError('archive_invalid');
       if(!Number.isInteger(index)||index<0||index>=pages.length||!Number.isFinite(options.width)||options.width<1||options.width>32768)throw new ComicInputError('page_invalid');
-      const taskSignal=AbortSignal.any([options.signal,life.signal]);checkAbort(taskSignal);
+      const task=abortScope([options.signal,life.signal]),taskSignal=task.signal;
+      try {checkAbort(taskSignal);
       const entry=pages[index],bytes=await readEntry(source,entry,taskSignal,limits);checkAbort(taskSignal);
       if(source.id!==id||source.revision!==revision||source.size!==size)throw new ComicInputError('archive_invalid');
       return Object.freeze({index,name:entry.name,bytes,image:rasterInfo(bytes)});
+      }finally{task.dispose();}
     },dispose(){if(!closed){closed=true;life.abort();}}
   });
 }

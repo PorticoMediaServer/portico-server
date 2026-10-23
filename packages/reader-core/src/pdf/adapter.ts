@@ -1,3 +1,5 @@
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
+import {abortScope} from '../abort.ts';
 import type {ReaderAdapter,ReaderDocument,ReaderLocation} from '../ports.ts';
 import {mountFixed,type FixedPreferences} from './fixed-view.ts';
 import {openPdf,pdfText,pdfTextStream,PdfInputError,type PdfEngine,type PdfOptions} from './engine.ts';
@@ -16,7 +18,7 @@ async function outline(engine:PdfEngine,signal:AbortSignal):Promise<readonly Rea
   const visit=async(items:typeof raw,depth:number):Promise<ReaderTocEntry[]>=>{
     if(depth>16)throw new PdfInputError('pdf_limit');const out:ReaderTocEntry[]=[];
     for(const item of items){
-      signal.throwIfAborted();const entryNumber=++count;if(count>2048)throw new PdfInputError('pdf_limit');
+      throwIfAborted(signal);const entryNumber=++count;if(count>2048)throw new PdfInputError('pdf_limit');
       // External actions/links are never followed or mounted.
       let dest=item.dest;if(typeof dest==='string')dest=await engine.run(engine.document.getDestination(dest),signal);
       const first=Array.isArray(dest)?dest[0]:undefined;let index:number|undefined;
@@ -38,7 +40,7 @@ async function preview(engine:PdfEngine,index:number,width:number,signal:AbortSi
   try{
     await engine.run(render.promise,signal);
     const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new PdfInputError('pdf_invalid')),'image/png'));
-    signal.throwIfAborted();if(blob.size>16*1024*1024)throw new PdfInputError('pdf_limit');return {mime:'image/png' as const,bytes:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height};
+    throwIfAborted(signal);if(blob.size>16*1024*1024)throw new PdfInputError('pdf_limit');return {mime:'image/png' as const,bytes:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height};
   }finally{signal.removeEventListener('abort',abort);render.cancel();canvas.width=0;canvas.height=0;page.cleanup();}
 }
 export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions={}):ReaderAdapter<P>{
@@ -56,14 +58,14 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
         async mount(mountOptions){
           if(closed)throw new PdfInputError('closed');
           const owner=mountOptions.container.ownerDocument,style=owner.createElement('style');style.textContent=textCss;mountOptions.container.append(style);
-          const life=new AbortController(),combined=AbortSignal.any([mountOptions.signal,engine.signal,life.signal]);
+          const life=new AbortController(),scope=abortScope([mountOptions.signal,engine.signal,life.signal]),combined=scope.signal;
           let fixed:Awaited<ReturnType<ReaderDocument<P>['mount']>>;
           try{fixed=await mountFixed('pdf',engine.document.numPages,direction??'ltr',async(index,{signal:pageSignal})=>{
             const page=await engine.page(index,pageSignal),original=page.getViewport({scale:1});
             if(original.width<=0||original.height<=0||original.width>32768||original.height>32768)throw new PdfInputError('pdf_limit');
             return {width:original.width,height:original.height,
               async mount(target,scale,renderSignal){
-                renderSignal.throwIfAborted();const viewport=page.getViewport({scale}),canvas=owner.createElement('canvas');
+                throwIfAborted(renderSignal);const viewport=page.getViewport({scale}),canvas=owner.createElement('canvas');
                 const dpr=Math.min(owner.defaultView?.devicePixelRatio??1,2,8192/viewport.width,8192/viewport.height,Math.sqrt(16_000_000/(viewport.width*viewport.height)));
                 canvas.width=Math.max(1,Math.ceil(viewport.width*dpr));canvas.height=Math.max(1,Math.ceil(viewport.height*dpr));Object.assign(canvas.style,{display:'block',width:'100%',height:'100%'});canvas.setAttribute('aria-hidden','true');target.append(canvas);
                 const layer=owner.createElement('div');layer.dataset.readerText=String(index);layer.style.setProperty('--total-scale-factor',String(viewport.scale));target.append(layer);
@@ -74,7 +76,7 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
                 catch(error){renderSignal.removeEventListener('abort',abort);abort();canvas.width=0;canvas.height=0;canvas.remove();layer.remove();throw error;}
               },dispose(){page.cleanup();}
             };
-          },{...mountOptions,signal:combined,onLocation(location){mountOptions.onLocation({...location,...location.format==='pdf'&&labels?.[location.page]?{pageLabel:labels[location.page]}:{}});}});}catch(error){life.abort();style.remove();throw error;}
+          },{...mountOptions,signal:combined,onLocation(location){mountOptions.onLocation({...location,...location.format==='pdf'&&labels?.[location.page]?{pageLabel:labels[location.page]}:{}});}});}catch(error){life.abort();scope.dispose();style.remove();throw error;}
           const onSelection=()=>{
             const selection=owner.getSelection();if(!selection||selection.isCollapsed||!selection.rangeCount){mountOptions.onSelection(null);return;}
             const element=selection.anchorNode?.parentElement?.closest<HTMLElement>('[data-reader-text]');
@@ -83,7 +85,7 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
             const rects=Array.from(selection.getRangeAt(0).getClientRects()).slice(0,1024).map(r=>({x:r.x,y:r.y,width:r.width,height:r.height}));
             mountOptions.onSelection?.({text,location:position(page,engine.document.numPages),rects});
           };owner.addEventListener('selectionchange',onSelection,{signal:combined});
-          const view={...fixed,dispose(){life.abort();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
+          const view={...fixed,dispose(){life.abort();scope.dispose();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
         },
         async *search(query,searchOptions){
           if(closed)throw new PdfInputError('closed');const needle=query.trim().toLowerCase();if(!needle||needle.length>256)return;
@@ -92,7 +94,7 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
           for(let index=0;index<engine.document.numPages&&found<limit;index++){
             const page=await engine.page(index,searchOptions.signal);
             try{const text=await pdfText(engine,page,searchOptions.signal),folded=text.toLowerCase();let from=0,offset:number;
-              while(found<limit&&(offset=folded.indexOf(needle,from))>=0){searchOptions.signal.throwIfAborted();yield {id:`pdf-${index}-${offset}`,excerpt:text.slice(Math.max(0,offset-100),Math.min(text.length,offset+needle.length+100)),location:position(index,engine.document.numPages)};found++;from=offset+Math.max(1,needle.length);}
+              while(found<limit&&(offset=folded.indexOf(needle,from))>=0){throwIfAborted(searchOptions.signal);yield {id:`pdf-${index}-${offset}`,excerpt:text.slice(Math.max(0,offset-100),Math.min(text.length,offset+needle.length+100)),location:position(index,engine.document.numPages)};found++;from=offset+Math.max(1,needle.length);}
             }finally{page.cleanup();}
           }
         },page(index,pageOptions){return preview(engine,index,pageOptions.width,pageOptions.signal);},

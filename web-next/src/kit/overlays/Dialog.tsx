@@ -27,7 +27,7 @@ export function Dialog({responsive = true, ...props}: DialogProps) {
   return <DesktopDialog {...props} />;
 }
 
-function DesktopDialog({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, size = 'md', placement = 'center', width, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: DialogProps) {
+function DesktopDialog({open, onOpenChange, title, headerAction, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, size = 'md', placement = 'center', width, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: DialogProps) {
   const portalTarget = useOverlayPortalTarget();
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
   const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, placement === 'right' ? 'panel' : 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
@@ -44,6 +44,7 @@ function DesktopDialog({open, onOpenChange, title, children, description, footer
         onPointerDownOutside={event => { if (!dismissOnOutsidePress) event.preventDefault(); else reason.current = 'outside'; }}
         onInteractOutside={event => { if (!dismissOnOutsidePress) event.preventDefault(); }}>
         <header className={headerClassName}><RadixDialog.Title className={styles.dialogTitle}>{title}</RadixDialog.Title>
+        {headerAction}
         {showCloseButton && <Button variant="icon" size="small" iconOnly icon="i-x" iconSize={20} aria-label={defaultI18n.t('next.overlays.close')} className={styles.dialogClose} onClick={() => onOpenChange(false, 'close-button')} />}</header>
         {description !== undefined && <RadixDialog.Description id={`${id}-description`} className={styles.dialogDescription}>{description}</RadixDialog.Description>}
         <div className={classes(styles.dialogBody, bodyClassName)}>{children}</div>

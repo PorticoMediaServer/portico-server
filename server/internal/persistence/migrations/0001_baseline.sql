@@ -8189,3 +8189,19 @@ CREATE TABLE music_virtual_tracks(
  PRIMARY KEY(asset_id,ordinal),UNIQUE(entity_id,asset_id)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX music_virtual_tracks_entity ON music_virtual_tracks(entity_id);
+
+CREATE TABLE music_sonic_embeddings(
+ result_id TEXT PRIMARY KEY REFERENCES analysis_results(id) ON DELETE CASCADE,
+ model_id TEXT NOT NULL,model_version TEXT NOT NULL,model_sha256 TEXT NOT NULL,
+ dimensions INTEGER NOT NULL CHECK(dimensions=200),vector BLOB NOT NULL CHECK(length(vector)=800)
+) STRICT;
+CREATE INDEX music_sonic_embeddings_model ON music_sonic_embeddings(model_id,model_version,model_sha256,result_id);
+CREATE TABLE music_sonic_tags(
+ result_id TEXT NOT NULL REFERENCES music_sonic_embeddings(result_id) ON DELETE CASCADE,
+ tag_index INTEGER NOT NULL CHECK(tag_index BETWEEN 0 AND 49),score REAL NOT NULL CHECK(score BETWEEN 0 AND 1),
+ PRIMARY KEY(result_id,tag_index)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE library_sonic_settings(
+ library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+ enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)
+) STRICT;
