@@ -19,6 +19,7 @@ import (
 
 const encryptedPayload = "archive.pba"
 const encryptedSummary = "encrypted.json"
+const maxEncryptedSummaryBytes = 64 << 10
 const chunkBytes = 64 << 10
 
 var envelopeMagic = []byte("PORTICO-BACKUP-ENC\x00\x01")
@@ -215,7 +216,7 @@ func encryptFolder(ctx context.Context, folder string, destination *os.Root, pas
 	if e = enc.Close(); e != nil {
 		return e
 	}
-	if e = f.Sync(); e != nil {
+	if e = finishArchiveFile(f); e != nil {
 		return e
 	}
 	// No plaintext paths, hashes, keys or password material in the listing.
@@ -238,9 +239,12 @@ func encryptedManifest(folder string) (Manifest, error) {
 		return m, e
 	}
 	defer f.Close()
-	raw, e := io.ReadAll(io.LimitReader(f, 64<<10))
+	raw, e := io.ReadAll(io.LimitReader(f, maxEncryptedSummaryBytes+1))
 	if e != nil {
 		return m, e
+	}
+	if len(raw) > maxEncryptedSummaryBytes {
+		return m, ErrSourceInvalid
 	}
 	if e = json.Unmarshal(raw, &m); e != nil {
 		return m, ErrSourceInvalid
@@ -460,4 +464,17 @@ func publishPlain(ctx context.Context, folder string, root *os.Root, manifest Ma
 		}
 	}
 	return nil
+}
+
+// Both barriers must succeed before an encrypted copy can be published. The
+// seam lets tests reproduce delayed write errors reported only by Close.
+type archiveSyncCloser interface {
+	Sync() error
+	Close() error
+}
+
+var finishArchiveFile = func(file archiveSyncCloser) error {
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	return errors.Join(syncErr, closeErr)
 }

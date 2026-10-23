@@ -143,3 +143,94 @@ func TestBackupSettingsHTTPSecretBoundaryAndEncryptedRestore(t *testing.T) {
 		t.Fatal("secret status leak", status.Code)
 	}
 }
+
+func TestBackupMutationsRefuseNonownersAndExpiredSessionsWithoutSideEffects(t *testing.T) {
+	f := administrationFixtureNew(t)
+	state := t.TempDir()
+	service := backup.New(state, f.deps.DB, f.deps.Identity.ID(), "fixture", persistence.SchemaVersion())
+	store := backup.NewPolicyStore(f.deps.DB, state)
+	service.SetPolicyStore(store)
+	f.deps.Backups = service
+	f.handler = New(f.deps)
+	before, err := store.Settings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"backupFolder": t.TempDir(), "includeArtwork": true, "passphraseProtected": true, "passphrase": "permission fixture private phrase"})
+	routes := []struct{ method, path, body string }{
+		{"PUT", "/v1/admin/backups/settings", string(body)},
+		{"POST", "/v1/admin/backups", `{"operationId":"denied-backup-op"}`},
+		{"DELETE", "/v1/admin/backups/2026-10-23T030000Z", ""},
+		{"POST", "/v1/admin/backups/restore", `{"operationId":"denied-restore-op","source":{"path":"/unread-fixture"},"passphrase":"permission fixture private phrase"}`},
+	}
+	for _, token := range []string{f.admin, f.member} {
+		for _, route := range routes {
+			w := f.call(route.method, route.path, token, route.body)
+			if w.Code != 403 {
+				t.Fatalf("nonowner mutation %s %s: %d", route.method, route.path, w.Code)
+			}
+		}
+	}
+	// Revoke the actual owner family using its normal sign-out operation, then
+	// replay that credential against every mutation.
+	signedOut := f.call("DELETE", "/v1/sessions/current", f.owner, "")
+	if signedOut.Code != 204 {
+		t.Fatalf("owner logout failed: %d %s", signedOut.Code, signedOut.Body.String())
+	}
+	for _, route := range routes {
+		w := f.call(route.method, route.path, f.owner, route.body)
+		if w.Code != 401 {
+			t.Fatalf("ended session mutation %s %s: %d", route.method, route.path, w.Code)
+		}
+	}
+	after, err := store.Settings(context.Background())
+	if err != nil || after != before {
+		t.Fatal("denied writes changed policy", after, err)
+	}
+	if _, err = os.Stat(filepath.Join(state, "Keys", "backup-passphrase.key")); !os.IsNotExist(err) {
+		t.Fatal("denied write minted a key", err)
+	}
+	if _, running := service.Running(); running || service.RestoreProgress() != nil || service.LastBackup() != nil {
+		t.Fatal("denied write started work")
+	}
+	entries, err := os.ReadDir(state)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("denied write created files", entries, err)
+	}
+}
+
+func TestBackupRejectsMalformedSecretAndSourceBodiesBeforeStartingWork(t *testing.T) {
+	f := administrationFixtureNew(t)
+	state := t.TempDir()
+	service := backup.New(state, f.deps.DB, f.deps.Identity.ID(), "fixture", persistence.SchemaVersion())
+	store := backup.NewPolicyStore(f.deps.DB, state)
+	service.SetPolicyStore(store)
+	f.deps.Backups = service
+	f.handler = New(f.deps)
+	for _, test := range []struct{ path, body string }{
+		{"/v1/admin/backups/settings", `{"passphraseProtected":true,"passphrase":42}`},
+		{"/v1/admin/backups/settings", `{"passphraseProtected":true,"passphrase":"short"}`},
+		{"/v1/admin/backups/settings", `{"includeArtwork":true,"unknownSecret":"private fixture"}`},
+		{"/v1/admin/backups/restore", `{"operationId":"malformed-restore","source":{"path":"/unread-fixture","passphrase":"private fixture"}}`},
+		{"/v1/admin/backups/restore", `{"operationId":"malformed-restore","source":{"path":42},"passphrase":"private fixture"}`},
+	} {
+		method := "POST"
+		if strings.HasSuffix(test.path, "/settings") {
+			method = "PUT"
+		}
+		w := f.call(method, test.path, f.owner, test.body)
+		if w.Code != 400 {
+			t.Fatalf("malformed request %s accepted: %d %s", test.path, w.Code, w.Body.String())
+		}
+	}
+	if _, running := service.Running(); running || service.RestoreProgress() != nil {
+		t.Fatal("malformed request started work")
+	}
+	settings, err := store.Settings(context.Background())
+	if err != nil || settings.IncludeArtwork || settings.PassphraseProtected || settings.PassphraseSet {
+		t.Fatal("malformed request persisted policy", settings, err)
+	}
+	if _, err = os.Stat(filepath.Join(state, "Keys", "backup-passphrase.key")); !os.IsNotExist(err) {
+		t.Fatal("malformed body minted a key", err)
+	}
+}
