@@ -36,3 +36,11 @@ test('range source enforces exact length, bounds, per-read budget and cancellati
   const interrupted = new AbortController(); const reading = readRange(delayed, {start: 0, endExclusive: 1}, interrupted.signal);
   interrupted.abort(); release(); await assert.rejects(reading);
 });
+test('drawn compact sideways PDF/manga spreads differ from LTR comic width single', () => {
+  const viewport = {width:844,height:390};
+  assert.deepEqual(planFixedLayout({...base,viewport,page:2,direction:'rtl'}).pages,[1,2]);
+  assert.deepEqual(planFixedLayout({...base,viewport,page:2,format:'pdf'}).pages,[1,2]);
+  const comic = planFixedLayout({...base,viewport,page:2});
+  assert.deepEqual(comic.pages,[2]); assert.equal(comic.fit,'width');
+  assert.deepEqual(planFixedLayout({...base,viewport,page:2,twoPages:false,direction:'rtl'}).pages,[2]);
+});

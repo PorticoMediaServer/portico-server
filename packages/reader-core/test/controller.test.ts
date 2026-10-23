@@ -97,3 +97,17 @@ test('opening errors expose codes and no arbitrary exception text; cleanup cover
   g.view.dispose = () => {throw new Error('failed renderer cleanup');};
   await assert.rejects(g.controller.close()); assert.equal(g.docsDisposed, 1);
 });
+test('source revision mismatch refuses the document and disposes it',async()=>{
+  const f=fixture();Object.defineProperty(f.document,'revision',{value:'other-revision'});
+  await f.controller.open({source,format:'epub',container});
+  assert.equal(f.controller.getSnapshot().status,'error');assert.equal(f.controller.getSnapshot().error,'invalid_book');assert.equal(f.docsDisposed,1);
+});
+test('iframe surface input is synchronous and fenced; measured fixed zoom reaches snapshot',async()=>{
+  const f=fixture();let prevented=false,inputs=0;
+  f.view.getZoom=()=>({scale:1.5});f.view.canTurnAtFit=()=>false;
+  const off=f.controller.subscribeSurfaceInput(event=>{inputs++;if(event.kind==='key')event.preventDefault();});
+  await f.controller.open({source,format:'epub',container});
+  f.mount.onSurfaceInput?.({kind:'key',key:'ArrowRight',shift:false,alt:false,ctrl:false,meta:false,editable:false,preventDefault(){prevented=true;}});
+  assert.ok(prevented);assert.equal(inputs,1);assert.equal(f.controller.getSnapshot().canTurnAtFit,false);assert.equal(f.controller.getSnapshot().zoom?.scale,1.5);
+  await f.controller.close();f.mount.onSurfaceInput?.({kind:'tap',fraction:.9});assert.equal(inputs,1);off();
+});
