@@ -8253,6 +8253,7 @@ CREATE TABLE catalog_automatic_member_overrides(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  present INTEGER NOT NULL CHECK(present IN(0,1)),
  PRIMARY KEY(collection_id,item_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_automatic_member_overrides_item ON catalog_automatic_member_overrides(item_id);
 CREATE TRIGGER catalog_automatic_member_insert AFTER INSERT ON catalog_automatic_members BEGIN
  INSERT INTO catalog_automatic_collections(library_id,provider,provider_id,name) VALUES(NEW.library_id,NEW.provider,NEW.provider_id,NEW.name)
  ON CONFLICT(library_id,provider,provider_id) DO UPDATE SET name=excluded.name,dirty=1;

@@ -163,7 +163,7 @@ func (s *Service) listeningArtistFacts(viewer Viewer, id string, out *ContentEnt
 	}
 	visible, visibleArgs := viewer.itemVisibilitySQL("song.entity_id")
 	var albums int
-	if err := s.read().QueryRow(`SELECT count(DISTINCT song.album_id) FROM (SELECT s.entity_id FROM catalog_entities a JOIN catalog_albums al ON al.artist_id=a.id JOIN catalog_songs s ON s.album_id=al.entity_id WHERE a.public_id=pid_blob(?) UNION SELECT sa.song_id FROM catalog_entities a JOIN catalog_song_artists sa ON sa.artist_id=a.id WHERE a.public_id=pid_blob(?)) mine JOIN catalog_songs song ON song.entity_id=mine.entity_id WHERE `+visible, append([]any{id, id}, visibleArgs...)...).Scan(&albums); err != nil {
+	if err := s.read().QueryRow(`SELECT count(DISTINCT song.album_id) FROM (SELECT s.entity_id FROM catalog_entities a CROSS JOIN catalog_albums al INDEXED BY catalog_albums_artist ON al.artist_id=a.id CROSS JOIN catalog_songs s INDEXED BY catalog_songs_album_order ON s.album_id=al.entity_id WHERE a.public_id=pid_blob(?) UNION SELECT sa.song_id FROM catalog_entities a CROSS JOIN catalog_song_artists sa INDEXED BY catalog_song_artists_artist ON sa.artist_id=a.id WHERE a.public_id=pid_blob(?)) mine CROSS JOIN catalog_songs song ON song.entity_id=mine.entity_id WHERE `+visible, append([]any{id, id}, visibleArgs...)...).Scan(&albums); err != nil {
 		return err
 	}
 	out.AlbumCount = &albums

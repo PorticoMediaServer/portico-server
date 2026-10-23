@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -251,11 +252,18 @@ func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
 	c.Exec(`DELETE FROM catalog_entities WHERE public_id=pid_blob(?)`, first.Entries[1].ID)
 	c.Drain()
 	r.Cursor = first.PageInfo.NextCursor
-	next, err := s.BrowseEntities(v, r)
-	if err != nil || len(next.Entries) != 2 || next.Entries[0].Title != "Movie 2" {
-		t.Fatalf("removed anchor %+v %v", next, err)
+	if _, err := s.BrowseEntities(v, r); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("removed anchor did not invalidate its old ordering: %v", err)
 	}
+	// A published ordering requires a range recovery, whose missing anchor
+	// retains the viewport's position in the current list.
 	r.Cursor = ""
+	r.Range = &BrowseRange{Start: 1, Revision: first.PageInfo.Revision, AnchorID: first.Entries[1].ID}
+	next, err := s.BrowseEntities(v, r)
+	if err != nil || next.PageInfo.Total != 6 || next.PageInfo.Start != 1 || len(next.Entries) != 2 || next.Entries[0].Title != "Movie 2" || next.Entries[1].Title != "Movie 3" {
+		t.Fatalf("removed anchor recovery %+v %v", next, err)
+	}
+	r.Range = nil
 	r.Sort = []BrowseSortSelection{{Field: "random", Direction: "asc", Seed: 123}}
 	first, err = s.BrowseEntities(v, r)
 	if err != nil {
