@@ -17,6 +17,7 @@ import {createArtworkRuntime} from '../src/kit/artwork/source.ts';
 import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.ts';
 import {dispatchWatchMarker} from '../src/screens/watch/policy.ts';
 import {dispatchWatchVersion, watchVersionRows} from '../src/screens/watch/versions.ts';
+import {WatchPictureInput} from '../src/screens/watch/picture.ts';
 
 function previewSet() {
   const id = 'a'.repeat(64);
@@ -34,6 +35,112 @@ function snapshot(change: Partial<WebPlaybackRuntimeSnapshot> = {}): WebPlayback
     presentation: {fence, subject: {kind: 'video', item: {id: 'item', kind: 'movie', title: 'Title'}}, kind: 'video', durationSeconds: 7200, positionSeconds: 30, playing: true, expanded: true, finished: false, controls: ['pause', 'seek'], volume: .7, muted: false, rate: 1, policy: null},
     playback: {} as WebPlaybackRuntimeSnapshot['playback'], dock: {} as WebPlaybackRuntimeSnapshot['dock'], presentations: [], queueView: null, options: null, offers: null, ...change};
 }
+
+test('a picture double-click enters fullscreen without a transient pause; assistive activation is immediate', async context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const input = new WatchPictureInput(), shown = snapshot(), calls: WebPlaybackAction[] = [];
+  let fullscreen = 0;
+  const target = {runtime: {getSnapshot: () => shown, onAction: async (action: WebPlaybackAction) => { calls.push(action); }}, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }};
+  input.mouse(target, 1); context.mock.timers.tick(100);
+  input.mouse(target, 2); input.doubleClick(target, () => fullscreen++);
+  context.mock.timers.tick(500);
+  assert.equal(fullscreen, 1); assert.deepEqual(calls, []);
+  input.mouse(target, 0);
+  assert.deepEqual(calls, [{kind: 'pause', fence}]);
+  input.cancel();
+});
+
+test('a pending picture click cannot pause a replacement source, viewer, remote, collapsed player or disposed screen', async context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const shown = snapshot();
+  for (const replacement of [{fence: {...fence, generation: 2}}, {authority: {...authority}}, {dock: {...shown.dock, remote: {phase: 'playing'}}}, {disposed: true}] as Partial<WebPlaybackRuntimeSnapshot>[]) {
+    const input = new WatchPictureInput(); let live = shown, calls = 0;
+    const target = {runtime: {getSnapshot: () => live, onAction: async () => { calls++; }}, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }};
+    input.mouse(target, 1); live = snapshot(replacement); context.mock.timers.tick(221);
+    assert.equal(calls, 0);
+  }
+  for (const cancel of [false, true]) {
+    const input = new WatchPictureInput(); let active = true, calls = 0;
+    const target = {runtime: {getSnapshot: () => shown, onAction: async () => { calls++; }}, snapshot: shown, isActive: () => active, reportError: (error: unknown) => { throw error; }};
+    input.mouse(target, 1); if (cancel) input.cancel(); else active = false;
+    context.mock.timers.tick(221); assert.equal(calls, 0);
+  }
+});
+
+test('one mouse click pauses only after the double-click window and retains the shown complete fence', context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const input = new WatchPictureInput(), shown = snapshot(), calls: WebPlaybackAction[] = [];
+  const target = {runtime: {getSnapshot: () => snapshot({sequence: 4}), onAction: async (action: WebPlaybackAction) => { calls.push(action); }}, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }};
+  input.mouse(target, 1); context.mock.timers.tick(219); assert.equal(calls.length, 0);
+  context.mock.timers.tick(1); assert.deepEqual(calls, [{kind: 'pause', fence}]);
+});
+
+test('the second click cannot fullscreen a replacement playback even if that new target is current', context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const input = new WatchPictureInput(); let shown = snapshot(), fullscreen = 0, effects = 0;
+  const runtime = {getSnapshot: () => shown, onAction: async () => { effects++; }};
+  const target = () => ({runtime, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }});
+  input.mouse(target(), 1);
+  const replacement = {...fence, generation: 2}; shown = snapshot({fence: replacement, presentation: {...shown.presentation!, fence: replacement}});
+  input.mouse(target(), 2); input.doubleClick(target(), () => fullscreen++); context.mock.timers.tick(500);
+  assert.equal(effects, 0); assert.equal(fullscreen, 0);
+});
+
+test('touch double-taps seek by actual Settings amounts without toggling hidden controls; tablet centre is inert', async context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const input = new WatchPictureInput(), calls: WebPlaybackAction[] = [], feedback: number[] = [];
+  let shown = snapshot(), singles = 0, fullscreen = 0;
+  const runtime = {getSnapshot: () => shown, onAction: async (action: WebPlaybackAction) => {
+    calls.push(action);
+    if (action.seconds !== undefined) shown = {...shown, presentation: {...shown.presentation!, positionSeconds: action.seconds}};
+  }};
+  const target = () => ({runtime, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }});
+  const touch = {zone: 'right' as const, tablet: true, back: 10, forward: 30, single: () => singles++, fullscreen: () => fullscreen++, feedback: (_direction: string, seconds: number) => feedback.push(seconds)};
+  for (let i = 0; i < 2; i++) { input.tap(target(), touch); context.mock.timers.tick(100); input.tap(target(), touch); await new Promise(resolve => setImmediate(resolve)); }
+  context.mock.timers.tick(500);
+  assert.equal(singles, 0); assert.deepEqual(calls.map(a => a.seconds), [60, 90]); assert.deepEqual(feedback, [30, 30]);
+  const middle = {...touch, zone: 'middle' as const};
+  input.tap(target(), middle); input.tap(target(), middle); context.mock.timers.tick(500); assert.equal(fullscreen, 0); assert.equal(singles, 0);
+  input.tap(target(), {...middle, tablet: false}); input.tap(target(), {...middle, tablet: false}); assert.equal(fullscreen, 1);
+  input.tap(target(), touch); context.mock.timers.tick(320); assert.equal(singles, 1);
+});
+
+test('a retired touch read drops its pending single and cannot combine with a new playback double-tap', context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const input = new WatchPictureInput(); let shown = snapshot(), singles = 0, effects = 0;
+  const runtime = {getSnapshot: () => shown, onAction: async () => { effects++; }};
+  const target = () => ({runtime, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }});
+  const touch = {zone: 'left' as const, tablet: true, back: 10, forward: 30, single: () => singles++, fullscreen: () => effects++, feedback: () => effects++};
+  input.tap(target(), touch);
+  const replacement = {...fence, sessionId: 'replacement'};
+  shown = snapshot({fence: replacement, presentation: {...shown.presentation!, fence: replacement}});
+  input.tap(target(), touch); context.mock.timers.tick(320);
+  assert.equal(effects, 0); assert.equal(singles, 1);
+});
+
+test('picture wheel volume requires a current offered volume command and stays within actual bounds', () => {
+  const input = new WatchPictureInput(), base = snapshot(), calls: WebPlaybackAction[] = [];
+  let shown = {...base, presentation: {...base.presentation!, volume: .98, controls: [...base.presentation!.controls, 'volume' as const]}};
+  const runtime = {getSnapshot: () => shown, onAction: async (action: WebPlaybackAction) => { calls.push(action); }};
+  const target = () => ({runtime, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }});
+  assert.equal(input.wheel(target(), -1), true); assert.equal(calls[0]!.volume, 1);
+  shown = {...shown, presentation: {...shown.presentation, volume: .02}};
+  assert.equal(input.wheel(target(), 1), true); assert.equal(calls[1]!.volume, 0);
+  assert.equal(input.wheel(target(), NaN), false); assert.equal(input.wheel(target(), 0), false);
+  shown = {...shown, presentation: {...shown.presentation, controls: []}};
+  assert.equal(input.wheel(target(), 1), false); assert.equal(calls.length, 2);
+});
+
+test('an accepted touch seek cannot restore its ripple after a panel or source retires that gesture', async () => {
+  const input = new WatchPictureInput(), shown = snapshot();
+  let finish!: () => void, feedback = 0;
+  const wait = new Promise<void>(resolve => { finish = resolve; });
+  const target = {runtime: {getSnapshot: () => shown, onAction: async () => wait}, snapshot: shown, isActive: () => true, reportError: (error: unknown) => { throw error; }};
+  const touch = {zone: 'left' as const, tablet: true, back: 10, forward: 30, single: () => assert.fail(), fullscreen: () => assert.fail(), feedback: () => feedback++};
+  input.tap(target, touch); input.tap(target, touch); input.cancel(); finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(feedback, 0);
+});
 
 test('the screen sends the displayed complete fence through the existing runtime command', async () => {
   const shown = snapshot(), calls: WebPlaybackAction[] = [];

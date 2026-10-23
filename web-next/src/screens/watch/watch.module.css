@@ -6,11 +6,18 @@
   --watch-time-size: 13.5px; --watch-time-weight: 600; --watch-pill-weight: 700;
   --watch-skip-size: 8.5px; --watch-skip-weight: 800;
   --watch-preview-time-size: 15px; --watch-preview-time-weight: 800;
+  --watch-gesture-size: 13px; --watch-gesture-weight: 800;
  position: fixed; inset: 0; z-index: calc(var(--layer-player) + 1); color: var(--color-text); pointer-events: none; isolation: isolate; }
 .watch[hidden] { display: none; }
 .pictureSlot { position: absolute; inset: 0; pointer-events: none; }
 .chrome { position: absolute; inset: 0; }
-.pictureTap { position: absolute; inset: 0; padding: 0; border: 0; background: transparent; pointer-events: auto; cursor: pointer; }
+.pictureTap { position: absolute; inset: 0; padding: 0; border: 0; background: transparent; pointer-events: auto; cursor: pointer; touch-action: manipulation; }
+.tapFeedback { position: absolute; z-index: 1; top: 0; bottom: 0; width: 44%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 38px; gap: 6px; background: color-mix(in srgb, var(--color-text) 16%, transparent); font-size: var(--watch-gesture-size); font-weight: var(--watch-gesture-weight); pointer-events: none; animation: tapFeedback var(--motion-hero) var(--ease-out) forwards; }
+.tapFeedback[data-direction='left'] { left: 0; border-radius: 0 60% 60% 0 / 0 50% 50% 0; }
+.tapFeedback[data-direction='right'] { right: 0; border-radius: 60% 0 0 60% / 50% 0 0 50%; }
+.tapDot { position: absolute; width: 38px; height: 38px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--color-white) 70%, transparent); background: color-mix(in srgb, var(--color-white) 20%, transparent); }
+@keyframes tapFeedback { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tapFeedback { animation-duration: var(--motion-reduced); animation-timing-function: linear; } }
 .shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, color-mix(in srgb, var(--color-dim) 84%, transparent) 0, color-mix(in srgb, var(--color-dim) 38%, transparent) 130px, transparent 240px), linear-gradient(0deg, color-mix(in srgb, var(--color-dim) 94%, transparent) 0, color-mix(in srgb, var(--color-dim) 62%, transparent) 150px, transparent 340px); }
 .top { position: absolute; inset: 0 0 auto; display: flex; align-items: flex-start; gap: 18px; padding: 30px 40px; }
 .identity { min-width: 0; flex: 0 1 auto; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-shadow) 45%, transparent); }

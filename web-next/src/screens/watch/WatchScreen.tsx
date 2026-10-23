@@ -12,6 +12,7 @@ import styles from './watch.module.css';
 import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
+import {WatchPictureInput} from './picture';
 
 const t = defaultI18n.t;
 const subscribeWindow = (changed: () => void) => { window.addEventListener('resize', changed); return () => window.removeEventListener('resize', changed); };
@@ -42,8 +43,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   type Scrub = {snapshot: WatchScreenProps['snapshot']; fence: PlaybackFence; seconds: number; pointerId: number};
   const [scrub, setScrub] = useState<Scrub | null>(null), [hoverSeconds, setHoverSeconds] = useState<number | null>(null);
   const scrubDrag = useRef<Scrub | null>(null);
+  const [pictureInput] = useState(() => new WatchPictureInput());
+  const pointerKind = useRef('mouse');
+  const [tapFeedback, setTapFeedback] = useState<{direction: 'left' | 'right'; seconds: number; x: number; y: number; sequence: number} | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keyboardFocus = useRef(false);
+  const controlsVisible = useRef(visible);
+  controlsVisible.current = visible;
   const lastLayout = useRef<string | null>(null);
   const current = useRef({binding, snapshot, expanded});
   current.current = {binding, snapshot, expanded};
@@ -94,9 +100,11 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
-  useLayoutEffect(() => { scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, sourceKey]);
+  useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
+  useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
-  useEffect(() => { if (!open) { clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [open, clearTimer]);
+  useEffect(() => { if (!open) { pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [open, clearTimer, pictureInput]);
+  useEffect(() => { if (panel || more || shortcuts) pictureInput.cancel(); }, [panel, more, shortcuts, pictureInput]);
   const showPanel = (next: WatchPanel, anchor?: HTMLButtonElement) => {
     if (!surfaces?.available.includes(next)) return;
     if (anchor) panelAnchor.current = anchor;
@@ -107,6 +115,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (windowPort?.fullscreen) effect(windowPort.fullscreen.toggle);
     else if (width < 1024) { setFullWindow(value => !value); reveal(); }
   };
+  const pictureTarget = () => ({runtime: binding.runtime, snapshot, reportError: binding.reportError,
+    isActive: () => current.current.binding.runtime === binding.runtime && current.current.expanded});
   useEffect(() => {
     if (!open) return;
     const keydown = (event: KeyboardEvent) => {
@@ -176,7 +186,32 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
     <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)}>
       <button type="button" className={styles.pictureTap} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
-        onClick={() => { if (!visible) reveal(); else { clearTimer(); setVisible(false); } }} />
+        onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
+        onPointerCancel={() => pictureInput.cancel()}
+        onClick={event => {
+          if (panel) { pictureInput.cancel(); setPanel(null); return; }
+          if (more || shortcuts) return;
+          const target = pictureTarget();
+          if (event.detail === 0 || pointerKind.current === 'mouse') { pictureInput.mouse(target, event.detail); return; }
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = rect.width > 0 ? (event.clientX - rect.left) / rect.width : .5, y = rect.height > 0 ? (event.clientY - rect.top) / rect.height : .5;
+          pictureInput.tap(target, {zone: x < 1 / 3 ? 'left' : x > 2 / 3 ? 'right' : 'middle', tablet: touchTablet,
+            back: binding.skips.back, forward: binding.skips.forward,
+            single: () => {
+              if (!controlsVisible.current) { controlsVisible.current = true; reveal(); }
+              else if (presentation?.playing && !permanent) { controlsVisible.current = false; clearTimer(); setVisible(false); }
+            },
+            fullscreen: toggleFullscreen,
+            feedback: (direction, seconds) => setTapFeedback(value => ({direction, seconds, x, y, sequence: (value?.sequence ?? 0) + 1})),
+          });
+        }}
+        onDoubleClick={() => { if (pointerKind.current === 'mouse') pictureInput.doubleClick(pictureTarget(), toggleFullscreen); }}
+        onWheel={event => { if (!coarsePointer && !panel && !more && !shortcuts) pictureInput.wheel(pictureTarget(), event.deltaY); }} />
+      {tapFeedback && <div key={tapFeedback.sequence} className={styles.tapFeedback} data-direction={tapFeedback.direction} aria-hidden="true" onAnimationEnd={() => setTapFeedback(null)}>
+        <span className={styles.tapDot} style={{left: `${(tapFeedback.x - (tapFeedback.direction === 'right' ? .56 : 0)) / .44 * 100}%`, top: `${tapFeedback.y * 100}%`}} />
+        <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
+        <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
+      </div>}
       <div className={styles.shade} />
       <div className={styles.top}>
         <Control large icon="i-down" label={t('player.minimize')} action={onCollapse} />
