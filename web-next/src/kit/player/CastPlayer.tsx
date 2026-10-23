@@ -9,10 +9,10 @@ import type {CastPlayerProps} from './types';
 import styles from './cast-player.module.css';
 
 /** The phone-player 7b remote. No receiver volume, playback info or queue surface. */
-export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef}: CastPlayerProps) {
+export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef, t = defaultI18n.t}: CastPlayerProps) {
   const remote = snapshot.remote;
   if (!remote || snapshot.disposed) return null;
-  const t = defaultI18n.t, open = snapshot.panel === 'remote' && remote.phase === 'playing';
+  const open = snapshot.panel === 'remote' && remote.phase === 'playing';
   const position = remote.positionKnown ? clockText(remote.positionSeconds) ?? '' : '', remaining = clockText(Math.max(0, remote.durationSeconds - remote.positionSeconds)) ?? '';
   const back = visuals.skipBackSeconds, forward = visuals.skipForwardSeconds;
   return <Dialog open={open} onOpenChange={() => controller.closePanel()} title={t('next.dock.castControls')} showCloseButton={false} responsive={false}
@@ -45,10 +45,9 @@ export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef
   </Dialog>;
 }
 
-export function CastTracks({controller, snapshot, returnFocusRef}: CastPlayerProps) {
+export function CastTracks({controller, snapshot, returnFocusRef, t = defaultI18n.t}: CastPlayerProps) {
   const remote = snapshot.remote;
   if (!remote) return null;
-  const t = defaultI18n.t;
   return <Dialog open={snapshot.panel === 'tracks' && remote.phase === 'playing'} onOpenChange={() => controller.closePanel()} title={t('next.dock.subtitlesAudio')} returnFocusRef={returnFocusRef}>
     {!!snapshot.cast.textTracks.length && <section className={styles.trackGroup}><h3>{t('next.cast.subtitles')}</h3>
       <button type="button" onClick={() => controller.subtitles(remote, null)}>{t('next.controls.off')}</button>
@@ -60,8 +59,8 @@ export function CastTracks({controller, snapshot, returnFocusRef}: CastPlayerPro
   </Dialog>;
 }
 
-export function CastTakeover({controller, snapshot, returnFocusRef}: CastPlayerProps) {
-  const t = defaultI18n.t, takeover = snapshot.cast.takeover;
+export function CastTakeover({controller, snapshot, returnFocusRef, t = defaultI18n.t}: CastPlayerProps) {
+  const takeover = snapshot.cast.takeover;
   return <Dialog open={!!takeover} onOpenChange={() => controller.answerTakeover(false)} title={t('cast.takeover.title')} showCloseButton={false} returnFocusRef={returnFocusRef}
     description={takeover ? t('cast.takeover.body', {requester: takeover.requester}) : undefined} footer={<>
       <Button variant="glass" onClick={() => controller.answerTakeover(false)}>{t('cast.takeover.deny')}</Button>

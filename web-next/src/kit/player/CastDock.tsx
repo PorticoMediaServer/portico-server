@@ -9,10 +9,10 @@ import type {CastPlayerProps} from './types';
 import dock from '../dock/dock.module.css';
 
 /** Cast has the dock before local video/music. All commands carry the exact remote revision. */
-export function CastDock({controller, snapshot, visuals, phone, reportError}: CastPlayerProps) {
+export function CastDock({controller, snapshot, visuals, phone, reportError, t = defaultI18n.t}: CastPlayerProps) {
   const remote = snapshot.remote;
   if (!remote || snapshot.disposed) return null;
-  const t = defaultI18n.t, playing = remote.phase === 'playing', terminal = ['stopped', 'replaced', 'error'].includes(remote.phase);
+  const playing = remote.phase === 'playing', terminal = ['stopped', 'replaced', 'error'].includes(remote.phase);
   const back = visuals.skipBackSeconds, forward = visuals.skipForwardSeconds;
   const canContinue = remote.confirmed && remote.positionKnown && remote.phase === 'stopped' && !!remote.itemId;
   const position = remote.positionKnown ? clockText(remote.positionSeconds) ?? '' : '', duration = remote.positionKnown ? clockText(remote.durationSeconds) ?? '' : '';

@@ -1,4 +1,6 @@
 import type {RefObject} from 'react';
+import type {MessageId} from '@i18n';
+export type CastPlayerTranslate = (id: MessageId, values?: Record<string, string | number>) => string;
 import type {DockPresentation} from '../dock';
 import type {PlayOnController, PlayOnSnapshot} from '../../platform/playback/play-on';
 
@@ -7,7 +9,7 @@ export type CastPlayerVisuals = Partial<Pick<DockPresentation, 'identity' | 'art
   onMore?: () => void; onMyList?: () => void;
 }>;
 export type CastPlayerProps = Readonly<{
-  controller: PlayOnController; snapshot: PlayOnSnapshot; visuals: CastPlayerVisuals; phone: boolean;
+  t?: CastPlayerTranslate; controller: PlayOnController; snapshot: PlayOnSnapshot; visuals: CastPlayerVisuals; phone: boolean;
   returnFocusRef?: RefObject<HTMLElement | null>; reportError: (error: unknown) => void;
 }>;
-export type PlayOnPanelProps = Pick<CastPlayerProps, 'controller' | 'snapshot' | 'phone' | 'reportError'> & Readonly<{anchorRef: RefObject<HTMLElement | null>}>;
+export type PlayOnPanelProps = Pick<CastPlayerProps, 'controller' | 'snapshot' | 'phone' | 'reportError' | 't'> & Readonly<{anchorRef: RefObject<HTMLElement | null>}>;

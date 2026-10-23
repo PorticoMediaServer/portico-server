@@ -3,18 +3,18 @@ import {defaultI18n} from '@i18n';
 import {Icon} from '../Icon';
 import {BottomSheet, Popover} from '../overlays';
 import type {PlayOnController} from '../../platform/playback/play-on';
-import type {PlayOnPanelProps} from './types';
+import type {CastPlayerTranslate, PlayOnPanelProps} from './types';
 import styles from './cast-player.module.css';
 
-export function PlayOnButton({controller, available, buttonRef, onOpen}: Readonly<{controller: PlayOnController; available: boolean; buttonRef?: RefObject<HTMLButtonElement | null>; onOpen?: () => void}>) {
+export function PlayOnButton({controller, available, buttonRef, onOpen, t = defaultI18n.t}: Readonly<{controller: PlayOnController; available: boolean; buttonRef?: RefObject<HTMLButtonElement | null>; onOpen?: () => void; t?: CastPlayerTranslate}>) {
   if (!available) return null;
-  return <button type="button" ref={buttonRef} className={styles.playOnButton} aria-label={defaultI18n.t('next.dock.playOnDevice')} aria-haspopup="menu"
+  return <button type="button" ref={buttonRef} className={styles.playOnButton} aria-label={t('next.dock.playOnDevice')} aria-haspopup="menu"
     onClick={() => { onOpen?.(); controller.openPlayOn(); }}><Icon name="i-cast" size={24} /></button>;
 }
 
 /** Desktop f1s and the phone sheet, with exactly the binding browser rows and footnote. */
-export function PlayOnPanel({controller, snapshot, phone, anchorRef, reportError}: PlayOnPanelProps) {
-  const t = defaultI18n.t, open = snapshot.panel === 'play-on' && !snapshot.disposed;
+export function PlayOnPanel({controller, snapshot, phone, anchorRef, reportError, t = defaultI18n.t}: PlayOnPanelProps) {
+  const open = snapshot.panel === 'play-on' && !snapshot.disposed;
   if (!snapshot.cast.available && !snapshot.airPlayAvailable) return null;
   const close = () => controller.closePanel();
   const rows = <>
