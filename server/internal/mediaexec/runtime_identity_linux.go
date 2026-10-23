@@ -94,9 +94,9 @@ func RuntimeIdentity(ctx context.Context, executable string) (string, bool, erro
 			return "", false, ErrInvalidJob
 		}
 		// Access time changes while hashing; it is not a code generation.
-		fmt.Fprintf(sum, "%s\x00%s\x00%d:%d:%d:%v:%v\x00%d:%d:%d:%v:%v\x00", path, resolved,
-			fileStat.Dev, fileStat.Ino, fileStat.Mode, fileStat.Mtim, fileStat.Ctim,
-			entryStat.Dev, entryStat.Ino, entryStat.Mode, entryStat.Mtim, entryStat.Ctim)
+		fmt.Fprintf(sum, "%s\x00%s\x00%d:%d:%d:%d:%v:%v\x00%d:%d:%d:%d:%v:%v\x00", path, resolved,
+			fileStat.Dev, fileStat.Ino, fileStat.Mode, before.Size(), fileStat.Mtim, fileStat.Ctim,
+			entryStat.Dev, entryStat.Ino, entryStat.Mode, entry.Size(), entryStat.Mtim, entryStat.Ctim)
 		count, readErr := io.Copy(sum, identityReader{ctx, io.LimitReader(source, before.Size()+1)})
 		after, statErr := source.Stat()
 		source.Close()
