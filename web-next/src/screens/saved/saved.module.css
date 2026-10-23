@@ -3,7 +3,7 @@
 .downloadFailure.downloadFailure { padding: 24px 24px 20px; }
 .downloadFailure > header > h2 { margin-bottom: 4px; font-size: calc(var(--type-heading-size) * 21 / 20); }
 .downloadFailure > p { font-size: calc(var(--type-body-size) * 14 / 15); }
-.downloadFailure.downloadFailure > footer > button { padding: 0 16px; font-size: calc(var(--type-button-size) * 14 / 15); }
+.downloadFailure.downloadFailure > footer > button { padding: 0 16px; font-size: calc(var(--type-body-size) * 14 / 15); }
 .downloadFailureClose.downloadFailureClose { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; min-width: 36px; padding: 0; color: var(--color-text-tertiary); }
 .downloadFailureClose > span { display: contents; }
 .wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; overflow: hidden; mask-image: linear-gradient(180deg, var(--color-ink) 20%, transparent); }
