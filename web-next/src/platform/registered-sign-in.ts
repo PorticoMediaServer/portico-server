@@ -12,7 +12,7 @@ import {type CapturedPorticoReturn, dispatchPorticoReturn} from './portico-retur
 
 type Pending = Readonly<{
   version: 1; kind: 'registered'; origin: string; hostedOrigin: string; pin: ServerPin;
-  expectedRevision: number; expiresAt: string; pending: ReturnPending;
+  expectedRevision: number; attemptId: string; expiresAt: string; pending?: ReturnPending;
 }>;
 type Journal = Readonly<{
   assertAvailable: () => void;
@@ -23,6 +23,7 @@ type Ports = Readonly<{
   journal: Journal; sessions: Pick<AppSessionStore, 'read' | 'connectionStorage'>;
   environment: (serverId: string) => ConnectionEnvironment;
   installationId: () => string;
+  pageOrigin: () => string;
   /** Only the steward's checked canonical builder may be supplied by production. */
   startURL: (value: RegisteredSignIn) => string;
   prepare?: typeof prepareRegisteredSignIn; consume?: typeof consumeSameTabReturn;
@@ -46,24 +47,30 @@ export class BrowserRegisteredSignIn {
   async prepare(api: HttpLocalApi, origin: string, hostedOrigin: string, installationId: string,
     move: Readonly<{moveTicket?: string; moveCode?: string}> = {}) {
     this.ports.journal.assertAvailable();
-    if (routeOrigin(origin) !== origin || !origin.startsWith('https://') || installationId !== this.ports.installationId()) throw invalid();
+    if (routeOrigin(origin) !== origin || origin !== this.ports.pageOrigin() || !origin.startsWith('https://') || installationId !== this.ports.installationId()) throw invalid();
     const route = api.getRouteConnection();
     if (!route || route.getSnapshot().phase !== 'ready') throw invalid();
     const operation = this.operation(), state = await this.ports.sessions.read();
     if (!operation.current()) throw cancelled();
     assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(state)});
-    let storedState: string | undefined;
+    const attemptId = routeBase64(crypto.getRandomValues(new Uint8Array(32)));
+    // Supersede before network work. A second controller sharing this tab's
+    // vault wins atomically, even if the earlier prepare answers much later.
+    await this.ports.journal.change(() => {
+      if (!operation.current()) throw cancelled();
+      return {version: 1, kind: 'registered', origin, hostedOrigin, pin: route.pin,
+        expectedRevision: state.revision, attemptId, expiresAt: ''};
+    });
     const port: ReturnPendingStore = {
       read: async () => (await this.ports.journal.read())?.pending,
       change: async update => this.ports.journal.change(old => {
-        if (!operation.current()) throw cancelled();
+        if (!operation.current() || old?.attemptId !== attemptId) throw cancelled();
         const pending = update(old?.pending);
         if (!pending) return undefined;
-        storedState = pending.state;
         // prepareRegisteredSignIn provides the actual producer expiry after the
         // private write. Until then the record is deliberately not consumable.
         return {version: 1, kind: 'registered', origin, hostedOrigin, pin: route.pin,
-          expectedRevision: state.revision, expiresAt: '', pending};
+          expectedRevision: state.revision, attemptId, expiresAt: '', pending};
       }),
     };
     try {
@@ -72,13 +79,13 @@ export class BrowserRegisteredSignIn {
       const url = this.ports.startURL(value);
       if (!operation.current() || (await this.ports.sessions.read()).revision !== state.revision) throw cancelled();
       await this.ports.journal.change(old => {
-        if (!operation.current() || !old || old.pending.state !== value.start.state) throw cancelled();
+        if (!operation.current() || !old || old.attemptId !== attemptId || old.pending?.state !== value.start.state) throw cancelled();
         return {...old, expiresAt: value.expiresAt};
       });
       if (!operation.current()) throw cancelled();
       return url;
     } catch (error) {
-      if (storedState) await this.ports.journal.change(old => old?.pending.state === storedState ? undefined : old);
+      await this.ports.journal.change(old => old?.attemptId === attemptId ? undefined : old);
       throw error;
     }
   }
@@ -94,10 +101,10 @@ export class BrowserRegisteredSignIn {
     this.ports.journal.assertAvailable();
     const operation = this.operation(); let record: Pending | undefined;
     await this.ports.journal.change(old => {record = old; return undefined;});
-    if (!record || record.version !== 1 || record.kind !== 'registered') throw invalid();
-    const saved = record, url = new URL(captured.href), expires = Date.parse(saved.expiresAt);
+    if (!record || record.version !== 1 || record.kind !== 'registered' || !record.pending) throw invalid();
+    const saved = {...record, pending: record.pending}, url = new URL(captured.href), expires = Date.parse(saved.expiresAt);
     if (!Number.isFinite(expires) || expires <= Date.now() || expires > saved.pending.createdAt + 5 * 60_000 ||
-      url.origin !== saved.origin || saved.pending.registrationOrigin !== saved.origin || saved.pending.purpose !== 'sign-in' ||
+      url.origin !== this.ports.pageOrigin() || url.origin !== saved.origin || saved.pending.registrationOrigin !== saved.origin || saved.pending.purpose !== 'sign-in' ||
       saved.pending.serverId !== saved.pin.serverId || saved.pending.installationId !== this.ports.installationId() ||
       !Number.isSafeInteger(saved.expectedRevision) || saved.expectedRevision < 0) throw invalid();
     const dispatch = dispatchPorticoReturn(captured, {kind: 'registered'});
@@ -150,6 +157,6 @@ export function createBrowserRegisteredSignIn(startURL: Ports['startURL']) {
   else {tab = routeBase64(crypto.getRandomValues(new Uint8Array(32))); sessionStorage.setItem(key, tab);}
   const journal = secureBrowserPending<Pending>('portico.registered-sign-in.v1:' + tab);
   const installationId = () => {const current = installationIdentity(); if (!current) throw invalid(); return current.installationId;};
-  const controller = new BrowserRegisteredSignIn({journal, sessions: browserAppSessions(), environment: browserConnectionEnvironment, startURL, installationId});
+  const controller = new BrowserRegisteredSignIn({journal, sessions: browserAppSessions(), environment: browserConnectionEnvironment, startURL, installationId, pageOrigin: () => location.origin});
   return {controller, installationId};
 }

@@ -35,8 +35,8 @@ async function fixture() {
   const ports: Ports = {
     journal: {assertAvailable: () => {calls.push('secure-context');}, read: async () => saved, change: async update => {saved = update(saved);}},
     sessions: {read: async () => ({version: 1, revision, servers: []}), connectionStorage: (_id, admission) => {assert.equal(admission?.expectedRevision, 7); calls.push('admission'); return storage;}},
-    environment: () => ({storage}), installationId: () => currentInstallation,
-    startURL: value => {assert.equal(saved?.pending.verifier, pending.verifier); exposed.push(value); return hostedOrigin + '/#canonical-builder-result';},
+    environment: () => ({storage}), installationId: () => currentInstallation, pageOrigin: () => origin,
+    startURL: value => {assert.equal(saved?.pending?.verifier, pending.verifier); exposed.push(value); return hostedOrigin + '/#canonical-builder-result';},
     prepare: (async (_api, store) => {
       if (gate) await gate;
       await store.change(() => pending);
@@ -52,7 +52,7 @@ async function fixture() {
   const flow = new BrowserRegisteredSignIn(ports);
   const callback = {href: origin + '/auth/portico-return', fragment: '#code=src_' + 'a'.repeat(43) + '&state=' + pending.state + '&transaction=srt_' + 't'.repeat(43)};
   const prepare = () => flow.prepare(api, origin, hostedOrigin, installation, {moveTicket: pending.moveTicket});
-  return {flow, prepare, callback, calls, retired, exposed, saved: () => saved,
+  return {flow, prepare, callback, calls, retired, exposed, saved: () => saved, another: () => new BrowserRegisteredSignIn(ports), api,
     revise: () => {revision++;}, changeInstallation: () => {currentInstallation = 'changed-installation'.padEnd(43, '_');},
     mutate: (update: (old: NonNullable<Pending>) => Pending) => {saved = update(saved!);},
     hold: () => {gate = new Promise(resolve => {resolveGate = resolve;});}, release: () => {resolveGate?.(); gate = undefined;},
@@ -60,7 +60,7 @@ async function fixture() {
 }
 test('preparation protects verifier/move proof and captures actual UUID/revision before exposing only canonical RegisteredSignIn', async () => {
   const f = await fixture(); assert.equal(await f.prepare(), hostedOrigin + '/#canonical-builder-result');
-  assert.equal(f.saved()?.expectedRevision, 7); assert.equal(f.saved()?.pending.installationId, installation);
+  assert.equal(f.saved()?.expectedRevision, 7); assert.equal(f.saved()?.pending?.installationId, installation);
   assert.equal(f.exposed[0].start.claimOperationId, 'actual_installed_operation');
   assert.doesNotMatch(JSON.stringify(f.exposed), /verifier|moveTicket|server-access|server-refresh/);
 });
@@ -96,4 +96,14 @@ test('a selection changed while exchanging cannot publish the returned server fa
   while (!f.calls.includes('exchange')) await new Promise(resolve => setImmediate(resolve));
   f.revise(); f.release(); await assert.rejects(work, {code: 'cancelled'});
   assert.deepEqual(f.retired, ['new-server-family']); assert.equal(f.calls.includes('route-key'), false);
+});
+test('a later prepare in the same tab atomically supersedes another controller before its delayed response', async () => {
+  const f = await fixture(); f.hold(); const earlier = f.prepare();
+  await new Promise(resolve => setImmediate(resolve)); const first = f.saved()?.attemptId;
+  const later = f.another().prepare(f.api, origin, hostedOrigin, installation);
+  await new Promise(resolve => setImmediate(resolve)); assert.notEqual(f.saved()?.attemptId, first);
+  f.release();
+  const results = await Promise.allSettled([earlier, later]);
+  assert.equal(results[0].status, 'rejected'); assert.equal(results[1].status, 'fulfilled');
+  assert.equal(f.exposed.length, 1); assert.ok(f.saved()?.expiresAt);
 });

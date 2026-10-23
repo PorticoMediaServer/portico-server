@@ -1,18 +1,25 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
 import {directSignIn, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
-import {inspectDirectServer, connectPairedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
+import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
+import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
+import type {JoinLink} from '@core/join-link.ts';
+import {passwordStrength} from '@core/password-strength.ts';
+import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
+import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
+import type {PreviewInvitationResponse} from '../../../packages/contracts/src/types.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
 import {browserServerDisplay} from './server-display';
 import {BrowserProfileRecovery} from './profile-recovery';
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
+ invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
  busy?:boolean; error?:unknown;
 }>;
 type EntryPorts = Readonly<{
@@ -20,6 +27,9 @@ type EntryPorts = Readonly<{
  environment:(id?:string)=>ConnectionEnvironment;
  restore:typeof restoreBrowserConnection;
  inspect:typeof inspectDirectServer; connect:typeof connectPairedServer; remember:typeof rememberNativeSession;
+ connectPortico?:typeof connectPairedPorticoServer;
+ retire?:(api:HttpLocalApi,session:LocalSession)=>Promise<void>;
+ invitationDestination?:'adopt'|'server-origin';
  rememberName?:(api:HttpLocalApi,name:string)=>void;
 }>;
 
@@ -30,6 +40,7 @@ export class BrowserAccountEntry {
  private readonly listeners=new Set<()=>void>();
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private disposed=false;
+ private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
@@ -37,7 +48,7 @@ export class BrowserAccountEntry {
  private publish(value:AccountEntryState){if(this.disposed)return;this.state=Object.freeze(value);for(const fn of this.listeners)fn();}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
  private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;}
- cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.publish({phase:'welcome'});}
+ cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
  async inspect(address:string,linkId?:string){
   this.cancel();const op=this.operation();this.publish({phase:'checking'});
@@ -59,28 +70,89 @@ export class BrowserAccountEntry {
    if(!op.current())return;
    this.ports.rememberName?.(connected.api,verified.name);
    this.publish({server:verified,origin,pin,phase:verified.signIn==='local'?'password':'portico',busy:false});
+   return {api:connected.api,current:op.current};
   }catch(error){if(op.current()){this.release();this.publish({phase:'address',error});}}
  }
  private async retire(api:HttpLocalApi,session:LocalSession){
+  if(this.ports.retire)return this.ports.retire(api,session);
   const cleanup=new HttpLocalApi(api.baseUrl,session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);
-  await cleanup.logout().catch(()=>{});
+  await cleanup.request(routePath('delete_sessions_current'),'DELETE',undefined,AbortSignal.timeout(5000)).catch(()=>{});
  }
  private async accept(result:DirectSignIn,api:HttpLocalApi,revision:number,op:ReturnType<BrowserAccountEntry['operation']>,hosted?:RememberedServer['hosted']){
   if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.publish({...this.state,phase:'challenge',busy:false});}return;}
   try{
    if(!op.current())throw new Error('Sign-in was cancelled.');
    if(!this.state.server||result.snapshot.serverId!==this.state.server.id)throw new Error('The server identity changed.');
+   if(this.joinedAccountId&&result.snapshot.account.id!==this.joinedAccountId)throw new CodedError('identity_mismatch','The invitation account changed.');
+   if(this.state.invitation&&this.ports.invitationDestination==='server-origin'){
+    await this.retire(api,result.session);
+    if(op.current())this.publish({...this.state,phase:'joined',joined:{origin:this.state.origin!,signIn:this.state.server.signIn},busy:false,error:undefined});
+    this.invitationCode=undefined;return;
+   }
    api.setAccessToken(result.session.accessToken);
    const env={...this.ports.environment(result.snapshot.serverId),storage:this.ports.store.connectionStorage(result.snapshot.serverId,{signIn:this.state.server.signIn,hostedAccount:hosted,expectedRevision:revision})};
    await this.ports.remember(api,result.session,env,hosted,op.current);
    if(!op.current())return;
    this.session=result.session;
    this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:result.passwordChangeRequired?'password-change':result.accountScoped?'profiles':'ready'});
-  }catch(error){await this.retire(api,result.session);throw error;}
+  }catch(error){await this.retire(api,result.session);api.setAccessToken('');throw error;}
+ }
+ /** The link code is not posted until the kind, private-key proof, link id and
+  * all remembered ownership of this origin have passed the normal entry guard. */
+ async inspectInvitation(link:JoinLink){
+  const inspected=await this.inspect(link.server,link.id);if(!inspected?.current())return;
+  const state=this.state,api=inspected.api;
+  if(!api||!state.server||!['password','portico'].includes(state.phase))return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{
+   const preview=decodePreviewInvitationResponse(await api.request(routePath('preview_invitation'),'POST',{code:link.code},op.signal));
+   if(!op.current())return;
+   if(preview.signInMethod!==state.server.signIn||!['member','admin'].includes(preview.role))throw new CodedError('invalid_response','The invitation sign-in method changed.');
+   this.invitationCode=link.code;this.publish({...state,invitation:preview,busy:false});
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ async joinLocal(username:string,password:string,name=''){
+  const state=this.state,api=this.api,code=this.invitationCode,trimmed=username.trim();
+  if(state.phase!=='password'||state.server?.signIn!=='local'||!state.invitation||!api||!code||state.busy)return;
+  if(trimmed.length<3||trimmed.length>64||/[\s@]/.test(trimmed)||!passwordStrength(password).acceptable)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return;
+   if(this.joinedUsername!==undefined&&this.joinedUsername!==trimmed)throw new CodedError('invitation_used','Continue with the account already created.');
+   if(this.joinedUsername===undefined){
+    const member=decodePostAccessInvitationsAcceptResponse(await api.request(routePath('post_access_invitations_accept'),'POST',{code,username:trimmed,password,...(name.trim()?{name:name.trim()}:{})},op.signal));
+    if(!op.current())return;
+    if(!('accountId' in member)||!member.accountId||member.username!==trimmed)throw new CodedError('invalid_response','The invitation account could not be read.');
+    this.joinedAccountId=member.accountId;this.joinedUsername=trimmed;
+   }
+   if(!op.current())return;
+   await this.accept(await directSignIn(api,trimmed,password,op.signal),api,revision,op);
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ async joinPortico(account:Readonly<{origin:string;accountId:string;request:HostedRequestApi['request'];isCurrent:()=>boolean}>){
+  const state=this.state,code=this.invitationCode;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||!state.invitation||!state.pin||!state.origin||!code||state.busy||!account.isCurrent())return;
+  const op=this.operation(),guard={...op,current:()=>op.current()&&account.isCurrent()};this.publish({...state,busy:true,error:undefined});
+  let paired:Awaited<ReturnType<typeof connectPairedPorticoServer>>|undefined;
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!guard.current())return;
+   const check=()=>{if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');};
+   const request:HostedRequestApi['request']=async<T,>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{check();const result=await account.request<T>(path,method,body,signal);check();return result;};
+   paired=await (this.ports.connectPortico??connectPairedPorticoServer)(state.origin,state.pin,
+    {origin:account.origin,accountId:account.accountId,request:(path,signal)=>request(path,'GET',undefined,signal)},this.ports.environment(state.server.id),op.signal);
+   if(!guard.current()){paired.connection.dispose();return;}
+   const server=paired.api;
+   const result=await acceptPorticoInvitation({request},account.origin,{request:(path,method,body,signal)=>{check();return server.request(path,method,body,signal);}},state.server.id,code,op.signal);
+   if(result.kind!=='signed-in')throw new CodedError('invalid_response','The Portico invitation returned an unexpected challenge.');
+   if(!guard.current()||result.snapshot.account.hostedAccountId!==account.accountId){await this.retire(paired.api,result.session);throw new CodedError('cancelled','The Portico Account changed.');}
+   const previous=this.api;this.api=paired.api;previous?.getRouteConnection()?.dispose();
+   await this.accept(result,paired.api,revision,guard,paired.hosted);
+  }catch(error){if(guard.current())this.publish({...state,busy:false,error});}
+  finally{if(paired&&this.api!==paired.api)paired.connection.dispose();}
  }
  async signIn(username:string,password:string){
   const state=this.state,api=this.api;
-  if(state.phase!=='password'||state.server?.signIn!=='local'||!api||!username||!password)return;
+  if(state.phase!=='password'||state.server?.signIn!=='local'||state.invitation||!api||!username||!password)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{const revision=(await this.ports.store.read()).revision;if(!op.current())return;await this.accept(await directSignIn(api,username,password,op.signal),api,revision,op);}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
@@ -125,4 +197,4 @@ export class BrowserAccountEntry {
  }
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();}
 }
-export function createBrowserAccountEntry(){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,rememberName:(api,name)=>browserServerDisplay().remember(api,name)});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
