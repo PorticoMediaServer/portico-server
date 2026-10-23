@@ -1,4 +1,4 @@
-import {useRef, useState, type CSSProperties, type Dispatch, type SetStateAction} from 'react';
+import {useRef, useState, type Dispatch, type SetStateAction} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {ReaderSurfaceInput} from '@portico/reader-core';
 import '../../src/kit/tokens.css';
@@ -6,7 +6,7 @@ import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
 import {IconSprite} from '../../src/kit/Icon';
 import {ReaderChrome} from '../../src/kit/reader/ReaderChrome';
-import {ReaderDisplaySidePanel, type ReaderDisplayRow} from '../../src/kit/reader/ReaderDisplay';
+import {ReaderDisplaySheet, ReaderDisplaySidePanel, type ReaderDisplayRow} from '../../src/kit/reader/ReaderDisplay';
 import {loadReadFonts} from '../../src/screens/read/fonts';
 
 /** Verbatim tablet-read6b controls. This isolated fixture proves no canonical
@@ -26,6 +26,8 @@ const listeners = new Set<(input: ReaderSurfaceInput) => void>();
 window.readerDisplayInput = input => { for (const listener of listeners) listener(input); };
 const subscribe = (listener: (input: ReaderSurfaceInput) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const fonts = await loadReadFonts({document, signal: new AbortController().signal});
+const phone = new URLSearchParams(location.search).get('presentation') === 'phone';
+document.documentElement.style.setProperty('--reader-publisher-font', 'Georgia, serif');
 function DisplayFixture() {
   const anchor = useRef<HTMLButtonElement>(null), [open, setOpen] = useState(true);
   const [theme, setTheme] = useState('sepia'), [font, setFont] = useState('literata'), [size, setSize] = useState(5), [twoPages, setTwoPages] = useState(true);
@@ -41,15 +43,16 @@ function DisplayFixture() {
   const rows: ReaderDisplayRow[] = options.map(row => ({...row, value: values[row.id], onChange: value => {
     probe.changes.push({key: row.id, value}); setValues(old => ({...old, [row.id]: value}));
   }}));
-  const panel = <ReaderDisplaySidePanel label="Display" open={open} onOpenChange={dismiss} anchorRef={anchor}
+  const Panel = phone ? ReaderDisplaySheet : ReaderDisplaySidePanel;
+  const panel = <Panel label="Display" open={open} onOpenChange={dismiss} anchorRef={anchor}
     themes={{label: 'Page', value: theme, options: [{value: 'dark', label: 'Dark', tone: 'dark'}, {value: 'black', label: 'Black', tone: 'black'}, {value: 'sepia', label: 'Sepia', tone: 'sepia'}, {value: 'light', label: 'Light', tone: 'light'}], onChange: value => change('theme', value, setTheme)}}
     fonts={{label: 'Font', value: font, options: [{value: 'publisher', label: 'Publisher’s', compactLabel: 'Publisher’s', face: 'publisher'}, {value: 'literata', label: 'Literata', compactLabel: 'Literata', face: 'literata'}, {value: 'manrope', label: 'Manrope', compactLabel: 'Manrope', face: 'manrope'}], onChange: value => change('font', value, setFont)}}
-    size={{label: 'Size', sliderLabel: 'Text size', smallerLabel: 'Smaller', largerLabel: 'Larger', value: size, min: 1, max: 7, step: 1, valueText: `${size} of 7`, onChange: value => change('size', value, setSize)}} rows={rows}
-    twoPages={{label: 'Two pages side by side in landscape', description: 'Held upright, a book always shows one page.', checked: twoPages, onChange: value => change('twoPages', value, setTwoPages)}}
-    copy={{sample: 'Aa', sizeSample: 'A', sessionNote: 'Changes here last until you close this book.', defaultsNote: 'Your defaults are in Settings, Reading.', openSettings: 'Open Settings'}} onOpenSettings={() => probe.changes.push({key: 'settings', value: true})} />;
-  return <div style={{width: '100vw', height: '100dvh', position: 'relative', '--reader-publisher-font': 'Georgia, serif'} as CSSProperties}>
+    size={{label: 'Size', sliderLabel: 'Text size', smallerLabel: 'Smaller', largerLabel: 'Larger', value: size, min: 1, max: 7, step: 1, valueText: `${size} of 7`, summary: phone ? `${size} of 7` : undefined, ticks: phone ? [1, 2, 3, 4, 5, 6, 7] : undefined, onChange: value => change('size', value, setSize)}} rows={rows}
+    twoPages={phone ? undefined : {label: 'Two pages side by side in landscape', description: 'Held upright, a book always shows one page.', checked: twoPages, onChange: value => change('twoPages', value, setTwoPages)}}
+    copy={{sample: 'Aa', sizeSample: 'A', sessionNote: 'Changes here last until you close this book.', defaultsNote: 'Your defaults are in Settings, Reading.', openSettings: phone ? undefined : 'Open Settings'}} onOpenSettings={phone ? undefined : () => probe.changes.push({key: 'settings', value: true})} />;
+  return <div style={{width: '100vw', height: '100dvh', position: 'relative'}}>
     <ReaderChrome copy={{back: 'Back', previous: 'Previous page', next: 'Next page', progress: 'Position in book'}} direction="ltr" tapTurnEnabled pageTurnsEnabled
-      onBack={() => {}} onTurn={turn => probe.turns.push(turn)} actions={[]} showPageArrows={false} panel={open ? panel : null} panelReflows={open}
+      onBack={() => {}} onTurn={turn => probe.turns.push(turn)} actions={[]} showPageArrows={false} panel={open ? panel : null} panelReflows={open && !phone}
       onPanelDismiss={reason => dismiss(false, reason)} subscribeSurfaceInput={subscribe} initiallyVisible>
       <div style={{height: '100%', background: '#f1e6d1'}} />
     </ReaderChrome>
@@ -60,6 +63,6 @@ function DisplayFixture() {
 const root = createRoot(document.getElementById('root')!);
 root.render(<><IconSprite /><DisplayFixture /></>);
 window.disposeReaderDisplay = () => {
-  root.unmount(); fonts.dispose(); probe.cleanup = {listeners: listeners.size, DOM: document.getElementById('root')!.childNodes.length,
+  root.unmount(); fonts.dispose(); document.documentElement.style.removeProperty('--reader-publisher-font'); probe.cleanup = {listeners: listeners.size, DOM: document.getElementById('root')!.childNodes.length,
     fontFaces: [...document.fonts].filter(face => face.family === 'Literata').length};
 };

@@ -1,4 +1,4 @@
-import {useCallback, useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject} from 'react';
+import {useCallback, useId, useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type RefObject} from 'react';
 import {RadioGroup} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
 import {Segmented, Switch} from '../controls';
@@ -79,9 +79,9 @@ export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSe
     <section className={styles.group} aria-labelledby={`${id}-size`}><h3 id={`${id}-size`}>{size.label}{size.summary && <span>{size.summary}</span>}</h3>
       <div className={styles.sizer}>
         <button type="button" className={styles.smaller} aria-label={size.smallerLabel} disabled={size.disabled || size.value <= size.min} onClick={() => changeSize(size.value - size.step)}>{copy.sizeSample}</button>
-        <div className={styles.range}><span className={styles.track} aria-hidden="true"><i style={{width: `${markerPercent}%`}} />
+        <div className={styles.range}><span className={styles.track} aria-hidden="true" style={{'--reader-marker-whole': `${markerPercent}%`, '--reader-marker-decimal': `${Math.round(fraction * 1000) / 10}%`} as CSSProperties}><i />
           {size.ticks?.filter(value => Number.isFinite(value) && value >= size.min && value <= size.max).map(value => <u key={value} style={{left: `${size.max > size.min ? (value - size.min) / (size.max - size.min) * 100 : 0}%`}} />)}
-          <b style={{left: `${markerPercent}%`}} /></span>
+          <b /></span>
           <input type="range" min={size.min} max={size.max} step={size.step} value={size.value} disabled={size.disabled || size.max <= size.min} aria-label={size.sliderLabel} aria-valuetext={size.valueText} onChange={event => changeSize(event.currentTarget.valueAsNumber)} />
         </div>
         <button type="button" className={styles.larger} aria-label={size.largerLabel} disabled={size.disabled || size.value >= size.max} onClick={() => changeSize(size.value + size.step)}>{copy.sizeSample}</button>

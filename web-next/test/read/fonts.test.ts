@@ -30,7 +30,7 @@ test('actual main font bytes are verified once, shared with EPUB and owned by th
   const env = await environment(t), life = new AbortController();
   const resource = await loadReadFonts({document: env.document, signal: life.signal}); t.after(resource.dispose);
   assert.equal(env.requests.length, 2); assert.ok(env.requests.every(request => request.credentials === 'omit'));
-  assert.equal(resource.fonts.literata.size, 955132); assert.equal(resource.fonts.manrope.size, 23600);
+  assert.equal(resource.fonts.literata.size, 955132); assert.equal(resource.fonts.manrope.size, 24836);
   assert.equal(createHash('sha256').update(new Uint8Array(await resource.fonts.literata.arrayBuffer())).digest('hex'), 'b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440');
   assert.equal(env.faces.size, 1);
   life.abort(); assert.equal(env.faces.size, 0); resource.dispose();

@@ -10,6 +10,8 @@ import {once} from 'node:events';
 assert.ok(process.env.TMPDIR, 'owned TMPDIR required');
 assert.ok(process.env.PORTICO_RUNNER_OUTPUT, 'remote collector output required');
 const output = resolve(process.env.PORTICO_RUNNER_OUTPUT);
+const phone = process.env.PORTICO_READER_PRESENTATION === 'phone';
+const panelSelector = phone ? '[role="dialog"][aria-label="Display"]' : '[data-reader-panel]';
 const root = resolve(process.env.TMPDIR, 'reader-display-build');
 const profile = resolve(process.env.TMPDIR, 'reader-display-chromium');
 await mkdir(profile, {recursive: true});
@@ -82,10 +84,40 @@ try {
   const target = await call('Target.createTarget', {url: 'about:blank'}, null);
   session = (await call('Target.attachToTarget', {targetId: target.targetId, flatten: true}, null)).sessionId;
   await call('Page.enable'); await call('Runtime.enable');
-  await call('Emulation.setDeviceMetricsOverride', {width: 820, height: 1180, deviceScaleFactor: 1, mobile: false});
-  await call('Page.navigate', {url: `${origin}/test/read/display.html`});
-  await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('[data-reader-panel]')&&window.readerDisplayProof)document.fonts.ready.then(resolve);else if(performance.now()>until)reject(new Error('Display did not mount'));else requestAnimationFrame(check)};check()})`);
+  await call('Emulation.setDeviceMetricsOverride', {width: phone ? 390 : 820, height: phone ? 844 : 1180, deviceScaleFactor: 1, mobile: false});
+  await call('Page.navigate', {url: `${origin}/test/read/display.html${phone ? '?presentation=phone' : ''}`});
+  await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector(${JSON.stringify(panelSelector)})&&window.readerDisplayProof)document.fonts.ready.then(resolve);else if(performance.now()>until)reject(new Error('Display did not mount'));else requestAnimationFrame(check)};check()})`);
   await paint();
+  if (phone) {
+    await evaluate(`Promise.all(document.querySelector(${JSON.stringify(panelSelector)}).getAnimations().map(animation => animation.finished))`);
+    const bounds = await evaluate(`document.querySelector(${JSON.stringify(panelSelector)}).getBoundingClientRect().toJSON()`);
+    assert.equal(bounds.width, 390);
+    await evaluate('document.activeElement.blur()'); await paint();
+    const screenshot = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
+      clip: {x: 0, y: 258, width: 390, height: 586, scale: 1}});
+    await writeFile(resolve(output, 'display-controls.jpg'), Buffer.from(screenshot.data, 'base64'));
+    await click('[role=radio][value=sepia]'); await key('ArrowLeft', 37);
+    assert.equal(await evaluate('document.querySelector("[role=radio][value=black]").getAttribute("aria-checked")'), 'true');
+    await click('button[aria-label=Larger]');
+    await click('[role=radiogroup][aria-label="Line spacing"] [value=loose]');
+    const callbacks = await evaluate('window.readerDisplayProof.changes');
+    for (const [key, value] of [['theme', 'black'], ['size', 6], ['spacing', 'loose']]) assert.ok(callbacks.some(change => change.key === key && change.value === value), key);
+    observations.push('phone-native-arrow-and-controlled-size-spacing-callbacks');
+    await key('Escape', 27);
+    assert.equal(await evaluate(`!!document.querySelector(${JSON.stringify(panelSelector)})`), false);
+    assert.equal(await evaluate('document.activeElement?.getAttribute("aria-label")'), 'Display: theme, font, size and layout');
+    await click(trigger);
+    await call('Input.dispatchMouseEvent', {type: 'mousePressed', x: 20, y: 150, button: 'left', clickCount: 1});
+    await call('Input.dispatchMouseEvent', {type: 'mouseReleased', x: 20, y: 150, button: 'left', clickCount: 1}); await paint();
+    assert.equal(await evaluate(`!!document.querySelector(${JSON.stringify(panelSelector)})`), false);
+    assert.equal(await evaluate('window.readerDisplayProof.turns.length'), 0);
+    observations.push('phone-Escape-focus-return-and-outside-dismiss-no-turn');
+    await evaluate('window.disposeReaderDisplay()');
+    const final = await evaluate('window.readerDisplayProof');
+    assert.deepEqual(final.cleanup, {listeners: 0, DOM: 0, fontFaces: 0}); assert.deepEqual(errors, []);
+    result = {status: 'PASS', observations, callbacks, final, capture: {name: 'display-controls.jpg', width: 390, height: 586, bounds},
+      scope: 'controlled phone Display sheet only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
+  } else {
   assert.equal(await evaluate('document.activeElement?.textContent'), 'AaSepia');
   await evaluate('Promise.all(document.querySelector("[data-reader-panel]").getAnimations().map(animation => animation.finished))');
   const bounds = await evaluate('document.querySelector("[data-reader-panel]").getBoundingClientRect().toJSON()');
@@ -138,27 +170,29 @@ try {
   await evaluate('window.disposeReaderDisplay()');
   const final = await evaluate('window.readerDisplayProof');
   assert.deepEqual(final.cleanup, {listeners: 0, DOM: 0, fontFaces: 0}); assert.deepEqual(errors, []);
+  result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds, controlMetrics},
+    scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
+  }
   let reference;
   if (process.env.PORTICO_READER_FRAME_ORIGIN) {
-    const frame = new URL('/tablet-read.html?frame=6b', process.env.PORTICO_READER_FRAME_ORIGIN);
+    const frame = new URL(phone ? '/phone-read.html?frame=6' : '/tablet-read.html?frame=6b', process.env.PORTICO_READER_FRAME_ORIGIN);
+    const selector = phone ? '.rsheet[aria-label="Display"]' : '.aapanel.sidep';
     assert.equal(frame.hostname, '127.0.0.1');
     await call('Network.enable');
     await call('Network.setBlockedURLs', {urls: ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.avif']});
     await call('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1330, deviceScaleFactor: 1, mobile: false});
     await call('Page.navigate', {url: frame.href});
-    await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('.aapanel.sidep'))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
+    await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
     await evaluate(`Promise.all([document.fonts.load('600 22px Literata', 'Aa'),document.fonts.load('700 13px Manrope', 'Page')]).then(()=>document.fonts.ready)`);
     await paint();
-    reference = await evaluate(`(()=>{const p=document.querySelector('.aapanel.sidep'),base=p.getBoundingClientRect();return{bounds:base.toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector('.th span')).font,metrics:[...p.children,...p.querySelectorAll('h3')].map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{text:e.textContent,y:r.y-base.y,height:r.height,font:s.font}})}})()`);
+    reference = await evaluate(`(()=>{const p=document.querySelector(${JSON.stringify(selector)}),base=p.getBoundingClientRect();return{bounds:base.toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector(${JSON.stringify(phone ? '.thm span' : '.th span')})).font,metrics:[...p.children,...p.querySelectorAll('h3')].map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{text:e.textContent,y:r.y-base.y,height:r.height,font:s.font}})}})()`);
     for (const family of ['Literata', 'Manrope']) assert.ok(reference.fonts.some(font => font.family.replaceAll('"', '') === family && font.status === 'loaded'), family);
-    assert.equal(reference.bounds.width, 360);
+    assert.equal(reference.bounds.width, phone ? 390 : 360);
     const frameImage = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
-      clip: {x: reference.bounds.x, y: reference.bounds.y, width: 360, height: 720, scale: 1}});
+      clip: {x: reference.bounds.x, y: reference.bounds.y, width: phone ? 390 : 360, height: phone ? 586 : 720, scale: 1}});
     await writeFile(resolve(output, 'reference-controls.jpg'), Buffer.from(frameImage.data, 'base64'));
   }
-  result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds, controlMetrics},
-    reference,
-    scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
+  result = {...result, reference};
   console.log('READER_DISPLAY_BROWSER ' + JSON.stringify(result));
 } catch (error) {
   result = {status: 'FAIL', observations, errors, failure: String(error.stack ?? error)};

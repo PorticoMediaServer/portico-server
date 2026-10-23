@@ -2,8 +2,8 @@ import {loadLiterataFont, ReaderError, type EpubAdapterOptions} from '@portico/r
 import {sha256} from '@noble/hashes/sha2.js';
 
 const manropeUrl = new URL('../../kit/fonts/manrope-var-latin.woff2', import.meta.url).href;
-const manropeSize = 23600;
-const manropeHash = 'b11ce306f8de710b83eac83c0f3fe0820159437f7d9a24179441092ec616f8ed';
+const manropeSize = 24836;
+const manropeHash = 'a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972';
 export type ReadFonts = Readonly<{fonts: EpubAdapterOptions['fonts']; dispose: () => void}>;
 
 /** Trusted bundled app asset, never the selected server or a book-provided URL. */
