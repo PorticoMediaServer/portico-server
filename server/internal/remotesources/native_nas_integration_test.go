@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 )
 
 // An actual owner command saves a real read-only NAS connection, then the
@@ -139,8 +141,8 @@ func TestNativeSMBSavedNASConnectionAndForbiddenEdits(t *testing.T) {
 		process.Stop()
 		wait, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := process.Wait(wait); err == nil {
-			t.Error("stopped NAS source returned no terminal state")
+		if err := process.Wait(wait); !errors.Is(err, rcloneprogram.ErrServeStopped) {
+			t.Error("NAS source did not physically retire", err)
 		}
 	})
 	metadata, err := process.Metadata(ctx)
