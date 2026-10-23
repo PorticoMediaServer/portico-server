@@ -36,6 +36,9 @@ function counter(value: string): boolean {return /^(0|[1-9][0-9]{0,18})$/.test(v
  * The browser separately enforces its secure context/protected store and the
  * Server owns current family, reservation, install and one-spend authority. */
 export async function verifyOwnerClaimStart(original: unknown, signedStart: unknown, expected: OwnerStartExpectation, now = Date.now(), crypto: RouteCrypto = webRouteCrypto): Promise<Readonly<{claim: ClaimFacts; start: OwnerStartFacts}>> {
+  // Capture scalar expectations before the first cryptographic await. A caller
+  // reusing its selection object cannot retarget this verification in flight.
+  expected = Object.freeze({...expected, pin: Object.freeze({...expected.pin})});
   if (!Number.isSafeInteger(now) || !counter(expected.localGeneration) || !/^[A-Za-z0-9_-]{1,128}$/.test(expected.operationId) || !validInstallationId(expected.installationId)) invalid();
   if (routeOrigin(expected.origin) !== expected.origin || routeOrigin(expected.hostedOrigin) !== expected.hostedOrigin || !expected.hostedOrigin.startsWith('https://')) invalid();
   const address = new URL(expected.origin);

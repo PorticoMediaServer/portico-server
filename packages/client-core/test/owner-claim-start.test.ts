@@ -78,3 +78,20 @@ test('a signed original keeps Go HTML and Unicode escaping without reserializati
   const changed = signed({...start, claimHash: routeBase64(await webRouteCrypto.sha256(routeBytes(original.payload)))});
   assert.equal((await verifyOwnerClaimStart(original, changed, await expectation(), now)).claim.name, name);
 });
+
+test('an in-flight caller selection cannot retarget the captured signed identity', async () => {
+  const expected = {...await expectation()};
+  let release!: () => void, reached!: () => void;
+  const blocked = new Promise<void>(resolve => {release = resolve;}), entered = new Promise<void>(resolve => {reached = resolve;});
+  let first = true;
+  const crypto = {...webRouteCrypto, sha256: async (value: Uint8Array) => {
+    if (first) {first = false; reached(); await blocked;}
+    return webRouteCrypto.sha256(value);
+  }};
+  const verification = verifyOwnerClaimStart(vector.claim, vector.start, expected, now, crypto);
+  await entered;
+  expected.pin = {...expected.pin, fingerprint: 'A'.repeat(43)};
+  expected.operationId = 'successor';
+  release();
+  assert.equal((await verification).start.operationId, start.operationId);
+});
