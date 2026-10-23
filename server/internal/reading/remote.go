@@ -60,7 +60,12 @@ func (s *Service) openRemote(ctx context.Context, p identity.Principal, v Select
 			return nil, err
 		}
 		lease, err := s.Remote.CaptureReadSourceTx(session.life, g.Tx(), remotesources.SourceSessionAdmission{
-			Purpose: remotesources.SourceReading, Observation: recorded.Ref, OnChanged: session.close,
+			Purpose: remotesources.SourceReading, Observation: recorded.Ref, OnChanged: func() {
+				session.close()
+				if s.Changed != nil {
+					s.Changed(v.library, v.rootID)
+				}
+			},
 			CheckTx: func(ctx context.Context, tx *sql.Tx, binding remotesources.SourceReadBinding) error {
 				return s.checkRemoteTx(ctx, tx, p, session, v, binding)
 			},

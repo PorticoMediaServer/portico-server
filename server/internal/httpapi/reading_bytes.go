@@ -28,7 +28,14 @@ func (d Dependencies) readingService() *reading.Service {
 	if d.Reading != nil {
 		return d.Reading
 	}
-	return &reading.Service{DB: d.DB, Storage: d.Storage, Mounts: d.Mounts, Remote: d.RemoteSources, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
+	return &reading.Service{DB: d.DB, Storage: d.Storage, Mounts: d.Mounts, Remote: d.RemoteSources, Changed: func(library, source string) {
+		if d.Ingestion != nil {
+			// A detected upstream replacement queues existing source-level
+			// inventory reconciliation. Its real job/root/policy fences still
+			// govern scanning; the reader receives no background decode grant.
+			_, _ = d.Ingestion.QueueContext(context.Background(), library, source, nil)
+		}
+	}, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
 		if d.Identity == nil {
 			return identity.ErrUnauthorized
 		}
