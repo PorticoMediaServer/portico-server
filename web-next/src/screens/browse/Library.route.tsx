@@ -34,11 +34,11 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const pivot = search.pivot ?? requested?.pivot;
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
-  const sourceKey = JSON.stringify({libraryId: library.id, pivot, query: search.query, sort: search.sort});
+  const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? [search.query] : undefined,
+    sorts: search.sort ?? (requested?.defaultSort ? [requested.defaultSort] : undefined)});
   const resources = useMemo(() => {
     const life = screenLifetime(context), source: ConstructorParameters<typeof BrowseController>[1] = JSON.parse(sourceKey);
-    const controller = new BrowseController(life.api, {libraryId: source.libraryId, pivot: source.pivot ?? '',
-      predicates: search.query ? [search.query] : undefined, sorts: search.sort ?? (requested?.defaultSort ? [requested.defaultSort] : undefined)}, life.current);
+    const controller = new BrowseController(life.api, source, life.current);
     const service = new LibraryContentService({api: life.api, scope: context.scope});
     return {life, controller, service};
   }, [context, sourceKey]);
