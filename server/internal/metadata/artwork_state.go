@@ -294,8 +294,18 @@ func (s *Service) repairArtworkTx(ctx context.Context, tx *sql.Tx, t RepairTarge
 		for _, a := range choices {
 			// Repair is the explicit exception permitting a retained prior identity's
 			// selected bytes to be reacquired without rematching or reselecting identity.
-			if _, err = tx.ExecContext(ctx, `UPDATE artwork_candidates SET source_fence=? WHERE id=?`, fence, a.CandidateID); err != nil {
+			// A generated frame keeps the source capture it was made from; only
+			// the episode runtime can authorize a new bounded decode for it.
+			updated, err := tx.ExecContext(ctx, `UPDATE artwork_candidates SET source_fence=? WHERE id=? AND provider<>'generated'`, fence, a.CandidateID)
+			if err != nil {
 				return err
+			}
+			n, err := updated.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				continue
 			}
 			if err = queueArtworkCandidate(ctx, tx, t, a.CandidateID, actor, now, a.Locked, true); err != nil {
 				return err

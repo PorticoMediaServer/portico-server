@@ -3,6 +3,9 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"net/http"
+	"os"
 	"testing"
 )
 
@@ -70,5 +73,26 @@ func TestMissingArtworkDoesNotRequeueALegacyGeneratedFetchJob(t *testing.T) {
 	}
 	if status != "complete" {
 		t.Fatalf("a missing generated object was queued for generic fetching: %s", status)
+	}
+	// An old binary may already have queued that malformed job. The worker
+	// must retire it without trying either a provider or local-image fetch.
+	c.Exec(`UPDATE artwork_jobs SET status='pending' WHERE id='legacy-generated'`)
+	fetches := 0
+	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		fetches++
+		return nil, errors.New("unexpected generated provider fetch")
+	})}
+	s.LocalArtwork = func(string) (*os.File, string, error) {
+		fetches++
+		return nil, "", errors.New("unexpected generated local fetch")
+	}
+	if err = s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.DB.QueryRow(`SELECT status FROM artwork_jobs WHERE id='legacy-generated'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if fetches != 0 || status != "disabled" {
+		t.Fatalf("legacy generated job was acquired: fetches=%d status=%s", fetches, status)
 	}
 }
