@@ -189,3 +189,24 @@ test('v1 channels: a tuner deadline is moved onto this device clock with the ser
   const {nowMs: _n, ...plain} = raw.presentation.linear;
   assert.equal(parseChannelSession({...raw, presentation: {...raw.presentation, linear: plain}}, () => device).presentation.linear?.reservationRequiredAtMs, server + 90_000);
 });
+
+
+test('a channel start forwards captured cancellation and refuses late adoption after its screen retires', async () => {
+  for (const abort of [false, true]) {
+    const server = new ChannelServer(), life = new AbortController();let active = true, enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+    const states: unknown[] = [], errors: string[] = [];
+    const control = new V1ChannelControl({http: {send: async request => {
+      const response = await server.send(request);
+      if (request.method === 'POST' && request.path === '/v1/playback/sessions') {assert.equal(request.signal, life.signal);enter();await held;}
+      return response;
+    }}});
+    const opening = control.open(channel, {state: value => states.push(value), error: value => errors.push(value)}, {signal: life.signal, isCurrent: () => active});
+    await entered;
+    if (abort) life.abort();else active = false;
+    release();await opening;await settle();
+    assert.deepEqual(states, []);assert.deepEqual(errors, []);
+    assert.ok(server.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/ps_1'));
+    control.close();
+  }
+});

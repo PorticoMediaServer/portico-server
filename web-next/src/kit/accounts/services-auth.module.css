@@ -39,6 +39,9 @@
 .providerContext b { letter-spacing: 0; }
 .providerContext > span { display: contents; }
 .backAction { display: inline-flex; align-items: center; gap: 6px; }
+.invitationCredentials [data-variant="auth"] > label { display: none; }
+.invitationCredentials form { gap: 10px; }
+.invitationCredentials .provider { height: 46px; }
 .heading { font-size: 64px; line-height: .98; font-weight: 800; letter-spacing: -.045em; margin: 0 0 14px; text-wrap: balance; }
 .reset .heading, .signup .heading, .providerOnboarding .heading { font-size: 52px; }
 .heading[data-single-line] { white-space: nowrap; }

@@ -1,4 +1,4 @@
-import {loadLiterataFont, ReaderError, type EpubAdapterOptions} from '@portico/reader-core';
+import {loadLiterataFont, ReaderError, throwIfAborted, type EpubAdapterOptions} from '@portico/reader-core';
 import {sha256} from '@noble/hashes/sha2.js';
 
 const manropeUrl = new URL('../../kit/fonts/manrope-var-latin.woff2', import.meta.url).href;
@@ -14,7 +14,7 @@ async function loadManrope(signal: AbortSignal): Promise<Blob> {
   let size = 0;
   try {
     for (;;) {
-      signal.throwIfAborted();
+      throwIfAborted(signal);
       const part = await reader.read(); if (part.done) break;
       size += part.value.byteLength;
       if (size > manropeSize) throw new ReaderError('invalid_source');
@@ -23,7 +23,7 @@ async function loadManrope(signal: AbortSignal): Promise<Blob> {
     if (size !== manropeSize) throw new ReaderError('invalid_source');
     const blob = new Blob(chunks, {type: 'font/woff2'});
     const hash = Array.from(sha256(new Uint8Array(await blob.arrayBuffer())), value => value.toString(16).padStart(2, '0')).join('');
-    signal.throwIfAborted();
+    throwIfAborted(signal);
     if (hash !== manropeHash) throw new ReaderError('invalid_source');
     return blob;
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
@@ -32,20 +32,21 @@ async function loadManrope(signal: AbortSignal): Promise<Blob> {
 /** Call from the actual connected host lifetime. One verified Literata Blob
  * supplies both the app FontFace and createEpubAdapter({fonts}); no copied font. */
 export async function loadReadFonts({document, signal}: Readonly<{document: Document; signal: AbortSignal}>): Promise<ReadFonts> {
-  const life = new AbortController(), active = AbortSignal.any([signal, life.signal]);
+  const life = new AbortController(), active = life.signal;
   let face: FontFace | undefined, disposed = false;
   const dispose = () => {
     if (disposed) return;
-    disposed = true; life.abort(); signal.removeEventListener('abort', dispose);
+    disposed = true; life.abort(signal.reason); signal.removeEventListener('abort', dispose);
     if (face) document.fonts.delete(face);
   };
   signal.addEventListener('abort', dispose, {once: true});
+  if (signal.aborted) dispose();
   try {
-    active.throwIfAborted();
+    throwIfAborted(active);
     const [literata, manrope] = await Promise.all([loadLiterataFont({signal: active}), loadManrope(active)]);
-    const bytes = await literata.arrayBuffer(); active.throwIfAborted();
+    const bytes = await literata.arrayBuffer(); throwIfAborted(active);
     face = new FontFace('Literata', bytes, {style: 'normal', weight: '200 900'});
-    await face.load(); active.throwIfAborted();
+    await face.load(); throwIfAborted(active);
     document.fonts.add(face);
     return Object.freeze({fonts: Object.freeze({literata, manrope}), dispose});
   } catch (error) { dispose(); throw error; }

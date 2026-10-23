@@ -12,6 +12,8 @@ export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
   controller: ReaderHostController<P>; source: ReaderSource; format: ReaderFormat; initialLocation?: ReaderLocation;
   /** Actual manifest identity; an omitted author stays omitted in the engine and chrome. */
   metadata?: ReaderMetadata;
+  /** Actual authorized publication session lifetime, separate from viewer scope. */
+  signal?: AbortSignal;
   authority: ReaderMountAuthority; container: HTMLElement;
   reportError: (code: ReaderErrorCode) => void;
   /** Await disposal before reusing a DOM container (including StrictMode reconnect). */
@@ -20,11 +22,11 @@ export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
 export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>}>;
 
 /** The core owns the document, preferences, location and view; this owns only DOM lifetime. */
-export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, authority, container, reportError, settled = Promise.resolve()}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
+export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, container, reportError, settled = Promise.resolve()}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
   let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0;
   let closeResult: Promise<void> | undefined;
-  const current = () => active && authority.isCurrent();
-  let offAuthority = () => {}, resolveSize: (() => void) | undefined;
+  const current = () => active && authority.isCurrent() && !signal?.aborted;
+  let offAuthority = () => {}, offSession = () => {}, resolveSize: (() => void) | undefined;
   const waitForSize = new Promise<void>(resolve => { resolveSize = resolve; });
   const observer = new ResizeObserver(() => {
     if (container.clientWidth > 0 && container.clientHeight > 0) resolveSize?.();
@@ -32,7 +34,8 @@ export function mountReaderSurface<P extends object>({controller, source, format
   });
   const close = (): Promise<void> => {
     if (closeResult) return closeResult;
-    active = false; observer.disconnect(); offAuthority(); resolveSize?.();
+    active = false; observer.disconnect(); offAuthority(); offSession(); resolveSize?.();
+    signal?.removeEventListener('abort', aborted);
     if (frame !== undefined) cancelAnimationFrame(frame);
     // A superseded effect that never opened must not close a newer core session.
     const closing = opened || opening ? controller.close() : Promise.resolve();
@@ -40,6 +43,7 @@ export function mountReaderSurface<P extends object>({controller, source, format
     closeResult = Promise.all([settled, closing]).then(() => {});
     return closeResult;
   };
+  const aborted = () => {void close().catch(() => {});};
   const failed = (error: unknown) => { if (current()) reportError(readerErrorCode(error)); };
   const resize = () => {
     frame = undefined;
@@ -52,7 +56,10 @@ export function mountReaderSurface<P extends object>({controller, source, format
   const measure = () => {
     if (current() && opened && frame === undefined) frame = requestAnimationFrame(resize);
   };
-  if (current()) offAuthority = authority.subscribe(() => { if (!authority.isCurrent()) void close().catch(() => {}); });
+  if (current()) {
+    signal?.addEventListener('abort', aborted, {once: true});
+    offAuthority = authority.subscribe(() => { if (!authority.isCurrent()) void close().catch(() => {}); });
+  }
   if (!active) offAuthority();
   const ready = (async () => {
     await settled;
@@ -64,10 +71,18 @@ export function mountReaderSurface<P extends object>({controller, source, format
     if (!current()) return;
     width = container.clientWidth; height = container.clientHeight;
     opening = true;
-    await controller.open({source, format, container, metadata, location: initialLocation, viewport: {width, height}});
+    await controller.open({source, format, container, metadata, signal, location: initialLocation, viewport: {width, height}});
     opening = false;
     if (!current()) { await close(); return; }
     opened = true;
+    // A replacement open retires this mount before its old parent can abort.
+    // The controller already owns that disposal; never close the new session.
+    offSession = controller.subscribe(() => {
+      const snapshot = controller.getSnapshot();
+      if (snapshot.status !== 'ready' || snapshot.sourceId !== source.id || snapshot.sourceRevision !== source.revision) {
+        opened = false; void close().catch(() => {});
+      }
+    });
     measure();
   })().catch(failed);
   return Object.freeze({ready, close});

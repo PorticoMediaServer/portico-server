@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useParams} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {fetchHomeRow, type HomeRow} from '@core/home.ts';
@@ -25,6 +25,7 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
     return {life, controller};
   }, [context, row.id]);
   useEffect(() => () => {owner.life.dispose();owner.controller.dispose();}, [owner]);
+  const state = useSyncExternalStore(owner.controller.subscribe, owner.controller.getSnapshot, owner.controller.getSnapshot);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium');
   const library = context.identity?.libraries.find(library => library.id === row.libraryId);
@@ -43,7 +44,16 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
         const entry = member.entry;
         void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, owner.life.signal()).catch(context.effects.reportError);
       } : undefined})}};
-  return <HomeRowScreen row={row} browse={browse} onBack={() => {void router.navigate({to: '/'}).catch(context.effects.reportError);}}/>;
+  const play = captured.binding.playback && state.phase === 'ready' ? (shuffle: boolean) => {
+    const playback = captured.binding.playback!, query = owner.controller.query(), selected = JSON.stringify(query), command = new AbortController();
+    const current = () => {try {return owner.life.current() && JSON.stringify(owner.controller.query()) === selected;} catch {return false;}};
+    const off = owner.controller.subscribe(() => {if (!current()) command.abort();});
+    void playback.runtime.playFromQueue({query: {libraryId: '*', pivot: owner.controller.source.pivot, query: query.query, sort: query.sort}},
+      {signal: owner.life.signal(command.signal), isCurrent: current}, {shuffle})
+      .catch(context.effects.reportError).finally(off);
+  } : undefined;
+  return <HomeRowScreen row={row} browse={browse} onBack={() => {void router.navigate({to: '/'}).catch(context.effects.reportError);}}
+    onPlay={play ? () => play(false) : undefined} onShuffle={play ? () => play(true) : undefined}/>;
 }
 function BoundHomeRow({captured, rowId}: {captured: ProtectedLibraryScreen; rowId: string}) {
   const context = useLibraryScreenContext(captured), width = useShellWidth();
