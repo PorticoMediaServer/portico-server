@@ -444,7 +444,7 @@ export class WebShellPlaybackRuntime {
   /** Complete receipt-verified native preparation, not a server queue or a first-item alias.
    * The app transfers ownership of its exact preparation through this call, including failure. */
   async playLocalQueue(resource: WebLocalQueueResource, context: WebPlaybackScreenLifetime): Promise<void> {
-    let lease: LocalQueueLease | undefined, stack: Stack | undefined;
+    let lease: LocalQueueLease | undefined, stack: Stack | undefined, serial = 0;
     try {
       this.assertCurrent();
       if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
@@ -452,13 +452,13 @@ export class WebShellPlaybackRuntime {
       if (!scope || !this.stack.web.slot.canLoadLocal) problem('local_playback_unavailable');
       const preparation = captureLocalQueue(resource.preparation, scope);
       lease = {preparation, release: () => resource.release(), retired: false, released: false};this.localLeases.add(lease);
-      const serial = ++this.operation;stack = this.replace('local');
+      serial = ++this.operation;stack = this.replace('local');
       const controller = this.bindLocalQueue(stack, lease);
       await controller.start({signal: context.signal, isCurrent: () => this.current(stack!) && serial === this.operation && context.isCurrent()});
       if (!this.current(stack) || serial !== this.operation || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
       this.sync();
     } catch (error) {
-      if (stack && this.current(stack)) {this.replacing = true;this.retire(stack);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();}
+      if (stack && this.current(stack) && serial === this.operation) {this.replacing = true;this.retire(stack);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();}
       if (lease) {lease.retired = true;this.trimLocalLeases();}
       else await resource.release();
       throw error;
@@ -716,11 +716,12 @@ export class WebShellPlaybackRuntime {
         if (active && member.durationMs > 0) controls.push('seek');
         if (active && state.index + 1 < state.preparation.items.length) controls.push('next');
         if (active && (state.index > 0 || positionSeconds > 3)) controls.push('previous');
-        if (this.source.settings.webVolume() && this.video) controls.push('volume');
+        // The optional opaque native port has no volume command. Do not offer a
+        // slider backed by the idle browser video's unrelated volume property.
         const local: DockPlayback = {kind: stack.subject.kind, fence, queue: null, positionSeconds, playing: observed.state === 'playing', expanded: stack.expanded};
         if (sameFence(this.dock.getSnapshot().local?.fence, fence)) this.dock.update(local);else this.dock.start(local);
         presentation = {fence, subject: stack.subject, kind: stack.subject.kind, durationSeconds: member.durationMs / 1000, positionSeconds,
-          playing: local.playing, expanded: stack.expanded, finished, controls, volume: observed.volume ?? this.video?.volume ?? 1, muted: observed.muted ?? this.video?.muted ?? false, rate: observed.rate, policy: null};
+          playing: local.playing, expanded: stack.expanded, finished, controls, volume: observed.volume ?? 1, muted: observed.muted ?? false, rate: observed.rate, policy: null};
       }
     }
     this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!presentation && presentation.kind === 'video' && stack.web.slot.nativeSurfaceActive,
@@ -1246,6 +1247,7 @@ export class WebShellPlaybackRuntime {
     for (const off of this.lifecycle.splice(0)) off();
     this.surface?.dispose(); this.surface = undefined; this.video = undefined;
     this.life.abort(); this.audioCache.clear(); this.bookmarks.clear(); this.retiredFences.clear();
+    for (const lease of [...this.localLeases]) this.releaseLocalLease(lease);
     this.dock.reset(queueScope({...this.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}));
     this.snapshot = Object.freeze({nativeVideoSurfaceActive: false, authority: this.authority, sequence: ++this.sequence, playback: this.stack.service.getSnapshot(), dock: this.dock.getSnapshot(), presentations: [], queueView: null, offers: null, options: null, disposed: true});
     for (const listener of [...this.listeners]) listener(); this.listeners.clear();

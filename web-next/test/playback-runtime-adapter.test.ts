@@ -2298,6 +2298,7 @@ test('a complete opaque local queue uses the same media owner and real local rec
   const shown = f.runtime.getSnapshot(), first = shown.fence!;
   assert.equal(first.kind, 'local');assert.equal(shown.session, undefined);assert.equal(shown.queueView, null);assert.equal(shown.offers, null);assert.equal(shown.options, null);
   assert.equal(shown.presentation!.subject.kind, 'music');assert.equal(shown.presentation!.positionSeconds, 0);
+  assert.equal(shown.presentation!.controls.includes('volume'), false, 'the native local port has no browser-video volume capability');
   await f.runtime.pause(first);assert.equal(f.runtime.getSnapshot().presentation!.playing, false);
   await f.runtime.seek(first, 12);await f.runtime.skip(first, 3);assert.equal(f.runtime.getSnapshot().presentation!.positionSeconds, 15);
   await f.runtime.resume(first);assert.equal(f.runtime.getSnapshot().presentation!.playing, true);

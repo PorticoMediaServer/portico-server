@@ -115,6 +115,6 @@ export class WebLocalQueue {
     if (this.disposed) return;
     this.disposed = true;++this.serial;this.life.abort();this.off();this.options.port.unload();
     this.publish({phase: 'disposed', fence: undefined, observation: undefined});this.listeners.clear();
-    this.releaseTask ??= this.options.release().catch(this.options.reportError);
+    this.releaseTask ??= Promise.resolve().then(this.options.release).catch(this.options.reportError);
   }
 }
