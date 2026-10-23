@@ -34,11 +34,14 @@ def run():
     if not credentials.is_file():
         raise ValueError("fixture_credentials_missing")
     helper = Path(config["canonicalAPIHelper"])
+    helper_source = helper.read_bytes()
+    if hashlib.sha256(helper_source).hexdigest() != config["canonicalAPIHelperSha256"]:
+        raise ValueError("canonical_helper_changed")
     module = types.ModuleType("dashboard_fixture_api")
     module.__file__ = str(helper)
     # The fixture owner's canonical helper admits only its exact loopback port.
     # Its credentials file is overridden in memory, never copied or changed.
-    exec(compile(helper.read_text().replace("32500", str(origin.port)), str(helper), "exec"), module.__dict__)
+    exec(compile(helper_source.decode().replace("32500", str(origin.port)), str(helper), "exec"), module.__dict__)
     module.CREDENTIALS = credentials
     api = module.API()
     api.installation = secrets.token_urlsafe(32)
