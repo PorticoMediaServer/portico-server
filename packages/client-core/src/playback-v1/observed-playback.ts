@@ -18,7 +18,7 @@ export type ObservedPlayback = Readonly<{
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const ranges = ['sdr', 'hdr10', 'hdr10plus', 'hlg', 'dolby_vision'] as const;
-const fail = (): never => { throw new Error('Invalid playback observation.'); };
+function fail(): never { throw new Error('Invalid playback observation.'); }
 /** Copy only bounded scalar output facts before they enter a timeline request.
  * No URL, token, file path, receiver or hardware model is carried from a bridge. */
 export function parseObservedPlayback(value: unknown): ObservedPlayback | undefined {
