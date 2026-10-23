@@ -206,6 +206,7 @@
   var scope = null;   // {accountId, profileId, authority, capabilities}
   // The Playback v1 session playing here: {id, revision, itemId, generation, serverSeek}.
   var playback = null;
+  var shuttingDown = false, activeRequests = new Set();
   var mediaAddresses = new Map(); // bounded receiver-private addresses; never placed in CAF status
   function mediaAddress(request) { return request && request.media ? mediaAddresses.get(request.media.contentId) || '' : ''; }
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
@@ -249,9 +250,11 @@
   /** One request, bounded in time and size. Resolves {status, body} for 2xx; throws with
    * {code, status, current} otherwise (`current` is a 412's session). */
   async function request(path, options) {
+    if(shuttingDown)throw new Error('receiver_shutdown');
     var headers = Object.assign({'Content-Type': 'application/json'}, options.headers || {});
     if (options.bearer) headers.Authorization = 'Bearer ' + options.bearer;
     var abort = new AbortController(), timer = setTimeout(function () { abort.abort(); }, 15000);
+    var active={abort:abort,timer:timer};activeRequests.add(active);
     try {
       var response = await fetch((options.origin === undefined ? base : options.origin) + path, {method: options.method || 'POST', headers: headers, signal: abort.signal, body: options.body === undefined ? undefined : JSON.stringify(options.body)});
       var text = '';
@@ -266,7 +269,7 @@
         throw error;
       }
       return {status: response.status, body: payload};
-    } finally { clearTimeout(timer); abort.abort(); }
+    } finally { activeRequests.delete(active);clearTimeout(timer);abort.abort(); }
   }
   function post(path, body, bearer, origin) { return request(path, {body: body, bearer: bearer, origin: origin}).then(function (r) { return r.body; }); }
   /** A request with the receiver's bearer. An expired bearer is renewed once through the device
@@ -443,7 +446,7 @@
 
   // --- Playback --------------------------------------------------------------
 
-  var meta = null; // display identity for the title being loaded (from the controller)
+  var meta = null; // genuine controller or authorized catalogue display identity
   function cleanText(value, max) { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max || 200) : ''; }
   function displayMeta(message) {
     if (!message || typeof message !== 'object') return null;
@@ -471,10 +474,45 @@
     var images = image ? [{url: image}] : [];
     if (m.kind === 'episode') return {metadataType: 2, title: m.title, seriesTitle: m.seriesTitle || m.subtitle, season: m.season, episode: m.episode, images: images};
     if (m.kind === 'movie') return {metadataType: 1, title: m.title, subtitle: m.subtitle, images: images};
-    // The old subtitle may join artist and album text; it is not an artist fact.
-    // Genuine separate artist/album fields require the checked sender contract.
-    if (m.kind === 'song' || m.kind === 'album') return {metadataType: 3, title: m.title, images: images};
+    // Structured catalogue fields are facts; the old joined subtitle is not an artist.
+    if (m.kind === 'song' || m.kind === 'album') return Object.assign({metadataType: 3, title: m.title, images: images},m.artist?{artist:m.artist}:{},m.albumTitle?{albumName:m.albumTitle}:{});
     return {metadataType: 0, title: m.title, subtitle: m.subtitle, images: images};
+  }
+
+  // GET /v1/items/{id} is the existing ScopeRead catalogue projection. Display
+  // enrichment never blocks media or gains authority over a playback session.
+  async function refreshCatalogueDisplay(owner, contentId) {
+    var generation=viewGeneration, origin=base, account=scope&&scope.accountId, profile=scope&&scope.profileId;
+    function current() { return playback&&playback.id===owner.id&&playback.generation===owner.presentation.generation&&playback.itemId===owner.itemId&&viewGeneration===generation&&base===origin&&scope&&scope.accountId===account&&scope.profileId===profile; }
+    function publish() {
+      if(!current())return;
+      if(pictureReady)playingView();
+      else if(meta&&meta.title){viewLoading=true;viewCall('loading',[Object.assign({},meta)]);}
+      try {
+        var media=typeof manager.getMediaInformation==='function'?manager.getMediaInformation():null;
+        if(media&&media.contentId===contentId&&typeof manager.setMediaInformation==='function')manager.setMediaInformation(Object.assign({},media,{metadata:castMetadata(meta,currentArtwork)}),false);
+      } catch(e) { /* A display update never changes media/session authority. */ }
+    }
+    try {
+      var item=(await api('/v1/items/'+encodeURIComponent(owner.itemId),{method:'GET'})).body;
+      if(!current()||!item||item.id!==owner.itemId||item.missing)return;
+      var identity=displayMeta({title:item.title,kind:item.kind,artworkPath:item.posterUrl});
+      if(!identity)return;
+      if(item.song&&typeof item.song==='object'){
+        var artist=cleanText(item.song.artist),album=cleanText(item.song.albumTitle);
+        if(artist)identity.artist=artist;if(album)identity.albumTitle=album;
+      }
+      if(item.episode&&typeof item.episode==='object'){
+        identity.seriesTitle=cleanText(item.episode.showTitle);
+        if(Number.isSafeInteger(item.episode.seasonNumber))identity.season=item.episode.seasonNumber;
+        if(Number.isSafeInteger(item.episode.number))identity.episode=item.episode.number;
+      }
+      meta=identity;publish();
+      if(identity.artworkPath){
+        var image=await artworkUrl(identity.artworkPath);
+        if(current()&&image){showArtwork(image,identity.kind==='song'||identity.kind==='album');publish();}
+      }
+    } catch(e) { /* Missing/refused metadata remains absent; no notice or old-title fallback. */ }
   }
 
   // Playback v1 (the same session contract every Portico client plays through): start a session
@@ -579,7 +617,7 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await manager.load(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
 
   // V1 music is progressive: the next server occurrence starts only after the
   // actual current media finishes. CAF preloadTime is a hint, not a buffer or
@@ -594,9 +632,10 @@
     var current=answer.body.session;
     playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
     showLoading(null); // Never label the new occurrence with the old title or artwork.
-    try { await manager.load(loadRequest(current,'',true)); }
+    var load;
+    try { load=loadRequest(current,'',true);await manager.load(load); }
     catch(e) { await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e; }
-    showPlaying();scheduleReport(0);broadcast();return true;
+    showPlaying();scheduleReport(0);refreshCatalogueDisplay(current,load.media.contentId);broadcast();return true;
   }
 
   // --- Timeline: progress, lease renewal and observation in one report -------
@@ -893,6 +932,7 @@
     });
     var statusInterval=setInterval(function(){if(playback){broadcast();playingView();}},2000);
     if(cast.framework.system.EventType.SHUTDOWN)context.addEventListener(cast.framework.system.EventType.SHUTDOWN,function(){
+      shuttingDown=true;activeRequests.forEach(function(active){clearTimeout(active.timer);active.abort.abort();});activeRequests.clear();
       resetViewPlayback();clearInterval(statusInterval);clearTimeout(reportTimer);clearTimeout(bufferingTimer);clearTimeout(errorTimer);clearTimeout(noticeTimer);if(pendingPair)clearTimeout(pendingPair.timer);
     });
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).
