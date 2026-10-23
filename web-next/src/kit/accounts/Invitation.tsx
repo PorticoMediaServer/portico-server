@@ -40,7 +40,7 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
       <div className={styles.invitationPair}>
         <div className={styles.invitationPassword}>
           <TextField variant="auth" label={t('web.directJoin.password')} name="password" type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required />
-          {password && <div className={styles.passwordStrength} data-level={strength.level}>{Array.from({length: 4}, (_, index) => <i key={index} data-on={index < strength.level || undefined} aria-hidden="true" />)}{strengthLabel && <span>{strengthLabel}</span>}</div>}
+          {password && <div className={styles.passwordStrength} data-level={strength.level}>{Array.from({length: 4}, (_, index) => <i key={index} data-on={index < Math.max(1, strength.level) || undefined} aria-hidden="true" />)}{strengthLabel && <span>{strengthLabel}</span>}</div>}
         </div>
         <TextField variant="auth" label={<><span className={styles.desktopInvitationBody}>{t('web.directJoin.confirm')}</span><span className={styles.phoneInvitationBody}>{t('action.confirm')}</span></>} name="confirmation" type="password" autoComplete="new-password" value={confirmation} onBlur={() => setConfirmed(true)} onChange={event => {setConfirmation(event.currentTarget.value); if (confirmed) setConfirmed(false);}} error={mismatch} disabled={busy} required />
       </div>

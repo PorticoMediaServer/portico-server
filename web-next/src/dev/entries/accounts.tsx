@@ -2,6 +2,7 @@ import {createRoot} from 'react-dom/client';
 import {useState} from 'react';
 import {IconSprite} from '../../kit/Icon';
 import {LocalInvitationForm, LocalServerSignIn, PorticoServerSignIn, ServerProfiles, ServerProfilePIN} from '../../kit/accounts';
+import {InvitationUnavailable, PorticoInvitation} from '../../kit/accounts/Invitation';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -23,6 +24,9 @@ function Specimen() {
   const [remember, setRemember] = useState(false);
   const [invitationError, setInvitationError] = useState<unknown>();
   const record = (kind: string, value?: unknown) => {document.documentElement.dataset.accountAction = JSON.stringify({kind, value});};
+  if (frame === '19b') return <PorticoInvitation serverName="Portico demo" libraries={[{name: 'Movies', icon: 'i-film'}, {name: 'TV shows', icon: 'i-tvlib'}, {name: 'Anime', icon: 'i-category'}]} member
+    account={{username: 'nana_r'}} signedOutContent={null} onJoin={() => record('join-portico')} onDifferentAccount={() => record('different-account')} />;
+  if (frame === '20a' || frame === '20c') return <InvitationUnavailable otherAccount={frame === '20c'} onBack={() => record('back')} onDifferentAccount={() => record('different-account')} />;
   if (frame === '12') return <LocalInvitationForm serverName="Portico demo" inviter="Demo" libraries={['Movies', 'TV Shows', 'Anime']}
     initialValues={{name: 'Nana', username: 'nana_r', password: 'Guest-pass1!', confirmation: 'Guest-pass1!'}} error={invitationError}
     onJoin={(username, password, name) => {record('join-local', {username, password, name}); if (params.get('error') === 'taken') setInvitationError({code: 'username_taken'});}} onBack={() => record('back')} />;

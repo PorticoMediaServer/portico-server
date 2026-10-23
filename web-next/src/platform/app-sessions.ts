@@ -16,6 +16,14 @@ export class BrowserAppSessionActions {
    private readonly revoke:(entry:AppServerSession)=>Promise<void>) {}
  readonly probe = new ServerSignInProbe();
  async switchServer(serverId:string){this.probe.cancel();await this.store.select(serverId);}
+ /** Forget follows an identity failure: the address may now be somebody else's.
+  * Remove only the captured family's local record/pin/routes. Never reconnect,
+  * revoke remotely, or send that family a token while forgetting it. */
+ async forgetServer(session:LocalSession):Promise<boolean>{
+  this.probe.cancel();const captured=await this.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);
+  for(const entry of captured)browserTabProfileTrust.forgetAccount(entry.connection.pin.serverId,entry.connection.session.viewer.accountId);
+  return captured.length>0;
+ }
  async signOutServer(session:LocalSession){
   this.probe.cancel();const captured=await this.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);
   for(const entry of captured)browserTabProfileTrust.forgetAccount(entry.connection.pin.serverId,entry.connection.session.viewer.accountId);

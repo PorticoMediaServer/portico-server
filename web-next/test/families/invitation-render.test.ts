@@ -12,6 +12,7 @@ registerHooks({load(url, context, next) {
   return next(url, context);
 }});
 const {LocalInvitationForm, PorticoInvitation, InvitationUnavailable} = await import('../../src/kit/accounts/Invitation.tsx');
+const {ServerIdentityFailure} = await import('../../src/kit/accounts/ServerIdentityFailure.tsx');
 const noAction = () => {throw new Error('Static rendering cannot dispatch an action');};
 
 test('Local invitation fields keep browser password-manager semantics and no undrawn reveal action', () => {
@@ -41,4 +42,14 @@ test('expired and account-mismatch states use the exact distinct terminal copy a
   const other = renderToStaticMarkup(createElement(InvitationUnavailable, {otherAccount: true, onBack: noAction, onDifferentAccount: noAction}));
   assert.match(other, /This invitation is for a different account/); assert.match(other, /Use a different Portico Account/); assert.match(other, /#i-userx/);
   assert.doesNotMatch(other, /Invitations work once|#i-clock/);
+});
+test('only the changed Local identity has a deliberate Forget action; neither failure offers Trust or a pin confirmation', () => {
+  const props = {serverName: 'Actual saved name', onRetry: noAction, onChooseServer: noAction, onForget: async () => noAction()};
+  const changed = renderToStaticMarkup(createElement(ServerIdentityFailure, {...props, failure: 'local-changed'}));
+  assert.match(changed, /A different server is answering at its address, so nothing was sent/);
+  assert.match(changed, /Forget Actual saved name/); assert.match(changed, /#i-shieldx/);
+  assert.doesNotMatch(changed, /Trust|Confirm server identity|Identity code|role="alertdialog"/);
+  const unconfirmed = renderToStaticMarkup(createElement(ServerIdentityFailure, {...props, failure: 'unconfirmed'}));
+  assert.match(unconfirmed, /Nothing was sent to it. Try again, or ask its owner to check the server/);
+  assert.match(unconfirmed, /#i-question/); assert.doesNotMatch(unconfirmed, /Forget Actual|Trust|Confirm server identity/);
 });

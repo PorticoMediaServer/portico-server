@@ -102,8 +102,9 @@ export class BrowserRegisteredSignIn {
     const operation = this.operation(); let record: Pending | undefined;
     await this.ports.journal.change(old => {record = old; return undefined;});
     if (!record || record.version !== 1 || record.kind !== 'registered' || !record.pending) throw invalid();
-    const saved = {...record, pending: record.pending}, url = new URL(captured.href), expires = Date.parse(saved.expiresAt);
-    if (!Number.isFinite(expires) || expires <= Date.now() || expires > saved.pending.createdAt + 5 * 60_000 ||
+    const saved = {...record, pending: record.pending}, url = new URL(captured.href), expires = Date.parse(saved.expiresAt), now = Date.now();
+    if (!Number.isSafeInteger(saved.pending.createdAt) || saved.pending.createdAt < 0 || saved.pending.createdAt > now + 60_000 ||
+      !Number.isFinite(expires) || expires <= now || expires > saved.pending.createdAt + 5 * 60_000 ||
       url.origin !== this.ports.pageOrigin() || url.origin !== saved.origin || saved.pending.registrationOrigin !== saved.origin || saved.pending.purpose !== 'sign-in' ||
       saved.pending.serverId !== saved.pin.serverId || saved.pending.installationId !== this.ports.installationId() ||
       !Number.isSafeInteger(saved.expectedRevision) || saved.expectedRevision < 0) throw invalid();

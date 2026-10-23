@@ -7,6 +7,7 @@ import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
+import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
 import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
@@ -29,6 +30,7 @@ type EntryPorts = Readonly<{
  inspect:typeof inspectDirectServer; connect:typeof connectPairedServer; remember:typeof rememberNativeSession;
  connectPortico?:typeof connectPairedPorticoServer;
  retire?:(api:HttpLocalApi,session:LocalSession)=>Promise<void>;
+ temporary?:(source:HttpLocalApi,session:LocalSession)=>HttpLocalApi;
  invitationDestination?:'adopt'|'server-origin';
  rememberName?:(api:HttpLocalApi,name:string)=>void;
 }>;
@@ -39,7 +41,7 @@ export class BrowserAccountEntry {
  private state:AccountEntryState=Object.freeze({phase:'welcome'});
  private readonly listeners=new Set<()=>void>();
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
- private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private disposed=false;
+ private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
@@ -47,7 +49,7 @@ export class BrowserAccountEntry {
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(value:AccountEntryState){if(this.disposed)return;this.state=Object.freeze(value);for(const fn of this.listeners)fn();}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
- private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;}
+ private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;}
  cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
  async inspect(address:string,linkId?:string){
@@ -73,13 +75,17 @@ export class BrowserAccountEntry {
    return {api:connected.api,current:op.current};
   }catch(error){if(op.current()){this.release();this.publish({phase:'address',error});}}
  }
+ private temporary(api:HttpLocalApi,session:LocalSession){
+  if(this.ports.temporary)return this.ports.temporary(api,session);
+  const cleanup=new HttpLocalApi(api.baseUrl,session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);return cleanup;
+ }
  private async retire(api:HttpLocalApi,session:LocalSession){
   if(this.ports.retire)return this.ports.retire(api,session);
-  const cleanup=new HttpLocalApi(api.baseUrl,session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);
+  const cleanup=this.temporary(api,session);
   await cleanup.request(routePath('delete_sessions_current'),'DELETE',undefined,AbortSignal.timeout(5000)).catch(()=>{});
  }
  private async accept(result:DirectSignIn,api:HttpLocalApi,revision:number,op:ReturnType<BrowserAccountEntry['operation']>,hosted?:RememberedServer['hosted']){
-  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.publish({...this.state,phase:'challenge',busy:false});}return;}
+  if(result.kind==='challenge'){if(op.current()){this.challenge=result;this.challengeRevision=revision;this.publish({...this.state,phase:'challenge',busy:false});}return;}
   try{
    if(!op.current())throw new Error('Sign-in was cancelled.');
    if(!this.state.server||result.snapshot.serverId!==this.state.server.id)throw new Error('The server identity changed.');
@@ -162,10 +168,44 @@ export class BrowserAccountEntry {
   try{const revision=(await this.ports.store.read()).revision;if(!op.current())return;await this.accept(await directSignIn(api,username,password,op.signal),api,revision,op);}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
- async completeChallenge(code:string){
-  const state=this.state,api=this.api,challenge=this.challenge;if(state.phase!=='challenge'||!api||!challenge)return;
+ /** Auth20: the answer is a public location, never the file's one-use code.
+  * This Local path cannot become a Portico recovery-owner continuation. */
+ async requestLocalResetFile(username:string):Promise<ResetFileLocation|undefined>{
+  const state=this.state,api=this.api;
+  if(state.phase!=='password'||state.server?.signIn!=='local'||state.invitation||!api||state.busy)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{const revision=(await this.ports.store.read()).revision;if(!op.current())return;await this.accept(await completeDirectSignInChallenge(api,challenge.token,code,op.signal),api,revision,op);}
+  try{
+   const location=await requestOwnerResetFile(api,username,op.signal);
+   if(!op.current())return;
+   this.publish({...state,busy:false});return location;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ /** Code proof issues only a restricted transient family. Set its password,
+  * retire it, then use ordinary sign-in and the existing durable admission. */
+ async resetLocalPassword(proof:Readonly<{kind:'owner';code:string;turnOffTwoStep?:boolean}|{kind:'member';username:string;code:string}>,newPassword:string,secondFactorCode=''){
+  const state=this.state,api=this.api;
+  if(state.phase!=='password'||state.server?.signIn!=='local'||state.invitation||!api||state.busy||!passwordStrength(newPassword).acceptable)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  let restricted:Extract<DirectSignIn,{kind:'signed-in'}>|undefined;
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return;
+   const result=proof.kind==='owner'?await verifyOwnerResetFile(api,proof.code,proof.turnOffTwoStep===true,op.signal):await verifyMemberResetCode(api,proof.username,proof.code,op.signal);
+   if(result.kind!=='signed-in')throw new CodedError('invalid_response','The reset did not return a password-change session.');
+   restricted=result;
+   if(!op.current())return;
+   if(result.snapshot.serverId!==state.server.id||result.resetFileOwnerSession||!result.passwordChangeRequired||result.session.refreshToken||
+     proof.kind==='owner'&&result.snapshot.account.role!=='owner'||proof.kind==='member'&&result.snapshot.account.role==='owner')throw new CodedError('invalid_response','The reset did not match this account.');
+   await changeResetPassword(this.temporary(api,result.session),newPassword,secondFactorCode,op.signal);
+   await this.retire(api,result.session);restricted=undefined;
+   if(!op.current())return;
+   await this.accept(await directSignIn(api,result.snapshot.account.username,newPassword,op.signal),api,revision,op);
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+  finally{if(restricted)await this.retire(api,restricted.session);}
+ }
+ async completeChallenge(code:string){
+  const state=this.state,api=this.api,challenge=this.challenge,revision=this.challengeRevision;if(state.phase!=='challenge'||!api||!challenge||revision===undefined)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed. Start this sign-in again.');if(!op.current())return;await this.accept(await completeDirectSignInChallenge(api,challenge.token,code,op.signal),api,revision,op);}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
  }
  async changePassword(currentPassword:string,newPassword:string){

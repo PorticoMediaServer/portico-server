@@ -2,3 +2,4 @@ export {AuthStage, AuthPasswordField, AuthCodeBoxes, AuthError, AuthLinks} from 
 export {LocalServerSignIn, PorticoServerSignIn, type LocalServerSignInProps} from './ServerSignIn';
 export {ServerProfiles, ServerProfilePIN} from './ServerProfiles';
 export {LocalInvitationForm, type LocalInvitationFormProps} from './Invitation';
+export {ServerIdentityFailure, type ServerIdentityFailureProps} from './ServerIdentityFailure';
