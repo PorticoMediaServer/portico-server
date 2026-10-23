@@ -4,7 +4,7 @@ import {parseSettingsPeoplePage, SettingsPeopleClient, type SettingsPersonRow} f
 import {parseMemberLimits} from '../src/server-administration.ts';
 
 const person = (index: number): SettingsPersonRow => ({accountId: `person-${index}`, username: `person${index}`, email: `person${index}@example.test`, role: 'member', revision: index + 1, limitsRevision: index + 3,
-  disabled: false, status: 'active', allowedLibraries: [], libraryNames: ['Actual library'], maxStreams: 2, profileCount: 1, profileNames: [`Profile ${index}`], liveState: 'idle'});
+  disabled: false, status: 'active', hasMoveCode:false,allowedLibraries: [], libraryNames: ['Actual library'], maxStreams: 2, profileCount: 1, profileNames: [`Profile ${index}`], liveState: 'idle'});
 const page = () => ({items: Array.from({length: 40}, (_, index) => person(index)), totalCount: 137, matchedCount: 120, nextCursor: 'opaque-cursor', limit: 40});
 const query = {search: 'person 2', role: 'member', status: 'month', sort: 'active', direction: 'desc'} as const;
 

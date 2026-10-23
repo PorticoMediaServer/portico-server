@@ -12,7 +12,6 @@ import {encodedRoutePath} from "../../contracts/src/routes.ts";
  */
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
 export type AccessTier='owner'|'admin'|'member';
-export type TrustState='pending'|'approved'|'blocked';
 export type InvitationState='pending'|'accepted'|'revoked';
 export type LogLevel='error'|'warn'|'info'|'debug';
 export type LogCategory='server'|'playback'|'scan'|'network'|'client';
@@ -50,7 +49,7 @@ export type LimitsDocument=Readonly<{accountId:string;revision:number;updatedAt?
  * and whether an owner or administrator did it (`owner`) or the person left at their Portico
  * Account (`left`).
  */
-export type AccessMember=Readonly<{accountId:string;username:string;profileId:string;role:AccessTier;disabled:boolean;
+export type AccessMember=Readonly<{accountId:string;username:string;email?:string;displayName?:string;profileId:string;role:AccessTier;disabled:boolean;
  disabledAt?:string;disabledReason?:'owner'|'left'|'did_not_move';
  hostedAccountId?:string;notes?:string;joinedVia?:string;joinedAt?:string;profileNames?:readonly string[];lastActiveAt?:string;liveState?:'idle'|'watching'|'listening';
  revision:number;allowedLibraries:readonly string[];limitsRevision:number;limits:MemberLimits}>;
@@ -60,10 +59,9 @@ export type Invitation=Readonly<{id:string;email:string;role:AccessTier;allowedL
  porticoUsername?:string}>;
 /**
  * One member's device as an administrator sees it. This is the device record a sign-in is bound
- * to: `trust` is whether it may be used (`pending` waits for approval, `blocked` is refused and
- * signed out). `username`, `app` and `appVersion` say whose it is and what it runs.
+ * to. `username`, `app` and `appVersion` say whose it is and what it runs.
  */
-export type AccessDevice=Readonly<{id:string;accountId:string;username:string;profileId:string;name:string;platform:string;app:string;appVersion:string;trust:TrustState;
+export type AccessDevice=Readonly<{id:string;accountId:string;username:string;profileId:string;profileName?:string;name:string;platform:string;app:string;appVersion:string;lastNetwork:string;liveState:'idle'|'watching'|'listening';
  firstSeenAt:string;lastSeenAt:string;revision:number}>;
 export type LogRecord=Readonly<{sequence:string;at:string;level:LogLevel;category:LogCategory;message:string}>;
 export type LogRetention=Readonly<{category:LogCategory;days:number}>;
@@ -148,6 +146,7 @@ export function parseLimitsDocument(raw:unknown,accountId?:string):LimitsDocumen
 export function parseAccessMember(raw:unknown):AccessMember{
  if(!obj(raw))return invalid();
  return Object.freeze({accountId:str(raw.accountId),username:str(raw.username,64),profileId:str(raw.profileId,128,true),
+  ...(raw.email!==undefined?{email:str(raw.email,254,true)}:{}),...(raw.displayName!==undefined?{displayName:str(raw.displayName,120,true)}:{}),
   role:oneOf(raw.role,accessTiers),disabled:bool(raw.disabled??false),
   ...(raw.disabledAt?{disabledAt:when(raw.disabledAt)}:{}),...(raw.disabledReason?{disabledReason:oneOf(raw.disabledReason,['owner','left','did_not_move'] as const)}:{}),
   ...(raw.hostedAccountId!==undefined?{hostedAccountId:str(raw.hostedAccountId,128)}:{}),...(raw.notes!==undefined?{notes:str(raw.notes,2000,true)}:{}),
@@ -200,15 +199,22 @@ export function parseInvitation(raw:unknown):Invitation{
 export const parseInvitationPage=(raw:unknown)=>page(raw,parseInvitation,row=>row.id);
 
 export function parseAccessDevice(raw:unknown):AccessDevice{
- if(!obj(raw))return invalid();
+ if(!obj(raw)||Object.hasOwn(raw,'trust'))return invalid();
  return Object.freeze({id:str(raw.id),accountId:str(raw.accountId),profileId:str(raw.profileId??'',128,true),
   username:str(raw.username??'',64,true),name:str(raw.name??'',120,true),platform:str(raw.platform??'',64,true),
-  app:str(raw.app??'',64,true),appVersion:str(raw.appVersion??'',64,true),trust:oneOf(raw.trust,['pending','approved','blocked'] as const),
+  app:str(raw.app??'',64,true),appVersion:str(raw.appVersion??'',64,true),lastNetwork:str(raw.lastNetwork,256,true),liveState:oneOf(raw.liveState,['idle','watching','listening'] as const),...(raw.profileName!==undefined?{profileName:str(raw.profileName,120,true)}:{}),
   firstSeenAt:when(raw.firstSeenAt),lastSeenAt:when(raw.lastSeenAt),revision:num(raw.revision,1)});
 }
-export function parseAccessDevicePage(raw:unknown):AdministrationPage<AccessDevice>&{approvalRequired:boolean}{
- if(!obj(raw))return invalid();
- return Object.freeze({...page(raw,parseAccessDevice,row=>row.id,true),approvalRequired:bool(raw.approvalRequired??false)});
+export function parseAccessDevicePage(raw:unknown):AdministrationPage<AccessDevice>{
+ if(!obj(raw)||Object.hasOwn(raw,'approvalRequired'))return invalid();
+ return page(raw,parseAccessDevice,row=>row.id,true);
+}
+/** Ends only this person's captured device family/families; future normal sign-in is allowed. */
+export async function signOutMemberDevice(api:MemberDeletionApi,accountId:string,deviceId:string,signal?:AbortSignal):Promise<void>{
+ await api.request(encodedRoutePath('post_direct_member_device_sign_out',{id:encodeURIComponent(str(accountId)),deviceId:encodeURIComponent(str(deviceId))}),'POST',undefined,signal);
+}
+export async function signOutMemberDevices(api:MemberDeletionApi,accountId:string,signal?:AbortSignal):Promise<void>{
+ await api.request(encodedRoutePath('post_direct_member_devices_sign_out',{id:encodeURIComponent(str(accountId))}),'POST',undefined,signal);
 }
 
 

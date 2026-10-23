@@ -9,10 +9,11 @@ const text = (v: unknown, max: number): v is string => typeof v === 'string' && 
 /** A missing or unknown kind never grants a password form. No claim/Hosted inference. */
 export function parseServerSignIn(raw: unknown): ServerSignIn {
   if (!object(raw) || !text(raw.id, 256) || !text(raw.name, 120) || !text(raw.version, 256) ||
-      !['portico', 'local'].includes(String(raw.signIn)) || typeof raw.setupRequired !== 'boolean' ||
+      !['portico', 'local'].includes(String(raw.signIn)) || raw.move!==null&&!['to_portico','to_local'].includes(String(raw.move)) || typeof raw.setupRequired !== 'boolean' ||
       typeof raw.hostedConfigured !== 'boolean' || typeof raw.hostedAttached !== 'boolean')
     throw new RouteError('invalid_system', 'This server did not report how to sign in.');
-  return Object.freeze({id: raw.id, name: raw.name, version: raw.version, signIn: raw.signIn as SignInKind,
+  if(raw.move==='to_portico'&&raw.signIn!=='portico'||raw.move==='to_local'&&raw.signIn!=='local')throw new RouteError('invalid_system','The server reported a different sign-in move.');
+  return Object.freeze({id: raw.id, name: raw.name, version: raw.version, signIn: raw.signIn as SignInKind,move:raw.move as ServerSignIn['move'],
     setupRequired: raw.setupRequired, hostedConfigured: raw.hostedConfigured, hostedAttached: raw.hostedAttached});
 }
 export const accountSignInKeys = Object.freeze({

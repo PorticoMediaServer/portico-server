@@ -7,6 +7,7 @@ import {parseConnectionDocument,type ConnectionDocument} from './server-administ
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
 import {routeOrigin} from './route-identity.ts';
+import {parseMoveCollisionDetails,type MoveCollisionDetails} from './account-move.ts';
 import {sessionRoute,bindSessionRoute,type RouteConnection} from './route-connection.ts';
 export * from './route-identity.ts';
 export * from './identity-restrictions.ts';
@@ -116,7 +117,7 @@ export type PlaybackSession = {
   duration: number;
   resumeSeconds: number;
 };
-export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'> & {signIn: 'portico' | 'local'};
+export type SystemInfo = Omit<RouteResponse<'get_system'>, 'signIn'|'move'> & {signIn: 'portico' | 'local';move:'to_portico'|'to_local'|null};
 /** A server-named request field (`name`, `rules[0].query.libraryIds`), or undefined for anything else. */
 /** CD-06: `error.confirmRoots`, kept only as a short list of plain http(s) URLs. */
 export function errorConfirmRoots(value: unknown): readonly string[] | undefined {
@@ -206,6 +207,8 @@ export class ApiError extends Error {
    * (`source_lan_confirmation_required`), sent back in `confirmedLanRoots`. Validated plain URLs.
    */
   confirmRoots?: readonly string[];
+  /** Only a checked move_collision document is retained; no generic response-body storage. */
+  current?: MoveCollisionDetails;
   constructor(
     status: number,
     code: string,
@@ -480,6 +483,7 @@ export class HttpLocalApi {
       if (path) error.path = path;
       const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
+      if(error.status===409&&error.code==='move_collision')error.current=parseMoveCollisionDetails(data?.error?.current);
       throw error;
     }
     return response.status === 204 ? (undefined as T) : response.json();
@@ -2045,4 +2049,5 @@ export * from './same-tab-return.ts';
 
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
 export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export * from './account-move.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
