@@ -1,0 +1,140 @@
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
+import type {ContentEntry} from '@core/library-content.ts';
+import type {PlaybackOptions} from '@core/playback-v1/types.ts';
+import {detailActions} from '@core/presentation/detail-actions.ts';
+import {titleRecommendationRows} from '@core/recommendations.ts';
+import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
+import {preferenceValue} from '@core/preferences.ts';
+import {AmbientArt, PersonCircle} from '../../kit/artwork';
+import {Button, ResumeButton, Tabs} from '../../kit/controls';
+import {Lockup, HeroFacts, Shelf} from '../../kit/layout';
+import {PosterCard, SquareCard} from '../../kit/cards';
+import {Menu, MenuItem, FileInfo, Dialog} from '../../kit/overlays';
+import {StateView, Skeleton} from '../../kit/states';
+import {useShellWidth} from '../../shell/viewport';
+import {entryCard, fileFacts} from './model';
+import type {DetailBindings} from './bindings';
+import styles from './detail.module.css';
+
+const t = defaultI18n.t, env = {t, locale: defaultI18n.locale};
+export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
+export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
+  const [failure, setFailure] = useState<unknown>();
+  useEffect(() => { let active = true; setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}).catch(error => { if (active) setFailure(error); }); return () => { active = false; binding.service.cancel(); }; }, [binding, itemId, libraryId]);
+  return failure ? <ScreenFailure retry={() => { void binding.select(libraryId ? {itemId, libraryId} : {itemId}).catch(binding.context.effects.reportError); }} /> : <TitleBody binding={binding} />;
+}
+
+/** Also mounted under the retained phone/tablet Watch surface. It owns no route or video. */
+export function TitleBody({binding, compact = false}: {binding: DetailBindings; compact?: boolean}) {
+  const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
+  const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
+  const data = snapshot.data, [tab, setTab] = useState('related');
+  const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
+  useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
+  useEffect(() => setTab('related'), [data?.scope.itemId]);
+  if (!data) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
+  const tabs = [{value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}, ...(data.extras?.some(extra => extra.items.length) ? [{value: 'extras', label: t('next.controls.extras')}] : [])];
+  return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
+    {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
+    {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
+    <div className={styles.sticky}><span>{data.item.title}</span><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={setTab} items={tabs} />{!compact && <TitleActions binding={binding} data={data} small />}</div>
+    {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
+    {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
+    {tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
+      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} heading={row.title} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)
+        : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}
+  </article>;
+}
+
+function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; data: DetailProjection; showBackdrops: boolean}) {
+  const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
+  const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director').map(credit => credit.name);
+  const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4).map(credit => credit.name);
+  const parts = titleFactParts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
+  return <header className={styles.hero}>
+    {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
+    <div className={styles.copy}>
+      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); }}>{data.collections[0].name}</button>}
+      <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
+      <HeroFacts parts={parts} platform={phone ? 'phone-web' : 'desktop'} />
+      {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
+      {item.overview && <p className={styles.blurb}>{item.overview}</p>}
+      {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <span>{t('title.directedBy', {names: directed.join(', ')})}</span>}{starring.length > 0 && <span>{t('title.starring', {names: starring.join(', ')})}</span>}</div>}
+      <TitleActions binding={binding} data={data} />
+    </div>
+  </header>;
+}
+
+export function TitleActions({binding, data, small = false}: {binding: DetailBindings; data: DetailProjection; small?: boolean}) {
+  const model = detailActions(data, {platform: 'web'}), primary = model.primary;
+  const primaryAction = data.actions.find(action => action.enabled && action.playback && action.id !== 'start_over');
+  const restart = data.actions.find(action => action.id === 'start_over' && action.enabled && action.playback);
+  const run = (task: Promise<unknown>) => { void task.catch(binding.context.effects.reportError); };
+  const size = small ? 'compact' as const : 'hero' as const;
+  return <div className={styles.actions}>
+    {primary && primaryAction && (primary.id === 'resume' ? <ResumeButton size={size} progress={data.item.duration > 0 ? data.personal.progressSeconds / data.item.duration : 0} remaining={primary.caption} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.resume')}</ResumeButton>
+      : <Button variant="primary" icon="i-play" size={size} onClick={() => run(binding.play(data, primaryAction.id))}>{t('next.controls.play')}</Button>)}
+    {!small && <>
+      {restart && primary?.id === 'resume' && <Button icon="i-retry" size={size} onClick={() => run(binding.play(data, restart.id))}>{t('next.controls.startOver')}</Button>}
+      {data.actions.some(action => action.id === 'watchlist' && action.enabled) && <Button icon={data.personal.watchlisted ? 'i-check' : 'i-plus'} size={size} aria-pressed={data.personal.watchlisted} onClick={() => run(binding.mutate(data, {action: 'watchlist', value: !data.personal.watchlisted}))}>{t('next.controls.myList')}</Button>}
+      {data.actions.some(action => action.id === 'watched' && action.enabled) && <Button icon="i-check" iconOnly aria-label={t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={data.personal.watched} size={size} onClick={() => run(binding.mutate(data, {action: 'watched', value: !data.personal.watched}))} />}
+      <TitleMore binding={binding} data={data} />
+    </>}
+  </div>;
+}
+
+function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
+  const [open, setOpen] = useState(false), [fileOpen, setFileOpen] = useState(false), [versionOpen, setVersionOpen] = useState(false);
+  const [files, setFiles] = useState<FileInfoProjection>(), [versions, setVersions] = useState<PlaybackOptions>(), [failed, setFailed] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null), width = useShellWidth(), phone = width < 1024;
+  useEffect(() => { setOpen(false); setFileOpen(false); setVersionOpen(false); setFiles(undefined); setVersions(undefined); }, [data]);
+  useEffect(() => {
+    let active = true;
+    if (open) void binding.readVersions(data).then(value => { if (active) setVersions(value); }, () => {});
+    return () => { active = false; };
+  }, [binding, data, open]);
+  const loadFiles = () => { setFileOpen(true); setFailed(false); void binding.readFileInfo(data).then(setFiles, error => { setFailed(true); binding.context.effects.reportError(error); }); };
+  const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path}))}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
+  return <>
+    <Menu open={open} onOpenChange={setOpen} title={data.item.title} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
+      {data.actions.some(action => action.id === 'favorite' && action.enabled) && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
+      <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
+      {versions && versions.versions.length >= 2 && <MenuItem icon="i-play" onSelect={() => setVersionOpen(true)}>{t('next.overlays.differentVersion')}</MenuItem>}
+    </Menu>
+    {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={setFileOpen} returnFocusRef={trigger} onManage={() => {}} />}
+    {fileOpen && !model && <Dialog open onOpenChange={setFileOpen} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading />}</Dialog>}
+    <Dialog open={versionOpen} onOpenChange={setVersionOpen} title={t('next.overlays.differentVersion')} returnFocusRef={trigger}>
+      {versions?.versions.map(version => <Button key={version.id} variant="text" size="compact" onClick={() => {
+        const action = data.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
+        if (action) void binding.play(data, action.id, version.id).then(() => setVersionOpen(false), binding.context.effects.reportError);
+      }}>{version.label}</Button>)}
+    </Dialog>
+  </>;
+}
+
+export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
+  const {item, facts, metadata} = data;
+  const language = (code: string) => { try { return new Intl.DisplayNames(defaultI18n.locale, {type: 'language'}).of(code) ?? code; } catch { return code; } };
+  const rows = [
+    [t('title.releaseDate'), facts?.releaseDate], [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country],
+    [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined],
+    [t('title.genres'), metadata.genres.map(value => value.name).join(', ')], [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
+    [t('title.added'), item.addedAt ? new Intl.DateTimeFormat(defaultI18n.locale, {dateStyle: 'long'}).format(new Date(item.addedAt)) : undefined],
+  ].filter((row): row is [string, string] => !!row[1]);
+  return <div className={styles.details}><section>{item.overview && <p className={styles.about}>{item.overview}</p>}<dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
+    {metadata.credits.length > 0 && <section><h2>{t('title.cast')}</h2><div className={styles.people}>{metadata.credits.slice(0, 6).map(person => <button key={person.id} type="button" disabled={!person.personId} onClick={() => {
+      binding.current(data); if (person.personId) binding.context.effects.openEntry({id: person.personId, kind: 'person', title: person.name, navigation: {view: 'person', entityId: person.personId}});
+    }}><PersonCircle covers={[]} initials={person.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} alt="" /><b>{person.name}</b>{person.role && <small>{person.role}</small>}</button>)}</div></section>}
+  </div>;
+}
+
+export function TitleRow({heading, entries, binding, guard}: {heading: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
+  return <Shelf heading={heading} items={entries} getKey={entry => entry.id} renderItem={entry => {
+    const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }, watched: entry.watched};
+    return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
+  }} />;
+}
+export function ScreenFailure({retry}: {retry: () => void}) { return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}} />; }
+export function DetailLoading() { return <div className={styles.loading} role="status" aria-label={t('next.states.loading')}><Skeleton height={300} /><Skeleton width="50%" height={50} /><Skeleton height={20} /><Skeleton height={20} width="75%" /></div>; }

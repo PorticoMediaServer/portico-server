@@ -1,0 +1,33 @@
+.search { position: relative; padding: 108px 64px 80px; }
+.wash { position: absolute; inset: 0 0 auto; height: 640px; pointer-events: none; background: radial-gradient(55% 90% at 10% -10%, rgba(47,134,187,.26), transparent 70%), radial-gradient(40% 70% at 92% -20%, rgba(30,91,82,.22), transparent 70%); mask-image: linear-gradient(180deg,#000 20%,transparent); }
+.field,.chips,.results { position: relative; }
+.field { margin: 0; }
+.hint { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); white-space: nowrap; }
+.hint kbd { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-strong); font: inherit; font-weight: 700; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.results { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 52px 40px; padding-top: 40px; }
+.section { flex: none; min-width: 0; }
+.section header,.recent header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
+.section header h2,.recent h2,.single h2 { font-size: 22px; font-weight: 700; letter-spacing: -.015em; margin: 0; }
+.section header > span { font-size: 14px; color: var(--text-3); }
+.section header > button,.recent header > button { margin-left: auto; }
+.cards { display: flex; gap: 16px; align-items: start; }
+.cards > * { width: calc(150px * var(--search-card-scale)); }
+.section[data-group=movies],.section[data-group=shows],.section[data-group=episodes] { width: 100%; }
+.section[data-group=movies] .cards,.section[data-group=shows] .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(calc(150px * var(--search-card-scale)),1fr)); }
+.section[data-group=movies] .cards > *,.section[data-group=shows] .cards > * { width: 100%; }
+.section[data-group=episodes] .cards > * { width: calc((100% - 48px)/4); }
+.section[data-group=people] .cards > *,.section[data-group=artists] .cards > * { width: 124px; }
+.section[data-group=songs] { flex: 1 1 452px; }
+.section[data-group=songs] .cards { display: block; }
+.section[data-group=songs] .cards > * { width: 100%; }
+.song { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; gap: 14px; align-items: center; width: 100%; height: 58px; padding: 0 12px 0 6px; border: 0; background: transparent; color: inherit; border-radius: 10px; text-align: left; cursor: pointer; }
+.song:hover { background: var(--raised); }
+.song > :first-child { width: 44px; height: 44px; border-radius: 6px; overflow: hidden; }
+.song b,.song small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.song b { font-size: 15px; font-weight: 700; }.song small { font-size: 13px; color: var(--text-3); }
+.recent,.single,.partial { width: 100%; }.recent > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.partial { display: flex; align-items: center; gap: 16px; color: var(--text-2); }
+.top { width: 100%; display: flex; gap: 24px; align-items: center; }.top > :nth-child(2) { width: 174px; }
+.skeleton { width: 100%; display: grid; grid-template-columns: repeat(7,1fr); gap: 16px; }.skeleton span,.placeholder { display: block; aspect-ratio: 2/3; border-radius: 12px; background: var(--raised); }
+@media(max-width:1023px) { .search { padding: 80px 20px 110px; }.results { gap: 30px 20px; padding-top: 24px; }.hint { display: none; }.cards { gap: 12px; overflow-x: auto; }.cards > * { flex: none; width: 132px; }.section[data-group=movies] .cards,.section[data-group=shows] .cards { display: flex; }.section[data-group=movies] .cards > *,.section[data-group=shows] .cards > * { width: 118px; }.section[data-group=episodes] .cards > * { width: 262px; }.chips { flex-wrap: nowrap; overflow-x: auto; }.chips > * { flex: none; }.top { flex-wrap: wrap; }.skeleton { grid-template-columns: repeat(3,1fr); } }

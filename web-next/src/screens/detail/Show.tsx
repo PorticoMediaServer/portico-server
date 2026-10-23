@@ -1,0 +1,97 @@
+import {Fragment, useEffect, useState, useSyncExternalStore} from 'react';
+import {defaultI18n} from '@i18n';
+import {preferenceValue} from '@core/preferences.ts';
+import type {ShowWorkspaceRoute, ShowWorkspaceData} from '@core/show-workspace.ts';
+import {titleFactParts} from '@core/presentation/kit-model';
+import {Button, Chip, Tabs, Segmented, Switch} from '../../kit/controls';
+import {AmbientArt} from '../../kit/artwork';
+import {Lockup, HeroFacts} from '../../kit/layout';
+import {EpisodeTile} from '../../kit/cards';
+import {Menu, MenuItem} from '../../kit/overlays';
+import {StateView} from '../../kit/states';
+import {useShellWidth} from '../../shell/viewport';
+import {DetailLoading, ScreenFailure, TitleActions, TitleDetails, TitleRow} from './Detail';
+import {titleRecommendationRows} from '@core/recommendations.ts';
+import {entryCard} from './model';
+import type {ShowBindings} from './show-bindings';
+import styles from './show.module.css';
+import detail from './detail.module.css';
+
+const t = defaultI18n.t, env = {t, locale: defaultI18n.locale};
+export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
+export function ShowScreen({binding, target}: ShowScreenProps) {
+  const key = JSON.stringify(target);
+  useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key); void binding.select(route).catch(binding.context.effects.reportError); return () => binding.service.cancel(); }, [binding, key]);
+  return <ShowBody binding={binding} />;
+}
+
+/** One body below Watch's video as well as on the title route. No independent video host. */
+export function ShowBody({binding, compact = false}: {binding: ShowBindings; compact?: boolean}) {
+  const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
+  const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
+  const personal = useSyncExternalStore(binding.personal.subscribe, binding.personal.getSnapshot, binding.personal.getSnapshot);
+  const primary = useSyncExternalStore(binding.primary.service.subscribe, binding.primary.service.getSnapshot, binding.primary.service.getSnapshot);
+  const [tab, setTab] = useState('episodes'), [layout, setLayout] = useState('grid'), [seasonMenu, setSeasonMenu] = useState(false);
+  const width = useShellWidth(), phone = width < 1024, data = snapshot.data;
+  const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
+  useEffect(() => { if (data && tab === 'related') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data, tab]);
+  useEffect(() => setTab('episodes'), [data?.show.id]);
+  if (!data) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
+  const {show} = data, selectedSeason = data.seasons.find(season => season.id === data.selected.seasonId);
+  const episodes = data.episodes.sections[0]?.entries ?? [], art = binding.context.artwork;
+  const actions = <div className={detail.actions}>
+    {primary.data && <TitleActions binding={binding.primary} data={primary.data} small />}
+    {personal && <Button icon={personal.watchlisted ? 'i-check' : 'i-plus'} aria-pressed={personal.watchlisted} onClick={() => { void binding.setMyList(data, !personal.watchlisted).catch(binding.context.effects.reportError); }}>{t('next.controls.myList')}</Button>}
+    {personal && <Button icon="i-check" iconOnly aria-label={t(personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={personal.watched} onClick={() => { void binding.setWatched(data, !personal.watched).catch(binding.context.effects.reportError); }} />}
+  </div>;
+  const facts = titleFactParts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env, 'home-show');
+  const columns = phone ? 2 : 4;
+  return <article className={detail.page} data-show-id={show.id} data-compact={compact || undefined}>
+    {!compact ? <header className={detail.hero}>
+      {preferenceValue<boolean>(preferences, 'appearance.showBackdrops') && <AmbientArt className={detail.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(show.backdropUrl ?? show.posterUrl)} foreground={art.foreground(show.backdropUrl ?? show.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
+      <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><HeroFacts parts={facts} />{show.overview && <p className={detail.blurb}>{show.overview}</p>}{actions}</div>
+    </header> : <div className={detail.compactHeader}><h1>{show.title}</h1>{actions}</div>}
+    <div className={detail.sticky}><span>{show.title}</span><Tabs value={tab} onValueChange={setTab} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></div>
+    {tab === 'episodes' && <section className={styles.episodes}>
+      <div className={styles.toolbar}>
+        <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
+          {data.seasons.map(season => <MenuItem key={season.id} selected={season.id === data.selected.seasonId} description={season.episodeCount !== undefined ? t('count.episodes', {count: season.episodeCount}) : undefined} onSelect={() => { void binding.service.selectSeason(season.id).catch(binding.context.effects.reportError); }}>{season.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: season.number})}</MenuItem>)}
+          {data.groups.map(group => <MenuItem key={group.id} selected={group.id === data.selected.group} onSelect={() => { void binding.service.selectGroup(group.id).catch(binding.context.effects.reportError); }}>{group.title}</MenuItem>)}
+          {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => { void binding.service.previousSeasons(); }}>{t('title.earlierSeasons')}</MenuItem>}
+          {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => { void binding.service.nextSeasons(); }}>{t('title.laterSeasons')}</MenuItem>}
+        </Menu>
+        {selectedSeason?.episodeCount !== undefined && selectedSeason.watchedCount !== undefined && <span className={styles.progress}>{t('title.seasonProgress', {watched: selectedSeason.watchedCount, total: selectedSeason.episodeCount})}</span>}
+        <label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => { const route = snapshot.route; if (route) void binding.select({...route, playState: checked ? 'unplayed' : 'all'}).catch(binding.context.effects.reportError); }} /></label>
+        <Segmented value={layout} onValueChange={setLayout} aria-label={t('title.episodeLayout')} variant="view" items={[{value: 'list', label: t('title.viewList'), icon: 'i-list'}, {value: 'grid', label: t('title.viewGrid'), icon: 'i-grid'}]} />
+      </div>
+      {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
+      {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}
+      <div className={styles.tiles} data-layout={layout} style={{'--episode-columns': columns} as React.CSSProperties}>
+        {episodes.map((episode, index) => {
+          const expanded = snapshot.anchor.expandedEpisodeId === episode.id, rowEnd = layout === 'list' ? index : Math.min(episodes.length - 1, Math.floor(index / columns) * columns + columns - 1);
+          const opened = episodes.slice(layout === 'list' ? index : Math.floor(index / columns) * columns, rowEnd + 1).find(entry => entry.id === snapshot.anchor.expandedEpisodeId);
+          return <Fragment key={episode.id}><EpisodeTile model={entryCard(episode, env, 'in-show')} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={data.nextUp?.id === episode.id} description={episode.overview}
+            onNavigate={() => { void binding.expand(data, episode).catch(binding.context.effects.reportError); }} />
+            {rowEnd === index && opened && <div className={styles.expanded}><EpisodeBody binding={binding} data={data} /></div>}
+          </Fragment>;
+        })}
+      </div>
+      <div className={styles.paging}>{snapshot.pagination.canPrevious && <Button size="compact" onClick={() => { void binding.service.previousEpisodes(); }}>{t('title.previousPage')}</Button>}{snapshot.pagination.nextCursor && <Button size="compact" onClick={() => { void binding.service.nextEpisodes(); }}>{t('title.nextPage')}</Button>}</div>
+    </section>}
+    {tab === 'details' && <div className={detail.details}><section>{show.overview && <p className={detail.about}>{show.overview}</p>}<dl>{[[t('title.network'), show.network], [t('title.studio'), show.studio], [t('title.country'), show.country], [t('title.genres'), show.genres?.join(', ')]].filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section></div>}
+    {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} binding={binding} heading={row.title} entries={row.entries} guard={() => binding.current(data)} />))}
+  </article>;
+}
+
+export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
+  const snapshot = useSyncExternalStore(binding.episode.service.subscribe, binding.episode.service.getSnapshot, binding.episode.service.getSnapshot), episode = snapshot.data;
+  if (!episode) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.episode.service.retry(); }} /> : <DetailLoading />;
+  return <section className={styles.episodePanel} aria-label={t('title.episodeDetails')}>
+    <Button className={styles.close} variant="icon" icon="i-x" iconOnly aria-label={t('action.close')} onClick={binding.closeEpisode} />
+    <div><p className={styles.context}>{data.show.title}</p><h2>{episode.item.title}</h2><HeroFacts parts={titleFactParts({durationSeconds: episode.item.duration, contentRating: episode.episodeDetails?.contentRating}, env)} />{episode.item.overview && <p>{episode.item.overview}</p>}<TitleActions binding={binding.episode} data={episode} />
+      <div className={styles.adjacent}>{(['previous', 'next'] as const).map(direction => { const target = episode.episodeDetails?.[direction]; return target && <Button key={direction} variant="text" size="small" aria-label={t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')} onClick={() => {
+        binding.current(data); void binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: target.id}).catch(binding.context.effects.reportError);
+      }}>{target.title}<small>{t('next.kit.episode', {number: target.number})}</small></Button>; })}</div>
+    </div><TitleDetails binding={binding.episode} data={episode} />
+  </section>;
+}
