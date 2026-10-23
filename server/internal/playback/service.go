@@ -50,12 +50,14 @@ type Session struct {
 }
 type Service struct {
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
-	prefetchMu   sync.Mutex
-	prefetched   map[string]int64
-	db           *sql.DB
-	hls          *HLS
-	remote       *Remote
-	StorageGuard func(string) error
+	prefetchMu      sync.Mutex
+	prefetched      map[string]int64
+	prefetchReaders map[string]int
+	prefetchRetired map[string]bool
+	db              *sql.DB
+	hls             *HLS
+	remote          *Remote
+	StorageGuard    func(string) error
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
@@ -738,6 +740,7 @@ func (s *Service) Stop(p identity.Principal, id string) error {
 // worker. Internal queue cleanup already proved ownership in its transaction;
 // reauthenticating an old request token after family renewal would leak a worker.
 func (s *Service) stopHLS(id string) {
+	s.ForgetPrefetch(id)
 	if s.hls == nil {
 		return
 	}

@@ -421,6 +421,9 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		return QueueReply{}, fence
 	}
 	// The previous presentation refuses new requests from here; decoded audio drains.
+	if s.Playback != nil {
+		s.Playback.ForgetPrefetch(p.media)
+	}
 	s.stopMedia(ctx, []string{old.media})
 	s.hub.wake()
 	s.sweep.kick(s)

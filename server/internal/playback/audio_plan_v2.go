@@ -649,19 +649,84 @@ func (s *Service) PrivatePresentation(ctx context.Context, session string) (bool
 // A caller that charges before serving gives back what it didn't serve with
 // PrefetchRefund, so a failed request never spends the budget (NEW-33).
 func (s *Service) PrefetchCharge(session string, n, limit int64) bool {
+	if n < 0 || limit < 0 {
+		return false
+	}
 	s.prefetchMu.Lock()
 	defer s.prefetchMu.Unlock()
+	if s.prefetchRetired[session] {
+		return false
+	}
 	if s.prefetched == nil {
 		s.prefetched = map[string]int64{}
 	}
-	if len(s.prefetched) > 4096 {
-		clear(s.prefetched) // bounded: a stale entry only re-grants a few MiB
+	if _, exists := s.prefetched[session]; !exists && len(s.prefetched) >= 4096 {
+		return false
 	}
-	if s.prefetched[session]+n > limit {
+	if n > limit-s.prefetched[session] {
 		return false
 	}
 	s.prefetched[session] += n
 	return true
+}
+
+// PrefetchTake reserves up to want bytes, shared by every overlapping request
+// of this private presentation. Exhaustion never resets an active budget.
+func (s *Service) PrefetchTake(session string, want, limit int64) int64 {
+	if want <= 0 || limit <= 0 {
+		return 0
+	}
+	s.prefetchMu.Lock()
+	defer s.prefetchMu.Unlock()
+	if s.prefetchRetired[session] {
+		return 0
+	}
+	if s.prefetched == nil {
+		s.prefetched = map[string]int64{}
+	}
+	if _, exists := s.prefetched[session]; !exists && len(s.prefetched) >= 4096 {
+		return 0
+	}
+	n := min(want, max(int64(0), limit-s.prefetched[session]))
+	s.prefetched[session] += n
+	return n
+}
+
+// ForgetPrefetch follows durable stop or commit, never eviction of live grants.
+func (s *Service) ForgetPrefetch(session string) {
+	s.prefetchMu.Lock()
+	defer s.prefetchMu.Unlock()
+	if s.prefetchReaders[session] > 0 {
+		if s.prefetchRetired == nil {
+			s.prefetchRetired = map[string]bool{}
+		}
+		s.prefetchRetired[session] = true
+		return
+	}
+	delete(s.prefetched, session)
+}
+
+// RetainPrefetch prevents stop/commit cleanup from regranting a budget to a
+// writer already in flight. The last writer drops the retired counter.
+func (s *Service) RetainPrefetch(session string) func() {
+	s.prefetchMu.Lock()
+	if s.prefetchReaders == nil {
+		s.prefetchReaders = map[string]int{}
+	}
+	s.prefetchReaders[session]++
+	s.prefetchMu.Unlock()
+	return func() {
+		s.prefetchMu.Lock()
+		defer s.prefetchMu.Unlock()
+		s.prefetchReaders[session]--
+		if s.prefetchReaders[session] <= 0 {
+			delete(s.prefetchReaders, session)
+			if s.prefetchRetired[session] {
+				delete(s.prefetched, session)
+				delete(s.prefetchRetired, session)
+			}
+		}
+	}
 }
 
 // PrefetchRefund returns n charged bytes that weren't served.
