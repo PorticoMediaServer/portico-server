@@ -72,8 +72,9 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 		choice   V1Choice
 		want     int
 		reason   string
+		foreign  bool
 	}{
-		{"ja", V1Choice{}, 2, "original_language"}, {"xx", V1Choice{}, 1, "original_default"}, {"ko", V1Choice{}, 3, "preferred_language"}, {"ja", V1Choice{AudioStream: ptrAudioIndex(3)}, 3, "explicit"}, {"ja", V1Choice{CarriedAudioLanguage: "eng"}, 1, "carried"},
+		{"ja", V1Choice{}, 2, "original_language", true}, {"xx", V1Choice{}, 1, "original_default", true}, {"ko", V1Choice{}, 3, "preferred_language", false}, {"ja", V1Choice{AudioStream: ptrAudioIndex(3)}, 3, "explicit", false}, {"ja", V1Choice{CarriedAudioLanguage: "eng"}, 1, "carried", true},
 	} {
 		if _, err = db.Exec(`UPDATE screen_metadata_fields SET value=? WHERE target_kind='item' AND target_id=? AND field='language'`, fmt.Sprintf("%q", tc.language), entity); err != nil {
 			t.Fatal(err)
@@ -87,7 +88,9 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 			t.Fatal(err)
 		}
 		sub := subtitles.ChooseAutomatic(automaticSubtitles(values, preview.Trace, "en-US"), []subtitles.AutoCandidate{{ID: "english", Language: "eng"}})
-		if (sub != nil) != (tc.want != 1) {
+		// The actual saved list declares French familiar. @original does not
+		// declare a familiar language, and app locale does not add one to it.
+		if (sub != nil) != tc.foreign {
 			t.Fatalf("foreign subtitles ignored actual selected audio: stream=%d subtitle=%+v", tc.want, sub)
 		}
 		session, err := s.CreateV1(ctx, principal, item, fmt.Sprintf("original-%d", n), tc.choice, nil)
