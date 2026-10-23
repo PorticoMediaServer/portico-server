@@ -2,6 +2,7 @@
 .dashboard h3, .dashboard h4, .dashboard p { margin: 0; }
 .pageTitle { margin: 0; font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
 .section { min-width: 0; }
+.section + .section { margin-top: 36px; }
 .heading { display: flex; align-items: center; gap: 12px; min-height: 40px; margin-bottom: 12px; flex-wrap: wrap; }
 .heading h3 { font-size: var(--type-heading-size); font-weight: var(--type-heading-weight); letter-spacing: var(--type-heading-tracking); }
 .heading h4, .card > h4 { font-size: var(--type-subheading-size); font-weight: var(--type-subheading-weight); }
@@ -89,15 +90,15 @@
 .quiet { margin-left: auto; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .quiet b { color: var(--color-text); margin-left: 8px; }
 .heatScroll { overflow: auto; }
-.heat { min-width: 640px; }
+.heat { position: relative; min-width: 640px; }
 .heatDay { display: grid; grid-template-columns: 40px repeat(24, minmax(0, 1fr)); gap: 3px; margin-bottom: 3px; align-items: center; }
 .heatDay > span { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
-.heatCell { border: 0; height: 22px; background: var(--color-accent-strong); border-radius: var(--radius-small); cursor: pointer; }
-.heatCell[data-quiet] { outline: 1px dashed var(--color-text); outline-offset: 2px; }
+.heatCell { border: 0; height: 22px; background: color-mix(in srgb, var(--color-accent-strong) var(--heat-intensity), transparent); border-radius: var(--radius-small); cursor: pointer; }
+.quietWindow { position: absolute; pointer-events: none; top: -3px; height: 178px; left: calc(40px + (100% - 40px) / 24 * var(--quiet-hour)); width: calc((100% - 40px) / 8); border: 1.5px dashed color-mix(in srgb, var(--color-text) 50%, transparent); border-radius: var(--radius-control); }
 .heatHours { display: grid; grid-template-columns: 40px repeat(8, 1fr); margin-top: 8px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .shelf { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .shelf li { position: relative; min-width: 0; padding-left: 46px; }
-.rank { position: absolute; left: -4px; top: 62px; font-size: calc(var(--type-lockup-size) * 2.78); font-weight: var(--type-lockup-weight); line-height: var(--type-lockup-line); letter-spacing: var(--type-lockup-tracking); color: var(--color-accent-strong); opacity: .7; }
+.rank { position: absolute; left: -4px; top: 62px; font-size: calc(var(--type-lockup-size) * 2.78); font-weight: var(--type-lockup-weight); line-height: var(--type-lockup-line); letter-spacing: var(--type-lockup-tracking); color: transparent; background: linear-gradient(var(--color-accent-strong), color-mix(in srgb, var(--color-accent-strong) 28%, transparent)); background-clip: text; -webkit-text-stroke: 1.5px var(--color-accent-strong); }
 .rankedArt { position: relative; width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-artwork); background: var(--color-raised-high); overflow: hidden; }
 .rankedArt img { width: 100%; height: 100%; object-fit: cover; }
 .shelf[data-square] .rankedArt { aspect-ratio: 1; }
@@ -109,7 +110,7 @@
 .alert:first-child { border-top: 0; }
 .alert > b { flex: 1; }
 .alert > span { color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
-.tasks { order: 8; }
+.tasks { min-width: 0; }
 .task { display: grid; grid-template-columns: minmax(0, 1fr) 240px 44px; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--color-line-soft); }
 .task:first-child { border-top: 0; }
 .task small { display: block; color: var(--color-text-tertiary); font-size: var(--type-caption-size); margin-top: 2px; }
@@ -156,3 +157,8 @@
   .task { grid-template-columns: minmax(0, 1fr) 70px 36px; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } }
+
+.rankedShelf { position: relative; isolation: isolate; }
+.shelfAmbient { position: absolute; pointer-events: none; inset: -24px 0 -16px; overflow: hidden; mask-image: linear-gradient(transparent, black 30%, black 62%, transparent); opacity: .34; }
+.shelfAmbient img { width: 100%; height: 100%; object-fit: cover; filter: blur(40px) saturate(1.5); mask-image: linear-gradient(90deg, transparent, black 22%, black 48%, transparent); }
+.dashboard [data-series='other'] { --series-color: var(--color-text-tertiary); color: var(--color-text-tertiary); }

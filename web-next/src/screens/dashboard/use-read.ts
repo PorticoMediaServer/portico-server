@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useState, useSyncExternalStore} from 'react';
 import type {DashboardBindings} from './bindings';
 export type ReadState<T> = Readonly<{value?: T; loading: boolean; failed: boolean}>;
 /** One read in flight, cancellation and identity fence on every completion. Events coalesce. */
@@ -34,4 +34,9 @@ export function useDashboardAccounts(bindings: DashboardBindings) {
   const state = useDashboardRead(bindings, load, true);
   useEffect(() => {if (state.value) setPage(previous => ({items: cursor ? [...previous.items, ...state.value!.items.filter(item => !previous.items.some(p => p.accountId === item.accountId))] : state.value!.items, nextCursor: state.value!.nextCursor}));}, [state.value, cursor]);
   return {...page, loading: state.loading, loadMore: () => {if (page.nextCursor) setCursor(page.nextCursor);}};
+}
+
+const noAuthoritySubscription = () => () => {};
+export function useDashboardAuthority(bindings: DashboardBindings): boolean {
+  return useSyncExternalStore(bindings.subscribeAuthority ?? noAuthoritySubscription, bindings.isCurrent, () => false);
 }

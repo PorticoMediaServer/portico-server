@@ -1,14 +1,14 @@
 import {useCallback, useEffect, useId, useRef, useState} from 'react';
 import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {MessageId} from '@i18n';
-import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES} from '@core/admin/dashboard.ts';
+import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from '@core/admin/dashboard.ts';
 import type {TelemetryReading, TelemetryWindow} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import type {DashboardAlert, DashboardBindings} from './bindings';
 import {orderedSessions} from './model';
-import {useDashboardRead} from './use-read';
+import {useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
 import {Range, ReadFeedback, Section, t} from './shared';
 import {Chart, type ChartSeries} from './Chart';
 import {SessionCard} from './SessionCard';
@@ -17,13 +17,16 @@ import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = Readonly<{bindings: DashboardBindings; embedded?: boolean; initialSection?: 'streams' | 'activity' | 'updates'}>;
 export function DashboardScreen({bindings: b, embedded = false, initialSection}: DashboardScreenProps) {
-  const ref = useRef<HTMLDivElement>(null), allowed = b.isCurrent() && b.isMainProfile() && (b.role === 'owner' || b.role === 'admin');
+  const current = useDashboardAuthority(b);
+  const ref = useRef<HTMLDivElement>(null), allowed = current && b.isMainProfile() && (b.role === 'owner' || b.role === 'admin');
+  const statusLoad = useCallback((signal: AbortSignal) => b.read.status(signal), [b]);
+  const status = useDashboardRead(b, statusLoad, allowed && b.role === 'owner', 10000);
   useEffect(() => {if (initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection]);
   if (!allowed) return <p role="status">{t('next.dashboard.restricted')}</p>;
   return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
-    {b.role === 'owner' && <Status bindings={b} />}
+    {b.role === 'owner' && <Status bindings={b} status={status} />}
     <div data-dashboard-section="streams"><NowPlaying bindings={b} /></div>
-    {b.role === 'owner' && <><Load bindings={b} /><div data-dashboard-section="activity"><Analytics bindings={b} /></div></>}
+    {b.role === 'owner' && <><Load bindings={b} /><div data-dashboard-section="activity"><Analytics bindings={b} /></div><Tasks status={status} /></>}
   </div>;
 }
 function NowPlaying({bindings: b}: {bindings: DashboardBindings}) {
@@ -71,20 +74,32 @@ function Load({bindings: b}: {bindings: DashboardBindings}) {
     </div>
   </Section>;
 }
-const alertCopy: Record<string, MessageId> = {update_available: 'next.dashboard.updateAvailable', upload_budget_exhausted: 'next.dashboard.uploadAlert', 'upload-budget-exhausted': 'next.dashboard.uploadAlert', state_permissions: 'next.dashboard.permissionsAlert', 'state-permissions': 'next.dashboard.permissionsAlert', 'storage-low': 'next.dashboard.storageAlert', 'backup-failed': 'next.dashboard.backupAlert', 'source-unreachable': 'next.dashboard.sourceAlert', 'secure-connection-renewal-failed': 'next.dashboard.certificateAlert'};
-function Status({bindings: b}: {bindings: DashboardBindings}) {
-  const load = useCallback((signal: AbortSignal) => b.read.status(signal), [b]), status = useDashboardRead(b, load, true, 10000);
+const alertCopy: Record<string, MessageId> = {update_available: 'next.dashboard.updateAvailable', upload_budget_exhausted: 'next.dashboard.uploadAlert', state_permissions: 'next.dashboard.permissionsAlert', storage_nearly_full: 'next.dashboard.storageAlert', backup_failed: 'next.dashboard.backupAlert', library_unreachable: 'next.dashboard.sourceAlert', remote_unreachable: 'next.dashboard.sourceAlert', secure_renewal_failed: 'next.dashboard.certificateAlert'};
+const alertDestinations: Record<string, {section: string; label: MessageId}> = {
+  streaming: {section: 'streaming', label: 'next.dashboard.streaming'},
+  networking: {section: 'remote', label: 'next.dashboard.remote'},
+  storage: {section: 'storage', label: 'next.dashboard.storage'},
+  backups: {section: 'storage', label: 'next.dashboard.storage'},
+  'library-source': {section: 'libraries', label: 'next.dashboard.libraries'},
+  'remote-source': {section: 'sources', label: 'next.dashboard.remoteSources'},
+};
+type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
+function Status({bindings: b, status}: {bindings: DashboardBindings; status: StatusState}) {
   const [confirm, setConfirm] = useState<DashboardAlert | undefined>(), [busy, setBusy] = useState(false), [updating, setUpdating] = useState(false);
   const run = async (alert: DashboardAlert) => {if (!b.effects.alert || busy) return; setBusy(true); try {await b.effects.alert(alert); if (b.isCurrent()) {setConfirm(undefined); if (alert.action.kind === 'update') setUpdating(true); status.refresh();}} catch (error) {b.effects.reportError(error);} finally {setBusy(false);}};
-  const tasks = status.value?.tasks.items.filter(task => task.state === 'running') ?? [];
   return <><div data-dashboard-section="updates"><ReadFeedback state={status} />{!!status.value?.alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{status.value.alerts.map((alert, index) => {
-    const update = alert.action.kind === 'update', text = update && updating ? t('next.dashboard.updating') : t(alertCopy[alert.code] ?? 'next.dashboard.serverAlert', {version: alert.params.latest ?? '', count: alert.count ?? 0});
+    const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = update && updating ? t('next.dashboard.updating') : t(alertCopy[alert.code] ?? 'next.dashboard.serverAlert', {version: alert.params.latest ?? '', count: alert.count ?? 0});
     return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
-      {b.effects.alert && !(update && updating) && <Button size="xs" variant={update ? 'primary' : 'glass'} disabled={busy} onClick={() => update ? setConfirm(alert) : void run(alert)}>{update ? t('next.dashboard.update') : t('next.dashboard.retry')}</Button>}
-      {!update && <Button size="xs" onClick={() => b.effects.openSettings(alert.action.kind === 'streaming' ? 'streaming' : alert.action.kind === 'remote' ? 'remote' : alert.action.kind === 'storage' ? 'storage' : 'troubleshooting')}>{t(alert.action.kind === 'streaming' ? 'next.dashboard.streaming' : alert.action.kind === 'remote' ? 'next.dashboard.remote' : alert.action.kind === 'storage' ? 'next.dashboard.storage' : 'next.dashboard.troubleshooting')}</Button>}
+      {b.effects.alert && (update || alert.code === 'secure_renewal_failed') && !(update && updating) && <Button size="xs" variant={update ? 'primary' : 'glass'} disabled={busy} onClick={() => update ? setConfirm(alert) : void run(alert)}>{update ? t('next.dashboard.update') : t('next.dashboard.retry')}</Button>}
+      {!update && <Button size="xs" onClick={() => b.effects.openSettings(destination.section)}>{t(destination.label)}</Button>}
     </div>;
   })}</section>}</div>
-    <div className={styles.tasks}><Section title={t('next.dashboard.tasks')}><div className={styles.card}>{status.value?.scans.map(scan => <div className={styles.task} key={scan.libraryId}><div><b>{t('next.dashboard.scanning', {library: scan.libraryName})}</b>{scan.total !== undefined && <small>{t('next.dashboard.taskProgress', {done: scan.analyzed, total: scan.total})}</small>}</div>{scan.total !== undefined && scan.total > 0 && <><progress aria-label={scan.libraryName} value={scan.analyzed} max={scan.total} /><span>{t('next.dashboard.percent', {value: Math.round(scan.analyzed / scan.total * 100)})}</span></>}</div>)}{tasks.map(task => <div className={styles.task} key={task.id}><div><b>{jobName(t, defaultI18n.has, task.kind)}{task.libraryName ? `: ${task.libraryName}` : ''}</b>{task.total !== undefined && task.processed !== undefined && <small>{t('next.dashboard.taskProgress', {done: task.processed, total: task.total})}</small>}</div>{task.total !== undefined && task.total > 0 && task.processed !== undefined && <><progress aria-label={task.libraryName || t('next.dashboard.tasks')} value={task.processed} max={task.total} /><span>{t('next.dashboard.percent', {value: Math.round(task.processed / task.total * 100)})}</span></>}</div>)}{status.value && !tasks.length && !status.value.scans.length && <p className={styles.empty}>{t('next.dashboard.noTasks')}</p>}</div></Section></div>
+
     <Dialog open={!!confirm} onOpenChange={open => {if (!open && !busy) setConfirm(undefined);}} title={t('next.dashboard.updateTitle')} description={t('next.dashboard.updateDetail')} footer={<><Button size="compact" onClick={() => setConfirm(undefined)} disabled={busy}>{t('next.dashboard.cancel')}</Button><Button size="compact" variant="primary" loading={busy} onClick={() => {if (confirm) void run(confirm);}}>{t('next.dashboard.update')}</Button></>}>{null}</Dialog>
   </>;
+}
+
+function Tasks({status}: {status: StatusState}) {
+  const tasks = status.value?.tasks.items.filter(task => task.state === 'running') ?? [];
+  return <div className={styles.tasks}><Section title={t('next.dashboard.tasks')}><div className={styles.card}>{status.value?.scans.map(scan => <div className={styles.task} key={scan.libraryId}><div><b>{t('next.dashboard.scanning', {library: scan.libraryName})}</b>{scan.total !== undefined && <small>{t('next.dashboard.taskProgress', {done: scan.analyzed, total: scan.total})}</small>}</div>{scan.total !== undefined && scan.total > 0 && <><progress aria-label={scan.libraryName} value={scan.analyzed} max={scan.total} /><span>{t('next.dashboard.percent', {value: Math.round(scan.analyzed / scan.total * 100)})}</span></>}</div>)}{tasks.map(task => <div className={styles.task} key={task.id}><div><b>{jobName(t, defaultI18n.has, task.kind)}{task.libraryName ? `: ${task.libraryName}` : ''}</b>{task.total !== undefined && task.processed !== undefined && <small>{t('next.dashboard.taskProgress', {done: task.processed, total: task.total})}</small>}</div>{task.total !== undefined && task.total > 0 && task.processed !== undefined && <><progress aria-label={task.libraryName || t('next.dashboard.tasks')} value={task.processed} max={task.total} /><span>{t('next.dashboard.percent', {value: Math.round(task.processed / task.total * 100)})}</span></>}</div>)}{status.value && !tasks.length && !status.value.scans.length && <p className={styles.empty}>{t('next.dashboard.noTasks')}</p>}</div></Section></div>;
 }

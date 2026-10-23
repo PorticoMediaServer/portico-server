@@ -19,3 +19,13 @@ test('session scope mismatch rejects; history passes exact server query and opaq
   let path = ''; const c = createDashboardBindings(options({api: {...options().api, request: async request => {path = request; return {entries: [], nextCursor: ''} as never;}}})); await c.read.plays({period: '30d', media: 'audiobooks', accountId: 'account', sort: 'watched', direction: 'asc'}, 'opaque');
   const q = new URL(path, 'https://server.invalid').searchParams; assert.equal(q.get('limit'), '100'); assert.equal(q.get('sort'), 'watched'); assert.equal(q.get('cursor'), 'opaque'); assert.equal(q.get('accountId'), 'account'); assert.equal(q.get('media'), 'audiobooks'); c.dispose();
 });
+test('terminal private-read refusal synchronously retires every mounted consumer', async () => {
+  let changed = 0;
+  const b = createDashboardBindings(options({api: {...options().api, request: async () => {throw {status: 403};}}}));
+  const off = b.subscribeAuthority!(() => changed++); await assert.rejects(b.read.plays({period: 'all'})); assert.equal(b.isCurrent(), false); assert.equal(changed, 1); off(); b.dispose();
+});
+test('shell authority notification clears current bindings before another request', () => {
+  let notify!: () => void, current = true;
+  const b = createDashboardBindings(options({isCurrent: () => current, subscribeAuthority: listener => {notify = listener; return () => {};}}));
+  let changed = 0; b.subscribeAuthority!(() => changed++); current = false; notify(); assert.equal(changed, 1); assert.equal(b.isCurrent(), false); b.dispose();
+});
