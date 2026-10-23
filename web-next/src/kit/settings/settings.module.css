@@ -143,6 +143,19 @@
 .backupPicker .folderEntries .backupFileSize { flex: none; margin: 0; font-size: 13px; font-weight: 600; }
 .backupPickerFooter { margin-top: 0; padding: 14px 20px 18px; border-top: 1px solid var(--color-line-soft); }
 .backupPickerFooter button { height: 42px; padding: 0 18px; border-radius: 10px; font-size: 15px; font-weight: 700; line-height: normal; }
+.backupList { border-radius: 14px; overflow: hidden; background: var(--color-raised); }
+.backupListRow { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 12px 20px; border-top: 1px solid var(--color-line-soft); }
+.backupListRow:first-child { border-top: 0; }
+.backupListRow > svg { flex: none; color: var(--color-text-tertiary); }
+.backupListTitle { flex: 1; min-width: 0; }
+.backupListTitle b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
+.backupListTitle small { display: block; margin-top: 4px; color: var(--color-text-tertiary); font-size: 14px; }
+.backupNewest { padding: 4px 8px; border-radius: 6px; color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 14%, transparent); font-size: 12px; font-weight: 700; }
+@media (max-width: 599px) {
+  .backupListRow { padding-inline: 14px; gap: 10px; }
+  .backupRestore { display: none; }
+  .backupNewest { font-size: 11.5px; }
+}
 .folderNotice { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px; color: var(--color-text-tertiary); font-size: 14px; }
 .ordered { max-width: 100%; }
 .orderedRows { padding: 0; margin: 0; list-style: none; }

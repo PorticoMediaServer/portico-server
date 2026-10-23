@@ -3,15 +3,19 @@ import {StrictMode, useMemo, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {ServerFolderPicker} from '../../src/kit/settings/ServerFolderPicker';
+import {BackupList} from '../../src/kit/settings/BackupList';
+import {defaultI18n} from '@i18n';
 import {IconSprite} from '../../src/kit/Icon';
 import '../../src/kit/tokens.css';
 import '../../src/kit/fonts.css';
 import '../../src/bootstrap.css';
 
 const folder = '/mnt/media/Backups';
-const proof = {requests: [] as {path: string;aborted: boolean}[], choices: [] as readonly string[][], closes: 0, released: 0};
+const proof = {requests: [] as {path: string;aborted: boolean}[], choices: [] as readonly string[][], closes: 0, released: 0, restoreOffers: [] as string[], deleteOffers: [] as string[]};
 let release: (() => void) | undefined;
-Object.assign(window, {backupPickerProof: proof, releaseBackupPage: () => {release?.();release = undefined;}});
+let current = true;const listeners = new Set<() => void>();
+const authority = {isCurrent: () => current, subscribeAuthority: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}};
+Object.assign(window, {backupPickerProof: proof, releaseBackupPage: () => {release?.();release = undefined;}, retireBackupAuthority: () => {current = false;for (const listener of listeners) listener();}});
 function Fixture() {
   const [open, setOpen] = useState(true), [identity, setIdentity] = useState(0);
   const params = new URLSearchParams(location.search), purpose = params.get('purpose') === 'folder' ? 'folder' as const : 'backup' as const;
@@ -26,6 +30,8 @@ function Fixture() {
     return {result: {path: current, parent: current ? current.slice(0, current.lastIndexOf('/')) || '/' : '', separator: '/', platform: 'linux', writable: false, writableChecked: false, suggestions: [], truncated: false,
       roots: [{path: '/mnt/media/Backups', name: 'Backups', kind: 'directory', description: ''}], entries, nextCursor: !frame && current === folder && !query.has('cursor') ? 'actual-cursor' : ''}} as T;
   }}), [identity]);
+  if (params.has('list')) return <><IconSprite /><BackupList scopeKey="controlled-only" {...authority} format={defaultI18n} busy={params.has('busy')} requestRestore={backup => proof.restoreOffers.push(backup.id)} requestDelete={backup => proof.deleteOffers.push(backup.id)} newest={{id: 'newest', label: 'Newest'}}
+    backups={[{id: 'newest', createdAt: '2026-10-22T03:00:00-03:00', kind: 'scheduled', schemaVersion: 41, serverVersion: '1.4.2', bytes: 18*1024*1024, path: '/private-not-drawn/portico.db'}, {id: 'manual', createdAt: '2026-10-20T18:12:00-03:00', kind: 'manual', schemaVersion: 41, serverVersion: '1.4.2', bytes: 17*1024*1024, path: '/private-not-drawn/manual.db'}]} /></>;
   return <><IconSprite /><button type="button" onClick={() => setOpen(true)}>Reopen fixture</button><button type="button" onClick={() => setIdentity(value => value + 1)}>Replace fixture scope</button>
     <ServerFolderPicker open={open} api={api} purpose={purpose} initialPath={folder} onClose={() => {proof.closes++;setOpen(false);}} onChoose={paths => {(proof.choices as string[][]).push([...paths]);}} />
   </>;
