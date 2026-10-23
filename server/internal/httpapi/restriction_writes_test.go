@@ -696,6 +696,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/setup/app":                                writeExempt(reasonSignIn),
 		"POST /v1/setup/browser":                            writeExempt(reasonSignIn),
 		"POST /v1/auth/portico-return/exchange":             writeExempt(reasonSignIn),
+		"POST /v1/auth/portico-return/prepare":              writeExempt(reasonSignIn),
 		"POST /v1/setup/account/complete":                   writeExempt(reasonSignIn),
 		"POST /v1/auth/owner-reset/request":                 writeExempt(reasonSignIn),
 		"POST /v1/auth/owner-reset/verify":                  writeExempt(reasonSignIn),

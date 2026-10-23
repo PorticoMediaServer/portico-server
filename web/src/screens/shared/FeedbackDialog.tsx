@@ -65,7 +65,7 @@ export function FeedbackDialog({open, onOpenChange, itemId, playbackSessionId, t
           {capabilities.diagnosticsSupported && category?.wantsPlaybackSession && playbackSessionId ? (
             <Checkbox checked={draft.attachDiagnostics} disabled={!capabilities.diagnosticsOptional} onCheckedChange={v => setDraft(d => ({...d, attachDiagnostics: v === true}))} label={t('feedback.playbackDiagnostics')} help={t('feedback.playbackDiagnosticsHelp')} />
           ) : null}
-          <Text as="p" variant="caption" tone="tertiary">Sent as {capabilities.reporterName} to this server’s owner.</Text>
+          <Text as="p" variant="caption" tone="tertiary">{t('feedback.sentAs', {name: capabilities.reporterName})}</Text>
         </div>
       ) : null}
     </Dialog>

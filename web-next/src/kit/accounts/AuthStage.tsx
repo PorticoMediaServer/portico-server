@@ -1,0 +1,59 @@
+import {useId, useRef, useState, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import {presentError} from '@core/presentation/errors.ts';
+import {ColourBackdrop} from '../artwork';
+import {TextField, type TextFieldProps} from '../controls/Fields';
+import {Icon} from '../Icon';
+import wordmark from '../../shell/wordmark.svg';
+import styles from './accounts.module.css';
+
+const t = defaultI18n.t;
+/** The public auth surface has colour only. It never accepts library artwork. */
+export function AuthStage({children, shape = 'side', layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
+  children: ReactNode; shape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
+  className?: string; contentClassName?: string;
+}) {
+  return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout}>
+    <ColourBackdrop shape={shape} />
+    <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('next.shell.account')}</span>}</header>
+    {topRight && <div className={styles.topRight}>{topRight}</div>}
+    <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
+    {legal && <footer className={styles.legal}><a href="https://getportico.tv/terms">{t('auth.terms')}</a><a href="https://getportico.tv/privacy">{t('accounts.legal.privacy')}</a></footer>}
+  </section>;
+}
+export function AuthLinks({children}: {children: ReactNode}) { return <div className={styles.links}>{children}</div>; }
+
+/** One real password input retains browser autofill and native password-manager support. */
+export function AuthPasswordField(props: Omit<TextFieldProps, 'type' | 'trailing'>) {
+  const [shown, setShown] = useState(false);
+  return <TextField {...props} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
+    aria-label={t(shown ? 'field.hidePassword' : 'field.showPassword')} aria-pressed={shown} onClick={() => setShown(value => !value)}>
+    <Icon name="i-eye" size={20} />{!shown && <span>{t('accounts.signIn.showPassword')}</span>}
+  </button>} />;
+}
+
+/** A single accessible input owns typing, paste, selection and one-time-code autofill.
+ * The boxes are visual only; completing a value never moves focus to another field. */
+export function AuthCodeBoxes({length, value, onChange, onComplete, label, error, disabled = false, autoFocus = false}: {
+  length: 4 | 6; value: string; onChange: (value: string) => void; onComplete: (value: string) => void;
+  label: string; error?: ReactNode; disabled?: boolean; autoFocus?: boolean;
+}) {
+  const id = useId(), input = useRef<HTMLInputElement>(null), [focused, setFocused] = useState(false);
+  return <div className={styles.codeGroup}>
+    <div className={styles.codeBoxes} data-error={Boolean(error) || undefined} data-focused={focused || undefined} onClick={() => input.current?.focus()}>
+      <input ref={input} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={length}
+        autoFocus={autoFocus} disabled={disabled} aria-label={label} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? id : undefined}
+        value={value} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={event => {
+          const next = event.currentTarget.value.replace(/[^0-9]/g, '').slice(0, length); onChange(next);
+          if (next.length === length && next !== value) onComplete(next);
+        }} />
+      {Array.from({length}, (_, index) => <span key={index} aria-hidden="true" data-filled={length === 4 && index < value.length || undefined} data-current={focused && index === value.length || undefined}>{length === 6 ? value[index] : null}</span>)}
+    </div>
+    {error && <p className={styles.codeError} id={id} role="alert">{error}</p>}
+  </div>;
+}
+export function AuthError({error}: {error: unknown}) {
+  if (!error) return null;
+  const result = presentError(error, 'sign-in', {operation: 'action', i18n: defaultI18n});
+  return result.silent ? null : <p className={styles.error} role="alert"><Icon name="i-warn" size={20} />{result.body}</p>;
+}
