@@ -180,15 +180,21 @@ def inside():
         values = [[v for v in f.get('side_data_list', [])
                    if '2094-40' in v.get('side_data_type', '') or 'HDR10+' in v.get('side_data_type', '')]
                   for f in frames]
-        if len(frames) != 24 or any(len(v) != 1 for v in values):
+        if len(frames) != 24:
+            raise ValueError(f'HDR10+ fixture frame count changed: {len(frames)} instead of 24')
+        if any(len(v) != 1 for v in values):
             raise ValueError('HDR10+ per-frame metadata missing')
         return [v[0] for v in values]
 
     source = fixtures / 'hdr10plus.hevc'
     reference = metadata(source)
     copied, encoded = runtime / 'copied.mp4', runtime / 'encoded.hevc'
+    # The elementary-stream fixture has no packet PTS. The MOV muxer's
+    # inferred negative timestamps otherwise create an edit list that hides
+    # two frames. This gate measures all 24 metadata records, not raw-stream
+    # timestamp inference; production clock preservation has separate fixtures.
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-i', str(source), '-map', '0:v:0',
-         '-an', '-c:v', 'copy', str(copied)])
+         '-an', '-c:v', 'copy', '-use_editlist', '0', str(copied)])
     run([ffmpeg, '-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1', '-i', str(source),
          '-map', '0:v:0', '-an', '-frames:v', '24', '-c:v', 'libx265', '-threads:v', '1',
          '-pix_fmt', 'yuv420p10le', '-x265-params',
