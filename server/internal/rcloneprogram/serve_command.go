@@ -328,7 +328,9 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 
 // Check is the non-I/O process fence used before/after metadata/range I/O and
 // every dial. Actor, target and fresh provider observations are separate checks.
-func (s *ServeProcess) Check(ctx context.Context) error {
+// CheckLocal is safe inside the caller's publication transaction. It checks
+// physical custody/lifetime only, without DB snapshots, network or capacity waits.
+func (s *ServeProcess) CheckLocal(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -340,7 +342,10 @@ func (s *ServeProcess) Check(ctx context.Context) error {
 		return ErrServeStopped
 	default:
 	}
-	if err := s.lease.Context().Err(); err != nil {
+	return s.lease.Context().Err()
+}
+func (s *ServeProcess) Check(ctx context.Context) error {
+	if err := s.CheckLocal(ctx); err != nil {
 		return err
 	}
 	if err := s.lease.Check(ctx); err != nil {
@@ -349,7 +354,7 @@ func (s *ServeProcess) Check(ctx context.Context) error {
 		}
 		return err
 	}
-	return nil
+	return s.CheckLocal(ctx)
 }
 
 func (s *ServeProcess) Generation() string { return s.generation }

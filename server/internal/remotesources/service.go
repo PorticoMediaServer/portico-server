@@ -50,6 +50,8 @@ type Service struct {
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
 	serveClosed         bool
+	serveLife           context.Context
+	readLeaseSequence   atomic.Int64
 	mu                  sync.Mutex
 	active              map[string]map[string]activeRead
 	bindings            atomic.Value
@@ -389,6 +391,9 @@ func (s *Service) invalidate(id string) {
 // woken by commits rather than by a thirty-second clock that issued three delete
 // transactions on an idle server forever. The safety tick is the backstop.
 func (s *Service) Run(ctx context.Context) {
+	if s.startReadRuntime(ctx) != nil {
+		return
+	}
 	defer s.stopServeProcesses()
 	defer s.stopNativeListings()
 	defer func() {

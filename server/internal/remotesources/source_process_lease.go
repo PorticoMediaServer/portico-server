@@ -5,7 +5,10 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"os"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
@@ -13,14 +16,19 @@ import (
 // It is capacity/custody, not actor, target, operation or cost authorization.
 // The command supervisor consumes it and releases only after physical Wait.
 type sourceProcessLease struct {
-	service    *Service
-	source     string
-	generation string
-	root       string
-	profile    SourceReadProfile
-	life       context.Context
-	cancel     context.CancelFunc
-	released   atomic.Bool
+	service            *Service
+	source             string
+	generation         string
+	root               string
+	profile            SourceReadProfile
+	life               context.Context
+	cancel             context.CancelFunc
+	released           atomic.Bool
+	process            *rcloneprogram.ServeProcess
+	proxy              *remotemedia.PolicyProxy
+	cache              string
+	sequential         bool
+	networkFingerprint string
 }
 
 func (s *Service) reserveSourceProcess(ctx context.Context, source, generation string, profileRevision int64) (*sourceProcessLease, error) {
@@ -119,6 +127,17 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		l.cancel()
 		return storage.ErrRemoteChanged
 	}
+	if l.networkFingerprint != "" {
+		network, e := l.service.sourceNetworkTx(ctx, snapshot.Tx(), l.source, l.root)
+		sequential, se := sourceSequentialTx(ctx, snapshot.Tx(), l.source, l.root)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if e != nil || se != nil || network.Fingerprint != l.networkFingerprint || sequential != l.sequential {
+			l.cancel()
+			return storage.ErrRemoteChanged
+		}
+	}
 	return l.CheckLocal()
 }
 
@@ -127,6 +146,13 @@ func (l *sourceProcessLease) Release() {
 		return
 	}
 	l.cancel()
+	if l.proxy != nil {
+		l.proxy.Close()
+		_ = l.proxy.Wait(context.Background())
+	}
+	if l.cache != "" {
+		_ = os.RemoveAll(l.cache)
+	}
 	l.service.serveMu.Lock()
 	defer l.service.serveMu.Unlock()
 	if l.service.serveLeases[l.source] == l {
