@@ -44,7 +44,7 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
   const zip = new ZipReader(new RangeReader(source, signal), {useWebWorkers: false, checkCrc32: true, strictness: 'strict'});
   const entries = new Map<string, FileEntry>(); let total = 0;
   try {
-    for await (const entry of zip.getEntriesGenerator({signal})) {
+    for await (const entry of zip.getEntriesGenerator()) {
       throwIfAborted(signal);
       if (entry.directory) continue;
       const name = safeArchivePath(entry.filename);
@@ -60,6 +60,7 @@ export async function openEpubArchive(source: ReaderSource, parent: AbortSignal)
     const assets: EpubAssets = {
       entries: Object.freeze([...entries].map(([path,e]) => Object.freeze({path, size: e.uncompressedSize}))),
       async read(path, callerSignal) {
+        throwIfAborted(signal); throwIfAborted(callerSignal);
         const entry = entries.get(safeArchivePath(path)); if (!entry) return new Uint8Array();
         const reading = tail.then(async () => {
           const readSignal = AbortSignal.any([signal, callerSignal]); throwIfAborted(readSignal);
