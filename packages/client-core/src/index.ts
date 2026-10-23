@@ -2147,3 +2147,6 @@ export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} fro
 
 export {videoPictureName, videoAudioFormatName, videoTrackName, videoTrackWords, formatVideoBytes} from './video-track-labels.ts';
 export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts';
+
+export {createReadingHost, connectReadingHost} from './reading-host.ts';
+export type {ReadingHostSession, ReadingHostTransport, ReadingGuest} from './reading-host.ts';
