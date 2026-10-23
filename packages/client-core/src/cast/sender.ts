@@ -76,6 +76,9 @@ export class CastController {
   private displayName: string;
   private transport?: CastTransport;
   private detach: (() => void)[] = [];
+  private startGeneration = 0;
+  private requestSequence = 0;
+  private loads = new Map<string, {resolve(itemId: string): void; reject(error: Error): void}>();
   private waiting?: {resolve(): void; reject(e: Error): void};
   private adopting = false;
   private adoptTimer?: unknown;
@@ -117,19 +120,28 @@ export class CastController {
   /** Pair with the TV on `transport` and start `itemId` there. True once the TV has the title. */
   async start(transport: CastTransport, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
     this.release(false);
+    const generation = this.startGeneration;
     this.transport = transport;
     this.detach.push(transport.onMessage(raw => { const e = parseCastEvent(raw); if (e) this.receive(e); }));
     this.detach.push(transport.onSessionEnd(() => this.sessionEnded()));
+    let loading = false;
     this.publish({phase: 'pairing', deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
-      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, displayName: transport.deviceName.slice(0, 64)}));
+      const displayName = transport.deviceName.trim().slice(0, 64);
+      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, ...(displayName ? {displayName} : {})}));
+      if (generation !== this.startGeneration) return false;
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
       await this.exchange({type: 'pair', code, origin: this.origin, displayName: this.displayName});
-      await transport.send({type: 'load', itemId, startSeconds: Math.max(0, startSeconds), ...castMetadataFields(meta), ...castChoiceFields(choices)});
-      this.publish({phase: 'casting', itemId, positionSeconds: Math.max(0, startSeconds), paused: false});
+      if (generation !== this.startGeneration) return false;
+      loading = true;
+      const playingItemId = await this.load({type: 'load', itemId, startSeconds: Math.max(0, startSeconds), ...castMetadataFields(meta), ...castChoiceFields(choices)});
+      if (generation !== this.startGeneration) return false;
+      this.publish({phase: 'casting', itemId: playingItemId, positionSeconds: Math.max(0, startSeconds), paused: false});
       return true;
     } catch (e) {
+      if (generation !== this.startGeneration) return false;
+      if (loading) this.send({type: 'stop'});
       this.release(false);
       const id: MessageId = e instanceof CastFailure ? e.messageId : 'cast.error.unreachable';
       this.publish({phase: 'error', takeover: undefined, errorId: id, error: e instanceof CastFailure ? serviceText(id) : serviceProblem(e, 'playback', id)});
@@ -175,6 +187,18 @@ export class CastController {
     });
   }
 
+  /** Correlate a bounded number of in-flight receiver loads; a transport send is not playback. */
+  private load(command: Extract<CastCommand, {type: 'load'}>): Promise<string> {
+    if (this.loads.size >= 8 || !this.transport) return Promise.reject(new CastFailure('cast.error.busy'));
+    const requestId = 'load-' + (++this.requestSequence);
+    return new Promise<string>((resolve, reject) => {
+      const finish = (error?: Error, itemId = command.itemId) => { if (!this.loads.delete(requestId)) return; this.clearTimer(timer); if (error) reject(error); else resolve(itemId); };
+      const timer = this.setTimer(() => finish(new CastFailure('cast.error.noAnswer')), 150_000);
+      this.loads.set(requestId, {resolve: itemId => finish(undefined, itemId), reject: error => finish(error)});
+      void this.transport!.send({...command, requestId}).catch(() => finish(new CastFailure('cast.error.unreachable')));
+    });
+  }
+
   private receive(e: CastEvent) {
     switch (e.type) {
       case 'paired': if(e.controlToken){try{this.controllerStorage?.set(this.controllerKey(),e.controlToken);}catch{}} this.waiting?.resolve(); this.waiting = undefined; return;
@@ -183,7 +207,8 @@ export class CastController {
       case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;
       case 'busy': this.fail('cast.error.busy'); return;
       case 'pair-required': this.fail('cast.error.lostPairing'); return;
-      case 'load-failed': this.fail('cast.error.loadFailed'); return;
+      case 'loaded': this.loads.get(e.requestId)?.resolve(e.itemId); return;
+      case 'load-failed': if (e.requestId) this.loads.get(e.requestId)?.reject(new CastFailure('cast.error.loadFailed')); else this.fail('cast.error.loadFailed'); return;
       case 'takeover-requested': {
         this.clearTimer(this.takeoverTimer);
         this.publish({takeover: Object.freeze({requester: e.requester || serviceText('cast.someone')})});
@@ -197,7 +222,7 @@ export class CastController {
         this.publish({phase: 'replaced', takeover: undefined});
         return;
       case 'status':
-        if (this.state.phase === 'casting') this.publish({positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
+        if (this.state.phase === 'casting') this.publish({itemId: e.itemId || undefined, positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
         return;
     }
   }
@@ -211,8 +236,11 @@ export class CastController {
 
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
   private release(stopReceiver: boolean, end = true) {
+    this.startGeneration++;
     for (const off of this.detach.splice(0)) off();
+    this.waiting?.reject(new CastFailure('cast.error.noAnswer'));
     this.waiting = undefined;
+    for (const pending of [...this.loads.values()]) pending.reject(new CastFailure('cast.error.noAnswer'));
     const t = this.transport;
     this.transport = undefined;
     if (t && end) t.end(stopReceiver);
