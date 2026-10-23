@@ -69,6 +69,19 @@ test('watched threshold keeps inheritance distinct from explicit95 and refuses u
  assert.equal(readSettingsBinding(mapped,{preferences:{...inherited,effectiveSource:{...inherited.effectiveSource,'playback.playedThresholdPercent':'policy'}}}),undefined);
 });
 
+test('inherited threshold requires genuine integer policy and effective facts',()=>{
+ const mapped=binding('playback.playedThresholdPercent'),key=mapped.key;
+ for(const effective of ['95',true,74,101,95.5]){
+  const preferences=snapshot();preferences.effective[key]=effective as PreferenceValue;
+  assert.equal(readSettingsBinding(mapped,{preferences}),undefined);
+ }
+ for(const change of [{type:'boolean',default:true},{default:74},{default:95.5}]){
+  const preferences=snapshot();Object.assign(preferences.registry.fields.find(f=>f.key===key)!,change);
+  assert.equal(readSettingsBinding(mapped,{preferences}),undefined);
+  if(change.type)assert.throws(()=>settingsBindingPatch(mapped,'server',{preferences}));
+ }
+});
+
 test('inherit patch uses the existing PreferencesReader revision and nullable wire, then reloads',async()=>{
  let current=snapshot({'playback.playedThresholdPercent':95}),writes=0;
  const reader=new PreferencesReader({async request<T>(_path:string,method='GET',raw?:unknown):Promise<T>{

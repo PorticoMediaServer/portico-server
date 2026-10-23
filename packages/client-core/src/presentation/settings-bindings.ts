@@ -250,6 +250,7 @@ export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBind
   const stored=Object.hasOwn(document.values,binding.key),effective=snapshot.effective[binding.key];
   if(stored&&source==='default'||!stored&&source===scope||effective===undefined)return undefined;
   if(binding.codec==='inherited-watched-threshold'){
+   if(field.type!=='integer'||!validPublishedPreference(snapshot,scope,binding.key,field.default)||!validPublishedPreference(snapshot,scope,binding.key,effective))return undefined;
    if(!stored&&source==='default')return {current:'server',effective:'server',default:'server',source,configOnly:false};
    const current=document.values[binding.key];
    if(!stored||source!==scope||!validPublishedPreference(snapshot,scope,binding.key,current)||!validPublishedPreference(snapshot,scope,binding.key,effective))return undefined;
@@ -283,7 +284,7 @@ function validPublishedPreference(snapshot:PreferenceSnapshot,scope:PreferenceSc
 function preferenceBindingPatch(binding:SettingsBinding,values:Readonly<Record<string,unknown>>,sources:SettingsBindingSources):SettingsBindingPatch{
  const snapshot=sources.preferences;if(!snapshot)throw new Error('Invalid setting value.');
  const fields=Object.keys(values).map(key=>snapshot.registry.fields.find(f=>f.key===key));
- const scope=binding.scope??(fields[0]?.scopes.length===1?fields[0].scopes[0]:undefined);
+ const first=fields[0],scope=binding.scope??(first?.scopes.length===1?first.scopes[0]:undefined);
  if(!scope||scope==='profile-device'&&!snapshot.deviceBound||!snapshot.documents.some(d=>d.scope===scope)||fields.some(f=>!f||!f.scopes.includes(scope)))throw new Error('Invalid setting value.');
  return {form:'preferences',values:checkedPreferencePatch(snapshot,scope,values)};
 }
@@ -305,7 +306,11 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
  }
  if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:undefined;if(n===undefined)throw new Error('Custom is derived.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}
  let raw=value;
- if(binding.codec==='inherited-watched-threshold')raw=value==='server'||value===null?null:value;
+ if(binding.codec==='inherited-watched-threshold'){
+  const field=sources.preferences?.registry.fields.find(f=>f.key===binding.key);
+  if(field?.type!=='integer')throw new Error('Invalid setting value.');
+  raw=value==='server'||value===null?null:value;
+ }
  if(binding.codec==='video-quality-choice'){
   if(typeof value!=='string'||value==='2160p'||!canonicalQualityLadder.some(q=>(q.id==='2160p'?'4k':q.id)===value)||binding.key==='downloadMaxQuality'&&value==='automatic')throw new Error('Invalid setting value.');
   raw=value==='4k'?'2160p':value;
