@@ -20,7 +20,5 @@ func (h *Handler) lifecycleRoutes(mux *http.ServeMux) {
 	}))
 	// Password changes use the same purpose-bound proof path, including MFA.
 	mux.HandleFunc("POST /v1/account/password", h.securityAction)
-	// Server memberships, invitations and profiles are the server's own now
-	// (Spec — Hosted at Scale). A Portico Account keeps one internal primary
-	// profile, which only the claim protocol still names.
+	// Membership and profiles are authoritative on each server.
 }

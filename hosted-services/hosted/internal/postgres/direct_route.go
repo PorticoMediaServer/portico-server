@@ -210,7 +210,7 @@ func recordDirectAddressTx(ctx context.Context, tx *sql.Tx, serverID, ns string,
 }
 
 func (s *Store) DirectAddressChanges(ctx context.Context, after int64, limit int) ([]directroute.AddressChange, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT d.sequence,d.namespace,d.ipv4,d.ipv6,n.member_label,d.lan_ipv4,d.lan_ipv6,CASE WHEN n.previous_label_until>clock_timestamp() THEN n.previous_member_label ELSE '' END,COALESCE(to_char(n.previous_label_until AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),'') FROM direct_addresses d JOIN certificate_namespaces n ON n.namespace=d.namespace WHERE d.sequence>$1 ORDER BY d.sequence LIMIT $2`, after, limit)
+	rows, e := s.DB.QueryContext(ctx, `SELECT d.sequence,d.namespace,d.ipv4,d.ipv6,n.member_label,d.lan_ipv4,d.lan_ipv6,CASE WHEN n.previous_label_until>clock_timestamp() THEN n.previous_member_label ELSE '' END,COALESCE(to_char(n.previous_label_until AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),'') FROM direct_addresses d JOIN certificate_namespaces n ON n.namespace=d.namespace WHERE d.sequence>$1 UNION ALL SELECT sequence,namespace,'','',member_label,'','',previous_member_label,'' FROM direct_address_withdrawals WHERE sequence>$1 ORDER BY 1 LIMIT $2`, after, limit)
 	if e != nil {
 		return nil, e
 	}

@@ -68,11 +68,6 @@ type KeySet struct {
 	Root         string               `json:"root"`
 }
 
-// RevisionRequest acknowledges a signed policy or erasure revision.
-type RevisionRequest struct {
-	Revision int64 `json:"revision"`
-}
-
 // SignInRequest is a password sign-in.
 type SignInRequest struct {
 	Username    string `json:"username"`
@@ -240,11 +235,6 @@ type DeletionTokenRequest struct {
 	Token string `json:"deletionToken"`
 }
 
-// ErasureList is the signed erasure jobs a server must apply.
-type ErasureList struct {
-	Items []directory.SignedPolicy `json:"items"`
-}
-
 // AppStoreNotificationRequest is Apple's App Store Server Notification envelope.
 type AppStoreNotificationRequest struct {
 	SignedPayload string `json:"signedPayload"`
@@ -311,7 +301,6 @@ type ClaimSignedRequest struct {
 // ClaimCodeRequest looks up or decides a claim by its approval code.
 type ClaimCodeRequest struct {
 	Code             string `json:"code"`
-	OwnerProfileID   string `json:"ownerProfileId,omitempty"`
 	ReplacesServerID string `json:"replacesServerId,omitempty"`
 }
 

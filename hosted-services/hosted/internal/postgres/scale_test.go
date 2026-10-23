@@ -37,9 +37,9 @@ func TestScale200kAuthenticatedHeartbeat(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = f.store.DB.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at)
- SELECT 'fleet_'||substring(id FROM 5),id,owner_account_id,decode(translate(public_key,'-_','+/')||'=','base64'),0,name,$1,token_hash,'installed',1,1,token_hash,clock_timestamp()
- FROM servers WHERE name='Fleet fixture'`, f.owner.Profiles[0].ID)
+	_, e = f.store.DB.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at)
+ SELECT 'fleet_'||substring(id FROM 5),id,owner_account_id,decode(translate(public_key,'-_','+/')||'=','base64'),0,name,token_hash,'installed',1,1,token_hash,clock_timestamp()
+ FROM servers WHERE name='Fleet fixture'`)
 	if e != nil {
 		t.Fatal(e)
 	}

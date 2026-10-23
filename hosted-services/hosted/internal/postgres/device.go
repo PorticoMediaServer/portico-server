@@ -60,9 +60,9 @@ func (s *Store) StartDevice(ctx context.Context, c device.Creation) (device.Crea
 	}
 	return device.Created{ID: c.ID, Cipher: c.Cipher, ExpiresAt: c.ExpiresAt, Interval: 5}, tx.Commit()
 }
-func (s *Store) ReviewDevice(ctx context.Context, hash []byte) (device.Preview, error) {
+func (s *Store) ReviewDevice(ctx context.Context, account string, hash []byte) (device.Preview, error) {
 	var p device.Preview
-	e := s.DB.QueryRowContext(ctx, `SELECT id,device_name,platform,app_version,expires_at,protocol,tv_public_key,client_request_id FROM device_authorizations WHERE user_hash=$1 AND status='pending' AND expires_at>now()`, hash).Scan(&p.RequestID, &p.DeviceName, &p.Platform, &p.AppVersion, &p.ExpiresAt, &p.Protocol, &p.PublicKey, &p.ClientRequestID)
+	e := s.DB.QueryRowContext(ctx, `UPDATE device_authorizations SET reviewed_account_id=$2 WHERE user_hash=$1 AND status='pending' AND expires_at>clock_timestamp() AND (reviewed_account_id IS NULL OR reviewed_account_id=$2) AND EXISTS(SELECT 1 FROM accounts WHERE id=$2) RETURNING id,device_name,platform,app_version,expires_at,protocol,tv_public_key,client_request_id`, hash, account).Scan(&p.RequestID, &p.DeviceName, &p.Platform, &p.AppVersion, &p.ExpiresAt, &p.Protocol, &p.PublicKey, &p.ClientRequestID)
 	if errors.Is(e, sql.ErrNoRows) {
 		return p, &device.ProtocolError{Code: "invalid_grant"}
 	}
@@ -83,14 +83,17 @@ func (s *Store) DecideDevice(ctx context.Context, expected identity.CurrentFamil
 	}
 	account := facts.AccountID
 	var status string
-	var owner sql.NullString
+	var owner, reviewer sql.NullString
 	var expiry time.Time
-	e = tx.QueryRowContext(ctx, `SELECT status,approved_account_id,expires_at FROM device_authorizations WHERE id=$1 AND user_hash=$2 FOR UPDATE`, id, hash).Scan(&status, &owner, &expiry)
+	e = tx.QueryRowContext(ctx, `SELECT status,approved_account_id,expires_at,reviewed_account_id FROM device_authorizations WHERE id=$1 AND user_hash=$2 FOR UPDATE`, id, hash).Scan(&status, &owner, &expiry, &reviewer)
 	if errors.Is(e, sql.ErrNoRows) {
 		return &device.ProtocolError{Code: "invalid_grant"}
 	}
 	if e != nil {
 		return e
+	}
+	if reviewer.String != account {
+		return device.ErrConflict
 	}
 	var now time.Time
 	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
@@ -237,24 +240,6 @@ func (s *Store) pollDevice(ctx context.Context, hash []byte, issue device.Issue)
 		if e = audit(ctx, tx, account.String, "device.consume", id, 0); e != nil {
 			return device.Grant{}, e
 		}
-	}
-	rows, e := tx.QueryContext(ctx, sessionProfilesQuery, account.String)
-	if e != nil {
-		return device.Grant{}, e
-	}
-	v.Profiles = []identity.Profile{}
-	for rows.Next() {
-		var p identity.Profile
-		if e = rows.Scan(&p.ID, &p.Name); e != nil {
-			rows.Close()
-			return device.Grant{}, e
-		}
-		v.Profiles = append(v.Profiles, p)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return device.Grant{}, e
 	}
 	// Encryption and the exact replay receipt precede the SAME commit as Device
 	// and credential insertion. A failed seal cannot leave an issued family.

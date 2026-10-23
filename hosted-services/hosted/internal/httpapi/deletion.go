@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/postgres"
 )
 
@@ -53,23 +52,4 @@ func (h *Handler) deletionRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, v)
 	})
-	mux.HandleFunc("GET /v1/servers/{id}/erasures", h.server(func(w http.ResponseWriter, r *http.Request, a directory.ServerAuthority) {
-		v, e := h.Directory.ServerErasures(r.Context(), a)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, ErasureList{Items: v})
-	}))
-	mux.HandleFunc("POST /v1/servers/{id}/erasures/{erasure}/ack", h.server(func(w http.ResponseWriter, r *http.Request, a directory.ServerAuthority) {
-		var q RevisionRequest
-		if !decode(w, r, &q) {
-			return
-		}
-		if e := h.Directory.ServerAcknowledgeErasure(r.Context(), a, r.PathValue("erasure"), q.Revision); e != nil {
-			failure(w, e)
-			return
-		}
-		w.WriteHeader(204)
-	}))
 }

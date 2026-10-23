@@ -132,7 +132,7 @@ func Definitions() []apikit.Definition {
 		route[httpapi.AppleNotificationRequest, httpapi.AcceptedResponse]("POST", "/v1/identity/apple/notifications", "identity_apple_notification", "Receive a Sign in with Apple server notification.", ProviderNotification, apikit.ScopeSession, 200).lane(security).body(oidclogin.AppleNotificationMaxBytes),
 
 		// Sessions.
-		route[NoBody, identity.Viewer]("GET", "/v1/me", "me_get", "Read the signed-in account and its profiles.", AccountSession, apikit.ScopeSession, 200),
+		route[NoBody, identity.Viewer]("GET", "/v1/me", "me_get", "Read the signed-in account.", AccountSession, apikit.ScopeSession, 200),
 		route[NoBody, NoBody]("DELETE", "/v1/sessions/current", "session_current_delete", "Sign out the presented access token.", AccountSession, apikit.ScopeSession, 204).lane(security),
 		route[httpapi.RefreshRequest, identity.Session]("POST", "/v1/sessions/refresh", "session_refresh", "Rotate a refresh credential for a new session.", Public, apikit.ScopeSession, 200).lane(security),
 		route[httpapi.RefreshRevokeRequest, NoBody]("POST", "/v1/sessions/revoke", "session_revoke", "End a refresh family.", Public, apikit.ScopeSession, 204).lane(security),
@@ -164,8 +164,6 @@ func Definitions() []apikit.Definition {
 		route[NoBody, postgres.AccountDocument]("GET", "/v1/account", "account_get", "Read the account document.", AccountSession, apikit.ScopeSession, 200),
 		route[httpapi.DisplayNameRequest, NoBody]("POST", "/v1/account/name", "account_name_set", "Rename the account.", AccountSession, apikit.ScopeSession, 204),
 		route[NoBody, postgres.AccountDeviceList]("GET", "/v1/account/devices", "account_devices_list", "List the account's devices.", AccountSession, apikit.ScopeSession, 200),
-		route[NoBody, postgres.AccountPreferences]("GET", "/v1/account/preferences", "account_preferences_get", "Read the account's preferences.", AccountSession, apikit.ScopeSession, 200),
-		route[postgres.AccountPreferenceEdit, postgres.AccountPreferences]("PUT", "/v1/account/preferences", "account_preferences_set", "Change the account's preferences.", AccountSession, apikit.ScopeSession, 200),
 		route[NoBody, identity.SecurityState]("GET", "/v1/account/security", "account_security_get", "Read the account's sign-in methods.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		route[httpapi.SecurityProofRequest, identity.RecentProof]("POST", "/v1/account/security/proof", "account_security_proof", "Prove the password for a security action.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		route[postgres.SecurityAction, identity.SecurityResult]("POST", "/v1/account/security/actions", "account_security_action", "Perform a proven security action.", AccountSession, apikit.ScopeSession, 200).lane(security),
@@ -202,9 +200,6 @@ func Definitions() []apikit.Definition {
 		route[directory.CheckInReport, directory.Heartbeat]("POST", "/v1/servers/{id}/heartbeat", "server_heartbeat", "Check in: the wake answered and the member list's state.", ServerCredential, apikit.ScopeAdmin, 200),
 		route[directory.MemberPush, directory.MemberPushResult]("POST", "/v1/servers/{id}/members", "server_members_push", "Report the server's Portico Account members for discovery.", ServerCredential, apikit.ScopeAdmin, 200).body(httpapi.MemberPushBody),
 		route[postgres.ServerEvent, httpapi.CodeResponse]("POST", "/v1/servers/{id}/events", "server_event", "Report a server event for account notifications.", ServerCredential, apikit.ScopeAdmin, 200),
-		route[NoBody, httpapi.CodeResponse]("POST", "/v1/servers/{id}/notifications/storage-nearly-full", "server_storage_warning", "Report the server's storage is nearly full.", ServerCredential, apikit.ScopeAdmin, 202),
-		route[NoBody, httpapi.ErasureList]("GET", "/v1/servers/{id}/erasures", "server_erasures_list", "List signed erasure jobs for the server.", ServerCredential, apikit.ScopeAdmin, 200).lane(security),
-		route[httpapi.RevisionRequest, NoBody]("POST", "/v1/servers/{id}/erasures/{erasure}/ack", "server_erasure_ack", "Acknowledge an applied erasure.", ServerCredential, apikit.ScopeAdmin, 204).lane(security),
 		route[directory.RouteObservation, directory.RouteObservationReceipt]("POST", "/v1/servers/{id}/routes", "server_routes_observe", "Report the server's observed routes.", ServerCredential, apikit.ScopeAdmin, 200),
 		route[httpapi.RouteProofRequest, directory.EndpointReceipt]("POST", "/v1/servers/{id}/routes/prove", "server_routes_prove", "Register an endpoint for an observed route generation.", ServerCredential, apikit.ScopeAdmin, 200),
 		route[directory.EndpointRequest, directory.EndpointReceipt]("POST", "/v1/servers/{id}/endpoint", "server_endpoint_register", "Register the server's endpoint.", ServerCredential, apikit.ScopeAdmin, 200),
@@ -226,11 +221,11 @@ func Definitions() []apikit.Definition {
 		// Server claim protocol (internal/httpapi ClaimHandler).
 		route[claims.ApprovalInput, claims.Envelope]("POST", "/v1/server-claims/approve", "server_claim_approve", "Approve a server claim.", AccountSession, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[claims.Commit, claims.Commit]("POST", "/v1/server-claims/ack", "server_claim_ack", "Acknowledge a committed server claim.", ServerCredential, apikit.ScopeAdmin, 200).lane(security).body(ClaimBody),
+		route[httpapi.ClaimSignedRequest, NoBody]("POST", "/v1/servers/leave", "server_registration_leave", "Withdraw an exact server registration after an offline local move.", SignedRequest, apikit.ScopeSession, 204).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.Challenge]("POST", "/v1/server-claims/nonce", "server_claim_nonce", "Request a server claim nonce.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.Commit]("POST", "/v1/server-claims/finalize", "server_claim_finalize", "Finalize a server claim.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.ResultValue]("POST", "/v1/server-claims/result", "server_claim_result", "Read a server claim's result.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.CancellationResult]("POST", "/v1/server-claims/cancel", "server_claim_cancel", "Cancel a server claim.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
-		route[httpapi.ClaimSignedRequest, claims.Envelope]("POST", "/v1/server-claims/cleanup", "server_claim_cleanup", "Clean up an abandoned server claim.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[claimweb.Signed, claimweb.Pending]("POST", "/v1/server-claims/pending", "server_claim_pending", "Register a web server claim for approval.", SignedRequest, apikit.ScopeSession, 200).lane(security),
 		// contract: a long poll that writes whitespace heartbeats before this object.
 		route[claimweb.Signed, httpapi.ClaimEventResult]("POST", "/v1/server-claims/events", "server_claim_events", "Wait for a web server claim's decision.", SignedRequest, apikit.ScopeSession, 200).lane(apikit.Realtime),

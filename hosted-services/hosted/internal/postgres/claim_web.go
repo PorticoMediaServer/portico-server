@@ -190,7 +190,7 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 
 	return p, tx.Commit()
 }
-func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code, profile, replaces string, approve bool, service *claims.Service) error {
+func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code, replaces string, approve bool, service *claims.Service) error {
 	// Claim approval's existing account/family checks remain the positive authority.
 	// Denial and approval serialize on the account lock, with a durable decision.
 	tx, e := s.DB.BeginTx(ctx, nil)
@@ -235,17 +235,9 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		return claims.ErrInvalid
 	}
 	var envelope []byte
-	if approve && profile == "" {
-		// The web page names an owner profile only when the account has several
-		// (and Hosted keeps no server profiles since server-owned membership):
-		// otherwise it is the account's primary profile, or its first.
-		if e = tx.QueryRowContext(ctx, `SELECT id FROM profiles WHERE account_id=$1 AND deleted_at IS NULL ORDER BY is_primary DESC,position,created_at,id LIMIT 1`, a.AccountID).Scan(&profile); e != nil {
-			return currentFamilyError(ctx, e)
-		}
-	}
 	if approve {
 		// Execute the same approval consumer in this transaction; no decision gap.
-		input := claims.ApprovalInput{OperationID: q.OperationID, ServerID: q.ServerID, PublicKey: q.PublicKey, LocalGeneration: q.LocalGeneration, Name: q.Name, OwnerProfileID: profile, ReplacesServerID: replaces, Purpose: q.Purpose, CurrentOwnerAccountID: q.CurrentOwnerAccountID, PreviousOwnerRole: q.PreviousOwnerRole, ReturnRegistrationID: q.ReturnRegistrationID}
+		input := claims.ApprovalInput{OperationID: q.OperationID, ServerID: q.ServerID, PublicKey: q.PublicKey, LocalGeneration: q.LocalGeneration, Name: q.Name, ReplacesServerID: replaces, Purpose: q.Purpose, CurrentOwnerAccountID: q.CurrentOwnerAccountID, PreviousOwnerRole: q.PreviousOwnerRole, ReturnRegistrationID: q.ReturnRegistrationID}
 		approval, e := s.approveClaimTx(ctx, tx, a, input, q.Audience)
 		if e != nil {
 			return e

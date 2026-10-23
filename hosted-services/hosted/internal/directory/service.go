@@ -55,7 +55,7 @@ type SignedPolicy = trust.Envelope
 
 // Contact cadence. Hosted is contacted when something changed, not to prove liveness: a server
 // Hosted can wake checks in weekly, one it cannot reach checks in daily (its only way to learn
-// of an account-side change such as an erasure).
+// of an account-side change such as a departure).
 const (
 	CheckInWakeable      = 7 * 24 * time.Hour
 	CheckInUnreachable   = 24 * time.Hour
@@ -89,9 +89,6 @@ type Heartbeat struct {
 	// reported. Either one off and the server sends its full list.
 	MemberSequence      int64 `json:"memberSequence"`
 	MemberDigestMatches bool  `json:"memberDigestMatches"`
-	// CleanupPending: an account erasure waits for this server, which then
-	// runs its signed cleanup exchange.
-	CleanupPending bool `json:"cleanupPending"`
 	// Departures are accounts that removed this server from their list here;
 	// the server ends their membership and pushes the result, unless the
 	// account joined again after leftAt.

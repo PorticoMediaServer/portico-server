@@ -20,13 +20,8 @@ type Account struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
 }
-type Profile struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
 type Viewer struct {
-	Account  Account   `json:"account"`
-	Profiles []Profile `json:"profiles"`
+	Account Account `json:"account"`
 }
 type Session struct {
 	RefreshToken     string     `json:"refreshToken,omitempty"`
@@ -36,15 +31,14 @@ type Session struct {
 	AccessToken      string     `json:"accessToken"`
 	ExpiresAt        time.Time  `json:"expiresAt"`
 	Account          Account    `json:"account"`
-	Profiles         []Profile  `json:"profiles"`
 }
 type Repository interface {
 	LifecycleRepository
-	Register(context.Context, Account, Profile, []byte, []byte, time.Time, FamilySeed) error
+	Register(context.Context, Account, []byte, []byte, time.Time, FamilySeed) error
 	Password(context.Context, string) (Account, []byte, error)
 	CreateSession(context.Context, string, []byte, time.Time, []byte, FamilySeed) error
 	Authenticate(context.Context, []byte) (Viewer, error)
-	Profiles(context.Context, string) ([]Profile, error)
+	IdentityEmail(context.Context, string) (string, error)
 	Revoke(context.Context, []byte) error
 }
 type Service struct {
@@ -68,10 +62,6 @@ var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`)
 // PasswordCost is the bcrypt cost of every account password. PasswordInstalled
 // accepts exactly this cost, so changing it needs a rehash-on-sign-in path.
 const PasswordCost = 10
-
-// PINCost is the bcrypt cost of every profile PIN. Hashes written at an older
-// cost keep verifying: bcrypt stores the cost in the hash.
-const PINCost = 8
 
 // validPassword is the only password rule: at least 8 characters (runes, not
 // bytes) and no more than bcrypt's 72 bytes. There is no character-class rule;
@@ -109,14 +99,13 @@ func (s *Service) RegisterMode(ctx context.Context, username, name, password, mo
 		return Session{}, e
 	}
 	a := Account{security.RandomID("acct_"), username, name}
-	p := Profile{security.RandomID("prof_"), name}
 	token := security.RandomID("hat_")
 	expiry := time.Now().UTC().Add(s.accessLifetime)
 	family, refresh := NewFamily(mode)
-	if e = s.repo.Register(ctx, a, p, hash, security.Hash(token), expiry, family); e != nil {
+	if e = s.repo.Register(ctx, a, hash, security.Hash(token), expiry, family); e != nil {
 		return Session{}, e
 	}
-	return Session{AccessToken: token, ExpiresAt: expiry, Account: a, Profiles: []Profile{p}, RefreshToken: refresh, FamilyID: family.ID, RefreshExpiresAt: &family.RefreshExpiresAt, Mode: mode}, nil
+	return Session{AccessToken: token, ExpiresAt: expiry, Account: a, RefreshToken: refresh, FamilyID: family.ID, RefreshExpiresAt: &family.RefreshExpiresAt, Mode: mode}, nil
 }
 func (s *Service) Login(ctx context.Context, username, password string) (Session, error) {
 	return s.LoginMode(ctx, username, password, "native")
@@ -147,11 +136,7 @@ func (s *Service) LoginMode(ctx context.Context, username, password, mode string
 	if e = s.repo.CreateSession(ctx, a.ID, security.Hash(token), expiry, hash, family); e != nil {
 		return Session{}, e
 	}
-	profiles, e := s.repo.Profiles(ctx, a.ID)
-	if e != nil {
-		return Session{}, e
-	}
-	return Session{AccessToken: token, ExpiresAt: expiry, Account: a, Profiles: profiles, RefreshToken: refresh, FamilyID: family.ID, RefreshExpiresAt: &family.RefreshExpiresAt, Mode: mode}, nil
+	return Session{AccessToken: token, ExpiresAt: expiry, Account: a, RefreshToken: refresh, FamilyID: family.ID, RefreshExpiresAt: &family.RefreshExpiresAt, Mode: mode}, nil
 }
 func (s *Service) Authenticate(ctx context.Context, token string) (Viewer, error) {
 	if len(token) < 20 || len(token) > 128 {
@@ -161,4 +146,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Viewer, error
 }
 func (s *Service) Revoke(ctx context.Context, token string) error {
 	return s.repo.Revoke(ctx, security.Hash(token))
+}
+
+func (s *Service) IdentityEmail(ctx context.Context, account string) (string, error) {
+	return s.repo.IdentityEmail(ctx, account)
 }

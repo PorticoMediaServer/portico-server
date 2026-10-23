@@ -19,15 +19,16 @@ func lockClaimServer(ctx context.Context, tx *sql.Tx, id string) error {
 }
 func consumeClaimNonce(ctx context.Context, tx *sql.Tx, v claims.Verified, c lockedClaim) error {
 	var operation, purpose, request string
+	var reservationAccount, reservationUsername, reservationGeneration, reservationOperation string
 	var revision int64
 	var nonce []byte
 	var issued, expiry time.Time
 	var consumed sql.NullTime
-	e := tx.QueryRowContext(ctx, `SELECT operation_id,purpose,request_id,approval_revision,nonce,issued_at,expires_at,consumed_at FROM claim_nonces WHERE id=$1 FOR UPDATE`, v.Wire.NonceID).Scan(&operation, &purpose, &request, &revision, &nonce, &issued, &expiry, &consumed)
+	e := tx.QueryRowContext(ctx, `SELECT operation_id,purpose,request_id,approval_revision,nonce,issued_at,expires_at,consumed_at,reservation_account_id,reservation_username,reservation_generation,reservation_operation_id FROM claim_nonces WHERE id=$1 FOR UPDATE`, v.Wire.NonceID).Scan(&operation, &purpose, &request, &revision, &nonce, &issued, &expiry, &consumed, &reservationAccount, &reservationUsername, &reservationGeneration, &reservationOperation)
 	if e != nil {
 		return claimAuthError(e)
 	}
-	if operation != v.Wire.OperationID || purpose != v.Wire.Purpose || request != v.Wire.RequestID || revision != v.Wire.ApprovalRevision || base64.RawURLEncoding.EncodeToString(nonce) != v.Wire.Nonce || !issued.Equal(v.IssuedAt) || !expiry.Equal(v.ExpiresAt) || consumed.Valid {
+	if reservationAccount != v.Wire.ReservationAccountID || reservationUsername != v.Wire.ReservationUsername || reservationGeneration != v.Wire.ReservationGeneration || reservationOperation != v.Wire.ReservationOperationID || operation != v.Wire.OperationID || purpose != v.Wire.Purpose || request != v.Wire.RequestID || revision != v.Wire.ApprovalRevision || base64.RawURLEncoding.EncodeToString(nonce) != v.Wire.Nonce || !issued.Equal(v.IssuedAt) || !expiry.Equal(v.ExpiresAt) || consumed.Valid {
 		return claims.ErrStale
 	}
 	now, e := claimDecisionTime(ctx, tx, c, expiry)
@@ -95,7 +96,7 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 			return empty, e
 		}
 		transfer := exists && owner.Valid && !revoked.Valid && key == v.Wire.PublicKey && owner.String == current && (purpose == "change-owner" && current != v.Wire.AccountID || purpose == "switch" && current == v.Wire.AccountID)
-		if purpose != "setup" && !transfer {
+		if purpose != "setup" && !(purpose == "switch" && current == "" && (!exists || !owner.Valid && revoked.Valid)) && !transfer {
 			return empty, claims.ErrStale
 		}
 		if exists && !transfer && (owner.Valid || !revoked.Valid || key != v.Wire.PublicKey) {
@@ -120,14 +121,8 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 					if _, e = tx.ExecContext(ctx, `DELETE FROM server_members WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current); e != nil {
 						return empty, e
 					}
-					if _, e = tx.ExecContext(ctx, `UPDATE memberships SET role='member',revoked=true WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current); e != nil {
-						return empty, e
-					}
 				} else {
 					if _, e = tx.ExecContext(ctx, `UPDATE server_members SET role=$3,updated_at=clock_timestamp() WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current, previous); e != nil {
-						return empty, e
-					}
-					if _, e = tx.ExecContext(ctx, `UPDATE memberships SET role=CASE WHEN $3='admin' THEN 'member' ELSE $3 END WHERE server_id=$1 AND account_id=$2`, v.Wire.ServerID, current, previous); e != nil {
 						return empty, e
 					}
 				}
@@ -141,11 +136,13 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 				return empty, e
 			}
 		}
-		generation++
-		credential++
+		if e = tx.QueryRowContext(ctx, `SELECT GREATEST($1::bigint+1,nextval('server_claim_generations'))`, generation).Scan(&generation); e != nil {
+			return empty, e
+		}
+		credential = max(credential+1, generation)
 		policy++
-		var name, profile string
-		if e = tx.QueryRowContext(ctx, `SELECT server_name,owner_profile_id FROM claim_operations WHERE id=$1`, v.Wire.OperationID).Scan(&name, &profile); e != nil {
+		var name string
+		if e = tx.QueryRowContext(ctx, `SELECT server_name FROM claim_operations WHERE id=$1`, v.Wire.OperationID).Scan(&name); e != nil {
 			return empty, e
 		}
 		if !exists {
@@ -154,7 +151,7 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 			// These are generation-local delivery/idempotency projections, not claim
 			// receipts. Retire them under the current server lock before installing B.
 			// Old wake completions are fenced by their removed lease token. Immutable
-			// claim operations/cancellations and erasure jobs are deliberately retained.
+			// claim operations/cancellations are deliberately retained.
 			for _, table := range []string{"mutation_receipts", "wake_state"} {
 				if _, e = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE server_id=$1", v.Wire.ServerID); e != nil {
 					return empty, e
@@ -171,25 +168,12 @@ func (s *Store) FinalizeClaim(ctx context.Context, v claims.Verified, material c
 			return empty, e
 		}
 		if predecessor.Valid {
-			// Invitations are pending consent, not copied access. The successor's
-			// libraries are new identities: grant no old library IDs automatically.
-			if _, e = tx.ExecContext(ctx, `INSERT INTO invitations(id,server_id,owner_id,recipient_id,operation_id,request_hash,allowed_libraries,expected_policy_revision,expected_local_revision,expires_at) SELECT 'inv_'||md5($1||m.account_id),$1,$2,m.account_id,'succession_'||md5($1||m.account_id),$4,'{}',$5,0,clock_timestamp()+interval '7 days' FROM memberships m WHERE m.server_id=$3 AND m.account_id<>$2 AND NOT m.revoked GROUP BY m.account_id`, v.Wire.ServerID, v.Wire.AccountID, predecessor.String, material.Hash, policy); e != nil {
-				return empty, e
-			}
 			if _, e = tx.ExecContext(ctx, `UPDATE servers SET name=(SELECT name FROM servers WHERE id=$2) WHERE id=$1`, v.Wire.ServerID, predecessor.String); e != nil {
 				return empty, e
 			}
 			if e = retireServerTx(ctx, tx, v.Wire.AccountID, predecessor.String, oldClaim.Int64, oldCredential.Int64, "replaced", v.Wire.ServerID); e != nil {
 				return empty, e
 			}
-		}
-		// A revoked prior claim cannot carry member grants/restrictions into the new
-		// owner projection. Cancellation already revoked every previous grant.
-		if _, e = tx.ExecContext(ctx, `DELETE FROM restrictions WHERE server_id=$1 AND account_id=$2 AND profile_id=$3`, v.Wire.ServerID, v.Wire.AccountID, profile); e != nil {
-			return empty, e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO memberships(server_id,account_id,profile_id,role) VALUES($1,$2,$3,'owner') ON CONFLICT(server_id,account_id,profile_id) DO UPDATE SET role='owner',revoked=false,allowed_libraries='{}'`, v.Wire.ServerID, v.Wire.AccountID, profile); e != nil {
-			return empty, e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE claim_operations SET state='committed_pending_install',claim_generation=$2,credential_generation=$3,committed_token_hash=$4 WHERE id=$1`, v.Wire.OperationID, generation, credential, material.Hash); e != nil {
 			return empty, e

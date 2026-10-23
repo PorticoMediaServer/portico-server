@@ -255,6 +255,7 @@ type IdentityClaims struct {
 	AccountID   string    `json:"accountId"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"displayName"`
+	Email       string    `json:"email"`
 	ServerID    string    `json:"serverId"`
 	Challenge   string    `json:"challenge"`
 	Nonce       string    `json:"nonce"`
@@ -290,7 +291,7 @@ const (
 // admits the account is the server's decision.
 //
 // purpose "" asks for an identity assertion, "custody" for a custody one.
-func (s *Service) IssueIdentity(accountID, username, displayName, server, challenge, purpose string) (SignedPolicy, error) {
+func (s *Service) IssueIdentity(accountID, username, displayName, email, server, challenge, purpose string) (SignedPolicy, error) {
 	kind := IdentityKind
 	switch purpose {
 	case "":
@@ -307,7 +308,7 @@ func (s *Service) IssueIdentity(accountID, username, displayName, server, challe
 		return SignedPolicy{}, e
 	}
 	now := time.Now().UTC()
-	claims := IdentityClaims{Kind: kind, AccountID: accountID, Username: username, DisplayName: displayName, ServerID: server, Challenge: challenge, Nonce: base64.RawURLEncoding.EncodeToString(nonce), IssuedAt: now, ExpiresAt: now.Add(IdentityLifetime)}
+	claims := IdentityClaims{Kind: kind, AccountID: accountID, Username: username, DisplayName: displayName, Email: email, ServerID: server, Challenge: challenge, Nonce: base64.RawURLEncoding.EncodeToString(nonce), IssuedAt: now, ExpiresAt: now.Add(IdentityLifetime)}
 	raw, e := json.Marshal(claims)
 	if e != nil {
 		return SignedPolicy{}, e

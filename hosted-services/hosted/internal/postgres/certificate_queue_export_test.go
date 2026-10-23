@@ -10,7 +10,7 @@ var RecordDirectAddressTxForTest = recordDirectAddressTx
 var WithdrawDirectAddressTxForTest = withdrawDirectAddressTx
 
 var RetireServerTxForTest = retireServerTx
-var Install0001TxForTest = install0001Tx
+var InstallCurrentTxForTest = InitializeCurrentHostedSchemaTx
 
 var CustodyReleasedTxForTest = custodyReleasedTx
 

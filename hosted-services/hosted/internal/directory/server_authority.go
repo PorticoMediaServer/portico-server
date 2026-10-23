@@ -2,8 +2,6 @@ package directory
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
 	"time"
 
 	"portico.local/hosted/internal/security"
@@ -39,8 +37,6 @@ type CurrentServerRepository interface {
 	CaptureServerAuthority(context.Context, []byte) (ServerAuthority, error)
 	ServerHeartbeat(context.Context, ServerAuthority, CheckInReport) (Heartbeat, error)
 	PushMembers(context.Context, ServerAuthority, MemberPush) (MemberPushResult, error)
-	ServerErasures(context.Context, ServerAuthority) ([]ErasureJob, error)
-	ServerAcknowledgeErasure(context.Context, ServerAuthority, string, int64) error
 }
 
 func (s *Service) CaptureServerAuthority(ctx context.Context, token string) (ServerAuthority, error) {
@@ -121,51 +117,6 @@ func (s *Service) PushMembers(ctx context.Context, a ServerAuthority, p MemberPu
 		s.refreshVersionsSoon()
 	}
 	return result, e
-}
-
-func (s *Service) ServerErasures(ctx context.Context, a ServerAuthority) ([]SignedPolicy, error) {
-	repo, ok := s.repo.(CurrentServerRepository)
-	if !ok {
-		return nil, ErrDenied
-	}
-	jobs, e := repo.ServerErasures(ctx, a)
-	if e != nil {
-		return nil, e
-	}
-	out := []SignedPolicy{}
-	for _, j := range jobs {
-		j.Kind = "portico.account-erasure.v1"
-		j.IssuedAt = time.Now().UTC()
-		j.ExpiresAt = j.IssuedAt.Add(24 * time.Hour)
-		// Exact current envelope binding prevents a delayed A erasure response being
-		// applied under replacement B's installed authority.
-		payload := struct {
-			ErasureJob
-			OperationID          string `json:"operationId"`
-			ClaimGeneration      string `json:"claimGeneration"`
-			CredentialGeneration string `json:"credentialGeneration"`
-		}{j, a.OperationID, strconv.FormatInt(a.ClaimGeneration, 10), strconv.FormatInt(a.CredentialGeneration, 10)}
-		raw, e := json.Marshal(payload)
-		if e != nil {
-			return nil, e
-		}
-		signed, e := s.keys.Sign(raw)
-		if e != nil {
-			return nil, e
-		}
-		out = append(out, signed)
-	}
-	return out, nil
-}
-func (s *Service) ServerAcknowledgeErasure(ctx context.Context, a ServerAuthority, id string, revision int64) error {
-	if len(id) < 1 || len(id) > 128 || revision != 1 {
-		return ErrInvalid
-	}
-	repo, ok := s.repo.(CurrentServerRepository)
-	if !ok {
-		return ErrDenied
-	}
-	return repo.ServerAcknowledgeErasure(ctx, a, id, revision)
 }
 
 func memberRole(role string) bool { return role == "owner" || role == "admin" || role == "member" }

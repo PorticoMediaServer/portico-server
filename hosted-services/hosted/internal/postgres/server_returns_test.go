@@ -156,7 +156,7 @@ func TestRegisteredReturnActualHTTPPrivacyPKCERaceReplay(t *testing.T) {
 				successes.Add(1)
 				raw, _ := base64.RawURLEncoding.DecodeString(out.Assertion.Payload)
 				var a serverreturn.Assertion
-				if json.Unmarshal(raw, &a) != nil || a.Username == "" || a.AccountID != f.expected.AccountID || a.Purpose != "setup" || a.RegistrationID != f.start.RegistrationID || bytes.Contains(raw, []byte("email")) || bytes.Contains(raw, []byte("displayName")) {
+				if json.Unmarshal(raw, &a) != nil || a.Username == "" || a.AccountID != f.expected.AccountID || a.Purpose != "setup" || a.RegistrationID != f.start.RegistrationID || a.DisplayName != "Fixture" || a.Email != "" || !bytes.Contains(raw, []byte(`"email":""`)) || bytes.Contains(raw, []byte(`"profiles"`)) {
 					t.Error("identity privacy/binding")
 				}
 				if _, e = out.Assertion.Verify(f.keys.RootPublicKey, "documents", time.Now()); e != nil {
@@ -293,7 +293,6 @@ func TestClaimV2OwnershipOutcomesAndOldReturnRevocation(t *testing.T) {
 			in.Purpose = "change-owner"
 			in.CurrentOwnerAccountID = f.expected.AccountID
 			in.PreviousOwnerRole = role
-			in.OwnerProfileID = "other_profile"
 			signed, e := f.service.Approve(ctx, target, in)
 			if e != nil {
 				t.Fatal("approval", e)
@@ -332,7 +331,7 @@ func TestClaimV2OwnershipOutcomesAndOldReturnRevocation(t *testing.T) {
 				t.Fatal("previous tier", previous, e)
 			}
 			var legacyOwnerCount int
-			if e = f.store.DB.QueryRow(`SELECT count(*) FROM memberships WHERE server_id=$1 AND role='owner' AND NOT revoked`, in.ServerID).Scan(&legacyOwnerCount); e != nil || legacyOwnerCount != 1 {
+			if e = f.store.DB.QueryRow(`SELECT count(*) FROM server_members WHERE server_id=$1 AND role='owner'`, in.ServerID).Scan(&legacyOwnerCount); e != nil || legacyOwnerCount != 1 {
 				t.Fatal("duplicate owner", e)
 			}
 			returnCall(t, f.handler, "/v1/server-returns/exchange", "", oldCode, 401)

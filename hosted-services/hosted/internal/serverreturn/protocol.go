@@ -28,6 +28,9 @@ func Binding(purpose, current, previous string) bool {
 	if purpose == "setup" {
 		return current == "" && previous == ""
 	}
+	if purpose == "switch" && current == "" {
+		return previous == ""
+	}
 	if !identifier.MatchString(current) {
 		return false
 	}
@@ -110,6 +113,8 @@ type Assertion struct {
 	Kind                  string    `json:"kind"`
 	AccountID             string    `json:"accountId"`
 	Username              string    `json:"username"`
+	DisplayName           string    `json:"displayName"`
+	Email                 string    `json:"email"`
 	ServerID              string    `json:"serverId"`
 	Challenge             string    `json:"challenge"`
 	Nonce                 string    `json:"nonce"`

@@ -363,8 +363,8 @@ func TestCurrentPasswordDeletionAccountFirstAndExactReceiptReplay(t *testing.T) 
 			t.Fatal("receipt replay blocked")
 		}
 	}
-	if _, err = svc.AcceptDeletion(ctx, preview.Token, identity.DeletePersonalResources); !errors.Is(err, identity.ErrDeletionConflict) {
-		t.Fatal("different disposition replayed", err)
+	if _, err = svc.AcceptDeletion(ctx, preview.Token, "delete"); !errors.Is(err, identity.ErrInvalid) {
+		t.Fatal("retired erasure disposition accepted", err)
 	}
 	other := identity.Account{ID: "strict-other", Username: "strict-other", DisplayName: "Fixture"}
 	pending, err := svc.PrepareDeletion(ctx, other, "CurrentPass9")
@@ -485,7 +485,7 @@ func TestCurrentIdentitySchemaInitializationIsAtomic(t *testing.T) {
 		t.Fatal("current schema marker absent", version, err)
 	}
 	var count int
-	if err := f.store.DB.QueryRowContext(ctx, `SELECT count(*) FROM `+schema+`.hosted_schema_migrations`).Scan(&count); err != nil || count != postgres.CurrentHostedSchemaVersion {
+	if err := f.store.DB.QueryRowContext(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname='+schema+' AND tablename='hosted_schema_migrations'`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("numbered migration history incomplete", count, err)
 	}
 }

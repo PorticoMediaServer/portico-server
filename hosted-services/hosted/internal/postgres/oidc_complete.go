@@ -192,9 +192,6 @@ func (o *OIDCLogin) CompleteFlow(ctx context.Context, id, binding, access string
 		accountID = a.ID
 		identityID = security.RandomID("identity_")
 		identityRevision = 1
-		if _, e = tx.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)`, security.RandomID("prof_"), a.ID, a.DisplayName); e != nil {
-			return out, e
-		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO account_external_identities(id,account_id,provider,issuer,subject,verified_at) VALUES($1,$2,$3,$4,$5,clock_timestamp())`, identityID, a.ID, r.Provider, issuer, subject); e != nil {
 			return out, e
 		}

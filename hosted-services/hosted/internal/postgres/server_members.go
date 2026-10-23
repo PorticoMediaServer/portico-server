@@ -432,14 +432,6 @@ func followServerOwnerTx(ctx context.Context, tx *sql.Tx, authority directory.Se
 		return nil, nil
 	}
 	target := candidate
-	var profile string
-	e = tx.QueryRowContext(ctx, `SELECT p.id FROM accounts a JOIN profiles p ON p.account_id=a.id AND p.is_primary AND p.deleted_at IS NULL WHERE a.id=$1`, target).Scan(&profile)
-	if errors.Is(e, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if e != nil {
-		return nil, e
-	}
 	// Do not move an in-flight certificate custody lease: the push fails as
 	// busy and the server's retry (with backoff) carries the change again.
 	var busy bool
@@ -450,12 +442,12 @@ func followServerOwnerTx(ctx context.Context, tx *sql.Tx, authority directory.Se
 		return nil, ErrMembershipBusy
 	}
 	for _, q := range []string{
-		`DELETE FROM claim_approvals WHERE operation_id=$1 AND $2<>'' AND $3<>''`,
-		`UPDATE claim_operations SET account_id=$2,owner_profile_id=$3 WHERE id=$1 AND state='installed'`,
-		`UPDATE current_server_endpoints SET account_id=$2 WHERE operation_id=$1 AND $3<>''`,
-		`UPDATE certificate_orders SET account_id=$2 WHERE operation_id=$1 AND $3<>''`,
+		`DELETE FROM claim_approvals WHERE operation_id=$1 AND $2<>'' `,
+		`UPDATE claim_operations SET account_id=$2 WHERE id=$1 AND state='installed'`,
+		`UPDATE current_server_endpoints SET account_id=$2 WHERE operation_id=$1 `,
+		`UPDATE certificate_orders SET account_id=$2 WHERE operation_id=$1 `,
 	} {
-		if _, e = tx.ExecContext(ctx, q, authority.OperationID, target, profile); e != nil {
+		if _, e = tx.ExecContext(ctx, q, authority.OperationID, target); e != nil {
 			return nil, e
 		}
 	}

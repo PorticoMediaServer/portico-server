@@ -23,7 +23,7 @@ const testChallenge = "challenge-from-the-server-0123456789"
 // account's own identity assertion for the server.
 func (f fixture) consent(t *testing.T, account string) json.RawMessage {
 	t.Helper()
-	signed, e := f.dir.IssueIdentity(account, "someone", "Someone", f.server, testChallenge, "")
+	signed, e := f.dir.IssueIdentity(account, "someone", "Someone", "", f.server, testChallenge, "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -35,7 +35,7 @@ func (f fixture) consent(t *testing.T, account string) json.RawMessage {
 // custody of the claim (INT M6).
 func (f fixture) custody(t *testing.T, account string) json.RawMessage {
 	t.Helper()
-	signed, e := f.dir.IssueIdentity(account, "someone", "Someone", f.server, testChallenge, "custody")
+	signed, e := f.dir.IssueIdentity(account, "someone", "Someone", "", f.server, testChallenge, "custody")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -81,6 +81,9 @@ func (f fixture) listVersion(t *testing.T, account string) int64 {
 // account's server set moves that account's list version.
 func TestMemberPushIndexesServersForDiscovery(t *testing.T) {
 	f := setup(t)
+	if _, e := f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, f.member.Account.ID); e != nil {
+		t.Fatal(e)
+	}
 	ctx := context.Background()
 	authority, e := f.dir.CaptureServerAuthority(ctx, f.token)
 	if e != nil {
@@ -88,10 +91,10 @@ func TestMemberPushIndexesServersForDiscovery(t *testing.T) {
 	}
 	member := f.member.Account.ID
 	if f.listed(t, member)[f.server] {
-		t.Fatal("a legacy Hosted membership still grants discovery")
+		t.Fatal("fresh account unexpectedly indexed")
 	}
 	// Discovery and routes come from the index alone.
-	if _, e = f.store.DB.Exec(`DELETE FROM memberships WHERE account_id=$1`, member); e != nil {
+	if _, e = f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, member); e != nil {
 		t.Fatal(e)
 	}
 	before := f.listVersion(t, member)
@@ -186,6 +189,9 @@ func TestMemberPushIndexesServersForDiscovery(t *testing.T) {
 // another account, and before the map has loaded nothing says "unchanged".
 func TestServerListVersionCheckFromMemory(t *testing.T) {
 	f := setup(t)
+	if _, e := f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, f.member.Account.ID); e != nil {
+		t.Fatal(e)
+	}
 	ctx := context.Background()
 	member := f.member.Account.ID
 	watch := f.dir.WatchToken(member)
@@ -238,7 +244,7 @@ func TestServerListVersionCheckFromMemory(t *testing.T) {
 // the exact field order the server re-marshals.
 func TestIdentityAssertionIsShortLivedAndAudienceBound(t *testing.T) {
 	f := setup(t)
-	signed, e := f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "")
+	signed, e := f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, "")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -262,11 +268,11 @@ func TestIdentityAssertionIsShortLivedAndAudienceBound(t *testing.T) {
 	if !strings.HasPrefix(string(raw), `{"kind":"portico.identity.v1","accountId":`) || c.Challenge != testChallenge {
 		t.Fatal("wire order", string(raw))
 	}
-	again, _ := f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "")
+	again, _ := f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, "")
 	if again.Payload == signed.Payload {
 		t.Fatal("nonce reused")
 	}
-	if _, e = f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", "srv_short", testChallenge, ""); !errors.Is(e, directory.ErrInvalid) {
+	if _, e = f.dir.IssueIdentity(f.member.Account.ID, "member", "Member", "", "srv_short", testChallenge, ""); !errors.Is(e, directory.ErrInvalid) {
 		t.Fatal("malformed server id accepted", e)
 	}
 }
@@ -286,7 +292,7 @@ func TestOwnerChangeMovesCustodyOnlyWithTheNewOwnersConsent(t *testing.T) {
 		t.Fatal(e)
 	}
 	owner, member := f.owner.Account.ID, f.member.Account.ID
-	if _, e = f.store.DB.Exec(`DELETE FROM memberships WHERE account_id=$1`, member); e != nil {
+	if _, e = f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, member); e != nil {
 		t.Fatal(e)
 	}
 	full := directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: owner, Role: "owner", Active: true}, {AccountID: member, Role: "member", Active: true, Consent: f.consent(t, member)}}}
@@ -404,12 +410,12 @@ func TestMemberPushNeedsConsentAndHonoursDepartures(t *testing.T) {
 		t.Fatal(e)
 	}
 	member := f.member.Account.ID
-	if _, e = f.store.DB.Exec(`DELETE FROM memberships WHERE account_id=$1`, member); e != nil {
+	if _, e = f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, member); e != nil {
 		t.Fatal(e)
 	}
 	oldConsent := f.consent(t, member)
 	// Another server's assertion is not consent to this one.
-	other, _ := f.dir.IssueIdentity(member, "m", "M", "srv_"+strings.Repeat("B", 43), testChallenge, "")
+	other, _ := f.dir.IssueIdentity(member, "m", "M", "", "srv_"+strings.Repeat("B", 43), testChallenge, "")
 	otherRaw, _ := json.Marshal(other)
 	for name, c := range map[string]json.RawMessage{"none": nil, "other server": otherRaw, "garbage": json.RawMessage(`{"payload":"x"}`)} {
 		result, e := f.dir.PushMembers(ctx, authority, directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: member, Role: "member", Active: true, Consent: c}}})

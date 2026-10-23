@@ -12,22 +12,6 @@ import (
 	"strings"
 )
 
-// Named domain migration, additive to the recognized current schema.
-func InstallRouteSchemaTx(ctx context.Context, tx *sql.Tx) error {
-	_, e := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS networking_route_state(
- server_id text PRIMARY KEY REFERENCES servers(id),operation_id text NOT NULL REFERENCES claim_operations(id),
- claim_generation bigint NOT NULL,credential_generation bigint NOT NULL,
- generation bigint NOT NULL CHECK(generation>0),observation_digest bytea NOT NULL CHECK(octet_length(observation_digest)=32),
- remote_enabled boolean NOT NULL,observed_at timestamptz NOT NULL DEFAULT clock_timestamp());
- CREATE TABLE IF NOT EXISTS networking_route_candidates(
- server_id text NOT NULL REFERENCES networking_route_state(server_id) ON DELETE CASCADE,
- operation_id text NOT NULL REFERENCES claim_operations(id),generation bigint NOT NULL CHECK(generation>0),
- origin text NOT NULL,class text NOT NULL CHECK(class IN('lan','public','manual')),
- state text NOT NULL CHECK(state IN('reported','verified','failed','identity_mismatch')),
- verified_at timestamptz,updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- PRIMARY KEY(server_id,generation,origin));`)
-	return e
-}
 func (s *Store) ObserveRoutes(ctx context.Context, a directory.ServerAuthority, q directory.RouteObservation, digest []byte) error {
 	if len(digest) != 32 {
 		return directory.ErrInvalid

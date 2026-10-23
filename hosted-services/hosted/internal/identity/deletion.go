@@ -14,20 +14,16 @@ var ErrDeletionConflict = errors.New("deletion preview changed or expired")
 var ErrDeletionConfirmation = errors.New("deletion confirmation does not match the account")
 var ErrOwnedServers = errors.New("resolve owned servers before account deletion")
 
-const DeletePersonalResources = "delete_owned_personal_resources"
-
 type DeletionServer struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 type DeletionPreview struct {
-	Token               string           `json:"deletionToken"`
-	ExpiresAt           time.Time        `json:"expiresAt"`
-	OwnedServers        []DeletionServer `json:"ownedServers"`
-	AffectedServers     []DeletionServer `json:"affectedServers"`
-	ProfileCount        int              `json:"profileCount"`
-	RequiredDisposition string           `json:"requiredDisposition,omitempty"`
-	CanDelete           bool             `json:"canDelete"`
+	Token           string           `json:"deletionToken"`
+	ExpiresAt       time.Time        `json:"expiresAt"`
+	OwnedServers    []DeletionServer `json:"ownedServers"`
+	AffectedServers []DeletionServer `json:"affectedServers"`
+	CanDelete       bool             `json:"canDelete"`
 }
 type DeletionReceipt struct {
 	AccountDeleted   bool      `json:"accountDeleted"`
@@ -71,7 +67,7 @@ func (s *Service) AcceptDeletion(ctx context.Context, token, disposition string)
 	if len(token) < 32 || len(token) > 128 {
 		return DeletionReceipt{}, ErrCredentials
 	}
-	if disposition != "" && disposition != DeletePersonalResources {
+	if disposition != "" {
 		return DeletionReceipt{}, ErrInvalid
 	}
 	return s.repo.(DeletionRepository).AcceptDeletion(ctx, security.Hash(token), disposition)

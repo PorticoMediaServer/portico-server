@@ -138,8 +138,8 @@ func setup(t *testing.T) fixture {
 		args []any
 	}{
 		{`INSERT INTO servers(id,owner_account_id,name,base_url,public_key,token_hash,token_ciphertext,claim_generation,credential_generation) VALUES($1,$2,'Local','http://127.0.0.1:19411',$3,$4,$5,1,1)`, []any{id, owner.Account.ID, base64.RawURLEncoding.EncodeToString(pub), security.Hash(token), sealed}},
-		{`INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at) VALUES('fixture_installed_claim',$1,$2,$3,0,'Local',$4,$5,'installed',1,1,$6,clock_timestamp())`, []any{id, owner.Account.ID, []byte(pub), owner.Profiles[0].ID, security.Hash("fixture installed claim"), security.Hash(token)}},
-		{`INSERT INTO memberships(server_id,account_id,profile_id,role) VALUES($1,$2,$3,'owner')`, []any{id, owner.Account.ID, owner.Profiles[0].ID}},
+		{`INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at) VALUES('fixture_installed_claim',$1,$2,$3,0,'Local',$4,'installed',1,1,$5,clock_timestamp())`, []any{id, owner.Account.ID, []byte(pub), security.Hash("fixture installed claim"), security.Hash(token)}},
+		{`INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'owner')`, []any{id, owner.Account.ID}},
 		{`INSERT INTO wake_state(server_id,kind,desired_revision) VALUES($1,'policy',1)`, []any{id}},
 	} {
 		if _, e = tx.Exec(q.sql, q.args...); e != nil {
@@ -150,9 +150,8 @@ func setup(t *testing.T) fixture {
 		t.Fatal(e)
 	}
 	f := fixture{store, ids, d, keys, owner, member, id, token}
-	// A member under the retired Hosted membership model (rows the drop
-	// migration removes), which account deletion and retirement still read.
-	if _, e = store.DB.Exec(`INSERT INTO memberships(server_id,account_id,profile_id,role,allowed_libraries) VALUES($1,$2,$3,'member','{a,b}')`, id, member.Account.ID, member.Profiles[0].ID); e != nil {
+	// A genuine member already reported by this server in the role index.
+	if _, e = store.DB.Exec(`INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'member')`, id, member.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = store.DB.Exec(`UPDATE servers SET policy_revision=2 WHERE id=$1`, id); e != nil {
@@ -310,6 +309,9 @@ func TestWake429BackoffAndRestartDurability(t *testing.T) {
 }
 func TestHTTPRealDatabaseJourneyAndOriginBoundaries(t *testing.T) {
 	f := setup(t)
+	if _, e := f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, f.member.Account.ID); e != nil {
+		t.Fatal(e)
+	}
 	handler := (&httpapi.Handler{Identity: f.ids, Directory: f.dir, Origins: map[string]bool{"http://127.0.0.1:19412": true}}).Routes()
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -398,7 +400,7 @@ func TestCheckInAcknowledgesWakesMonotonically(t *testing.T) {
 		t.Fatal(e)
 	}
 	result, e := f.dir.ServerHeartbeat(ctx, authority, directory.CheckInReport{WakeRevision: 5})
-	if e != nil || result.HeartbeatAfterMs != directory.CheckInUnreachable.Milliseconds() || result.CleanupPending {
+	if e != nil || result.HeartbeatAfterMs != directory.CheckInUnreachable.Milliseconds() || false {
 		t.Fatal(result, e)
 	}
 	// A server Hosted cannot wake checks in daily; its presence window covers that with slack.

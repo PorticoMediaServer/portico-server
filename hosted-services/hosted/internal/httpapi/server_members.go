@@ -31,7 +31,12 @@ func (h *Handler) memberIndexRoutes(mux *http.ServeMux) {
 		if !decode(w, r, &q) {
 			return
 		}
-		signed, e := h.Directory.IssueIdentity(v.Account.ID, v.Account.Username, v.Account.DisplayName, r.PathValue("id"), q.Challenge, q.Purpose)
+		email, e := h.Identity.IdentityEmail(r.Context(), v.Account.ID)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		signed, e := h.Directory.IssueIdentity(v.Account.ID, v.Account.Username, v.Account.DisplayName, email, r.PathValue("id"), q.Challenge, q.Purpose)
 		if e != nil {
 			failure(w, e)
 			return

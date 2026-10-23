@@ -146,8 +146,8 @@ func goldenSetup(t *testing.T) golden {
 		args []any
 	}{
 		{`INSERT INTO servers(id,owner_account_id,name,base_url,public_key,token_hash,token_ciphertext,claim_generation,credential_generation) VALUES($1,$2,'Local','http://127.0.0.1:19411',$3,$4,$5,1,1)`, []any{server, owner.Account.ID, base64.RawURLEncoding.EncodeToString(serverKey), security.Hash(token), sealed}},
-		{`INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at) VALUES('fixture_installed_claim',$1,$2,$3,0,'Local',$4,$5,'installed',1,1,$6,clock_timestamp())`, []any{server, owner.Account.ID, []byte(serverKey), owner.Profiles[0].ID, security.Hash("fixture installed claim"), security.Hash(token)}},
-		{`INSERT INTO memberships(server_id,account_id,profile_id,role) VALUES($1,$2,$3,'owner')`, []any{server, owner.Account.ID, owner.Profiles[0].ID}},
+		{`INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at) VALUES('fixture_installed_claim',$1,$2,$3,0,'Local',$4,'installed',1,1,$5,clock_timestamp())`, []any{server, owner.Account.ID, []byte(serverKey), security.Hash("fixture installed claim"), security.Hash(token)}},
+		{`INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'owner')`, []any{server, owner.Account.ID}},
 		{`INSERT INTO wake_state(server_id,kind,desired_revision) VALUES($1,'policy',1)`, []any{server}},
 	} {
 		if _, e = store.DB.ExecContext(ctx, q.sql, q.args...); e != nil {
@@ -279,7 +279,6 @@ func TestGoldenResponses(t *testing.T) {
 	}
 	check("system_get", call(t, g.handler, definition(t, "system_get"), nil, "", nil))
 	check("keys_get", call(t, g.handler, definition(t, "keys_get"), nil, "", nil), "keyId", "publicKey", "root", "signature")
-	check("server_storage_warning", call(t, g.handler, definition(t, "server_storage_warning"), map[string]string{"id": g.server}, g.serverToken, nil))
 	check("account_notifications_list", call(t, g.handler, definition(t, "account_notifications_list"), nil, g.owner.AccessToken, nil), "id", "deviceId")
 	check("servers_list", call(t, g.handler, definition(t, "servers_list"), nil, g.owner.AccessToken, nil), "id", "profileId", "accountId", "ownerAccountId", "payload", "signature", "keyId", "publicKey", "watch")
 	pendingRaw := call(t, g.handler, definition(t, "server_claim_pending"), nil, "", signedWebClaim(t))

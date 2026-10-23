@@ -177,24 +177,6 @@ func (s *Store) RotateRefresh(ctx context.Context, r sessions.Rotation) (session
 	if _, e = tx.ExecContext(ctx, `UPDATE hosted_devices SET last_seen_at=clock_timestamp() WHERE family_id=$1 AND last_seen_at<clock_timestamp()-interval '6 hours'`, r.FamilyID); e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, sessionProfilesQuery, account)
-	if e != nil {
-		return out, e
-	}
-	out.Viewer.Profiles = []identity.Profile{}
-	for rows.Next() {
-		var p identity.Profile
-		if e = rows.Scan(&p.ID, &p.Name); e != nil {
-			rows.Close()
-			return out, e
-		}
-		out.Viewer.Profiles = append(out.Viewer.Profiles, p)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return out, e
-	}
 	return out, tx.Commit()
 }
 func (s *Store) RevokeRefresh(ctx context.Context, hash []byte, mode string) error {

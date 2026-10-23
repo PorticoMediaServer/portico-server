@@ -51,7 +51,7 @@ func appCode(t *testing.T, f fixture, s identity.Session, q appauth.Request) (ap
 }
 func appSigner(f fixture) func(identity.Account, string, string) (directory.SignedPolicy, error) {
 	return func(a identity.Account, server, challenge string) (directory.SignedPolicy, error) {
-		return f.dir.IssueIdentity(a.ID, a.Username, a.DisplayName, server, challenge, "")
+		return f.dir.IssueIdentity(a.ID, a.Username, a.DisplayName, "", server, challenge, "")
 	}
 }
 func TestAppAuthorizationExactScopePKCEAndSingleUse(t *testing.T) {

@@ -131,7 +131,6 @@ func (s *Service) PollTV(ctx context.Context, secret string) (json.RawMessage, e
 	grant, e := s.repo.PollDevice(ctx, s.hash("secret", secret), Issue{Protocol: TVProtocol, Family: family, Hash: security.Hash(token), Cipher: sealed, ExpiresAt: expiry,
 		SealGrant: func(id, key string, viewer identity.Viewer) ([]byte, error) {
 			pair.Account = viewer.Account
-			pair.Profiles = viewer.Profiles
 			raw, e := json.Marshal(pair)
 			if e != nil {
 				return nil, e

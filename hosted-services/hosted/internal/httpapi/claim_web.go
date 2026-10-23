@@ -186,7 +186,7 @@ func (h *ClaimHandler) web(w http.ResponseWriter, r *http.Request) bool {
 		claimRespond(w, p, e)
 		return true
 	}
-	e = h.Web.Store.DecideWebClaim(r.Context(), a, body.Code, body.OwnerProfileID, body.ReplacesServerID, path == "/v1/server-claims/approve-code", h.Service)
+	e = h.Web.Store.DecideWebClaim(r.Context(), a, body.Code, body.ReplacesServerID, path == "/v1/server-claims/approve-code", h.Service)
 	claimRespond(w, StatusCodeResponse{Code: "claim_decided", Status: "decided"}, e)
 	return true
 }

@@ -13,7 +13,7 @@ import (
 // ServerHeartbeat is the check-in: weekly when Hosted can wake the server, daily
 // when it cannot, and at once after a wake. It carries no policy. The server
 // reports the wake it is answering and the state of its member list; the
-// answer says whether Hosted's index agrees and whether erasure jobs wait.
+// answer says whether Hosted's index agrees and which accounts have left.
 func (s *Store) ServerHeartbeat(ctx context.Context, authority directory.ServerAuthority, q directory.CheckInReport) (directory.Heartbeat, error) {
 	server := authority.ServerID
 	tx, e := s.beginServerOperation(ctx, authority)
@@ -44,9 +44,6 @@ func (s *Store) ServerHeartbeat(ctx context.Context, authority directory.ServerA
 		return result, e
 	}
 	result.MemberDigestMatches = digest == q.MemberDigest && result.MemberSequence == q.MemberSequence
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_erasure_jobs WHERE server_id=$1 AND claim_operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 AND acknowledged_at IS NULL)`, server, authority.OperationID, authority.ClaimGeneration, authority.CredentialGeneration).Scan(&result.CleanupPending); e != nil {
-		return result, e
-	}
 	result.Departures = []directory.Departure{}
 	rows, e := tx.QueryContext(ctx, `SELECT account_id,left_at FROM server_member_departures WHERE server_id=$1 AND pending ORDER BY left_at LIMIT 1000`, server)
 	if e != nil {

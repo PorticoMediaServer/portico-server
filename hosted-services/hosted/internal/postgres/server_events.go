@@ -12,9 +12,6 @@ type ServerEvent struct {
 }
 
 func (s *Store) ServerEvent(ctx context.Context, a directory.ServerAuthority, q ServerEvent) error {
-	if q.Kind == "storage_nearly_full" {
-		return s.ReportStorageWarning(ctx, a)
-	}
 	if q.Kind != "rename" && q.Kind != "shutdown" {
 		return directory.ErrInvalid
 	}

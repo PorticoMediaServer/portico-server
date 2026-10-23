@@ -206,8 +206,8 @@ func (s *Store) ExchangeServerReturn(ctx context.Context, q serverreturn.Exchang
 	if e != nil || r.consumed.Valid || subtle.ConstantTimeCompare(r.code, security.Hash(q.Code)) != 1 || subtle.ConstantTimeCompare([]byte(r.q.CodeChallenge), []byte(serverreturn.Challenge(q.Verifier))) != 1 || q.RegistrationID != r.q.RegistrationID || q.ServerChallenge != r.q.ServerChallenge || q.InstallationID != r.q.InstallationID || q.Purpose != r.q.Purpose {
 		return out, serverreturn.ErrInvalid
 	}
-	var username string
-	if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, r.a.AccountID).Scan(&username); e != nil {
+	var username, displayName, email string
+	if e = tx.QueryRowContext(ctx, `SELECT username,display_name,COALESCE((SELECT address FROM account_contact_emails WHERE account_id=$1 AND is_primary AND verified_at IS NOT NULL),'') FROM accounts WHERE id=$1`, r.a.AccountID).Scan(&username, &displayName, &email); e != nil {
 		return out, e
 	}
 	var now time.Time
@@ -217,7 +217,7 @@ func (s *Store) ExchangeServerReturn(ctx context.Context, q serverreturn.Exchang
 	if !r.expiry.After(now) || !facts.UnexpiredAt(now) {
 		return out, serverreturn.ErrInvalid
 	}
-	out.Assertion, e = sign(serverreturn.Assertion{Kind: "portico.server-return.v1", AccountID: r.a.AccountID, Username: username, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
+	out.Assertion, e = sign(serverreturn.Assertion{Kind: "portico.server-return.v1", AccountID: r.a.AccountID, Username: username, DisplayName: displayName, Email: email, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
 	if e != nil {
 		return serverreturn.Grant{}, e
 	}

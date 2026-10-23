@@ -25,21 +25,25 @@ const ClaimProof = "portico.claim.proof"
 
 // Wire order is shared with networking.claimWire, not a generic JSON signing API.
 type Wire struct {
-	Kind             string `json:"kind"`
-	Version          string `json:"version"`
-	Audience         string `json:"audience"`
-	Purpose          string `json:"purpose"`
-	OperationID      string `json:"operationId"`
-	ServerID         string `json:"serverId"`
-	AccountID        string `json:"accountId"`
-	PublicKey        string `json:"publicKey"`
-	LocalGeneration  int64  `json:"localGeneration,string"`
-	ApprovalRevision int64  `json:"approvalRevision,string"`
-	RequestID        string `json:"requestId"`
-	NonceID          string `json:"nonceId,omitempty"`
-	Nonce            string `json:"nonce,omitempty"`
-	IssuedAt         string `json:"issuedAt"`
-	ExpiresAt        string `json:"expiresAt"`
+	Kind                   string `json:"kind"`
+	Version                string `json:"version"`
+	Audience               string `json:"audience"`
+	Purpose                string `json:"purpose"`
+	OperationID            string `json:"operationId"`
+	ServerID               string `json:"serverId"`
+	AccountID              string `json:"accountId"`
+	PublicKey              string `json:"publicKey"`
+	LocalGeneration        int64  `json:"localGeneration,string"`
+	ApprovalRevision       int64  `json:"approvalRevision,string"`
+	RequestID              string `json:"requestId"`
+	NonceID                string `json:"nonceId,omitempty"`
+	Nonce                  string `json:"nonce,omitempty"`
+	IssuedAt               string `json:"issuedAt"`
+	ExpiresAt              string `json:"expiresAt"`
+	ReservationAccountID   string `json:"reservationAccountId,omitempty"`
+	ReservationUsername    string `json:"reservationUsername,omitempty"`
+	ReservationGeneration  string `json:"reservationGeneration,omitempty"`
+	ReservationOperationID string `json:"reservationOperationId,omitempty"`
 }
 type CancelWire struct {
 	Kind            string `json:"kind"`
