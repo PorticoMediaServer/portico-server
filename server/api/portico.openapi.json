@@ -172099,6 +172099,80 @@
         ],
         "type": "object"
       },
+      "PostAuthPorticoReturnPrepareRequest": {
+        "properties": {
+          "nonce": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "nonce"
+        ],
+        "type": "object"
+      },
+      "PostAuthPorticoReturnPrepareResponse": {
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "claimOperationId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hostedOrigin": {
+            "type": "string"
+          },
+          "proof": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "registration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "hostedOrigin",
+          "claimOperationId",
+          "registration",
+          "challenge",
+          "expiresAt",
+          "proof"
+        ],
+        "type": "object"
+      },
       "PostAuthRefreshRequest": {
         "properties": {
           "installationId": {
@@ -263523,10 +263597,162 @@
           "account_move_waiting",
           "move_collision",
           "move_code_invalid",
+          "portico_services_unavailable",
           "internal"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 16384,
+        "x-scope": "session"
+      }
+    },
+    "/v1/auth/portico-return/prepare": {
+      "post": {
+        "operationId": "post_auth_portico_return_prepare",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Portico-Installation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "origin",
+                  "nonce"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "challenge": {
+                      "type": "string"
+                    },
+                    "claimOperationId": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "hostedOrigin": {
+                      "type": "string"
+                    },
+                    "proof": {
+                      "properties": {
+                        "payload": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "payload",
+                        "signature"
+                      ],
+                      "type": "object"
+                    },
+                    "registration": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "origin"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "hostedOrigin",
+                    "claimOperationId",
+                    "registration",
+                    "challenge",
+                    "expiresAt",
+                    "proof"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Prepare a return from an existing verified server origin",
+        "x-access": "public",
+        "x-admission": "auth",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "rate_limited",
+          "sign_in_kind_local",
+          "portico_services_unavailable",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 2048,
         "x-scope": "session"
       }
     },

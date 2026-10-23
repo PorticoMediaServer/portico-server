@@ -1,6 +1,6 @@
 import type {ServerConnectionStorage, RememberedServer} from './server-connections.ts';
 import {parseRememberedServer} from './remembered-server.ts';
-import {RouteError, routeOrigin} from './route-identity.ts';
+import {RouteError, routeOrigin, type KnownServerRoute} from './route-identity.ts';
 
 export type SignInKind = 'portico' | 'local';
 export type PorticoAccountScope = Readonly<{origin: string; accountId: string}>;
@@ -48,6 +48,16 @@ export function parseAppSessionRecord(raw: unknown): AppSessionRecord {
   const bindings = new Set(servers.flatMap(v => v.connection.hosted ? [JSON.stringify([v.connection.hosted.origin, v.connection.hosted.accountId])] : []));
   if (bindings.size > 1) invalid();
   return {version: 1, revision: raw.revision as number, ...(raw.selectedServerId === undefined ? {} : {selectedServerId: raw.selectedServerId as string}), servers};
+}
+/** Public-only snapshot for first contact and native certificate decisions. Local addresses
+ * come from the exact protected record, never from a link, GET /system or an unverified route
+ * document. Portico's signed candidates are resolved by connectHostedServer separately. */
+export function knownServerRoutes(record:AppSessionRecord):readonly KnownServerRoute[] {
+ return Object.freeze(parseAppSessionRecord(record).servers.map(({signIn,connection})=>Object.freeze({
+  signIn,pin:Object.freeze({...connection.pin}),origins:Object.freeze([...new Set([
+   connection.logicalOrigin,...connection.routes.paired,...(connection.routes.lastGood?[connection.routes.lastGood]:[]),
+  ])]),
+ })));
 }
 function next(old: AppSessionRecord, servers: readonly AppServerSession[], selectedServerId = old.selectedServerId): AppSessionRecord {
   if (old.revision >= Number.MAX_SAFE_INTEGER) invalid();
