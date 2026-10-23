@@ -9,6 +9,7 @@ import {SettingNumber} from './SettingNumber';
 import {SettingText} from './SettingText';
 import {SettingsAdvanced, SettingsGroup} from './SettingsGroups';
 import {SettingsGrid} from './SettingsGrid';
+import {settingsConditionMet} from './condition';
 import type {SettingsTableColumn, SettingsTableRow} from './SettingsTable';
 import styles from './settings.module.css';
 
@@ -52,7 +53,7 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   if (!state.present) return null;
   const parent = row.enableWhen && settingsRowIndex.get(row.enableWhen.id)?.row;
   const condition = parent && props.state(parent).value;
-  const conditionMet = !row.enableWhen || (row.enableWhen.in ? row.enableWhen.in.some(value => String(value) === String(condition)) : !row.enableWhen.notIn?.some(value => String(value) === String(condition)));
+  const conditionMet = settingsConditionMet(row.enableWhen, condition);
   const disabled = inheritedDisabled || state.disabled || state.saving || !conditionMet;
   const c = row.control, label = state.label ?? t(row.label), options = state.choices ?? c.options?.map(option => ({...option, label: t(option.label), hint: option.hint && t(option.hint)})) ?? [];
   const changed = state.changed && !row.noChanged;
