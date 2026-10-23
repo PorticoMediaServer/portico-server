@@ -38,9 +38,12 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         reportError,
         openEntry(entry) {
           assert();
-          if (content(entry)) navigate(router.navigate(entryDestination(entry)));
-          else if (entry.kind === 'person') router.history.push('/person/' + encodeURIComponent(entry.navigation.entityId));
-          else router.history.push('/live', {libraryChannelId: entry.navigation.entityId});
+          if (content(entry)) {
+            const target = entryDestination(entry);
+            navigate(router.navigate(target.to === '/library/$libraryId' && entry.navigation?.category
+              ? {...target, search: {...target.search, category: entry.navigation.category}} : target));
+          } else if (entry.kind === 'person') navigate(router.navigate({to: '/person/$personId', params: {personId: entry.navigation.entityId}}));
+          else navigate(router.navigate({to: '/live', search: {channelId: entry.navigation.entityId}}));
         },
         openHome() {assert();navigate(router.navigate({to: '/'}));},
         openSettings() {assert();navigate(router.navigate({to: '/settings'}));},
