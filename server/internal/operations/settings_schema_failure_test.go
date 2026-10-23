@@ -59,20 +59,27 @@ func TestSettingsReaderRejectsMissingCanonicalColumn(t *testing.T) {
 	}
 }
 
-func TestIntegrationReaderRejectsMissingCanonicalTable(t *testing.T) {
+func TestIntegrationReaderRejectsMissingCanonicalColumn(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "server.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	err = dbwork.WithWriteTx(context.Background(), db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
-		// This transaction is rolled back on exit. A missing producer must not
-		// turn global credential/webhook restrictions into factory defaults.
-		if _, err := tx.Exec(`ALTER TABLE server_settings RENAME TO missing_server_settings`); err != nil {
+		// Use the actual canonical table. Before the additive producer lands its
+		// column is already absent; afterwards remove exactly that one column
+		// in this isolated fixture to retain the same failure condition.
+		var present bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('server_settings') WHERE name='webhookRetries')`).Scan(&present); err != nil {
 			return err
 		}
+		if present {
+			if _, err := tx.Exec(`ALTER TABLE server_settings RENAME COLUMN "webhookRetries" TO missing_webhookRetries`); err != nil {
+				return err
+			}
+		}
 		out, err := ReadIntegrationSettingsTx(context.Background(), tx)
-		if err == nil || !strings.Contains(err.Error(), "server_settings") || !reflect.DeepEqual(out, IntegrationSettings{}) {
+		if err == nil || !strings.Contains(err.Error(), "webhookRetries") || !reflect.DeepEqual(out, IntegrationSettings{}) {
 			return fmt.Errorf("missing integration policy was replaced with defaults: %+v, %v", out, err)
 		}
 		return nil
