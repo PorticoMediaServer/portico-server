@@ -112,8 +112,8 @@ func TestAudioConversionAACStartsAfterItsPriming(t *testing.T) {
 		t.Fatalf("source: %v %s", err, out)
 	}
 	for _, bad := range []AnalysisSpec{
-		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 32000, AudioChannels: 2, AudioBitrate: 128000},
-		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 44100, AudioChannels: 6, AudioBitrate: 128000},
+		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 12345, AudioChannels: 2, AudioBitrate: 128000},
+		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 44100, AudioChannels: 9, AudioBitrate: 128000},
 		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 44100, AudioChannels: 2, AudioBitrate: 8000},
 	} {
 		if _, err := AnalysisArgs(server.URL+"/src.flac", bad); err == nil {

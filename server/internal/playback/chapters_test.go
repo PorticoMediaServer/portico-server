@@ -167,6 +167,7 @@ func TestChapterPagingUnavailableAndCurrentGeneration(t *testing.T) {
 	}
 	tx.Commit()
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "account", ProfileID: "profile"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	s := New(db)
 	session, e := s.Create(p, item, "automatic", "one")
 	if e != nil {

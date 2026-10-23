@@ -3958,7 +3958,7 @@ CREATE TABLE personal_job_details(
 CREATE TABLE download_requests(
  id TEXT PRIMARY KEY,profile_key TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,
  principal TEXT NOT NULL,device_id TEXT NOT NULL,target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,
- quality TEXT NOT NULL,episodes TEXT NOT NULL,keep_next INTEGER NOT NULL,
+ quality TEXT NOT NULL,music_quality TEXT NOT NULL DEFAULT '320' CHECK(music_quality IN('original','cd-quality','320','96')),episodes TEXT NOT NULL,keep_next INTEGER NOT NULL,
  state TEXT NOT NULL DEFAULT 'capturing',error_code TEXT NOT NULL DEFAULT '',
  selection_fence TEXT NOT NULL,cursor_key TEXT NOT NULL DEFAULT '',cursor_id TEXT NOT NULL DEFAULT '',
  total INTEGER NOT NULL DEFAULT 0,admitted INTEGER NOT NULL DEFAULT 0,
@@ -7974,3 +7974,29 @@ CREATE TABLE asset_stream_breadth(
  PRIMARY KEY(asset_id,stream_index),
  FOREIGN KEY(asset_id,stream_index) REFERENCES asset_streams(asset_id,stream_index) ON DELETE CASCADE
 ) STRICT;
+
+-- Source measured audio facts for safe viewer badges and DLNA; source revision
+-- is checked on every read. New analysis values are normalized per result.
+CREATE TABLE music_technical_facts(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ size INTEGER NOT NULL,modified_ns INTEGER NOT NULL,codec TEXT NOT NULL,
+ sample_rate INTEGER NOT NULL CHECK(sample_rate>0),bit_depth INTEGER NOT NULL CHECK(bit_depth BETWEEN 0 AND 64),channels INTEGER NOT NULL CHECK(channels BETWEEN 1 AND 64),lossless INTEGER CHECK(lossless IN(0,1))
+) STRICT;
+CREATE TABLE analysis_audio_loudness(
+ result_id TEXT PRIMARY KEY REFERENCES analysis_results(id) ON DELETE CASCADE,
+ integrated_lufs REAL NOT NULL CHECK(integrated_lufs BETWEEN -120 AND 10),
+ true_peak REAL NOT NULL CHECK(true_peak>=0),loudness_range REAL NOT NULL CHECK(loudness_range>=0)
+) STRICT;
+CREATE TABLE analysis_audio_envelope(
+ result_id TEXT NOT NULL REFERENCES analysis_audio_loudness(result_id) ON DELETE CASCADE,
+ edge TEXT NOT NULL CHECK(edge IN('start','end')),ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 0 AND 29),lufs REAL NOT NULL CHECK(lufs BETWEEN -120 AND 10),PRIMARY KEY(result_id,edge,ordinal)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE music_virtual_tracks(
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 1 AND 4096),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ start_seconds REAL NOT NULL CHECK(start_seconds>=0),end_seconds REAL NOT NULL CHECK(end_seconds>start_seconds),
+ PRIMARY KEY(asset_id,ordinal),UNIQUE(entity_id,asset_id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX music_virtual_tracks_entity ON music_virtual_tracks(entity_id);
