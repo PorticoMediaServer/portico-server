@@ -238,7 +238,7 @@ func normalizeArtworkFormatsContext(ctx context.Context, raw []byte, allowed map
 		return nil, nil, 0, 0, errors.New("dimension_limit")
 	}
 	// Keep bounded display representations, never the provider original.
-	original, w, h, err := encodeDisplayArtworkContext(ctx, decoded, artworkLargeEdge, format == "jpeg")
+	original, w, h, err := encodeDisplayArtworkContext(ctx, decoded, artworkSize(ctx), format == "jpeg")
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
@@ -404,7 +404,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	} else if err != nil {
 		return err
 	}
-	enabled, err := s.artworkProviderEnabled(ctx, tx, j.target, j.provider)
+	enabled, err := s.artworkJobEnabled(ctx, tx, j)
 	if err != nil {
 		return err
 	}
@@ -450,6 +450,10 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	}
 	workCtx, cancel := s.artworkRequestContext(ctx, j.target, j.provider, j.fence)
 	defer cancel()
+	workCtx, err = s.artworkSizeContext(workCtx)
+	if err != nil {
+		return err
+	}
 	a, b, err := s.acquireArtworkObjects(workCtx, j)
 	if err != nil {
 		return s.failArtwork(ctx, j, err)
@@ -483,7 +487,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM artwork_selections WHERE kind=? AND entity_id=? AND role=? AND subject=?),0)`, j.target.Kind, entity, j.role, j.subject).Scan(&revision); err != nil {
 		return err
 	}
-	enabled, err = s.artworkProviderEnabled(ctx, tx, j.target, j.provider)
+	enabled, err = s.artworkJobEnabled(ctx, tx, j)
 	if err != nil {
 		return err
 	}
@@ -557,12 +561,56 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 // slot was taken or by a seeder that did not check. A job the owner asked for,
 // a local image and a preview are not automatic provider art and are never held.
 func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int64) (bool, error) {
-	if j.actor != "" || j.provider == "local" || j.preview {
+	if j.actor != "" || j.preview {
 		return false, nil
 	}
-	var held bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local'))`, j.target.Kind, entity, j.role, j.subject).Scan(&held)
-	return held, err
+	var selected, fence, preference string
+	var locked bool
+	err := tx.QueryRowContext(ctx, `SELECT a.locked,c.provider,c.source_fence,r.artwork_preference FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id CROSS JOIN metadata_runtime_settings r WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND r.singleton=1`, j.target.Kind, entity, j.role, j.subject).Scan(&locked, &selected, &fence, &preference)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if locked {
+		return true, nil
+	}
+
+	if j.provider != "local" {
+		return selected == "local" && preference == "folders", nil
+	}
+	if selected == "local" {
+		return false, nil
+	}
+	if preference != "online" {
+		return false, nil
+	}
+	// Online first still falls back to folders when this provider/library is off.
+	enabled, err := globalOnlineTx(ctx, tx)
+	if err != nil || !enabled {
+		return false, err
+	}
+	ent, err := readRepairEntity(ctx, tx, j.target)
+	if err != nil {
+		return false, err
+	}
+	local, err := LibraryLocalOnlyTx(ctx, tx, ent.library)
+	return !local && fence == j.fence, err
+}
+
+func automaticArtworkOccupied(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, subject, provider, fence string) (bool, error) {
+	held, err := artworkSlotHeld(ctx, tx, artworkWork{target: t, role: role, subject: subject, provider: provider, fence: fence}, entity)
+	if err != nil || held {
+		return held, err
+	}
+	var current bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND c.provider=? AND c.source_fence=?)`, t.Kind, entity, role, subject, provider, fence).Scan(&current); err != nil || current {
+		return current, err
+	}
+	var owner bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject=? AND actor<>'' AND status IN('pending','running','retry'))`, t.Kind, entity, role, subject).Scan(&owner)
+	return owner, err
 }
 
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {

@@ -276,7 +276,7 @@ func (s *Service) finishMBPublication(ctx context.Context, tx *sql.Tx, j mbJob, 
 	if e != nil {
 		return e
 	}
-	if _, e := tx.ExecContext(ctx, `UPDATE mb_jobs SET status='matched',selected_id=?,attempts=0,error='',revision=revision+1 WHERE kind=? AND entity_id=?`, requested, j.kind, entity); e != nil {
+	if _, e := tx.ExecContext(ctx, `UPDATE mb_jobs SET force_refresh=0,status='matched',selected_id=?,attempts=0,error='',revision=revision+1 WHERE kind=? AND entity_id=?`, requested, j.kind, entity); e != nil {
 		return e
 	}
 	if _, e := tx.ExecContext(ctx, `UPDATE mb_candidates SET decision=CASE WHEN provider_id=? THEN 'accepted' ELSE 'superseded' END WHERE kind=? AND entity_id=?`, requested, j.kind, entity); e != nil {

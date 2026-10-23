@@ -104947,6 +104947,36 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetMetadataRefreshRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataRefreshResponse": {
+    "properties": {
+      "enqueuedAt": {
+        "type": "string"
+      },
+      "queued": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "queueing": {
+        "type": "boolean"
+      },
+      "requestedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "queueing",
+      "queued",
+      "requestedAt",
+      "enqueuedAt"
+    ],
+    "type": "object"
+  },
   "GetMetadataSettingsRequest": {
     "properties": {},
     "required": [],
@@ -104954,6 +104984,35 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "acoustidKeyConfigured": {
+        "type": "boolean"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
+      "artworkLanguage": {
+        "type": "string"
+      },
+      "artworkMaxEdge": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
+      },
+      "castPhotos": {
+        "type": "boolean"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
+      },
+      "fallbackLanguage": {
+        "type": "string"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -104966,6 +105025,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "openSubtitles": {
         "properties": {
@@ -105019,6 +105081,9 @@ export const schemas = {
       "openSubtitlesUsername": {
         "type": "string"
       },
+      "refreshPolicy": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -105032,6 +105097,17 @@ export const schemas = {
       }
     },
     "required": [
+      "onlineLookups",
+      "defaultLanguage",
+      "defaultRegion",
+      "artworkPreference",
+      "artworkLanguage",
+      "refreshPolicy",
+      "fallbackLanguage",
+      "animeTitles",
+      "artworkMaxEdge",
+      "castPhotos",
+      "acoustidKeyConfigured",
       "localArtworkUsedBytes",
       "revision",
       "localArtworkLimitBytes",
@@ -175535,10 +175611,39 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "acoustidKey": {
+        "type": "string"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
+      "artworkLanguage": {
+        "type": "string"
+      },
+      "artworkMaxEdge": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
+      },
+      "castPhotos": {
+        "type": "boolean"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "fallbackLanguage": {
+        "type": "string"
       },
       "includeAdult": {
         "type": "boolean"
@@ -175548,6 +175653,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "onlineLookups": {
+        "type": "boolean"
+      },
       "openSubtitlesApiKey": {
         "type": "string"
       },
@@ -175555,6 +175663,9 @@ export const schemas = {
         "type": "string"
       },
       "openSubtitlesUsername": {
+        "type": "string"
+      },
+      "refreshPolicy": {
         "type": "string"
       },
       "tmdbReadToken": {
@@ -175573,6 +175684,35 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "acoustidKeyConfigured": {
+        "type": "boolean"
+      },
+      "animeTitles": {
+        "type": "string"
+      },
+      "artworkLanguage": {
+        "type": "string"
+      },
+      "artworkMaxEdge": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "artworkPreference": {
+        "type": "string"
+      },
+      "castPhotos": {
+        "type": "boolean"
+      },
+      "defaultLanguage": {
+        "type": "string"
+      },
+      "defaultRegion": {
+        "type": "string"
+      },
+      "fallbackLanguage": {
+        "type": "string"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -175585,6 +175725,9 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "onlineLookups": {
+        "type": "boolean"
       },
       "openSubtitles": {
         "properties": {
@@ -175638,6 +175781,9 @@ export const schemas = {
       "openSubtitlesUsername": {
         "type": "string"
       },
+      "refreshPolicy": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -175651,6 +175797,17 @@ export const schemas = {
       }
     },
     "required": [
+      "onlineLookups",
+      "defaultLanguage",
+      "defaultRegion",
+      "artworkPreference",
+      "artworkLanguage",
+      "refreshPolicy",
+      "fallbackLanguage",
+      "animeTitles",
+      "artworkMaxEdge",
+      "castPhotos",
+      "acoustidKeyConfigured",
       "localArtworkUsedBytes",
       "revision",
       "localArtworkLimitBytes",
@@ -176877,6 +177034,44 @@ export const schemas = {
     "required": [
       "items",
       "limit"
+    ],
+    "type": "object"
+  },
+  "RefreshAllMetadataRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "RefreshAllMetadataResponse": {
+    "properties": {
+      "enqueuedAt": {
+        "type": "string"
+      },
+      "queued": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "queueing": {
+        "type": "boolean"
+      },
+      "requestedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "queueing",
+      "queued",
+      "requestedAt",
+      "enqueuedAt"
     ],
     "type": "object"
   },

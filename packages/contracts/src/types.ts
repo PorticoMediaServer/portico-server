@@ -553,8 +553,10 @@ export type GetMetadataKindIdArtRoleRequest = {  };
 export type GetMetadataKindIdArtRoleResponse = string;
 export type GetMetadataKindIdPreviewRequest = {  };
 export type GetMetadataKindIdPreviewResponse = { "descendants": number; "lockedFields": number; "merge"?: { "allowed": boolean; "blockers": Array<string>; "references": Record<string, number>; "target": { "id": string; "kind": string } }; "message": string; "revision": string; "selectedImages": number };
+export type GetMetadataRefreshRequest = {  };
+export type GetMetadataRefreshResponse = { "enqueuedAt": string; "queued": number; "queueing": boolean; "requestedAt": string };
 export type GetMetadataSettingsRequest = {  };
-export type GetMetadataSettingsResponse = { "includeAdult": boolean; "localArtworkLimitBytes": number; "localArtworkUsedBytes": number; "openSubtitles": { "account": string; "accountSource": string; "checkedAt"?: string; "downloadsAllowed": number; "downloadsRemaining": number; "downloadsResetAt"?: string; "keySource": string; "problem"?: string; "retryAt"?: string }; "openSubtitlesKeyConfigured": boolean; "openSubtitlesPasswordConfigured": boolean; "openSubtitlesUsername": string; "revision": number; "tmdbCredentialConfigured": boolean; "tvdbCredentialConfigured": boolean };
+export type GetMetadataSettingsResponse = { "acoustidKeyConfigured": boolean; "animeTitles": string; "artworkLanguage": string; "artworkMaxEdge": number; "artworkPreference": string; "castPhotos": boolean; "defaultLanguage": string; "defaultRegion": string; "fallbackLanguage": string; "includeAdult": boolean; "localArtworkLimitBytes": number; "localArtworkUsedBytes": number; "onlineLookups": boolean; "openSubtitles": { "account": string; "accountSource": string; "checkedAt"?: string; "downloadsAllowed": number; "downloadsRemaining": number; "downloadsResetAt"?: string; "keySource": string; "problem"?: string; "retryAt"?: string }; "openSubtitlesKeyConfigured": boolean; "openSubtitlesPasswordConfigured": boolean; "openSubtitlesUsername": string; "refreshPolicy": string; "revision": number; "tmdbCredentialConfigured": boolean; "tvdbCredentialConfigured": boolean };
 export type GetNetworkingCertificateRequest = {  };
 export type GetNetworkingCertificateResponse = { "authorityId": string; "config": { "enabled": boolean; "publicAddress": string; "publicPort": number; "revision": string }; "configured": boolean; "dnsName"?: string; "environment": string; "errorCode"?: string; "issuer"?: string; "listenPort": number; "listenerBound": boolean; "namespace"?: string; "nextAttemptAt"?: string; "notAfter"?: string; "orderState"?: string; "publiclyTrusted": boolean; "reachability": string; "renewAt"?: string; "routeErrorCode"?: string; "routeHostname"?: string; "routeUrl"?: string; "state": string; "tlsReady": boolean };
 export type GetNetworkingClaimRequest = {  };
@@ -1195,8 +1197,8 @@ export type PutLyricsProviderRequest = { "enabled": boolean; "expectedRevision":
 export type PutLyricsProviderResponse = { "configured": boolean; "lrclib": boolean; "revision": number };
 export type PutMeLibraryNavigationRequest = { "expectedRevision": number; "pinnedLibraryIds": Array<string> };
 export type PutMeLibraryNavigationResponse = { "pinnedLibraryIds": Array<string>; "revision": number };
-export type PutMetadataSettingsRequest = { "expectedRevision": number; "includeAdult": boolean; "localArtworkLimitBytes": number; "openSubtitlesApiKey"?: string; "openSubtitlesPassword"?: string; "openSubtitlesUsername"?: string; "tmdbReadToken"?: string; "tvdbProjectKey"?: string };
-export type PutMetadataSettingsResponse = { "includeAdult": boolean; "localArtworkLimitBytes": number; "localArtworkUsedBytes": number; "openSubtitles": { "account": string; "accountSource": string; "checkedAt"?: string; "downloadsAllowed": number; "downloadsRemaining": number; "downloadsResetAt"?: string; "keySource": string; "problem"?: string; "retryAt"?: string }; "openSubtitlesKeyConfigured": boolean; "openSubtitlesPasswordConfigured": boolean; "openSubtitlesUsername": string; "revision": number; "tmdbCredentialConfigured": boolean; "tvdbCredentialConfigured": boolean };
+export type PutMetadataSettingsRequest = { "acoustidKey"?: string; "animeTitles"?: string; "artworkLanguage"?: string; "artworkMaxEdge"?: number; "artworkPreference"?: string; "castPhotos"?: boolean; "defaultLanguage"?: string; "defaultRegion"?: string; "expectedRevision": number; "fallbackLanguage"?: string; "includeAdult": boolean; "localArtworkLimitBytes": number; "onlineLookups"?: boolean; "openSubtitlesApiKey"?: string; "openSubtitlesPassword"?: string; "openSubtitlesUsername"?: string; "refreshPolicy"?: string; "tmdbReadToken"?: string; "tvdbProjectKey"?: string };
+export type PutMetadataSettingsResponse = { "acoustidKeyConfigured": boolean; "animeTitles": string; "artworkLanguage": string; "artworkMaxEdge": number; "artworkPreference": string; "castPhotos": boolean; "defaultLanguage": string; "defaultRegion": string; "fallbackLanguage": string; "includeAdult": boolean; "localArtworkLimitBytes": number; "localArtworkUsedBytes": number; "onlineLookups": boolean; "openSubtitles": { "account": string; "accountSource": string; "checkedAt"?: string; "downloadsAllowed": number; "downloadsRemaining": number; "downloadsResetAt"?: string; "keySource": string; "problem"?: string; "retryAt"?: string }; "openSubtitlesKeyConfigured": boolean; "openSubtitlesPasswordConfigured": boolean; "openSubtitlesUsername": string; "refreshPolicy": string; "revision": number; "tmdbCredentialConfigured": boolean; "tvdbCredentialConfigured": boolean };
 export type PutPlaylistsIdSharesRequest = { "accountId"?: string; "afterEntryId"?: string; "authority"?: string; "entryIds"?: Array<string>; "expectedRevision"?: number; "itemId"?: string; "itemIds"?: Array<string>; "name"?: string; "operationId": string; "profileId"?: string; "role"?: string; "summary"?: string; "undoToken"?: string };
 export type PutPlaylistsIdSharesResponse = { "deleted": boolean; "entryId"?: string; "operationId": string; "playlistId": string; "revision": number; "serverId": string; "undoToken"?: string; "undoUntil"?: string; "viewerFence": string };
 export type PutSavedPinsKindIdRequest = { "expectedRevision": number; "operationId": string; "pinned": boolean };
@@ -1219,6 +1221,8 @@ export type PutV1ItemsItemIdSubtitlesResourceRequest = { "companion"?: string; "
 export type PutV1ItemsItemIdSubtitlesResourceResponse = { "catalogRevision": number; "deleted": boolean; "operationId": string; "resourceId": string; "revision": number };
 export type QueryTitlesRequest = {  };
 export type QueryTitlesResponse = { "items": Array<{ "addedAt"?: string; "available": boolean; "durationMs"?: number; "id": string; "kind": string; "libraryId": string; "posterUrl"?: string; "providerIds": Record<string, string>; "rating"?: number; "title": string; "year"?: number }>; "limit": number; "nextCursor"?: string };
+export type RefreshAllMetadataRequest = { "expectedRevision": number };
+export type RefreshAllMetadataResponse = { "enqueuedAt": string; "queued": number; "queueing": boolean; "requestedAt": string };
 export type RefreshItemsMetadataRequest = {  };
 export type RefreshItemsMetadataResponse = { "itemId": string; "status": string };
 export type RefreshShowsMetadataRequest = {  };
@@ -1639,6 +1643,7 @@ export type RouteContracts = {
 "get_metadata_kind_id": { request: GetMetadataKindIdRequest; response: GetMetadataKindIdResponse };
 "get_metadata_kind_id_art_role": { request: GetMetadataKindIdArtRoleRequest; response: GetMetadataKindIdArtRoleResponse };
 "get_metadata_kind_id_preview": { request: GetMetadataKindIdPreviewRequest; response: GetMetadataKindIdPreviewResponse };
+"get_metadata_refresh": { request: GetMetadataRefreshRequest; response: GetMetadataRefreshResponse };
 "get_metadata_settings": { request: GetMetadataSettingsRequest; response: GetMetadataSettingsResponse };
 "get_networking_certificate": { request: GetNetworkingCertificateRequest; response: GetNetworkingCertificateResponse };
 "get_networking_claim": { request: GetNetworkingClaimRequest; response: GetNetworkingClaimResponse };
@@ -1972,6 +1977,7 @@ export type RouteContracts = {
 "put_storage_sources_webdav_id": { request: PutStorageSourcesWebdavIdRequest; response: PutStorageSourcesWebdavIdResponse };
 "put_v1_items_itemId_subtitles_resource": { request: PutV1ItemsItemIdSubtitlesResourceRequest; response: PutV1ItemsItemIdSubtitlesResourceResponse };
 "query_titles": { request: QueryTitlesRequest; response: QueryTitlesResponse };
+"refresh_all_metadata": { request: RefreshAllMetadataRequest; response: RefreshAllMetadataResponse };
 "refresh_items_metadata": { request: RefreshItemsMetadataRequest; response: RefreshItemsMetadataResponse };
 "refresh_shows_metadata": { request: RefreshShowsMetadataRequest; response: RefreshShowsMetadataResponse };
 "remove_library": { request: RemoveLibraryRequest; response: RemoveLibraryResponse };

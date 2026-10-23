@@ -7,7 +7,8 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -2693,6 +2694,7 @@ mb_jobs.album_id
 mb_jobs.attempts
 mb_jobs.entity_id
 mb_jobs.error
+mb_jobs.force_refresh
 mb_jobs.generation
 mb_jobs.item_id
 mb_jobs.kind
@@ -2951,6 +2953,10 @@ member_password_resets.issuer_epoch
 member_password_resets.issuer_id
 member_password_resets.membership_revision
 member_password_resets.turn_off_two_step
+metadata_artwork_sweep.cursor_id
+metadata_artwork_sweep.cursor_kind
+metadata_artwork_sweep.running
+metadata_artwork_sweep.singleton
 metadata_details.item_id
 metadata_details.observed_at
 metadata_details.provider
@@ -3086,6 +3092,16 @@ metadata_refresh_budget.provider
 metadata_refresh_budget.span
 metadata_refresh_budget.spent
 metadata_refresh_budget.window_start
+metadata_refresh_sweep.bound
+metadata_refresh_sweep.completed_at
+metadata_refresh_sweep.cursor
+metadata_refresh_sweep.forced
+metadata_refresh_sweep.next_check
+metadata_refresh_sweep.phase
+metadata_refresh_sweep.queued
+metadata_refresh_sweep.requested_at
+metadata_refresh_sweep.running
+metadata_refresh_sweep.singleton
 metadata_relationship_decisions.actor
 metadata_relationship_decisions.entity_id
 metadata_relationship_decisions.kind
@@ -3115,11 +3131,21 @@ metadata_repair_work_receipts.item_id
 metadata_repair_work_receipts.next_check
 metadata_repair_work_receipts.operation_id
 metadata_repair_work_receipts.receipt
+metadata_runtime_settings.acoustid_key
+metadata_runtime_settings.anime_titles
+metadata_runtime_settings.artwork_language
+metadata_runtime_settings.artwork_max_edge
+metadata_runtime_settings.artwork_preference
+metadata_runtime_settings.cast_photos
+metadata_runtime_settings.default_language
+metadata_runtime_settings.default_region
+metadata_runtime_settings.fallback_language
 metadata_runtime_settings.include_adult
 metadata_runtime_settings.local_artwork_limit_bytes
 metadata_runtime_settings.opensubtitles_api_key
 metadata_runtime_settings.opensubtitles_password
 metadata_runtime_settings.opensubtitles_username
+metadata_runtime_settings.refresh_policy
 metadata_runtime_settings.revision
 metadata_runtime_settings.singleton
 metadata_runtime_settings.tmdb_read_token
@@ -4934,4 +4960,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`

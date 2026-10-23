@@ -6330,10 +6330,30 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_metadata_refresh",
+    "method": "GET",
+    "path": "/v1/admin/metadata/refresh",
+    "summary": "Read the last all-details refresh sweep",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_metadata_settings",
     "method": "GET",
     "path": "/v1/admin/metadata/settings",
-    "summary": "Read provider credentials status and artwork storage limit",
+    "summary": "Read global metadata choices and provider credential presence",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -13863,7 +13883,7 @@ export const routes = [
     "id": "put_metadata_settings",
     "method": "PUT",
     "path": "/v1/admin/metadata/settings",
-    "summary": "Save provider credential overrides and artwork storage limit",
+    "summary": "Save global metadata choices and write-only provider credentials",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -14147,6 +14167,26 @@ export const routes = [
     ],
     "status": 200,
     "admission": "browsing"
+  },
+  {
+    "id": "refresh_all_metadata",
+    "method": "POST",
+    "path": "/v1/admin/metadata/refresh",
+    "summary": "Queue a bounded refresh of provider details, preserving owner edits",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 202,
+    "admission": "admin"
   },
   {
     "id": "refresh_items_metadata",
@@ -17456,6 +17496,7 @@ export const routePaths = {
   "get_metadata_kind_id": "/v1/metadata/{kind}/{id}",
   "get_metadata_kind_id_art_role": "/v1/metadata/{kind}/{id}/art/{role}",
   "get_metadata_kind_id_preview": "/v1/metadata/{kind}/{id}/preview",
+  "get_metadata_refresh": "/v1/admin/metadata/refresh",
   "get_metadata_settings": "/v1/admin/metadata/settings",
   "get_networking_certificate": "/v1/networking/certificate",
   "get_networking_claim": "/v1/networking/claim",
@@ -17789,6 +17830,7 @@ export const routePaths = {
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
   "query_titles": "/v1/titles",
+  "refresh_all_metadata": "/v1/admin/metadata/refresh",
   "refresh_items_metadata": "/v1/items/{id}/metadata/refresh",
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
   "remove_library": "/v1/admin/libraries/{id}",

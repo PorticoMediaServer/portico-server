@@ -94,7 +94,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 
 func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "internal"}
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read global metadata choices and provider credential presence", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
 		if _, e := d.owner(r); e != nil {
 			return metadata.MetadataSettings{}, e
 		}
@@ -108,7 +108,7 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		_, e = d.owner(r)
 		return out, e
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save global metadata choices and write-only provider credentials", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
 		p, e := d.owner(r)
 		if e != nil {
 			return metadata.MetadataSettings{}, e
@@ -118,6 +118,31 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		}
 		out, e := d.Metadata.UpdateMetadataSettings(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return out, metadataAttentionError(e)
+	})
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "refresh_all_metadata", Method: "POST", Path: "/v1/admin/metadata/refresh", Summary: "Queue a bounded refresh of provider details, preserving owner edits", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataRefreshRequest) (metadata.MetadataRefreshStatus, error) {
+		p, e := d.owner(r)
+		if e != nil {
+			return metadata.MetadataRefreshStatus{}, e
+		}
+		if d.Metadata == nil {
+			return metadata.MetadataRefreshStatus{}, errMetadataUnavailable()
+		}
+		out, e := d.Metadata.RefreshAllMetadata(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		return out, metadataAttentionError(e)
+	})
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_metadata_refresh", Method: "GET", Path: "/v1/admin/metadata/refresh", Summary: "Read the last all-details refresh sweep", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataRefreshStatus, error) {
+		if _, e := d.owner(r); e != nil {
+			return metadata.MetadataRefreshStatus{}, e
+		}
+		if d.Metadata == nil {
+			return metadata.MetadataRefreshStatus{}, errMetadataUnavailable()
+		}
+		out, e := d.Metadata.MetadataRefreshStatus(ctx)
+		if e != nil {
+			return out, e
+		}
+		_, e = d.owner(r)
+		return out, e
 	})
 	// Test connection: one or two OpenSubtitles requests, within its sign-in limits.
 	checks := &personalLimiter{}

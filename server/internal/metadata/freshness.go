@@ -137,6 +137,13 @@ func (s *Service) documentFresh(ctx context.Context, provider, kind, resource st
 	if e != nil || !state.Found {
 		return false, state, e
 	}
+	var policy string
+	if e = dbwork.QueryRow(ctx, s.db, `SELECT refresh_policy FROM metadata_runtime_settings WHERE singleton=1`).Scan(&policy); e != nil {
+		return false, state, e
+	}
+	if policy == "never" || policy == "recent" && priority == RefreshOrdinary {
+		return true, state, nil
+	}
 	return now.Sub(state.CheckedAt) < documentFreshness(provider, kind, priority), state, nil
 }
 

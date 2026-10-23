@@ -35,7 +35,7 @@ func (s *Service) mbSongCandidates(ctx context.Context, j mbJob, values []metada
 	for n := range rows {
 		rankMusicSong(&rows[n], j, musicCandidateRecording(rows[n]), 0)
 	}
-	j.fingerprintStatus = musicFingerprintStatus(j, s.acoustid != nil)
+	j.fingerprintStatus = musicFingerprintStatus(j, s.acousticConfiguration().provider != nil)
 	return s.mbStoreCandidates(ctx, j, rows)
 }
 func (s *Service) mbStoreCandidates(ctx context.Context, j mbJob, rows []mbCandidateEvidence) error {

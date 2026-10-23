@@ -267,7 +267,7 @@ func (s *AniList) SearchScreen(ctx context.Context, kind, title string, year int
 	}
 	out := []ScreenRecord{}
 	for _, v := range data.Page.Media {
-		r, e := v.record(language)
+		r, e := v.record(animeLanguage(ctx, language))
 		if e != nil {
 			return nil, e
 		}
@@ -290,7 +290,7 @@ func (s *AniList) ScreenDetails(ctx context.Context, kind, id, language, region 
 	if data.Media.ID != n {
 		return ScreenRecord{}, &Error{Provider: "anilist", Code: "identity_mismatch"}
 	}
-	return data.Media.record(language)
+	return data.Media.record(animeLanguage(ctx, language))
 }
 
 func (s *AniList) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }

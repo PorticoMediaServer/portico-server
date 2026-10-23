@@ -3,16 +3,21 @@ import {unreadableServerResponse} from './server-messages.ts';
 import type {I18n, MessageId} from '../../i18n/src/index.ts';
 /** Where the OpenSubtitles key and account in force come from and how OpenSubtitles last answered. Never a secret. */
 export type OpenSubtitlesStatus=Readonly<{keySource:'owner'|'environment'|'none';accountSource:'owner'|'environment'|'none';account:'none'|'incomplete'|'not_checked'|'signed_in'|'rejected';problem:string;checkedAt:string;retryAt:string;downloadsRemaining:number;downloadsAllowed:number;downloadsResetAt:string}>;
+/** Global choices are server-owned. Existing libraries keep their own language and region. */
+export type MetadataGlobalPreferences=Readonly<{onlineLookups:boolean;defaultLanguage:string;defaultRegion:string;artworkPreference:'folders'|'online';artworkLanguage:'same'|'en'|'textless';refreshPolicy:'regular'|'recent'|'never';fallbackLanguage:'en'|'original'|'blank';animeTitles:'language'|'english'|'romaji'|'native';artworkMaxEdge:1280|1920|2560;castPhotos:boolean;acoustidKeyConfigured:boolean}>;
 /** The OpenSubtitles fields say whether the owner saved their own key and password (never sent back) and the account name. */
-export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
+export type MetadataSettings=MetadataGlobalPreferences & Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
-export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
+export type MetadataSettingsChange=Partial<Omit<MetadataGlobalPreferences,'acoustidKeyConfigured'>> & Readonly<{acoustidKey?:string;expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);
  const v=raw as Record<string,unknown>;
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
- return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
+ const choice=<T extends string|number>(name:string,allowed:readonly T[]):T=>{if(!allowed.includes(v[name] as T))throw new Error(unreadableServerResponse);return v[name] as T;};
+ if(typeof v.onlineLookups!=='boolean'||typeof v.castPhotos!=='boolean'||typeof v.acoustidKeyConfigured!=='boolean'||typeof v.defaultLanguage!=='string'||!/^([a-z]{2})$/.test(v.defaultLanguage)||typeof v.defaultRegion!=='string'||!/^[A-Z]{2}$/.test(v.defaultRegion))throw new Error(unreadableServerResponse);
+ return Object.freeze({onlineLookups:v.onlineLookups,defaultLanguage:v.defaultLanguage,defaultRegion:v.defaultRegion,castPhotos:v.castPhotos,acoustidKeyConfigured:v.acoustidKeyConfigured,
+ artworkPreference:choice('artworkPreference',['folders','online'] as const),artworkLanguage:choice('artworkLanguage',['same','en','textless'] as const),refreshPolicy:choice('refreshPolicy',['regular','recent','never'] as const),fallbackLanguage:choice('fallbackLanguage',['en','original','blank'] as const),animeTitles:choice('animeTitles',['language','english','romaji','native'] as const),artworkMaxEdge:choice('artworkMaxEdge',[1280,1920,2560] as const),localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
   openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true,openSubtitles:parseOpenSubtitlesStatus(v.openSubtitles)});
 }
 const word=<T extends string>(v:unknown,allowed:readonly T[],fallback:T):T=>allowed.includes(v as T)?v as T:fallback;
@@ -48,8 +53,16 @@ export function openSubtitlesSummary(status:OpenSubtitlesStatus,i18n:I18n,now=Da
  if(!status.checkedAt)return Object.freeze({tone:'neutral',text:t('server.metadata.openSubtitlesNotTested')});
  return Object.freeze({tone:'healthy',text:status.account==='signed_in'?t('server.metadata.openSubtitlesSignedIn'):t('server.metadata.openSubtitlesKeyWorks'),...(downloads?{downloads}:{})});
 }
+export type MetadataRefreshStatus=Readonly<{queueing:boolean;queued:number;requestedAt:string;enqueuedAt:string}>;
+export function parseMetadataRefreshStatus(raw:unknown):MetadataRefreshStatus {
+ if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);const v=raw as Record<string,unknown>;
+ if(typeof v.queueing!=='boolean'||typeof v.queued!=='number'||!Number.isSafeInteger(v.queued)||v.queued<0||typeof v.requestedAt!=='string'||typeof v.enqueuedAt!=='string'||(v.requestedAt!==''&&!instant(v.requestedAt))||(v.enqueuedAt!==''&&!instant(v.enqueuedAt)))throw new Error(unreadableServerResponse);
+ return Object.freeze({queueing:v.queueing,queued:v.queued,requestedAt:v.requestedAt,enqueuedAt:v.enqueuedAt});
+}
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
 export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));},
+ async refreshAll(expectedRevision:number){return parseMetadataRefreshStatus(await request<unknown>(routePath("refresh_all_metadata"),'POST',{expectedRevision}));},
+ async refreshStatus(){return parseMetadataRefreshStatus(await request<unknown>(routePath("get_metadata_refresh")));},
  /** Test connection: OpenSubtitles is asked now whether the saved key and account work. */
  async checkOpenSubtitles(){return parseOpenSubtitlesStatus(await request<unknown>(routePath("check_opensubtitles"),'POST'));}});}
 const GIBIBYTE=2**30;

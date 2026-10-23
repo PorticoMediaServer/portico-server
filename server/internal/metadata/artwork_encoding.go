@@ -12,6 +12,7 @@ import (
 )
 
 const artworkDisplayBytes = 500_000
+const artworkMaximumDisplayBytes = 900_000
 const artworkLargeEdge = 1920
 const artworkSmallEdge = 400
 
@@ -44,7 +45,7 @@ func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge i
 			if err := encoder.Encode(&b, scaled); err != nil {
 				return nil, 0, 0, err
 			}
-			if b.Len() <= artworkDisplayBytes {
+			if b.Len() <= artworkByteLimit(edge) {
 				return b.Bytes(), w, h, nil
 			}
 		}
@@ -54,7 +55,7 @@ func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge i
 				if err := jpeg.Encode(&b, scaled, &jpeg.Options{Quality: quality}); err != nil {
 					return nil, 0, 0, err
 				}
-				if b.Len() <= artworkDisplayBytes {
+				if b.Len() <= artworkByteLimit(edge) {
 					return b.Bytes(), w, h, nil
 				}
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -13,6 +14,18 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
+	OnlineLookups         bool   `json:"onlineLookups"`
+	DefaultLanguage       string `json:"defaultLanguage"`
+	DefaultRegion         string `json:"defaultRegion"`
+	ArtworkPreference     string `json:"artworkPreference"`
+	ArtworkLanguage       string `json:"artworkLanguage"`
+	RefreshPolicy         string `json:"refreshPolicy"`
+	FallbackLanguage      string `json:"fallbackLanguage"`
+	AnimeTitles           string `json:"animeTitles"`
+	ArtworkMaxEdge        int    `json:"artworkMaxEdge"`
+	CastPhotos            bool   `json:"castPhotos"`
+	AcoustIDKeyConfigured bool   `json:"acoustidKeyConfigured"`
+
 	LocalArtworkUsedBytes    int64 `json:"localArtworkUsedBytes"`
 	Revision                 int64 `json:"revision"`
 	LocalArtworkLimitBytes   int64 `json:"localArtworkLimitBytes"`
@@ -70,6 +83,18 @@ func (s *Service) CheckOpenSubtitles(ctx context.Context) (OpenSubtitlesStatus, 
 }
 
 type MetadataSettingsUpdate struct {
+	OnlineLookups     *bool   `json:"onlineLookups,omitempty"`
+	DefaultLanguage   *string `json:"defaultLanguage,omitempty"`
+	DefaultRegion     *string `json:"defaultRegion,omitempty"`
+	ArtworkPreference *string `json:"artworkPreference,omitempty"`
+	ArtworkLanguage   *string `json:"artworkLanguage,omitempty"`
+	RefreshPolicy     *string `json:"refreshPolicy,omitempty"`
+	FallbackLanguage  *string `json:"fallbackLanguage,omitempty"`
+	AnimeTitles       *string `json:"animeTitles,omitempty"`
+	ArtworkMaxEdge    *int    `json:"artworkMaxEdge,omitempty"`
+	CastPhotos        *bool   `json:"castPhotos,omitempty"`
+	AcoustIDKey       *string `json:"acoustidKey,omitempty"`
+
 	ExpectedRevision       int64   `json:"expectedRevision"`
 	LocalArtworkLimitBytes int64   `json:"localArtworkLimitBytes"`
 	IncludeAdult           bool    `json:"includeAdult"`
@@ -92,7 +117,7 @@ func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (Metadat
 	var out MetadataSettings
 	var tmdb, tvdb string
 	var subs subtitleCredentials
-	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password)
+	err := tx.QueryRowContext(ctx, `SELECT r.revision+c.revision-1,r.local_artwork_limit_bytes,r.include_adult,r.tmdb_read_token,r.tvdb_project_key,r.opensubtitles_api_key,r.opensubtitles_username,r.opensubtitles_password,c.confirmed,r.default_language,r.default_region,r.artwork_preference,r.artwork_language,r.refresh_policy,r.fallback_language,r.anime_titles,r.artwork_max_edge,r.cast_photos,r.acoustid_key<>'' FROM metadata_runtime_settings r CROSS JOIN screen_metadata_consent c WHERE r.singleton=1 AND c.singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.OnlineLookups, &out.DefaultLanguage, &out.DefaultRegion, &out.ArtworkPreference, &out.ArtworkLanguage, &out.RefreshPolicy, &out.FallbackLanguage, &out.AnimeTitles, &out.ArtworkMaxEdge, &out.CastPhotos, &out.AcoustIDKeyConfigured)
 	out.TMDBCredentialConfigured = tmdb != ""
 	out.TVDBCredentialConfigured = tvdb != ""
 	out.OpenSubtitlesKeyConfigured = subs.key != ""
@@ -152,7 +177,7 @@ func validProviderCredential(v *string) bool {
 	return true
 }
 func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSettingsUpdate, authorize func(*sql.Tx) error) (MetadataSettings, error) {
-	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) {
+	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validMetadataPreferences(in) || !validProviderCredential(in.AcoustIDKey) || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) {
 		return MetadataSettings{}, ErrRepairInput
 	}
 	write, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
@@ -165,6 +190,38 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 		if e = authorize(tx); e != nil {
 			return MetadataSettings{}, e
 		}
+	}
+	out, e := ApplyMetadataSettingsTx(ctx, tx, in, s.publicationTime())
+	if e != nil {
+		return out, e
+	}
+	if e = write.Commit(); e != nil {
+		return out, e
+	}
+	if e = s.loadProviderSettings(ctx); e != nil {
+		return out, e
+	}
+	if s.LocalArtworkUsage != nil {
+		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
+	}
+	out.OpenSubtitles = s.subtitleStatus()
+	return out, e
+}
+
+// ReadMetadataSettingsTx is the sanitized view for same-transaction configuration
+// projections. No credential value or assumed provider health leaves this boundary.
+func ReadMetadataSettingsTx(ctx context.Context, tx *sql.Tx) (MetadataSettings, error) {
+	out, _, _, err := readMetadataSettings(ctx, tx)
+	out.OpenSubtitles = noSubtitleProvider
+	return out, err
+}
+
+// ApplyMetadataSettingsTx is the normalized, validated writer used by the owner
+// facade and atomic configuration imports. The caller authorizes and commits the
+// transaction. The provider worker installs committed keys on its next wake.
+func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSettingsUpdate, now time.Time) (MetadataSettings, error) {
+	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validMetadataPreferences(in) || !validProviderCredential(in.AcoustIDKey) || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) {
+		return MetadataSettings{}, ErrRepairInput
 	}
 	current, tmdb, tvdb, subs, e := readMetadataSettingsWithSubtitles(ctx, tx)
 	if e != nil {
@@ -197,28 +254,19 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	if e != nil {
 		return current, e
 	}
+
+	if e = applyMetadataPreferencesTx(ctx, tx, in, current, now); e != nil {
+		return current, e
+	}
 	// Previously final authentication failures can recover after a key correction.
 	if in.TMDBReadToken != nil || in.TVDBProjectKey != nil {
 		if _, e = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',next_attempt='',attempts=0,error='',generation=generation+1,revision=revision+1 WHERE status='unavailable' AND error IN('request_rejected','provider_not_configured')`); e != nil {
 			return current, e
 		}
 	}
-	out, _, _, e := readMetadataSettings(ctx, tx)
-	if e != nil {
-		return out, e
-	}
-	if e = write.Commit(); e != nil {
-		return out, e
-	}
-	if e = s.loadProviderSettings(ctx); e != nil {
-		return out, e
-	}
-	if s.LocalArtworkUsage != nil {
-		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
-	}
-	out.OpenSubtitles = s.subtitleStatus()
-	return out, e
+	return ReadMetadataSettingsTx(ctx, tx)
 }
+
 func (s *Service) loadProviderSettings(ctx context.Context) error {
 	// Serialize key installation so an older settings read cannot undo a newer save.
 	s.settingsMu.Lock()
@@ -234,6 +282,9 @@ func (s *Service) loadProviderSettings(ctx context.Context) error {
 	}
 	if s.settingsRevision == out.Revision {
 		return nil
+	}
+	if e = s.loadAcoustIDSettings(ctx); e != nil {
+		return e
 	}
 	if s.SubtitleCredentials != nil {
 		s.SubtitleCredentials(subs.key, subs.username, subs.password)

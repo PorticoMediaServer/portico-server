@@ -258,8 +258,51 @@ func (s *TMDB) ScreenDetails(ctx context.Context, kind, id, language, region str
 	if r.Identity.ID != id {
 		return r, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}
-	r = BoundScreenRecord(r)
+	r = BoundScreenRecord(s.fallbackDetails(ctx, r, language, region))
 	return r, ValidateScreenRecord(r)
+}
+
+// fallbackDetails fills absent descriptive text only. Identity/source facts and
+// manual/local catalogue values are never inferred from the fallback language.
+func (s *TMDB) fallbackDetails(ctx context.Context, r ScreenRecord, locale, region string) ScreenRecord {
+	if r.Overview != "" {
+		return r
+	}
+	fallback := preferences(ctx).fallback
+	if fallback == "blank" {
+		return r
+	}
+	if fallback == "original" {
+		fallback = r.Language
+	}
+	if fallback == "" || fallback == locale || strings.Split(locale, "-")[0] == fallback {
+		return r
+	}
+	route, e := tmdbKind(r.Identity.Type)
+	if e != nil {
+		return r
+	}
+	q := url.Values{"language": {fallback}}
+	var v tmdbScreen
+	if e = s.get(ctx, "/"+route+"/"+r.Identity.ID+"?"+q.Encode(), &v); e != nil {
+		return r
+	}
+	other := v.record(r.Identity.Type)
+	if other.Identity != r.Identity {
+		return r
+	}
+	if r.FieldLanguages == nil {
+		r.FieldLanguages = map[string]string{}
+	}
+	if other.Overview != "" {
+		r.Overview = other.Overview
+		r.FieldLanguages["overview"] = fallback
+	}
+	if r.Tagline == "" && other.Tagline != "" {
+		r.Tagline = other.Tagline
+		r.FieldLanguages["tagline"] = fallback
+	}
+	return r
 }
 func (v tmdbScreen) record(kind string) ScreenRecord {
 	title, original, date := v.Title, v.OriginalTitle, v.ReleaseDate
@@ -654,6 +697,7 @@ func (s *TMDB) ScreenDetailsConditional(ctx context.Context, kind, id, language,
 	if r.Identity.ID != id {
 		return r, out, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}
+	r = s.fallbackDetails(ctx, r, language, region)
 	return r, out, ValidateScreenRecord(r)
 }
 

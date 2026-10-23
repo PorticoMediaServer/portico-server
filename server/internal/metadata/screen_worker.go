@@ -271,7 +271,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 		if !pe.Retryable() {
 			status = "unavailable"
 		}
-		if pe.RetryAfter > 0 {
+		if pe.RetryAfter > 0 && pe.Code != "refresh_budget" {
 			_, err = tx.ExecContext(ctx, `INSERT INTO metadata_provider_cooldowns(provider,next_attempt) VALUES(?,?) ON CONFLICT(provider) DO UPDATE SET next_attempt=MAX(next_attempt,excluded.next_attempt)`, pe.Provider, tvdbStamp(s.publicationTime().Add(pe.RetryAfter)))
 			if err != nil {
 				return err
@@ -287,7 +287,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 	// Waiting out a provider's cooldown is not a failure of this title: it is
 	// put off until the cooldown ends and none of its retries is used.
 	counted := 1
-	if pe != nil && pe.Code == "provider_backoff" {
+	if pe != nil && (pe.Code == "provider_backoff" || pe.Code == "refresh_budget") {
 		status, counted = "pending", 0
 		delay = pe.RetryAfter
 	}
@@ -365,7 +365,7 @@ func (s *Service) screenBeforeRequest(ctx context.Context, p *screenClaim, provi
 	return nil
 }
 func (s *Service) screenRequestContext(parent context.Context, p *screenClaim) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancel(metadataprovider.WithScreenPreferences(parent, p.Base.FallbackLanguage, p.Base.AnimeTitles))
 	// Revocation/configuration and superseding owner selections cancel in-flight
 	// I/O, not merely publication. All source observations are rechecked at commit.
 	supervise.Go("metadata.screen-worker.watch", func() {
@@ -377,7 +377,7 @@ func (s *Service) screenRequestContext(parent context.Context, p *screenClaim) (
 				return
 			case <-tick.C:
 				var current bool
-				err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM screen_metadata_work w JOIN screen_metadata_policies p ON p.library_id=w.library_id CROSS JOIN screen_metadata_consent c LEFT JOIN library_configuration lc ON lc.library_id=w.library_id WHERE w.target_kind=? AND w.target_id=? AND w.lease=? AND w.generation=? AND w.selection_revision=? AND p.revision=? AND p.enabled=1 AND c.singleton=1 AND c.confirmed=1 AND c.revision=? AND COALESCE(lc.revision,0)=?)`, p.Base.TargetKind, p.Base.Entity, p.Token, p.Base.Generation, p.Base.Selection, p.Base.PolicyRevision, p.Base.ConsentRevision, p.Base.Configuration).Scan(&current)
+				err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM screen_metadata_work w JOIN screen_metadata_policies p ON p.library_id=w.library_id CROSS JOIN screen_metadata_consent c LEFT JOIN library_configuration lc ON lc.library_id=w.library_id WHERE w.target_kind=? AND w.target_id=? AND w.lease=? AND w.generation=? AND w.selection_revision=? AND p.revision=? AND p.enabled=1 AND c.singleton=1 AND c.confirmed=1 AND c.revision=? AND COALESCE(lc.revision,0)=? AND (SELECT revision FROM metadata_runtime_settings WHERE singleton=1)=?)`, p.Base.TargetKind, p.Base.Entity, p.Token, p.Base.Generation, p.Base.Selection, p.Base.PolicyRevision, p.Base.ConsentRevision, p.Base.Configuration, p.Base.GlobalRevision).Scan(&current)
 				if err != nil || !current {
 					cancel()
 					return

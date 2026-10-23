@@ -220,6 +220,25 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 			r.FieldLanguages["title"] = language.Make(t.Language).String()
 		}
 	}
+	fallback := preferences(ctx).fallback
+	if fallback == "blank" {
+		r.Overview = ""
+		r.FieldLanguages["overview"] = ""
+	} else if fallback == "en" {
+		r.Overview = ""
+		r.FieldLanguages["overview"] = ""
+		for _, t := range v.Translations.Overview {
+			if (t.Language == "eng" || t.Language == "en") && t.Overview != "" {
+				r.Overview = t.Overview
+				r.FieldLanguages["overview"] = "en"
+				break
+			}
+		}
+		if iso == "eng" && r.Overview == "" {
+			r.Overview = v.Overview
+			r.FieldLanguages["overview"] = originalLocale
+		}
+	}
 	for _, t := range v.Translations.Overview {
 		if t.Language == iso && t.Overview != "" {
 			r.Overview = t.Overview

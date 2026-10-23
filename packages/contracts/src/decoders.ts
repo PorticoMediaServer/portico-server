@@ -278,6 +278,7 @@ export function decodeGetMetadataAttentionCountsResponse(input: unknown): types.
 export function decodeGetMetadataKindIdResponse(input: unknown): types.GetMetadataKindIdResponse { return decode("GetMetadataKindIdResponse", input) as types.GetMetadataKindIdResponse; }
 export function decodeGetMetadataKindIdArtRoleResponse(input: unknown): types.GetMetadataKindIdArtRoleResponse { return decode("GetMetadataKindIdArtRoleResponse", input) as types.GetMetadataKindIdArtRoleResponse; }
 export function decodeGetMetadataKindIdPreviewResponse(input: unknown): types.GetMetadataKindIdPreviewResponse { return decode("GetMetadataKindIdPreviewResponse", input) as types.GetMetadataKindIdPreviewResponse; }
+export function decodeGetMetadataRefreshResponse(input: unknown): types.GetMetadataRefreshResponse { return decode("GetMetadataRefreshResponse", input) as types.GetMetadataRefreshResponse; }
 export function decodeGetMetadataSettingsResponse(input: unknown): types.GetMetadataSettingsResponse { return decode("GetMetadataSettingsResponse", input) as types.GetMetadataSettingsResponse; }
 export function decodeGetNetworkingCertificateResponse(input: unknown): types.GetNetworkingCertificateResponse { return decode("GetNetworkingCertificateResponse", input) as types.GetNetworkingCertificateResponse; }
 export function decodeGetNetworkingClaimResponse(input: unknown): types.GetNetworkingClaimResponse { return decode("GetNetworkingClaimResponse", input) as types.GetNetworkingClaimResponse; }
@@ -611,6 +612,7 @@ export function decodePutShowsIdMetadataTvdbResponse(input: unknown): types.PutS
 export function decodePutStorageSourcesWebdavIdResponse(input: unknown): types.PutStorageSourcesWebdavIdResponse { return decode("PutStorageSourcesWebdavIdResponse", input) as types.PutStorageSourcesWebdavIdResponse; }
 export function decodePutV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.PutV1ItemsItemIdSubtitlesResourceResponse { return decode("PutV1ItemsItemIdSubtitlesResourceResponse", input) as types.PutV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeQueryTitlesResponse(input: unknown): types.QueryTitlesResponse { return decode("QueryTitlesResponse", input) as types.QueryTitlesResponse; }
+export function decodeRefreshAllMetadataResponse(input: unknown): types.RefreshAllMetadataResponse { return decode("RefreshAllMetadataResponse", input) as types.RefreshAllMetadataResponse; }
 export function decodeRefreshItemsMetadataResponse(input: unknown): types.RefreshItemsMetadataResponse { return decode("RefreshItemsMetadataResponse", input) as types.RefreshItemsMetadataResponse; }
 export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
 export function decodeRemoveLibraryResponse(input: unknown): types.RemoveLibraryResponse { return decode("RemoveLibraryResponse", input) as types.RemoveLibraryResponse; }

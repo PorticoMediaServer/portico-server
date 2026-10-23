@@ -73,8 +73,17 @@ func seedScreenArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, r metada
 		if err != nil {
 			return err
 		}
-		var occupied bool
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject='' AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject='' AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, role, fence, t.Kind, entity, role).Scan(&occupied)
+		// A separate artwork-language choice needs the ranked image catalogue,
+		// not the provider's generic main poster. Keep it as evidence while the
+		// discovery lane selects the requested language/textless image.
+		var artworkLanguage string
+		if err = tx.QueryRowContext(ctx, `SELECT artwork_language FROM metadata_runtime_settings WHERE singleton=1`).Scan(&artworkLanguage); err != nil {
+			return err
+		}
+		if r.Identity.Provider == "tmdb" && artworkLanguage != "same" && (role == "poster" || role == "backdrop") {
+			continue
+		}
+		occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, "", r.Identity.Provider, fence)
 		if err != nil {
 			return err
 		}

@@ -72,8 +72,8 @@ type Service struct {
 	missingMu        sync.Mutex
 	missingArtwork   map[missingArtwork]struct{}
 	missingWake      worker.Broadcast
-	acoustid         AcousticProvider
-	acoustidConfig   string
+	acoustidState    atomic.Pointer[acousticConfiguration]
+	acoustidFallback string
 	artClient        *http.Client
 	artDirectory     *os.File
 }
@@ -148,6 +148,7 @@ func (s *Service) Run(ctx context.Context) {
 				paced.SetBackgroundSpeed(dbwork.BackgroundSpeed(ctx))
 			}
 		}
+		_ = s.GlobalRefreshStep(ctx)
 		batchStarted := time.Now()
 		var batch sync.WaitGroup
 		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {
@@ -193,7 +194,7 @@ func (s *Service) Run(ctx context.Context) {
 func (s *Service) RunArtwork(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	var wg sync.WaitGroup
-	for _, step := range []func(context.Context) error{s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep} {
+	for _, step := range []func(context.Context) error{s.GlobalArtworkPreferencesStep, s.RepairMissingArtworkStep, s.ArtworkDiscoveryStep, s.ArtworkStep, s.CompactArtworkStep, s.RepairCascadeStep} {
 		wg.Add(1)
 		supervise.Go("metadata.artwork-lane", func() {
 			run := step
@@ -201,7 +202,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 			urgent, unsubscribe := s.missingWake.Subscribe()
 			defer unsubscribe()
 			wake := worker.NewSignal()
-			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "console_documents", "admin_documents")
+			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "metadata_artwork_sweep", "metadata_runtime_settings", "maintenance_*", "console_documents", "admin_documents")
 			defer unregister()
 			progress := worker.NewProgress(dbwork.ChangingCommits)
 			worker.RunWith(ctx, "metadata.artwork-lane", urgent, wake, func(ctx context.Context) time.Duration {

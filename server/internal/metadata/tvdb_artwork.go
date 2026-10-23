@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 
 	"portico.local/server/internal/metadataprovider"
@@ -12,6 +13,13 @@ func (s *Service) discoverTVDBArtwork(ctx context.Context, id string) ([]discove
 	return s.discoverTVDBArtworkFor(ctx, id, "show", "en")
 }
 func (s *Service) discoverTVDBArtworkFor(ctx context.Context, id, kind, locale string) ([]discoveredArtwork, error) {
+	preference, photos, settingsErr := s.artworkPreferences(ctx)
+	if settingsErr != nil {
+		return nil, settingsErr
+	}
+	if preference == "en" {
+		locale = "en"
+	}
 	p, ok := s.tvdb.(interface {
 		Artwork(context.Context, int64) ([]metadataprovider.ArtworkImage, error)
 	})
@@ -39,7 +47,7 @@ func (s *Service) discoverTVDBArtworkFor(ctx context.Context, id, kind, locale s
 	}
 	out := []discoveredArtwork{}
 	for _, im := range images {
-		if validArtworkRole(im.Role) && artworkURLAllowed(im.URL, "tvdb") {
+		if (photos || im.Role != "portrait") && validArtworkRole(im.Role) && artworkURLAllowed(im.URL, "tvdb") {
 			out = append(out, discoveredArtwork{role: im.Role, provider: "tvdb", imageID: strconv.FormatInt(im.ID, 10), origin: im.URL, locale: im.Language, attribution: artworkAttribution("tvdb"), rank: im.Score, votes: -1})
 		}
 	}
@@ -47,5 +55,24 @@ func (s *Service) discoverTVDBArtworkFor(ctx context.Context, id, kind, locale s
 	if kind == "show" {
 		out = append(out, s.tvdbPageArtwork(ctx, n)...)
 	}
+	if !photos {
+		filtered := out[:0]
+		for _, im := range out {
+			if im.role != "portrait" {
+				filtered = append(filtered, im)
+			}
+		}
+		out = filtered
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].role != out[j].role {
+			return out[i].role < out[j].role
+		}
+		a, b := preferredArtworkLanguageRank(out[i].locale, locale, preference), preferredArtworkLanguageRank(out[j].locale, locale, preference)
+		if a != b {
+			return a < b
+		}
+		return out[i].rank > out[j].rank
+	})
 	return out, nil
 }

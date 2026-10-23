@@ -93,6 +93,15 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 	kind := id.Type
 	resource := screenDocumentResource(id.ID, b.Language, b.Region)
 	if b.ForceRefresh {
+		if held {
+			allowed, err := s.admitRefresh(ctx, remembered.Identity.Provider, now)
+			if err != nil {
+				return metadataprovider.ScreenRecord{}, err
+			}
+			if !allowed {
+				return metadataprovider.ScreenRecord{}, refreshBudgetWait(remembered.Identity.Provider)
+			}
+		}
 		held = false
 	}
 	if held {
@@ -197,6 +206,15 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 		return metadataprovider.ScreenRecord{}, e
 	}
 	if b.ForceRefresh {
+		if held {
+			allowed, err := s.admitRefresh(ctx, remembered.Identity.Provider, now)
+			if err != nil {
+				return metadataprovider.ScreenRecord{}, err
+			}
+			if !allowed {
+				return metadataprovider.ScreenRecord{}, refreshBudgetWait(remembered.Identity.Provider)
+			}
+		}
 		held = false
 	}
 	resource := screenDocumentResource(remembered.Identity.ID, b.Language, b.Region)

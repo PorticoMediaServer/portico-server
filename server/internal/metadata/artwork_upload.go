@@ -53,6 +53,10 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if mime == "" {
 		return RepairState{}, ErrArtworkUpload
 	}
+	ctx, sizeErr := s.artworkSizeContext(ctx)
+	if sizeErr != nil {
+		return RepairState{}, sizeErr
+	}
 	// Decoding happens before any transaction is opened: a slow or hostile image
 	// never holds a database write lock.
 	original, thumb, w, h, err := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true, "webp": true})

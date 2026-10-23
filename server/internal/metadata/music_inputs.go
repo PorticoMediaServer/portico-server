@@ -16,41 +16,77 @@ import (
 // Private evidence only. The claim hashes this entire value; fingerprints and
 // filesystem/source identifiers are never included in public review responses.
 type musicInputs struct {
-	Algorithm          string
-	PolicyRevision     int64
-	LocalMode          string
-	AcoustIDEnabled    bool
-	ScanRevision       int64
-	FingerprintAllowed bool
-	Tags               map[string]string
-	Duration           int
-	FingerprintProblem string
-	FingerprintCurrent bool
-	Problem            string
+	Algorithm                       string
+	GlobalRevision, ConsentRevision int64
+	PolicyRevision                  int64
+	LocalMode                       string
+	AcoustIDEnabled                 bool
+	ScanRevision                    int64
+	FingerprintAllowed              bool
+	Tags                            map[string]string
+	Duration                        int
+	FingerprintProblem              string
+	FingerprintCurrent              bool
+	Problem                         string
 }
 
 type AcousticProvider interface {
 	Lookup(context.Context, string, int) ([]metadataprovider.AcousticMatch, error)
 }
 
-// ConfigureAcoustID is startup-only; workers are started after configuration.
+// ConfigureAcoustID records the startup environment fallback. Owner overrides are
+// installed at startup and after each save without mutating an in-flight client.
 func (s *Service) ConfigureAcoustID(key string) error {
+	s.acoustidFallback = key
+	return s.installAcoustID(key)
+}
+
+type acousticConfiguration struct {
+	provider AcousticProvider
+	digest   string
+}
+
+func (s *Service) installAcoustID(key string) error {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(key)))
+	value := hex.EncodeToString(digest[:])
+	if current := s.acoustidState.Load(); current != nil && current.digest == value {
+		return nil
+	}
 	p, e := metadataprovider.NewAcoustID(key)
 	if e != nil {
 		return e
 	}
+	var provider AcousticProvider
 	if p != nil {
-		s.acoustid = p
-		digest := sha256.Sum256([]byte(strings.TrimSpace(key)))
-		s.acoustidConfig = hex.EncodeToString(digest[:])
+		provider = p
 	}
+	s.acoustidState.Store(&acousticConfiguration{provider, value})
 	return nil
+}
+func (s *Service) acousticConfiguration() acousticConfiguration {
+	if p := s.acoustidState.Load(); p != nil {
+		return *p
+	}
+	return acousticConfiguration{}
+}
+func (s *Service) loadAcoustIDSettings(ctx context.Context) error {
+	var key string
+	if e := s.db.QueryRowContext(ctx, `SELECT acoustid_key FROM metadata_runtime_settings WHERE singleton=1`).Scan(&key); e != nil {
+		return e
+	}
+	if key == "" {
+		key = s.acoustidFallback
+	}
+	return s.installAcoustID(key)
 }
 
 func readMusicInputs(ctx context.Context, tx *sql.Tx, kind, id, library string) (musicInputs, error) {
 	m := musicInputs{Algorithm: "music-evidence-v1", Tags: map[string]string{}, LocalMode: "prefer"}
 	e := tx.QueryRowContext(ctx, `SELECT revision,local_mode,acoustid_enabled FROM audio_metadata_policies WHERE library_id=?`, library).Scan(&m.PolicyRevision, &m.LocalMode, &m.AcoustIDEnabled)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return m, e
+	}
+	if e = tx.QueryRowContext(ctx, `SELECT r.revision,c.revision FROM metadata_runtime_settings r CROSS JOIN screen_metadata_consent c WHERE r.singleton=1 AND c.singleton=1`).Scan(&m.GlobalRevision, &m.ConsentRevision); e != nil {
 		return m, e
 	}
 	p, e := catalog.ScanPolicyTx(ctx, tx, library)

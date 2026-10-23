@@ -171,7 +171,13 @@ func artworkFence(ctx context.Context, tx *sql.Tx, t RepairTarget) (string, erro
 	if err != nil {
 		return "", err
 	}
-	parts := []any{t, ent.library, authority}
+	var preference, locale string
+	var edge int
+	var photos bool
+	if err = tx.QueryRowContext(ctx, `SELECT artwork_preference,artwork_language,artwork_max_edge,cast_photos FROM metadata_runtime_settings WHERE singleton=1`).Scan(&preference, &locale, &edge, &photos); err != nil {
+		return "", err
+	}
+	parts := []any{t, ent.library, authority, preference, locale, edge, photos}
 	var head string
 	if err = tx.QueryRowContext(ctx, `SELECT incarnation||':'||revision FROM artwork_entity_heads WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&head); err != nil {
 		return "", err

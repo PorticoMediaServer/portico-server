@@ -27,6 +27,7 @@ type mbJob struct {
 	fingerprintStatus, acousticError                                   string
 	incompleteCandidates                                               bool
 	review, manual                                                     bool
+	forceRefresh                                                       bool
 	kind, id, selected, lease, title, artist, operation, until, digest string
 	generation                                                         int64
 	attempts                                                           int
@@ -91,6 +92,7 @@ func (s *Service) MusicBrainzStep(ctx context.Context) (result error) {
 	if problem != "" {
 		return s.mbResult(ctx, *j, s.mbStatus(ctx, *j, "needs_selection", problem))
 	}
+	ctx = s.musicRefreshContext(ctx, *j)
 	if j.review {
 		selected = ""
 	}
@@ -102,6 +104,9 @@ func (s *Service) MusicBrainzStep(ctx context.Context) (result error) {
 			return s.mbResult(ctx, *j, errors.New("unavailable"))
 		}
 		if j.kind == "album" {
+			if e = s.musicCheckCurrent(ctx, *j); e != nil {
+				return s.mbResult(ctx, *j, e)
+			}
 			values, e := s.mb.SearchReleases(ctx, j.title, j.artist)
 			if e != nil {
 				return s.mbResult(ctx, *j, e)
@@ -274,6 +279,10 @@ func (s *Service) mbFailure(ctx context.Context, j mbJob, problem error) error {
 	if j.attempts >= 3 && status == "pending" {
 		status = "unavailable"
 	}
+	if p != nil && p.Code == "refresh_budget" {
+		status = "pending"
+		code = "refresh_budget"
+	}
 	gated4, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
@@ -287,7 +296,7 @@ func (s *Service) mbFailure(ctx context.Context, j mbJob, problem error) error {
 		}
 		return e
 	}
-	if p != nil && p.RetryAfter > 0 {
+	if p != nil && p.RetryAfter > 0 && p.Code != "refresh_budget" {
 		if _, e = tx.ExecContext(ctx, `INSERT INTO metadata_provider_cooldowns VALUES('musicbrainz',?) ON CONFLICT(provider) DO UPDATE SET next_attempt=max(next_attempt,excluded.next_attempt)`, s.publicationTime().Add(min(p.RetryAfter, 24*time.Hour)).Format(time.RFC3339)); e != nil {
 			return e
 		}
@@ -296,7 +305,12 @@ func (s *Service) mbFailure(ctx context.Context, j mbJob, problem error) error {
 	if e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE mb_jobs SET status=?,attempts=attempts+1,next_attempt=?,error=?,revision=revision+1 WHERE kind=? AND entity_id=?`, status, s.publicationTime().Add(delay).Format(time.RFC3339), code, j.kind, entity); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE mb_jobs SET status=?,attempts=attempts+?,next_attempt=?,error=?,revision=revision+1 WHERE kind=? AND entity_id=?`, status, func() int {
+		if p != nil && p.Code == "refresh_budget" {
+			return 0
+		}
+		return 1
+	}(), s.publicationTime().Add(delay).Format(time.RFC3339), code, j.kind, entity); e != nil {
 		return e
 	}
 	if e = finishMBOperation(ctx, tx, j, "failed", code, s.publicationTime()); e != nil {
@@ -307,16 +321,27 @@ func (s *Service) mbFailure(ctx context.Context, j mbJob, problem error) error {
 func (s *Service) mbRecording(ctx context.Context, id string) (metadataprovider.RecordingLookup, string, error) {
 	var raw, observed string
 	out := metadataprovider.RecordingLookup{RequestedID: strings.ToLower(id)}
-	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_recording_aliases a JOIN mb_recording_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? AND a.observed_at>? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID, s.publicationTime().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&raw, &observed)
+	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_recording_aliases a JOIN mb_recording_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID).Scan(&raw, &observed)
 	if e == nil {
-		e = json.Unmarshal([]byte(raw), &out.Recording)
-		return out, observed, e
+		if e = json.Unmarshal([]byte(raw), &out.Recording); e != nil {
+			return out, observed, e
+		}
+		allow, err := s.refreshMusicDocument(ctx, "recording", observed)
+		if err != nil {
+			return out, observed, err
+		}
+		if !allow {
+			return out, observed, nil
+		}
 	}
-	if !errors.Is(e, sql.ErrNoRows) {
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, "", e
 	}
 	if s.mb == nil {
 		return out, "", errors.New("unavailable")
+	}
+	if e = s.requireGlobalOnline(ctx); e != nil {
+		return out, "", e
 	}
 	out, e = s.mb.Recording(ctx, id)
 	return out, s.publicationTime().Format(time.RFC3339), e
@@ -324,16 +349,27 @@ func (s *Service) mbRecording(ctx context.Context, id string) (metadataprovider.
 func (s *Service) mbRelease(ctx context.Context, id string) (metadataprovider.ReleaseLookup, string, error) {
 	var raw, observed string
 	out := metadataprovider.ReleaseLookup{RequestedID: strings.ToLower(id)}
-	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_release_aliases a JOIN mb_release_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? AND a.observed_at>? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID, s.publicationTime().Add(-30*24*time.Hour).Format(time.RFC3339)).Scan(&raw, &observed)
+	e := s.db.QueryRowContext(ctx, `SELECT r.payload,a.observed_at FROM mb_release_aliases a JOIN mb_release_evidence r ON r.revision_id=a.evidence_revision AND r.sealed=1 WHERE a.requested_id=? ORDER BY a.observed_at DESC,a.evidence_revision LIMIT 1`, out.RequestedID).Scan(&raw, &observed)
 	if e == nil {
-		e = json.Unmarshal([]byte(raw), &out.Release)
-		return out, observed, e
+		if e = json.Unmarshal([]byte(raw), &out.Release); e != nil {
+			return out, observed, e
+		}
+		allow, err := s.refreshMusicDocument(ctx, "release", observed)
+		if err != nil {
+			return out, observed, err
+		}
+		if !allow {
+			return out, observed, nil
+		}
 	}
-	if !errors.Is(e, sql.ErrNoRows) {
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, "", e
 	}
 	if s.mb == nil {
 		return out, "", errors.New("unavailable")
+	}
+	if e = s.requireGlobalOnline(ctx); e != nil {
+		return out, "", e
 	}
 	out, e = s.mb.Release(ctx, id)
 	return out, s.publicationTime().Format(time.RFC3339), e

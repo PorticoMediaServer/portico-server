@@ -37,6 +37,8 @@ type screenEdition struct {
 }
 type screenBase struct {
 	ForceRefresh                                                               bool
+	GlobalRevision                                                             int64
+	FallbackLanguage, AnimeTitles                                              string
 	IdentityLocked                                                             bool
 	OwnerDigest                                                                string
 	TargetKind, TargetID, Library, LibraryKind, ItemKind, Title, Query, Status string
@@ -186,6 +188,9 @@ func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, boun
 	err = tx.QueryRowContext(ctx, `SELECT w.library_id,l.kind,w.title_seed,CASE WHEN w.year_override>0 THEN w.year_override ELSE w.year_seed END,w.query_override,w.revision,w.selection_revision,w.generation,w.status,w.provider,w.provider_type,w.provider_id,w.selection_mode,w.episode_order,w.requested_provider,w.accepted_publication,w.parent_id,p.revision,p.enabled,p.providers,p.language,p.region,p.refresh_mode,c.revision,c.confirmed,COALESCE(lc.revision,0),sp.revision,sp.tier,sp.operations_json,w.force_refresh
   FROM screen_metadata_work w JOIN libraries l ON l.id=w.library_id JOIN screen_metadata_policies p ON p.library_id=w.library_id CROSS JOIN screen_metadata_consent c LEFT JOIN library_configuration lc ON lc.library_id=l.id JOIN library_scan_policies sp ON sp.library_id=l.id WHERE w.target_kind=? AND w.target_id=? AND c.singleton=1 AND l.kind IN('movie','tv','anime')`, kind, entity).Scan(&b.Library, &b.LibraryKind, &b.Title, &b.Year, &b.Query, &b.Revision, &b.Selection, &b.Generation, &b.Status, &b.Provider, &b.ProviderType, &b.ProviderID, &b.Mode, &b.Order, &b.Requested, &b.Accepted, &parentRaw, &b.PolicyRevision, &b.Enabled, &providers, &b.Language, &b.Region, &b.RefreshMode, &b.ConsentRevision, &b.Confirmed, &b.Configuration, &b.ScanRevision, &tier, &operations, &b.ForceRefresh)
 	if err != nil {
+		return b, err
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT revision,fallback_language,anime_titles FROM metadata_runtime_settings WHERE singleton=1`).Scan(&b.GlobalRevision, &b.FallbackLanguage, &b.AnimeTitles); err != nil {
 		return b, err
 	}
 	b.Parent = entityPublic(ctx, tx, scanParentID(parentRaw))

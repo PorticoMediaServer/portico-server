@@ -13,6 +13,12 @@ import (
 	"portico.local/server/internal/imagework"
 )
 
+const artworkCompactionSQL = `SELECT digest FROM (
+ SELECT * FROM (SELECT o.digest,o.bytes FROM artwork_objects o INDEXED BY artwork_objects_bytes WHERE status='ready' AND bytes>? AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY bytes DESC,digest LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT o.digest,o.bytes FROM artwork_objects o INDEXED BY artwork_objects_width WHERE status='ready' AND width>? AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY width DESC,digest LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT o.digest,o.bytes FROM artwork_objects o INDEXED BY artwork_objects_height WHERE status='ready' AND height>? AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY height DESC,digest LIMIT 1)
+ ) ORDER BY bytes DESC,digest LIMIT 1`
+
 // CompactArtworkStep upgrades one legacy object without provider IO. Selected,
 // uploaded and restorable artwork keep their identity/locks; only their bounded
 // representation changes. Publication is atomic and old open readers remain valid.
@@ -20,10 +26,16 @@ func (s *Service) CompactArtworkStep(ctx context.Context) error {
 	if s.cacheRoot == "" {
 		return nil
 	}
+	ctx, err := s.artworkSizeContext(ctx)
+	if err != nil {
+		return err
+	}
 	var old string
-	// The literals match the partial index artwork_objects_compaction (0103):
-	// the step reads only candidates, never the whole object table.
-	err := s.db.QueryRowContext(ctx, `SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY o.bytes DESC,o.digest LIMIT 1`).Scan(&old)
+	edge := artworkSize(ctx)
+	limit := artworkByteLimit(edge)
+	// Three indexed probes support all approved image bounds without scanning
+	// every correctly normalized image in a large collection.
+	err = s.db.QueryRowContext(ctx, artworkCompactionSQL, limit, edge, edge).Scan(&old)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -83,7 +95,7 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	edge := artworkLargeEdge
+	edge := artworkSize(ctx)
 	if small {
 		edge = artworkSmallEdge
 	}

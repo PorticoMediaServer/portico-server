@@ -70,6 +70,11 @@ type musicArtistFacts struct {
 
 // musicArtistStep enriches a bounded page of MusicBrainz-matched artists.
 func (s *Service) musicArtistStep(ctx context.Context) error {
+	var online bool
+	if err := dbwork.QueryRow(ctx, s.db, `SELECT confirmed FROM screen_metadata_consent WHERE singleton=1`).Scan(&online); err != nil || !online {
+		return err
+	}
+
 	if s.wikidata == nil || s.wikipedia == nil || s.commons == nil {
 		return nil
 	}
@@ -105,7 +110,7 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 	 JOIN libraries li ON li.id=cl.library_id AND li.kind='music'
 	 JOIN mb_provider_policies p ON p.library_id=cl.library_id AND p.enabled=1
 	 LEFT JOIN music_artist_evidence e ON e.artist_id=ar.id AND e.mbid=lower(c.artist_id)
-	 WHERE window_artist.entity_id>? AND window_artist.entity_id<=? AND ar.kind=5 AND (e.artist_id IS NULL OR (e.complete=0 AND e.attempts<?) OR e.observed_at<?)
+	 WHERE window_artist.entity_id>? AND window_artist.entity_id<=? AND ar.kind=5 AND (e.artist_id IS NULL OR (e.complete=0 AND e.attempts<?) OR ((SELECT refresh_policy FROM metadata_runtime_settings WHERE singleton=1)='regular' AND e.observed_at<?))
 	 ORDER BY ar.id LIMIT ?`, after, windowEnd.Int64, musicArtistAttempts, s.publicationTime().Add(-musicArtistRefresh).Format(time.RFC3339), musicArtistPage)
 	if err != nil {
 		return err
@@ -151,6 +156,9 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 		results[i].facts, results[i].err = s.fetchMusicArtist(ctx, mb, c.mbid)
 	}
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		if enabled, e := globalOnlineTx(ctx, tx); e != nil || !enabled {
+			return e
+		}
 		stamp := tvdbStamp(s.publicationTime())
 		now := s.publicationTime().Format(time.RFC3339Nano)
 		for i, c := range claims {
@@ -193,6 +201,9 @@ func (s *Service) musicArtistStep(ctx context.Context) error {
 // (MusicBrainz facts are always kept); only a failed request is retried.
 func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mbid string) (musicArtistFacts, error) {
 	var out musicArtistFacts
+	if err := s.requireGlobalOnline(ctx); err != nil {
+		return out, err
+	}
 	artist, err := mb.Artist(ctx, mbid)
 	if err != nil {
 		return out, err
@@ -201,12 +212,18 @@ func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mb
 	if artist.WikidataID == "" {
 		return out, nil
 	}
+	if err := s.requireGlobalOnline(ctx); err != nil {
+		return out, err
+	}
 	entity, err := s.wikidata.EntityArtist(ctx, artist.WikidataID)
 	if err != nil {
 		return musicArtistFacts{}, err
 	}
 	if entity.WikipediaTitle == "" {
 		return out, nil
+	}
+	if err := s.requireGlobalOnline(ctx); err != nil {
+		return out, err
 	}
 	summary, err := s.wikipedia.Summary(ctx, entity.WikipediaTitle)
 	if err != nil {
@@ -222,6 +239,9 @@ func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mb
 	// A portrait failure keeps the biography: the next refresh retries the
 	// image, and the page is complete without one.
 	if entity.ImageFile != "" {
+		if err := s.requireGlobalOnline(ctx); err != nil {
+			return out, err
+		}
 		if image, err := s.commons.ImageInfo(ctx, entity.ImageFile); err == nil && image.FileURL != "" {
 			out.imageURL, out.imageLicence = image.FileURL, image.Licence
 		}
@@ -235,6 +255,9 @@ func (s *Service) fetchMusicArtist(ctx context.Context, mb musicArtistSource, mb
 // is the public id: RepairTarget still takes public ids (the artwork lane
 // resolves the integer entity id when it converts).
 func seedMusicArtistPortrait(ctx context.Context, tx *sql.Tx, artist, library, origin, now string) error {
+	if enabled, e := globalOnlineTx(ctx, tx); e != nil || !enabled {
+		return e
+	}
 	if local, err := LibraryLocalOnlyTx(ctx, tx, library); err != nil || local {
 		return err
 	}

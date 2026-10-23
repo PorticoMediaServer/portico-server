@@ -9,7 +9,7 @@ const base={keySource:'owner',accountSource:'owner',account:'signed_in',problem:
 const t=defaultI18n.t;
 
 test('the OpenSubtitles status is read tolerantly and never carries more than it says',()=>{
- const out=parseMetadataSettings({revision:1,localArtworkUsedBytes:0,localArtworkLimitBytes:2**31,includeAdult:false,tmdbCredentialConfigured:false,tvdbCredentialConfigured:false,openSubtitlesKeyConfigured:true,openSubtitlesUsername:'me',openSubtitlesPasswordConfigured:true,openSubtitles:{...base,token:'secret'}});
+ const out=parseMetadataSettings({onlineLookups:true,defaultLanguage:'en',defaultRegion:'US',artworkPreference:'folders',artworkLanguage:'same',refreshPolicy:'regular',fallbackLanguage:'en',animeTitles:'language',artworkMaxEdge:1920,castPhotos:true,acoustidKeyConfigured:false,revision:1,localArtworkUsedBytes:0,localArtworkLimitBytes:2**31,includeAdult:false,tmdbCredentialConfigured:false,tvdbCredentialConfigured:false,openSubtitlesKeyConfigured:true,openSubtitlesUsername:'me',openSubtitlesPasswordConfigured:true,openSubtitles:{...base,token:'secret'}});
  assert.equal(out.openSubtitles.account,'signed_in');assert.equal('token' in out.openSubtitles,false);
  // An older server sends none: nothing is known, and the page still opens.
  assert.deepEqual(parseOpenSubtitlesStatus(undefined),{keySource:'none',accountSource:'none',account:'none',problem:'',checkedAt:'',retryAt:'',downloadsRemaining:-1,downloadsAllowed:-1,downloadsResetAt:''});

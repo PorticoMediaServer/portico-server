@@ -71,3 +71,55 @@ func TestTypedMetadataAttentionAndSettingsRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobalMetadataSettingsAndRefreshHTTPContract(t *testing.T) {
+	d, owner := logoutHTTPFixture(t)
+	d.Metadata = metadata.New(d.DB, "")
+	handler := New(d)
+	call := func(method, path, body, token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	read := call("GET", "/v1/admin/metadata/settings", "", owner.AccessToken)
+	if read.Code != 200 {
+		t.Fatal(read.Code, read.Body.String())
+	}
+	var current metadata.MetadataSettings
+	if e := json.Unmarshal(read.Body.Bytes(), &current); e != nil {
+		t.Fatal(e)
+	}
+	key, lang, region, anime, refresh := "fixture-private-acoustid", "ja", "JP", "native", "never"
+	online := true
+	body, _ := json.Marshal(metadata.MetadataSettingsUpdate{ExpectedRevision: current.Revision, LocalArtworkLimitBytes: current.LocalArtworkLimitBytes, DefaultLanguage: &lang, DefaultRegion: &region, AnimeTitles: &anime, RefreshPolicy: &refresh, AcoustIDKey: &key, OnlineLookups: &online})
+	saved := call("PUT", "/v1/admin/metadata/settings", string(body), owner.AccessToken)
+	if saved.Code != 200 || strings.Contains(saved.Body.String(), key) {
+		t.Fatal(saved.Code, saved.Body.String())
+	}
+	if e := json.Unmarshal(saved.Body.Bytes(), &current); e != nil || current.DefaultLanguage != "ja" || !current.AcoustIDKeyConfigured {
+		t.Fatal(current, e)
+	}
+	body, _ = json.Marshal(metadata.MetadataRefreshRequest{ExpectedRevision: current.Revision})
+	for _, method := range []string{"GET", "POST"} {
+		if result := call(method, "/v1/admin/metadata/refresh", string(body), ""); result.Code != 401 {
+			t.Fatal("unauthenticated", method, result.Code)
+		}
+	}
+	result := call("POST", "/v1/admin/metadata/refresh", string(body), owner.AccessToken)
+	if result.Code != 202 || !strings.Contains(result.Body.String(), `"queueing":true`) {
+		t.Fatal(result.Code, result.Body.String())
+	}
+	status := call("GET", "/v1/admin/metadata/refresh", "", owner.AccessToken)
+	if status.Code != 200 || !strings.Contains(status.Body.String(), `"queueing":true`) {
+		t.Fatal(status.Code, status.Body.String())
+	}
+	bad := call("PUT", "/v1/admin/metadata/settings", `{"expectedRevision":1,"localArtworkLimitBytes":1,"artworkPreference":"folders|online"}`, owner.AccessToken)
+	if bad.Code != 400 {
+		t.Fatal("bad enum", bad.Code, bad.Body.String())
+	}
+}

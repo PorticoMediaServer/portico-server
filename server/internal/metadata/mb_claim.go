@@ -160,6 +160,15 @@ func readMBBase(ctx context.Context, tx *sql.Tx, kind, id string) (mbBase, error
 		b.HintProblem = b.Music.Problem
 	}
 	e = tx.QueryRowContext(ctx, `SELECT incarnation,revision,enabled,algorithm FROM mb_provider_policies WHERE library_id=?`, b.Library).Scan(&b.PolicyIncarnation, &b.PolicyRevision, &b.Enabled, &b.Algorithm)
+	if e != nil {
+		return b, e
+	}
+	local, e := LibraryLocalOnlyTx(ctx, tx, b.Library)
+	online, err := globalOnlineTx(ctx, tx)
+	if err != nil {
+		return b, err
+	}
+	b.Enabled = b.Enabled && !local && online
 	return b, e
 }
 
@@ -242,7 +251,7 @@ func advanceMBAlbumHints(ctx context.Context, tx *sql.Tx, id string) (bool, erro
 // the provider not cooling down, and its library's MusicBrainz policy enabled.
 // mb_jobs.entity_id is the integer catalogue id; the album/song branches join
 // it to catalog_entities (kinds 6/7) and the library chain.
-const mbClaimable = `status='pending' AND next_attempt<=? AND lease_until<=? AND COALESCE((SELECT next_attempt FROM metadata_provider_cooldowns WHERE provider='musicbrainz'),'')<=? AND ((mb_jobs.kind='album' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=6 AND e.id=mb_jobs.entity_id)) OR (mb_jobs.kind='song' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=7 AND e.id=mb_jobs.entity_id)))`
+const mbClaimable = `EXISTS(SELECT 1 FROM screen_metadata_consent WHERE singleton=1 AND confirmed=1) AND status='pending' AND next_attempt<=? AND lease_until<=? AND COALESCE((SELECT next_attempt FROM metadata_provider_cooldowns WHERE provider='musicbrainz'),'')<=? AND ((mb_jobs.kind='album' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_albums ab ON ab.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=6 AND e.id=mb_jobs.entity_id)) OR (mb_jobs.kind='song' AND EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_songs cs ON cs.entity_id=e.id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id AND l.kind='music' JOIN mb_provider_policies p ON p.library_id=l.id AND p.enabled=1 AND p.algorithm='mb-exact-identity-v1' WHERE e.kind=7 AND e.id=mb_jobs.entity_id)))`
 
 // claimMB leases the next due job. Finding it can mean passing over every job
 // of a library whose policy is off, so the search runs on a background read
@@ -299,7 +308,7 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	tx := gated.Tx()
 	defer gated.Rollback()
 	j := &mbJob{}
-	e = tx.QueryRowContext(ctx, `SELECT mb_jobs.kind,(SELECT pid(public_id) FROM catalog_entities WHERE id=mb_jobs.entity_id),mb_jobs.selected_id,mb_jobs.manual,mb_jobs.review_search,mb_jobs.generation,mb_jobs.attempts FROM mb_jobs WHERE mb_jobs.kind=? AND mb_jobs.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+mbClaimable, kind, entity, stamp, stamp, stamp).Scan(&j.kind, &j.id, &j.selected, &j.manual, &j.review, &j.generation, &j.attempts)
+	e = tx.QueryRowContext(ctx, `SELECT mb_jobs.kind,(SELECT pid(public_id) FROM catalog_entities WHERE id=mb_jobs.entity_id),mb_jobs.selected_id,mb_jobs.manual,mb_jobs.review_search,mb_jobs.force_refresh,mb_jobs.generation,mb_jobs.attempts FROM mb_jobs WHERE mb_jobs.kind=? AND mb_jobs.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND `+mbClaimable, kind, entity, stamp, stamp, stamp).Scan(&j.kind, &j.id, &j.selected, &j.manual, &j.review, &j.forceRefresh, &j.generation, &j.attempts)
 	if errors.Is(e, sql.ErrNoRows) {
 		// Claimed, finished or disabled since the search; the next step looks again.
 		return nil, nil

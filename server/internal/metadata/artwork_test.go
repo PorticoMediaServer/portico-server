@@ -205,7 +205,7 @@ func TestArtworkReseedsAfterSourceFenceChanges(t *testing.T) {
 // object is recorded and skipped instead of stalling the queue.
 func TestArtworkCompactionSkipsABadObjectAndSeeksCandidates(t *testing.T) {
 	if artworkDisplayBytes != 500000 || artworkLargeEdge != 1920 {
-		t.Fatal("artwork thresholds changed: update migration 0103's partial index and CompactArtworkStep together")
+		t.Fatal("artwork thresholds changed: update the indexed compaction probes and CompactArtworkStep together")
 	}
 	s, db, _ := repairFixture(t)
 	ctx := context.Background()
@@ -236,7 +236,7 @@ func TestArtworkCompactionSkipsABadObjectAndSeeksCandidates(t *testing.T) {
 		t.Fatal("valid object behind corrupt object did not compact", remains, err)
 	}
 
-	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) ORDER BY o.bytes DESC,o.digest LIMIT 1`)
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+artworkCompactionSQL, artworkDisplayBytes, artworkLargeEdge, artworkLargeEdge)
 	if err != nil {
 		t.Fatal("partial index unusable for the step's predicate", err)
 	}

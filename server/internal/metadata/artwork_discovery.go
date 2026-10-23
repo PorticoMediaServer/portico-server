@@ -109,8 +109,8 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				if e != nil {
 					return e
 				}
-				var selected bool
-				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND (actor<>'' OR provider='local') AND status IN('pending','retry','running'))`, t.Kind, entity, role, fence, t.Kind, entity, role).Scan(&selected); e != nil {
+				selected, e := automaticArtworkOccupied(ctx, tx, t, entity, role, "", provider, fence)
+				if e != nil {
 					return e
 				}
 				if !selected {
@@ -144,8 +144,8 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				if e != nil {
 					return e
 				}
-				var occupied bool
-				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role='cover' AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role='cover' AND (actor<>'' OR provider='local') AND status IN('pending','retry','running'))`, t.Kind, entity, fence, t.Kind, entity).Scan(&occupied); e != nil {
+				occupied, e := automaticArtworkOccupied(ctx, tx, t, entity, "cover", "", "local", fence)
+				if e != nil {
 					return e
 				}
 				if !occupied {
@@ -210,6 +210,9 @@ func (s *Service) artworkProviderEnabled(ctx context.Context, tx *sql.Tx, t Repa
 	}
 	var enabled bool
 	if provider != "local" {
+		if online, e := globalOnlineTx(ctx, tx); e != nil || !online {
+			return false, e
+		}
 		if local, err := LibraryLocalOnlyTx(ctx, tx, ent.library); err != nil || local {
 			return false, err
 		}
@@ -382,8 +385,8 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 			if queued[key] {
 				continue
 			}
-			var exists bool
-			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject=? AND (a.locked=1 OR c.provider='local' OR c.source_fence=?))`, t.Kind, entity, im.role, im.subject, fence).Scan(&exists); e != nil {
+			exists, e := automaticArtworkOccupied(ctx, tx, t, entity, im.role, im.subject, provider, fence)
+			if e != nil {
 				return e
 			}
 			// Fill missing roles or replace unlocked art from a superseded identity.
@@ -421,6 +424,14 @@ func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]d
 	return s.discoverArtworkFor(ctx, provider, id, "item", "en")
 }
 func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, locale string) ([]discoveredArtwork, error) {
+	preference, photos, settingsErr := s.artworkPreferences(ctx)
+	if settingsErr != nil {
+		return nil, settingsErr
+	}
+	if preference == "en" {
+		locale = "en"
+	}
+
 	if provider == "coverartarchive" {
 		return s.discoverCAA(ctx, id)
 	}
@@ -461,12 +472,22 @@ func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, lo
 		} `json:"seasons"`
 	}
 	route := "/movie/" + id
-	parts := "images,credits"
+	parts := "images"
+	if photos {
+		parts += ",credits"
+	}
 	if kind == "show" {
 		route = "/tv/" + id
-		parts = "images,aggregate_credits"
+		parts = "images"
+		if photos {
+			parts += ",aggregate_credits"
+		}
 	}
-	q := url.Values{"append_to_response": {parts}, "language": {locale}, "include_image_language": {strings.Split(locale, "-")[0] + ",null,en"}}
+	imageLanguages := strings.Split(locale, "-")[0] + ",null,en"
+	if preference == "textless" {
+		imageLanguages = "null," + strings.Split(locale, "-")[0] + ",en"
+	}
+	q := url.Values{"append_to_response": {parts}, "language": {locale}, "include_image_language": {imageLanguages}}
 	raw, err := s.tmdbGet(ctx, route+"?"+q.Encode())
 	if err != nil {
 		var refused *metadataprovider.Error
@@ -491,7 +512,7 @@ func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, lo
 		Votes    int     `json:"vote_count"`
 	}{data.Images.Posters, data.Images.Backdrops, data.Images.Logos} {
 		sort.SliceStable(images, func(i, j int) bool {
-			a, b := artworkLanguageRank(images[i].Language, locale), artworkLanguageRank(images[j].Language, locale)
+			a, b := preferredArtworkLanguageRank(images[i].Language, locale, preference), preferredArtworkLanguageRank(images[j].Language, locale, preference)
 			if a != b {
 				return a < b
 			}
@@ -502,13 +523,16 @@ func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, lo
 	add := func(role, subject, path, locale string, rank float64, votes int) {
 		size := "original"
 		if role == "portrait" {
+			if !photos {
+				return
+			}
 			size = "h632"
 		}
 		if role == "poster" {
-			size = "w780"
+			size = "original"
 		}
 		if role == "backdrop" {
-			size = "w1280"
+			size = "original"
 		}
 		origin := imageURL(path, size)
 		if origin != "" && len(out) < 160 {

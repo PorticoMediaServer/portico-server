@@ -37,8 +37,10 @@ index artwork_entity_heads_entity
 index artwork_jobs_claim
 index artwork_jobs_due
 index artwork_jobs_storage_retry
-index artwork_objects_compaction
+index artwork_objects_bytes
 index artwork_objects_created
+index artwork_objects_height
+index artwork_objects_width
 index artwork_previews_digest
 index artwork_selections_candidate
 index artwork_selections_digest
@@ -1025,6 +1027,7 @@ table media_analysis_formats
 table media_analysis_item_mappings
 table media_analysis_streams
 table member_password_resets
+table metadata_artwork_sweep
 table metadata_details
 table metadata_discovery_items
 table metadata_discovery_refresh
@@ -1043,6 +1046,7 @@ table metadata_publication_heads
 table metadata_publication_operations
 table metadata_ratings
 table metadata_refresh_budget
+table metadata_refresh_sweep
 table metadata_relationship_decisions
 table metadata_repair_cascade_items
 table metadata_repair_cascades
@@ -2553,8 +2557,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

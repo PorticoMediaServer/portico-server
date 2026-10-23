@@ -1697,7 +1697,7 @@ CREATE TABLE metadata_stage_credits(
  ordinal INTEGER NOT NULL CHECK(ordinal>=0 AND ordinal<100),credit_id TEXT NOT NULL CHECK(length(credit_id) BETWEEN 1 AND 256),
  person_id INTEGER NOT NULL CHECK(person_id>0),name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 300),role TEXT NOT NULL CHECK(length(role)<=500),department TEXT NOT NULL CHECK(length(department)<=200),
  PRIMARY KEY(operation_id,ordinal)) STRICT;
-CREATE TABLE mb_jobs(kind TEXT NOT NULL CHECK(kind IN('album','song')),entity_id INTEGER NOT NULL,album_id INTEGER REFERENCES catalog_entities(id) ON DELETE CASCADE,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN('pending','matched','needs_selection','unavailable','unresolved')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),selected_id TEXT NOT NULL DEFAULT '',manual INTEGER NOT NULL DEFAULT 0 CHECK(manual IN(0,1)),review_search INTEGER NOT NULL DEFAULT 0 CHECK(review_search IN(0,1)),attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',lease TEXT NOT NULL DEFAULT '',lease_until TEXT NOT NULL DEFAULT '',PRIMARY KEY(kind,entity_id),CHECK((kind='album' AND album_id=entity_id AND item_id IS NULL) OR(kind='song' AND item_id=entity_id AND album_id IS NULL))) STRICT;
+CREATE TABLE mb_jobs(force_refresh INTEGER NOT NULL DEFAULT 0 CHECK(force_refresh IN(0,1)),kind TEXT NOT NULL CHECK(kind IN('album','song')),entity_id INTEGER NOT NULL,album_id INTEGER REFERENCES catalog_entities(id) ON DELETE CASCADE,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN('pending','matched','needs_selection','unavailable','unresolved')),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),selected_id TEXT NOT NULL DEFAULT '',manual INTEGER NOT NULL DEFAULT 0 CHECK(manual IN(0,1)),review_search INTEGER NOT NULL DEFAULT 0 CHECK(review_search IN(0,1)),attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',lease TEXT NOT NULL DEFAULT '',lease_until TEXT NOT NULL DEFAULT '',PRIMARY KEY(kind,entity_id),CHECK((kind='album' AND album_id=entity_id AND item_id IS NULL) OR(kind='song' AND item_id=entity_id AND album_id IS NULL))) STRICT;
 CREATE TABLE mb_album_heads(album_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),membership_revision INTEGER NOT NULL DEFAULT 1 CHECK(membership_revision>0)) STRICT;
 CREATE TABLE mb_song_heads(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE mb_provider_policies(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),algorithm TEXT NOT NULL DEFAULT 'mb-exact-identity-v1' CHECK(algorithm='mb-exact-identity-v1')) STRICT;
@@ -2465,9 +2465,30 @@ CREATE TABLE metadata_runtime_settings(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
  include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
+ default_language TEXT NOT NULL DEFAULT 'en',default_region TEXT NOT NULL DEFAULT 'US',
+ artwork_preference TEXT NOT NULL DEFAULT 'folders' CHECK(artwork_preference IN('folders','online')),
+ artwork_language TEXT NOT NULL DEFAULT 'same' CHECK(artwork_language IN('same','en','textless')),
+ refresh_policy TEXT NOT NULL DEFAULT 'regular' CHECK(refresh_policy IN('regular','recent','never')),
+ fallback_language TEXT NOT NULL DEFAULT 'en' CHECK(fallback_language IN('en','original','blank')),
+ anime_titles TEXT NOT NULL DEFAULT 'language' CHECK(anime_titles IN('language','english','romaji','native')),
+ artwork_max_edge INTEGER NOT NULL DEFAULT 1920 CHECK(artwork_max_edge IN(1280,1920,2560)),
+ cast_photos INTEGER NOT NULL DEFAULT 1 CHECK(cast_photos IN(0,1)),acoustid_key TEXT NOT NULL DEFAULT '',
  tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '',
  opensubtitles_api_key TEXT NOT NULL DEFAULT '',opensubtitles_username TEXT NOT NULL DEFAULT '',opensubtitles_password TEXT NOT NULL DEFAULT '') STRICT;
 INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
+CREATE TABLE metadata_artwork_sweep(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),cursor_kind TEXT NOT NULL DEFAULT '',cursor_id INTEGER NOT NULL DEFAULT 0,
+ running INTEGER NOT NULL DEFAULT 0 CHECK(running IN(0,1))) STRICT;
+INSERT INTO metadata_artwork_sweep(singleton) VALUES(1);
+CREATE TABLE metadata_refresh_sweep(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ phase TEXT NOT NULL DEFAULT 'item' CHECK(phase IN('item','show','album','song')),
+ cursor INTEGER NOT NULL DEFAULT 0,bound INTEGER NOT NULL DEFAULT 0,
+ running INTEGER NOT NULL DEFAULT 0 CHECK(running IN(0,1)),
+ forced INTEGER NOT NULL DEFAULT 0 CHECK(forced IN(0,1)),
+ queued INTEGER NOT NULL DEFAULT 0,next_check INTEGER NOT NULL DEFAULT 0,
+ requested_at TEXT NOT NULL DEFAULT '',completed_at TEXT NOT NULL DEFAULT '') STRICT;
+INSERT INTO metadata_refresh_sweep(singleton) VALUES(1);
 CREATE TABLE screen_metadata_consent(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  confirmed INTEGER NOT NULL DEFAULT 0 CHECK(confirmed IN(0,1)),confirmed_at TEXT NOT NULL DEFAULT '') STRICT;
@@ -4519,8 +4540,9 @@ CREATE INDEX metadata_repair_cascades_entity ON metadata_repair_cascades(kind,en
 CREATE INDEX artwork_selections_candidate ON artwork_selections(candidate_id);
 CREATE INDEX listening_book_series_key ON listening_book_series(library_id,series_key,book_id);
 CREATE INDEX audio_tag_evidence_genre_value ON audio_tag_evidence(library_id,value COLLATE NOCASE) WHERE field='genre';
-CREATE INDEX artwork_objects_compaction ON artwork_objects(bytes DESC,digest)
- WHERE status='ready' AND (bytes>500000 OR width>1920 OR height>1920);
+CREATE INDEX artwork_objects_bytes ON artwork_objects(bytes DESC,digest) WHERE status='ready';
+CREATE INDEX artwork_objects_width ON artwork_objects(width DESC,digest) WHERE status='ready';
+CREATE INDEX artwork_objects_height ON artwork_objects(height DESC,digest) WHERE status='ready';
 CREATE INDEX metadata_details_provider ON metadata_details(provider,provider_id,item_id);
 CREATE INDEX screen_publications_provider ON screen_metadata_publications(provider,provider_id,target_kind,target_id) WHERE decision='accepted';
 CREATE INDEX personal_history_recent ON personal_history(updated_at,item_id,profile_id);
@@ -4587,7 +4609,7 @@ CREATE TRIGGER admin_revision_jobs_INSERT AFTER INSERT ON jobs BEGIN UPDATE admi
 CREATE TRIGGER admin_revision_jobs_UPDATE AFTER UPDATE ON jobs BEGIN UPDATE admin_revision SET revision=revision+1 WHERE id=1;END;
 CREATE TRIGGER admin_revision_jobs_DELETE AFTER DELETE ON jobs BEGIN UPDATE admin_revision SET revision=revision+1 WHERE id=1;END;
 CREATE TRIGGER metadata_publication_library_create AFTER INSERT ON libraries BEGIN
- INSERT INTO metadata_provider_policies(library_id,provider) VALUES(NEW.id,'tmdb');
+ INSERT INTO metadata_provider_policies(library_id,provider,language,region) SELECT NEW.id,'tmdb',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
 END;
 CREATE TRIGGER metadata_policy_changed AFTER UPDATE OF enabled,language,region,refresh_mode,algorithm ON metadata_provider_policies
  WHEN OLD.enabled IS NOT NEW.enabled OR OLD.language IS NOT NEW.language OR OLD.region IS NOT NEW.region OR OLD.refresh_mode IS NOT NEW.refresh_mode OR OLD.algorithm IS NOT NEW.algorithm
@@ -4819,7 +4841,7 @@ CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
  WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
- INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,'["tmdb"]');
+ INSERT INTO screen_metadata_policies(library_id,providers,language,region) SELECT NEW.id,'["tmdb"]',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
 END;
 CREATE TRIGGER screen_configuration_change AFTER UPDATE OF revision ON library_configuration WHEN NEW.revision<>OLD.revision BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=NEW.library_id;
