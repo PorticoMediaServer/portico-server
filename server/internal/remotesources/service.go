@@ -1,5 +1,5 @@
-// Package remotesources binds native adapters to the baseline storage interface.
-// It owns adapter configuration, private listing continuations and acquisitions;
+// Package remotesources binds remote sources to the baseline storage interface.
+// It owns source configuration, private listing continuations and acquisitions;
 // library identity, scan scheduling, reconciliation and playback authority remain
 // with their existing owners.
 package remotesources
@@ -341,34 +341,7 @@ func (s *Service) Stat(ctx context.Context, path string) (storage.Snapshot, erro
 	if !ok || b.Removed {
 		return storage.Snapshot{}, storage.ErrRemoteOffline
 	}
-	var value storage.Snapshot
-	var generation string
-	var err error
-	if managedSourceKind(b.Kind) {
-		var n *mounts.NativeBackend
-		n, err = s.mounts.Native(ctx, b.ID)
-		if err == nil {
-			generation = n.Generation()
-			var e mounts.NativeEntry
-			e, err = n.Stat(ctx, relative)
-			value = e.Snapshot(b.Root, relative)
-		}
-	} else {
-		var d *remotemedia.DAV
-		d, generation, err = s.dav(ctx, b.ID)
-		if err == nil {
-			var e remotemedia.DAVEntry
-			e, err = d.Stat(ctx, relative)
-			value = davSnapshot(e, b.Root)
-		}
-	}
-	err = mapError(err)
-	if err == nil {
-		err = s.check(ctx, b, generation)
-	}
-	value = inventorySnapshot(b, generation, value)
-	s.health(b, generation, err)
-	return value, err
+	return s.statSourceMetadata(ctx, b, relative)
 }
 func (s *Service) InspectRoot(ctx context.Context, path string) (storage.Snapshot, error) {
 	v, err := s.Stat(ctx, path)
