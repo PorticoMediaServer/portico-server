@@ -2,6 +2,7 @@ package remotemedia
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -72,9 +73,29 @@ func TestServeStatHasExactMemberAndDoesNotInventProviderEvidence(t *testing.T) {
 	if err != nil || o.Size != 8 || !o.ModifiedKnown || o.ServeETag != `"served"` || o.ProviderETag != "" || len(o.ProviderHashes) != 0 || o.ObjectID != "" || checks != 2 {
 		t.Fatalf("invented evidence or lost fence: %+v %v %d", o, err, checks)
 	}
-	entry.Modified = ""
-	o, err = ServedFileObservation("source", "1", "disc", "file.iso", entry)
-	if err != nil || o.ModifiedKnown || o.ValidateForRange() == nil {
-		t.Fatal("missing modified time admitted a range")
+	for _, modified := range []string{"", "Fri, 31 Dec 9999 23:59:59 GMT"} {
+		entry.Modified = modified
+		o, err = ServedFileObservation("source", "1", "disc", "file.iso", entry)
+		if err != nil || o.ModifiedKnown || o.ValidateForRange() == nil {
+			t.Fatal("missing or out-of-range modified time admitted a range")
+		}
+	}
+}
+
+func TestServeStatMissingCapturedMemberSignalsChange(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusMultiStatus} {
+		s, err := NewServeEndpoint(12345, "private", "secret", 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.client.Transport = serveRoundTrip(func(r *http.Request) (*http.Response, error) {
+			wire := `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/disc/file.iso</d:href><d:status>HTTP/1.1 404 Not Found</d:status></d:response></d:multistatus>`
+			return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(wire))}, nil
+		})
+		_, err = s.Stat(context.Background(), "disc/file.iso", func(context.Context) error { return nil })
+		s.Close()
+		if !errors.Is(err, ErrObservationChanged) {
+			t.Fatal("missing captured member did not require rescan", status, err)
+		}
 	}
 }
