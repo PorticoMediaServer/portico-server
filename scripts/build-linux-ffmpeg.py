@@ -76,6 +76,7 @@ export CXXFLAGS="$CXXFLAGS -ffile-prefix-map=/ffbuild/source=/usr/src/ffmpeg"
  --extra-version=Portico-Jellyfin || { cat ffbuild/config.log; exit 1; }
 make -j''' + str(int(os.environ.get('PORTICO_BUILD_JOBS', '2'))) + '''
 make install
+python3 /capture-compiler.py --lock /sources.lock.json --output /ffbuild/prefix
 python3 /build-portico-disc.py --source /disc/portico-disc.c --source-commit "$PORTICO_DISC_SOURCE_COMMIT" \\
  --prefix /opt/ffbuild --output /ffbuild/prefix/bin/portico-disc \\
  --metadata /ffbuild/prefix/portico-disc-build.json --target linux-x64
@@ -89,6 +90,8 @@ cp COPYING.GPLv3 /ffbuild/prefix/COPYING.GPLv3
                 '-v', str(args.source.resolve()) + ':/source.tar.xz:ro',
                 '-v', str(work / 'recipe/portico-disc') + ':/disc:ro',
                 '-v', str(root / 'scripts/build-portico-disc.py') + ':/build-portico-disc.py:ro',
+                '-v', str(root / 'scripts/capture-ffmpeg-compiler.py') + ':/capture-compiler.py:ro',
+                '-v', str(root / 'third_party/ffmpeg/sources.lock.json') + ':/sources.lock.json:ro',
                 '-e', 'SOURCE_DATE_EPOCH=' + str(lock['sourceDateEpoch']),
                 '-e', 'TMPDIR=/ffbuild/tmp',
                 '-e', 'PORTICO_DISC_SOURCE_COMMIT=' + os.environ['PORTICO_DISC_SOURCE_COMMIT']]

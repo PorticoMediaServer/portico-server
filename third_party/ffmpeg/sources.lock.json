@@ -499,7 +499,26 @@
         "path": "third_party/ffmpeg/patches/libbluray-no-decryption.patch",
         "sha256": "c89496479c27cc44424cfcaa179c1bd36a5891343712047a9c8a1f86f2e47601"
       }
-    ]
+    ],
+    "compilerLinkedInputs": {
+      "gccVersion": "16.2.0",
+      "implibCommit": "a3e167cf978a5b8a38ec0f710d8c4331e8dcdd9a",
+      "configurationSHA256": "988183da083be59a694be4450ef812ce3a421386ba617fe83206fa33dd55ce34",
+      "notices": {
+        "Implib-MIT.txt": {
+          "path": "/opt/implib/LICENSE.txt",
+          "sha256": "3ce4e4bc862f11fd50735454e524c009923ff82131090847234dc2aa9893eda5"
+        },
+        "GCC-16-copyright-and-runtime-exception.txt": {
+          "path": "/usr/share/doc/gcc-16-base/copyright",
+          "sha256": "d7815dd2364180835891947d96d808878204dea45b8597602a7952332195fbea"
+        },
+        "GPL-3.txt": {
+          "path": "/usr/share/common-licenses/GPL-3",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        }
+      }
+    }
   },
   "nativeABI": {
     "avcodec": 62,
