@@ -821,10 +821,10 @@ test('the original chooser read lifetime can cancel an in-flight version command
     if(request.method==='POST'&&request.path==='/v1/playback/sessions'&&(request.body as {versionId?:string})?.versionId==='v2'){created=(response.body as {id:string}).id;await gate.hold();}
     return fixture.handle(request,response);
   });
-  const loads=f.video.loads,pending=f.runtime.playVersion({choices,versionId:'v2',signal:action.signal}),rejected=assert.rejects(pending);
+  const engines=f.hls.instances.length,pending=f.runtime.playVersion({choices,versionId:'v2',signal:action.signal}),rejected=assert.rejects(pending);
   await gate.started;assert.equal(choices.isCurrent(),false,'intentional output replacement is allowed while the original read controller remains alive');
   read.abort();assert.equal(action.signal.aborted,false);gate.resolve();await rejected;await settle();
-  assert.ok(created);assert.equal(f.server.session(created)?.ended,true);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.video.loads,loads);
+  assert.ok(created);assert.equal(f.server.session(created)?.ended,true);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.hls.instances.length,engines,'the late response creates no new media engine; ordinary teardown may clear the old element');
 });
 
 test('unavailable or mismatched version offer never stops the existing playback or starts a source link', async t => {
