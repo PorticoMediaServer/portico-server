@@ -13,12 +13,17 @@
  * Styled and image subtitles are drawn on a canvas by `subtitles/overlay.ts`. The surface passes
  * the same `timeline` facts on to it (`companion`), so the port still tells one object.
  */
+import {captionStyle} from '../../kit/media/caption-style';
 import type {SubtitleTimeline} from './web-media-player.ts';
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
 
 export type SurfaceCue = Readonly<{startUs: string | number; endUs: string | number; text: string; italic?: boolean; top?: boolean}>;
 
 /** The parts of a media element a surface uses. */
 export type SubtitleHost = {
+  ownerDocument?: Document;
+  setAttribute?(name: string, value: string): void;
+  removeAttribute?(name: string): void;
   addTextTrack(kind: 'subtitles', label: string, language: string): TextTrackLike;
   readonly textTracks: ArrayLike<{kind: string; mode: string}> & {addEventListener?(type: string, fn: () => void): void; removeEventListener?(type: string, fn: () => void): void};
 };
@@ -40,6 +45,9 @@ export class SubtitleSurface implements SubtitleTimeline {
   private delay = 0;
   private offset: number | null = 0;
   private disposed = false;
+  private preferences?: SubtitlePreferences;
+  private style?: HTMLStyleElement;
+  private styleKey?: string;
   private readonly exclusive = () => {
     // Only this surface's track shows a title's subtitles; an engine's own renditions stay off.
     const list = this.host.textTracks;
@@ -58,6 +66,22 @@ export class SubtitleSurface implements SubtitleTimeline {
   /** Whether this browser can draw text subtitles at all. */
   static supported(host: {addTextTrack?: unknown} | null): boolean {
     return !!host && typeof host.addTextTrack === 'function' && typeof VTTCue === 'function';
+  }
+
+  /** Native cues delegate accessibility styling to the browser. There is no browser API that
+   * reads the OS caption style, so opting in removes app CSS rather than inventing an OS value. */
+  applyPreferences(preferences: SubtitlePreferences | undefined): void {
+    if (JSON.stringify(this.preferences) === JSON.stringify(preferences)) return;
+    this.preferences = preferences;
+    this.style?.remove(); this.style = undefined;
+    if (preferences && !preferences.useSystemCaptionStyle && this.host.ownerDocument && this.host.setAttribute) {
+      const key = this.styleKey ??= 'portico-cue-' + (++styleSerial);
+      this.host.setAttribute('data-portico-caption-style', key);
+      this.style = this.host.ownerDocument.createElement('style');
+      this.style.textContent = captionStyle(key, preferences);
+      this.host.ownerDocument.head.append(this.style);
+    } else this.host.removeAttribute?.('data-portico-caption-style');
+    this.render();
   }
 
   /** Show these cues, each shifted by `delaySeconds` (the viewer's timing correction). */
@@ -95,6 +119,7 @@ export class SubtitleSurface implements SubtitleTimeline {
     this.cues = null;
     this.render();
     this.disposed = true;
+    this.style?.remove(); this.host.removeAttribute?.('data-portico-caption-style');
   }
 
   private own(): TextTrackLike {
@@ -117,10 +142,12 @@ export class SubtitleSurface implements SubtitleTimeline {
       const start = Number(cue.startUs) / 1e6 + shift, end = Number(cue.endUs) / 1e6 + shift;
       if (end <= 0) continue;
       const words = cue.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const vtt = this.makeCue(Math.max(0, start), end, cue.italic ? '<i>' + words + '</i>' : words);
+      const styling = this.preferences?.keepStyling !== false;
+      const vtt = this.makeCue(Math.max(0, start), end, styling && cue.italic ? '<i>' + words + '</i>' : words);
       vtt.align = 'center';
       // A cue authored at the top of the picture (a sign, a second speaker) stays there.
-      if (cue.top) { vtt.snapToLines = true; vtt.line = 0; }
+      if (styling && cue.top || !this.preferences?.useSystemCaptionStyle && this.preferences?.position === 'top') { vtt.snapToLines = true; vtt.line = 0; }
+      else if (!this.preferences?.useSystemCaptionStyle && this.preferences?.position === 'raised') { vtt.snapToLines = true; vtt.line = -6; }
       // Where the cue box cannot be lifted with CSS, cues sit a few lines up so the controls
       // never cover them.
       else if (this.lift) { vtt.snapToLines = true; vtt.line = -4; }
@@ -129,3 +156,5 @@ export class SubtitleSurface implements SubtitleTimeline {
     track.mode = 'showing';
   }
 }
+
+let styleSerial = 0;

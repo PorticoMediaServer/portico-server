@@ -35,12 +35,12 @@ export function DesktopNavigation({libraries, liveAvailable, pathname, moreOpen,
   }, [libraries, liveAvailable]);
   const visible = libraries.slice(0, visibleCount), overflow = libraries.slice(visibleCount);
   return <ul ref={destinations} className={styles.destinations} data-desktop-destinations>
-    <li><Link to="/" activeProps={{'aria-current': 'page'}} activeOptions={{exact: true}}>{t('next.home.shell.home')}</Link></li>
-    {visible.map(library => <li key={library.id}><Link to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}>{library.name}</Link></li>)}
-    {overflow.length > 0 && <li><Menu className={styles.libraryMenu} title={t('next.home.shell.libraries')} open={moreOpen} onOpenChange={onMoreOpenChange}
+    <li data-window-no-drag><Link to="/" activeProps={{'aria-current': 'page'}} activeOptions={{exact: true}}>{t('next.home.shell.home')}</Link></li>
+    {visible.map(library => <li key={library.id} data-window-no-drag><Link to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}>{library.name}</Link></li>)}
+    {overflow.length > 0 && <li data-window-no-drag><Menu className={styles.libraryMenu} title={t('next.home.shell.libraries')} open={moreOpen} onOpenChange={onMoreOpenChange}
       trigger={<button type="button" className={styles.more} data-active={overflow.some(library => pathname === '/library/' + encodeURIComponent(library.id))}>{t('next.home.shell.more')}<Icon name="i-down" size={14} /></button>}
       items={overflow.map(library => ({id: library.id, label: library.name, selected: pathname === '/library/' + encodeURIComponent(library.id), onSelect: () => { void navigate({to: '/library/$libraryId', params: {libraryId: library.id}}); }}))} /></li>}
-    {liveAvailable && <li><Link to="/live" activeProps={{'aria-current': 'page'}}>{t('next.home.shell.live')}</Link></li>}
+    {liveAvailable && <li data-window-no-drag><Link to="/live" activeProps={{'aria-current': 'page'}}>{t('next.home.shell.live')}</Link></li>}
     {/* Noninteractive intrinsic text measurements never enter navigation or the accessibility tree. */}
     <li ref={measurements} className={styles.destinationMeasurements} aria-hidden="true">
       <span className={styles.destinationMeasure}>{t('next.home.shell.home')}</span>
