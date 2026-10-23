@@ -10,8 +10,8 @@ import (
 	"portico.local/server/internal/dbwork"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/storage"
 )
 
@@ -52,21 +52,12 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 			return storage.RemotePage{}, err
 		}
 	}
-	// Each worker quantum performs at most one DAV provider page. Progress and its
-	// private token commit together, separately from publishing a full directory.
+	// A retained producer owns provider I/O across request/worker quanta.
 	release, err := s.claimListing(job + ":" + directory)
 	if err != nil {
 		return storage.RemotePage{}, err
 	}
 	defer release()
-	if b.Kind == "webdav" {
-		select {
-		case s.inventory <- struct{}{}:
-			defer func() { <-s.inventory }()
-		default:
-			return storage.RemotePage{}, storage.ErrBusy
-		}
-	}
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	var listedJob, listedDirectory, listedGeneration, sourceID string
@@ -89,13 +80,7 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 		return storage.RemotePage{}, storage.ErrRemoteChanged
 	}
 	if !ready {
-		if b.Kind == "webdav" {
-			err = s.buildDAVStep(ctx, b, relative, c.ID, generation)
-		} else {
-			// The owned producer survives this request/worker quantum. Its
-			// partial cache is private until EOF, physical exit and final fence.
-			err = s.startNativeListing(ctx, b, relative, c.ID, generation)
-		}
+		err = s.startNativeListing(ctx, b, relative, c.ID, generation)
 		if err != nil {
 			s.health(b, generation, err)
 			return storage.RemotePage{}, mapError(err)
@@ -122,7 +107,7 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 		if err = json.Unmarshal([]byte(raw), &v); err != nil {
 			break
 		}
-		entries = append(entries, inventorySnapshot(b, generation, v))
+		entries = append(entries, v)
 	}
 	readErr := rows.Err()
 	rows.Close()
@@ -143,106 +128,24 @@ func (s *Service) ListPage(ctx context.Context, job, directory, after string) (s
 	return storage.RemotePage{ID: c.ID, SourceID: b.ID, Directory: directory, Generation: generation, Cursor: after, Next: cursor(continuation{c.ID, last}), Entries: entries, Complete: complete}, nil
 }
 func (s *Service) buildListing(ctx context.Context, b binding, relative, id, generation, owner string, retired func()) error {
-	handedOff := false
-	defer func() {
-		if !handedOff {
-			retired()
-		}
-	}()
-	var count, bytes int64
-	batch := make([]storage.Snapshot, 0, 128)
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		if err := s.check(ctx, b, generation); err != nil {
-			return err
-		}
-		gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
-		if err != nil {
-			return err
-		}
-		tx := gated.Tx()
-		defer gated.Rollback()
-		if err = nativeListingFence(ctx, tx, id, owner); err != nil {
-			return err
-		}
-		for _, v := range batch {
-			raw, _ := json.Marshal(v)
-			count++
-			bytes += int64(len(raw))
-			if count > 2_000_000 || bytes > 512<<20 {
-				return storage.ErrRemoteLimit
-			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO remote_listing_entries VALUES(?,?,?)`, id, v.Path, string(raw)); err != nil {
-				return storage.ErrRemoteConfig
-			}
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE remote_native_listings SET entries=?,bytes=?,updated_at=? WHERE listing_id=? AND owner=? AND state='running'`, count, bytes, time.Now().UnixMilli(), id, owner); err != nil {
-			return err
-		}
-		if err = gated.Commit(); err != nil {
-			return err
-		}
-		batch = batch[:0]
-		return nil
-	}
-	visit := func(v storage.Snapshot) error {
-		if filepath.Dir(v.Path) != filepath.Join(b.Root, filepath.FromSlash(relative)) || v.Path == filepath.Join(b.Root, filepath.FromSlash(relative)) {
-			return storage.ErrRemoteConfig
-		}
-		batch = append(batch, v)
-		if len(batch) == 128 {
-			return flush()
-		}
-		return ctx.Err()
-	}
-	var err error
-	if b.Kind == "rclone" {
-		var n *mounts.NativeBackend
-		n, err = s.mounts.Native(ctx, b.ID)
-		if err == nil && n.Generation() != generation {
-			return storage.ErrRemoteChanged
-		}
-		if err == nil {
-			handedOff = true
-			err = n.ListOwned(ctx, relative, func(e mounts.NativeEntry) error {
-				child := e.Path
-				if relative != "" {
-					child = relative + "/" + child
-				}
-				return visit(e.Snapshot(b.Root, child))
-			}, retired)
-		}
-
-	} else {
-		return storage.ErrRemoteConfig
-	}
+	defer retired()
+	view, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return err
 	}
-	if err = flush(); err != nil {
-		return err
+	capture, err := s.serveListingFenceTx(ctx, view.Tx(), b, relative, id, generation)
+	if err == nil {
+		err = nativeListingFence(ctx, view.Tx(), id, owner)
 	}
-	if err = s.check(ctx, b, generation); err != nil {
-		return err
-	}
-	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	view.Rollback()
 	if err != nil {
 		return err
 	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
-	if err = nativeListingFence(ctx, tx, id, owner); err != nil {
+	process, err := s.ensureSourceServe(ctx, SourceReadBinding{Purpose: SourceInventory, Observation: ObservationRef{SourceID: b.ID, Generation: generation}, Root: b.Root, Profile: capture.profile}, "")
+	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE remote_listing_sessions SET ready=1 WHERE id=? AND generation=?`, id, generation); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE remote_native_listings SET state='complete',updated_at=? WHERE listing_id=? AND owner=?`, time.Now().UnixMilli(), id, owner); err != nil {
-		return err
-	}
-	return gated2.Commit()
+	return s.buildServeSnapshot(ctx, process, b, relative, id, generation)
 }
 
 // CommitPage is called in the SAME transaction that inserts scanner children.
@@ -253,7 +156,7 @@ func (s *Service) CommitPage(ctx context.Context, tx *sql.Tx, p storage.RemotePa
 	}
 	var job, gen string
 	var removed, ready bool
-	err := tx.QueryRowContext(ctx, `SELECT l.job_id,CASE WHEN r.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed,l.ready FROM remote_listing_sessions l JOIN remote_sources r ON r.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE l.id=? AND l.source_id=? AND l.directory=? AND l.generation=?`, p.ID, p.SourceID, p.Directory, p.Generation).Scan(&job, &gen, &removed, &ready)
+	err := tx.QueryRowContext(ctx, `SELECT l.job_id,CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed,l.ready FROM remote_listing_sessions l JOIN remote_sources r ON r.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE l.id=? AND l.source_id=? AND l.directory=? AND l.generation=?`, p.ID, p.SourceID, p.Directory, p.Generation).Scan(&job, &gen, &removed, &ready)
 	if err != nil || removed {
 		return storage.ErrRemoteCursor
 	}
@@ -273,6 +176,21 @@ func (s *Service) CommitPage(ctx context.Context, tx *sql.Tx, p storage.RemotePa
 	if tx.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id=?`, job).Scan(&status) != nil || status != "running" {
 		return context.Canceled
 	}
+	source, err := catalog.InventoryFenceTx(ctx, tx, job)
+	if err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(source.ResolvedPath, p.Directory)
+	if err != nil || source.Kind != "remote" || !filepath.IsLocal(relative) {
+		return storage.ErrRemoteChanged
+	}
+	var capturedPolicy, currentPolicy int64
+	if err = tx.QueryRowContext(ctx, `SELECT r.policy_revision,p.revision FROM inventory_runs r JOIN library_scan_policies p ON p.library_id=? WHERE r.job_id=?`, source.LibraryID, job).Scan(&capturedPolicy, &currentPolicy); err != nil {
+		return err
+	}
+	if capturedPolicy < 1 || capturedPolicy != currentPolicy {
+		return storage.ErrRemoteChanged
+	}
 	var current string
 	err = tx.QueryRowContext(ctx, `SELECT cursor FROM remote_scan_cursors WHERE job_id=? AND path=?`, job, p.Directory).Scan(&current)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -282,6 +200,11 @@ func (s *Service) CommitPage(ctx context.Context, tx *sql.Tx, p storage.RemotePa
 	}
 	if current != p.Cursor && current != p.Next {
 		return storage.ErrRemoteCursor
+	}
+	if !p.Pending {
+		if err = s.commitListingObservationsTx(ctx, tx, job, p, current == p.Next); err != nil {
+			return err
+		}
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO remote_scan_cursors(job_id,path,listing_id,cursor) VALUES(?,?,?,?) ON CONFLICT(job_id,path) DO UPDATE SET cursor=excluded.cursor,listing_id=excluded.listing_id`, job, p.Directory, p.ID, p.Next)
 	return err

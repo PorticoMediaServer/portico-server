@@ -5,6 +5,7 @@ import {passwordStrength} from '@core/password-strength.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {Icon, type IconName} from '../Icon';
 import {AuthStage} from './AuthStage';
+import {ProfileAvatarFace} from '../shell/AccountSurfaces';
 import styles from './services-auth.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
@@ -53,6 +54,12 @@ export function ServicesProviderContext({provider, email}: {provider: IdentityPr
 }
 export function ServicesBackAction({children}: {children: ReactNode}) { return <span className={styles.backAction}><Icon name="i-left" size={18} />{children}</span>; }
 export function ServicesInvitationCredentials({children}: {children: ReactNode}) { return <div className={styles.invitationCredentials}>{children}</div>; }
+export function ServicesProviderAccount({name, username, provider}: {name: string; username: string; provider: IdentityProvider}) {
+  return <div className={styles.providerAccount}><ProfileAvatarFace initial={Array.from(name)[0]?.toLocaleUpperCase() ?? ''} size={48} />
+    <span><b>{name}</b><small>{username}<i aria-hidden="true" />{t('services.provider.signedIn', {provider: t(provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</small></span>
+  </div>;
+}
+export function ServicesProviderReturnHint() { return <p className={styles.providerReturnHint}>{t('services.provider.returnHint')}</p>; }
 export function ServicesDivider({children}: {children: ReactNode}) { return <div className={styles.divider}>{children}</div>; }
 export function ServicesPair({children}: {children: ReactNode}) { return <div className={styles.pair}>{children}</div>; }
 export function ServicesHint({children}: {children: ReactNode}) { return <p className={styles.hint}>{children}</p>; }
@@ -68,6 +75,11 @@ export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}
 }
 export function ServicesAccountLine({children}: {children: ReactNode}) { return <p className={styles.accountLine}>{children}</p>; }
 export function ServicesBackLink({children, href}: {children: ReactNode; href: string}) { return <div className={styles.backLink}><a href={href}>{children}</a></div>; }
+export function ServicesSignedInAccount({username, disabled, onDifferent}: {username: string; disabled?: boolean; onDifferent: () => void}) {
+  return <div className={styles.returnAccount}><span className={styles.returnAvatar} aria-hidden="true">{Array.from(username)[0]?.toLocaleUpperCase()}</span>
+    <span><b>{t('services.return.signedIn', {username})}</b><small>{t('accounts.invitation.account')}</small></span>
+    <button type="button" disabled={disabled} onClick={onDifferent}>{t('accounts.invitation.notYou')}</button></div>;
+}
 export function ServicesDeviceAccount({name, disabled, onSignOut}: {name: string; disabled?: boolean; onSignOut: () => void}) {
   const message = t('services.device.approving', {name: '{name}'});
   return <ServicesAccountLine>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'name' ? <b key={index}>{name}</b> : null)}<button type="button" disabled={disabled} onClick={onSignOut}><span className={styles.deviceDesktop}>{t('services.device.notYou')}</span><span className={styles.devicePhone}>{t('services.device.notYouPhone')}</span></button></ServicesAccountLine>;

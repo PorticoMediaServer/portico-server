@@ -14,3 +14,7 @@ pub mod equalizer;
 pub mod equalizer_store;
 #[path = "../../src/network_cost.rs"]
 pub mod network_cost;
+#[path = "../../src/device_facts.rs"]
+pub mod device_facts;
+#[path = "../../src/installation_store.rs"]
+pub mod installation_store;

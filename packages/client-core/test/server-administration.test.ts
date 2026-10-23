@@ -86,18 +86,19 @@ test('a member page is refused whole when one member cannot be read, so nobody w
 });
 
 test('an invitation code is accepted only where the server issues one', () => {
-  const created = parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [],
-    state: 'pending', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1, code: 'secret-code'});
-  assert.equal(created.code, 'secret-code');
-  const listed = parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [],
+  const created = parseInvitation({id: 'i1', notes: 'Link for Sam', role: 'member', allowedLibraries: [],
+    state: 'pending', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1, code: 'c'.repeat(43)});
+  assert.equal(created.code, 'c'.repeat(43));
+  const listed = parseInvitation({id: 'i1', role: 'member', allowedLibraries: [],
     state: 'accepted', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', acceptedAt: '2026-09-17T12:00:00Z', accountId: 'acc', revision: 2});
   assert.equal(listed.code, undefined);
   assert.equal(listed.accountId, 'acc');
-  // Link-and-code invitations need no email (Hosted sends none): an empty one is read, not refused.
-  assert.equal(parseInvitation({id: 'i2', email: '', role: 'member', allowedLibraries: [], state: 'pending', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1}).email, '');
-  assert.throws(() => parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [], state: 'unknown', createdAt: '2026-09-16T12:00:00Z', expiresAt: '2026-09-23T12:00:00Z', revision: 1}));
-  assert.throws(() => parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [], state: 'pending', createdAt: 'not-a-date', expiresAt: '2026-09-23T12:00:00Z', revision: 1}));
-  const page = parseInvitationPage({limit: 2, items: []});
+  const linkOnly={id:'i2',role:'member',allowedLibraries:[],state:'pending',createdAt:'2026-09-16T12:00:00Z',expiresAt:'2026-09-23T12:00:00Z',revision:1};
+  assert.equal(Object.hasOwn(parseInvitation(linkOnly),'email'),false);
+  assert.throws(()=>parseInvitation({...linkOnly,email:'guest@example.com'}));
+  assert.throws(() => parseInvitation({...linkOnly,state:'unknown'}));
+  assert.throws(() => parseInvitation({...linkOnly,createdAt:'not-a-date'}));
+  const page = parseInvitationPage({limit: 2, items: [],totalCount:0,matchedCount:0});
   assert.deepEqual([...page.items], []);
 });
 

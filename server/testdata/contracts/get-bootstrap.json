@@ -6,7 +6,7 @@
   "status": 200,
   "response": {
     "server": {
-      "id": "QcXvh1jH0RmKv6a_Bf4sEAEPeHi7UWO9g2Bmfw63bXE",
+      "id": "wXMWIpk1BPl8Q3hyDvkEk2pHpv4Ptc78zwRTWsrzeK8",
       "name": "Fixture",
       "api": {
         "major": 1,
@@ -43,9 +43,9 @@
     },
     "me": {
       "viewer": {
-        "accountId": "5SHI1EH5qPkvPp-kOiiiQrAIdj_tpo-0N_Y0F09_ypE",
-        "profileId": "PT7ocYIlOAGjUsV4ANGQv4mfGsYB1bkmFZU08_5OC2g",
-        "serverId": "QcXvh1jH0RmKv6a_Bf4sEAEPeHi7UWO9g2Bmfw63bXE",
+        "accountId": "nHlSuHKuwDQw_gWG7Wphasxik01uKhcGrJz3GNgNADA",
+        "profileId": "lsNjBKAq_NahjqkiTJRsWIA2U4zatnFX0WDfe2asYWw",
+        "serverId": "wXMWIpk1BPl8Q3hyDvkEk2pHpv4Ptc78zwRTWsrzeK8",
         "authority": "local",
         "role": "owner"
       }
@@ -53,6 +53,9 @@
     "libraries": [],
     "preferences": {
       "audioEffects": {
+        "neverBoost": false,
+        "smoothTransitions": true,
+        "dsdGainDb": -6,
         "gapless": true,
         "crossfadeMs": 0,
         "normalization": "off"
@@ -60,7 +63,7 @@
       "deviceClass": "web",
       "deviceBound": true,
       "registry": {
-        "revision": "settings.14a.preferences.1",
+        "revision": "settings.14a.preferences.music.2",
         "fields": [
           {
             "consumer": "client.playback.controls",
@@ -625,6 +628,115 @@
             ],
             "group": "quality",
             "labelKey": "preferences.quality.remote"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "music.qualityHome",
+            "type": "string",
+            "default": "original",
+            "allowedValues": [
+              "original",
+              "cd-quality",
+              "320",
+              "96"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.qualityHome"
+          },
+          {
+            "consumer": "server.downloads.quality",
+            "key": "music.qualityDownloads",
+            "type": "string",
+            "default": "320",
+            "allowedValues": [
+              "original",
+              "cd-quality",
+              "320",
+              "96"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.qualityDownloads"
+          },
+          {
+            "consumer": "client.audio_effects",
+            "key": "music.neverBoost",
+            "type": "boolean",
+            "default": false,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.neverBoost"
+          },
+          {
+            "consumer": "client.audio_effects",
+            "key": "music.smoothTransitions",
+            "type": "boolean",
+            "default": true,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.smoothTransitions"
+          },
+          {
+            "consumer": "server.playback.audio_conversion",
+            "step": 1,
+            "key": "music.dsdGainDb",
+            "type": "integer",
+            "default": -6,
+            "allowedValues": [
+              0,
+              -3,
+              -6,
+              -9,
+              -12
+            ],
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.dsdGainDb"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "music.qualityAway",
+            "type": "string",
+            "default": "320",
+            "allowedValues": [
+              "original",
+              "cd-quality",
+              "320",
+              "96"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.qualityAway"
+          },
+          {
+            "consumer": "server.playback.delivery_policy",
+            "key": "music.qualityMobile",
+            "type": "string",
+            "default": "320",
+            "allowedValues": [
+              "original",
+              "cd-quality",
+              "320",
+              "96"
+            ],
+            "scopes": [
+              "profile-device-class"
+            ],
+            "group": "music",
+            "labelKey": "preferences.music.qualityMobile"
           },
           {
             "consumer": "client.audio_effects",
@@ -1204,7 +1316,14 @@
         "home.rowOrder": [],
         "music.audioNormalization": "off",
         "music.crossfadeMs": 0,
+        "music.dsdGainDb": -6,
         "music.gapless": true,
+        "music.neverBoost": false,
+        "music.qualityAway": "320",
+        "music.qualityDownloads": "320",
+        "music.qualityHome": "original",
+        "music.qualityMobile": "320",
+        "music.smoothTransitions": true,
         "notifications.badges": true,
         "playback.audioDescription": "avoid",
         "playback.audioTrackChoice": "best",
@@ -1285,7 +1404,14 @@
         "home.rowOrder": "default",
         "music.audioNormalization": "default",
         "music.crossfadeMs": "default",
+        "music.dsdGainDb": "default",
         "music.gapless": "default",
+        "music.neverBoost": "default",
+        "music.qualityAway": "default",
+        "music.qualityDownloads": "default",
+        "music.qualityHome": "default",
+        "music.qualityMobile": "default",
+        "music.smoothTransitions": "default",
         "notifications.badges": "default",
         "playback.audioDescription": "default",
         "playback.audioTrackChoice": "default",
@@ -1343,7 +1469,7 @@
         "search.rememberHistory": "default"
       },
       "clampedFields": [],
-      "registryRevision": "settings.14a.preferences.1"
+      "registryRevision": "settings.14a.preferences.music.2"
     },
     "homeLayout": {
       "revision": 1,

@@ -41,7 +41,7 @@ export function ProfileAvatarFace({initial, art = 'blue', size = 34, appearance 
 export type AccountMenuActions = Readonly<{
   manageProfiles?: () => void; addProfile?: () => void; switchProfile: (profile: ProfileIdentity) => void;
   switchServer: () => void; settings: () => void; notifications?: () => void; watchTogether: () => void; downloads?: () => void;
-  feedback: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
+  feedback?: () => void; help: () => void; signOut: () => void; signOutPorticoAccount?: () => void;
 }>;
 export type AccountMenuProps = Readonly<{
   open: boolean; onOpenChange: OverlayChange; trigger: ReactElement; current: ProfileIdentity;
@@ -65,7 +65,7 @@ export function AccountMenu({open, onOpenChange, trigger, current, primary, acco
     <MenuSeparator />
     <MenuItem className={styles.menuAction} icon="i-together" onSelect={actions.watchTogether}>{t('next.shell.watchTogether')}</MenuItem>
     {actions.downloads && <MenuItem className={styles.menuAction} icon="i-download" onSelect={actions.downloads}>{t('next.shell.downloads')}</MenuItem>}
-    <MenuItem className={styles.menuAction} icon="i-flag" onSelect={actions.feedback}>{t('next.shell.feedback')}</MenuItem>
+    {actions.feedback && <MenuItem className={styles.menuAction} icon="i-flag" onSelect={actions.feedback}>{t('next.shell.feedback')}</MenuItem>}
     <MenuItem className={styles.menuAction} icon="i-help" onSelect={actions.help}>{t('next.shell.help')}<Icon name="i-ext" size={16} className={styles.external} /></MenuItem>
     <MenuSeparator /><MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOut}>{signOutLabel??t('next.shell.signOut')}</MenuItem>
     {actions.signOutPorticoAccount && <MenuItem className={styles.menuAction} icon="i-out" onSelect={actions.signOutPorticoAccount}>{t('accounts.signOut.portico')}</MenuItem>}

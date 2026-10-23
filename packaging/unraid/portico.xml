@@ -13,4 +13,5 @@
   <Config Name="PGID" Target="PGID" Default="100" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="UMASK" Target="UMASK" Default="0002" Type="Variable" Display="advanced" Required="true" Mask="false">0002</Config>
   <Config Name="TZ" Target="TZ" Default="Etc/UTC" Type="Variable" Display="advanced" Required="true" Mask="false">Etc/UTC</Config>
+  <Config Name="Intel or AMD render device" Target="/dev/dri" Default="" Mode="" Description="Optional. Map /dev/dri only when the host exposes a render device; actual codec availability is probed." Type="Device" Display="advanced" Required="false" Mask="false"></Config>
 </Container>

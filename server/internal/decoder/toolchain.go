@@ -17,7 +17,7 @@ import (
 
 type ToolchainFacts struct {
 	inventoryCacheable       bool
-	DolbyVisionDualLayerJoin bool `json:"dolbyVisionDualLayerJoin"`
+	DolbyVisionDualLayerJoin bool `json:"-"`
 	// Only a bundle's qualified packet conversion may enable this fact. A BSF
 	// name, stock dovi_rpu options or a generic device probe is insufficient.
 	// It remains false until the libdovi-backed mode-2 fixture gate is wired.
@@ -38,7 +38,6 @@ type ToolchainFacts struct {
 
 var installedToolchain atomic.Pointer[ToolchainFacts]
 var toolchainCache sync.Map
-var toolchainRuntimeCache sync.Map
 
 // ConfigureToolchain installs the probed toolchain and reports, in the owner's
 // diagnostics, whether it converts Dolby Vision Profile 5 with its own colors.
@@ -205,9 +204,6 @@ func probeToolchainRuntime(ctx context.Context, ffmpeg string, runner toolchainP
 	if err != nil {
 		return ToolchainFacts{}, err
 	}
-	if cached, ok := toolchainRuntimeCache.Load(out.Identity); out.inventoryCacheable && ok {
-		return cached.(ToolchainFacts), nil
-	}
 	path, err := exec.LookPath(ffmpeg)
 	if err != nil {
 		return ToolchainFacts{}, err
@@ -233,10 +229,10 @@ func probeToolchainRuntime(ctx context.Context, ffmpeg string, runner toolchainP
 	if current, complete, err := inventoryIdentity(ctx, path); err != nil || current != identity || complete != out.inventoryCacheable {
 		return ToolchainFacts{}, errors.New("FFmpeg changed during runtime qualification")
 	}
-	if out.inventoryCacheable {
-		toolchainRuntimeCache.Store(identity, out)
-		toolchainCache.Store(identity, out)
-	}
+	// ICDs, dynamically loaded driver plugins and device permissions can change
+	// without changing FFmpeg's ELF closure. An explicit runtime/reprobe call
+	// must run these bounded jobs again; never put their grants in the trusted
+	// inventory cache, which promises no GPU qualification.
 	return out, nil
 }
 func (f *ToolchainFacts) MissingRequired() []string {

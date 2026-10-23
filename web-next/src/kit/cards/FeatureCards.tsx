@@ -1,7 +1,7 @@
 import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ChannelMarkModel, FactPart} from '@portico/client-core/kit-model';
-import {ChannelMark, type ArtworkSource} from '../artwork';
+import {Artwork, ChannelMark, type ArtworkSource} from '../artwork';
 import {Icon} from '../Icon';
 import {Button} from '../controls';
 import {usePhone} from '../overlays/shared';
@@ -13,20 +13,21 @@ import type {CardProps, MediaCardProps} from './types';
 import styles from './cards.module.css';
 
 export type LiveCardProps = Omit<CardProps, 'model'> & Readonly<{
-  channel: Readonly<{sourceId: string; id: string; name: string; number?: string; mark: ChannelMarkModel}>;
-  programme?: Readonly<{title: string; facts: readonly FactPart[]; extra?: readonly FactPart[]; progress?: number; live?: boolean; isNew?: boolean; premiere?: boolean; recording?: boolean}>;
+  channel: Readonly<{sourceId: string; id: string; name: string; number?: string; mark?: ChannelMarkModel; favorite?: boolean}>;
+  programme?: Readonly<{title: string; facts: readonly FactPart[]; extra?: readonly FactPart[]; progress?: number; remaining?: string; live?: boolean; isNew?: boolean; premiere?: boolean; recording?: boolean}>;
   logo?: ArtworkSource;
   tint?: string;
   results?: boolean;
+  large?: boolean;
   onRemind?: () => void;
   reminderSet?: boolean;
 }>;
-export function LiveCard({channel, programme, logo, tint, results, onRemind, reminderSet, ...props}: LiveCardProps) {
-  return <CardFrame {...props} className={cx(results && styles.liveResults, props.className)} model={{title: programme?.title ?? channel.name, caption: []}} kind="live" style={{...tintStyle(tint), ...props.style}} overlay={onRemind && <button type="button" disabled={props.disabled} className={styles.remind} aria-label={defaultI18n.t('guide.remind')} aria-pressed={reminderSet} onClick={onRemind}><Icon name="i-bell" size={16} /></button>}>
-    <span className={styles.channel}><ChannelMark mark={channel.mark} source={logo} tint={tint} size={34} visible={props.visible} /><span className={styles.channelName}>{channel.name}{channel.number && <span className={styles.channelNumber}>{channel.number}</span>}</span>
+export function LiveCard({channel, programme, logo, tint, results, large, onRemind, reminderSet, ...props}: LiveCardProps) {
+  return <CardFrame {...props} className={cx(results && styles.liveResults, large && styles.liveLarge, props.className)} model={{title: programme?.title ?? channel.name, caption: []}} kind="live" style={{...tintStyle(tint), ...props.style}} overlay={onRemind && <button type="button" disabled={props.disabled} className={styles.remind} aria-label={defaultI18n.t('guide.remind')} aria-pressed={reminderSet} onClick={onRemind}><Icon name="i-bell" size={16} /></button>}>
+    <span className={styles.channel}>{channel.mark ? <ChannelMark mark={channel.mark} source={logo} size={34} visible={props.visible} /> : <span className={styles.channelPlaceholder}>{logo && <Artwork source={logo} fit="contain" alt="" visible={props.visible}/>}</span>}<span className={styles.channelName}>{channel.name}{channel.favorite && <Icon name="i-star" size={13}/>}{channel.number && <span className={styles.channelNumber}>{channel.number}</span>}</span>
       {programme?.live && <span className={styles.liveFlag}>{defaultI18n.t('next.cards.live')}</span>}
     </span>
-    <span className={styles.programme}>{programme?.title ?? channel.name}</span><span className={styles.programmeFlags}>{programme?.isNew && <span>{defaultI18n.t('next.cards.new')}</span>}{programme?.premiere && <span>{defaultI18n.t('next.cards.premiere')}</span>}{programme?.recording && <span className={styles.recording}><Icon name="i-rec" size={12} />{defaultI18n.t('next.cards.recording')}</span>}</span><Facts parts={programme?.facts} className={styles.liveWhen} /><Facts parts={programme?.extra} className={styles.liveExtra} /><Progress value={programme?.progress} />
+    <span className={styles.programme}>{programme?.title ?? channel.name}</span><span className={styles.programmeFlags}>{programme?.isNew && <span>{defaultI18n.t('next.cards.new')}</span>}{programme?.premiere && <span>{defaultI18n.t('next.cards.premiere')}</span>}{programme?.recording && <span className={styles.recording}><Icon name="i-rec" size={12} />{defaultI18n.t('next.cards.recording')}</span>}</span><Facts parts={programme?.facts} className={styles.liveWhen} /><Facts parts={programme?.extra} className={styles.liveExtra} />{programme?.remaining ? <span className={styles.liveProgress}><Progress value={programme.progress}/><span>{programme.remaining}</span></span> : <Progress value={programme?.progress} />}
   </CardFrame>;
 }
 
@@ -94,6 +95,6 @@ export function SessionCard({viewer, facts, paused, media = 'video', channel, on
     {paused && <span className={styles.sessionState}><Icon name="i-pause" size={12} />{defaultI18n.t('next.cards.paused')}</span>}
     {(onStop || onMore) && <span className={styles.sessionActions}>{onStop && <Button disabled={props.disabled} variant="glass" size="xs" icon="i-stop" onClick={onStop}>{defaultI18n.t('next.cards.stop')}</Button>}{onMore && <Button disabled={props.disabled} variant="glass" size="xs" icon="i-more" iconOnly aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={moreExpanded} onClick={event => onMore(event.currentTarget)} />}</span>}
   </>}>
-    <span className={cx(styles.sessionArt, media === 'audio' && styles.sessionAudio, media === 'channel' && styles.sessionChannel)} style={tintStyle(channel?.tint)}>{channel ? <><ChannelMark mark={channel.mark} source={channel.logo} tint={channel.tint} size={32} visible={props.visible} /><Facts parts={channel.facts} /></> : <>{media === 'audio' && <CardAmbient {...props} treatment="session-audio" />}<span className={styles.sessionForeground}><CardArtwork {...props} /></span></>}</span><span className={styles.sessionCopy}><span className={styles.sessionTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.sessionSubtitle} /><span className={styles.viewer}>{viewer.avatar}<strong>{username ?? viewer.name}</strong>{profile && <span className={styles.sessionProfile}>{profile}</span>}<span>{viewer.device}</span></span><Facts parts={facts} className={styles.sessionFacts} /></span>
+    <span className={cx(styles.sessionArt, media === 'audio' && styles.sessionAudio, media === 'channel' && styles.sessionChannel)} style={tintStyle(channel?.tint)}>{channel ? <><ChannelMark mark={channel.mark} source={channel.logo} size={32} visible={props.visible} /><Facts parts={channel.facts} /></> : <>{media === 'audio' && <CardAmbient {...props} treatment="session-audio" />}<span className={styles.sessionForeground}><CardArtwork {...props} /></span></>}</span><span className={styles.sessionCopy}><span className={styles.sessionTitle}>{props.model.title}</span><Facts parts={props.model.caption} className={styles.sessionSubtitle} /><span className={styles.viewer}>{viewer.avatar}<strong>{username ?? viewer.name}</strong>{profile && <span className={styles.sessionProfile}>{profile}</span>}<span>{viewer.device}</span></span><Facts parts={facts} className={styles.sessionFacts} /></span>
   </CardFrame>;
 }
