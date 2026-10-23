@@ -81,7 +81,7 @@ const alertDestinations: Record<string, {section: string; label: MessageId}> = {
   storage: {section: 'storage', label: 'next.dashboard.storage'},
   backups: {section: 'storage', label: 'next.dashboard.storage'},
   'library-source': {section: 'libraries', label: 'next.dashboard.libraries'},
-  'remote-source': {section: 'sources', label: 'next.dashboard.remoteSources'},
+  'remote-source': {section: 'remote-sources', label: 'next.dashboard.remoteSources'},
 };
 type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
 function Status({bindings: b, status}: {bindings: DashboardBindings; status: StatusState}) {
