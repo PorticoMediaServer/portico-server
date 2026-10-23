@@ -1,14 +1,11 @@
 import {useEffect, useMemo, useRef} from 'react';
-import type {ContentEntry} from '@core/library-content.ts';
-import type {SearchEntry} from '@core/search.ts';
 import type {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
-import {entryDestination} from '../../shell/navigation';
 import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
+import {screenEntryDestination} from './navigation';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-const content = (entry: SearchEntry): entry is ContentEntry => entry.kind !== 'person' && entry.kind !== 'channel';
 
 /** A current binding can gain its real media owner after Home arrives. The API,
  * viewer and reader remain captured to the original authority throughout. */
@@ -38,12 +35,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         reportError,
         openEntry(entry) {
           assert();
-          if (content(entry)) {
-            const target = entryDestination(entry);
-            navigate(router.navigate(target.to === '/library/$libraryId' && entry.navigation?.category
-              ? {...target, search: {...target.search, category: entry.navigation.category}} : target));
-          } else if (entry.kind === 'person') navigate(router.navigate({to: '/person/$personId', params: {personId: entry.navigation.entityId}}));
-          else navigate(router.navigate({to: '/live', search: {channelId: entry.navigation.entityId}}));
+          navigate(router.navigate(screenEntryDestination(entry)));
         },
         openHome() {assert();navigate(router.navigate({to: '/'}));},
         openSettings() {assert();navigate(router.navigate({to: '/settings'}));},
