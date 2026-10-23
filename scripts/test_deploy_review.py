@@ -1,6 +1,8 @@
 import contextlib
 import importlib.util
 import io
+import os
+import subprocess
 import base64
 from pathlib import Path
 import tarfile
@@ -55,6 +57,28 @@ class ReviewDeployment(unittest.TestCase):
         import subprocess
         for body in (deploy.STAGE, deploy.ACTIVATE):
             self.assertEqual(subprocess.run(['bash', '-n'], input=body, text=True).returncode, 0)
+
+    def test_outgoing_service_environments_are_preserved_by_actual_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            active = root / 'review-current.env'
+            extra = root / 'review-extra.env'
+            active.write_text('PORTICO_DATA_DIR=/var/lib/current-review\n')
+            extra.write_text('GOMAXPROCS=1\n')
+            active.chmod(0o600)
+            command = root / 'systemctl'
+            import shlex
+            value = shlex.quote(str(active)) + ' (ignore_errors=no) ' + shlex.quote(str(extra)) + ' (ignore_errors=no)'
+            command.write_text('#!/bin/sh\nprintf \'%s\\n\' ' + shlex.quote(value) + '\n')
+            command.chmod(0o755)
+            backup = root / 'backup'
+            backup.mkdir()
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'])
+            subprocess.run(['bash', '-c', 'backup="$1"\n' + deploy.BACKUP_ENVIRONMENTS, 'test', str(backup)], env=env, check=True)
+            for source in (active, extra):
+                saved = backup / 'environments' / source.relative_to('/')
+                self.assertEqual(saved.read_bytes(), source.read_bytes())
+                self.assertEqual(saved.stat().st_mode & 0o777, source.stat().st_mode & 0o777)
 
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
