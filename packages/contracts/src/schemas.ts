@@ -1059,6 +1059,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -1067,6 +1075,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -1948,6 +1958,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -1956,6 +1974,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -2961,6 +2981,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -2969,6 +2997,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -8233,6 +8263,14 @@ export const schemas = {
                 "linesUrl": {
                   "type": "string"
                 },
+                "offsetMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "timeDomain": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -8241,6 +8279,8 @@ export const schemas = {
                 }
               },
               "required": [
+                "timeDomain",
+                "offsetMs",
                 "trackId",
                 "format",
                 "url"
@@ -9070,6 +9110,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -9078,6 +9126,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -11915,6 +11965,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -11923,6 +11981,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -31082,6 +31142,12 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "variants": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
@@ -31109,6 +31175,12 @@ export const schemas = {
                           "type": "integer"
                         },
                         "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "variants": {
                           "items": {
                             "type": "string"
                           },
@@ -31194,6 +31266,12 @@ export const schemas = {
                           },
                           "type": "array"
                         },
+                        "chromaSubsampling": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "codec": {
                           "type": "string"
                         },
@@ -31219,6 +31297,12 @@ export const schemas = {
                         },
                         "evidence": {
                           "type": "string"
+                        },
+                        "frameRateModes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "interlaced": {
                           "type": "boolean"
@@ -31354,6 +31438,12 @@ export const schemas = {
                             "type": "string"
                           },
                           "type": "array"
+                        },
+                        "variants": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         }
                       },
                       "required": [
@@ -31381,6 +31471,12 @@ export const schemas = {
                           "type": "integer"
                         },
                         "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "variants": {
                           "items": {
                             "type": "string"
                           },
@@ -31466,6 +31562,12 @@ export const schemas = {
                           },
                           "type": "array"
                         },
+                        "chromaSubsampling": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "codec": {
                           "type": "string"
                         },
@@ -31491,6 +31593,12 @@ export const schemas = {
                         },
                         "evidence": {
                           "type": "string"
+                        },
+                        "frameRateModes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "interlaced": {
                           "type": "boolean"
@@ -110610,6 +110718,11 @@ export const schemas = {
                   "atmos": {
                     "type": "boolean"
                   },
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "channels": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -110624,6 +110737,9 @@ export const schemas = {
                   "default": {
                     "type": "boolean"
                   },
+                  "dtsx": {
+                    "type": "boolean"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -110633,7 +110749,18 @@ export const schemas = {
                   "layout": {
                     "type": "string"
                   },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "title": {
+                    "type": "string"
+                  },
+                  "variant": {
                     "type": "string"
                   },
                   "visualImpaired": {
@@ -110641,6 +110768,7 @@ export const schemas = {
                   }
                 },
                 "required": [
+                  "dtsx",
                   "id",
                   "codec",
                   "atmos",
@@ -110791,14 +110919,55 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
                   "codec": {
                     "type": "string"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
                   },
                   "fps": {
                     "type": "number"
                   },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "hdr": {
                     "type": "string"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
                   },
                   "height": {
                     "maximum": 9007199254740991,
@@ -110813,6 +110982,12 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
                   "profile": {
                     "type": "string"
                   },
@@ -110823,6 +110998,9 @@ export const schemas = {
                   }
                 },
                 "required": [
+                  "dolbyVisionRpu",
+                  "dolbyVisionBaseLayer",
+                  "hdr10Plus",
                   "id",
                   "codec"
                 ],
@@ -111383,6 +111561,14 @@ export const schemas = {
                 "linesUrl": {
                   "type": "string"
                 },
+                "offsetMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "timeDomain": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -111391,6 +111577,8 @@ export const schemas = {
                 }
               },
               "required": [
+                "timeDomain",
+                "offsetMs",
                 "trackId",
                 "format",
                 "url"
@@ -141147,6 +141335,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -141155,6 +141351,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -167686,6 +167884,14 @@ export const schemas = {
                 "linesUrl": {
                   "type": "string"
                 },
+                "offsetMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "timeDomain": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -167694,6 +167900,8 @@ export const schemas = {
                 }
               },
               "required": [
+                "timeDomain",
+                "offsetMs",
                 "trackId",
                 "format",
                 "url"
@@ -171274,6 +171482,12 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "variants": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
@@ -171301,6 +171515,12 @@ export const schemas = {
                       "type": "integer"
                     },
                     "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "variants": {
                       "items": {
                         "type": "string"
                       },
@@ -171386,6 +171606,12 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "chromaSubsampling": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "codec": {
                       "type": "string"
                     },
@@ -171411,6 +171637,12 @@ export const schemas = {
                     },
                     "evidence": {
                       "type": "string"
+                    },
+                    "frameRateModes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "interlaced": {
                       "type": "boolean"
@@ -171546,6 +171778,12 @@ export const schemas = {
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "variants": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     }
                   },
                   "required": [
@@ -171573,6 +171811,12 @@ export const schemas = {
                       "type": "integer"
                     },
                     "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "variants": {
                       "items": {
                         "type": "string"
                       },
@@ -171658,6 +171902,12 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "chromaSubsampling": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "codec": {
                       "type": "string"
                     },
@@ -171683,6 +171933,12 @@ export const schemas = {
                     },
                     "evidence": {
                       "type": "string"
+                    },
+                    "frameRateModes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "interlaced": {
                       "type": "boolean"
@@ -177645,6 +177901,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -177653,6 +177917,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"
@@ -189386,6 +189652,14 @@ export const schemas = {
                 "linesUrl": {
                   "type": "string"
                 },
+                "offsetMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "timeDomain": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -189394,6 +189668,8 @@ export const schemas = {
                 }
               },
               "required": [
+                "timeDomain",
+                "offsetMs",
                 "trackId",
                 "format",
                 "url"
@@ -190422,6 +190698,14 @@ export const schemas = {
                     "linesUrl": {
                       "type": "string"
                     },
+                    "offsetMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -190430,6 +190714,8 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "timeDomain",
+                    "offsetMs",
                     "trackId",
                     "format",
                     "url"

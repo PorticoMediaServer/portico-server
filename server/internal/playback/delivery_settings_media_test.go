@@ -26,3 +26,32 @@ func TestStreamingMediaConfigurationContract(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestStreamingConversionModeConstrainsRealPlanner(t *testing.T) {
+	for _, mode := range []string{"all", "sound", "never"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := DefaultDeliveryConfiguration()
+			cfg.ConversionMode = mode
+			source := videoSource("mkv", "h264", avcDetail, SourceAudio{Index: 1, Codec: "dts", Channels: 6})
+			in := DeliveryInput{Source: source, Client: chromeProfile(), FMP4Output: true, Policy: openPolicy(), Target: QualityTarget{RungID: "original", Kind: QualityAutomatic, AllowHDR: true}, Config: cfg, TranscodingEnabled: true}
+			plan, e := planDelivery(in)
+			if mode == "never" {
+				if e == nil {
+					t.Fatal("never admitted conversion", plan)
+				}
+				return
+			}
+			if e != nil || plan.Strategy != DeliveryAudioConversion {
+				t.Fatal(plan, e)
+			}
+			source.Video.Codec = "vc1"
+			plan, e = planDelivery(in)
+			if mode == "sound" && e == nil {
+				t.Fatal("sound mode converted picture", plan)
+			}
+			if mode == "all" && (e != nil || plan.VideoAction != "convert") {
+				t.Fatal(plan, e)
+			}
+		})
+	}
+}
