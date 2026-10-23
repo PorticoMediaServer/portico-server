@@ -68,6 +68,8 @@ pub struct Mpv {
     handle: Handle,
     generation: Mutex<u64>,
     exclusive: bool,
+    retired:AtomicBool,
+    current_generation:AtomicU64,
     loaded:AtomicBool,
     surface_ready:AtomicBool,
     frame_drawn:AtomicU64,
@@ -100,14 +102,8 @@ impl Mpv {
     pub fn new(api: Arc<Api>, output: &AudioOutput, target: VideoTarget) -> Result<Arc<Self>> {
         let handle = unsafe { (api.create)() };
         if handle.is_null() { return Err(Error::EngineUnavailable); }
-        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
-        // mpv compiles these switches out with their corresponding script engines.
-        // Only OPTION_NOT_FOUND means the forbidden feature itself is unavailable;
-        // every other failure still closes initialization.
-        for key in ["load-scripts","ytdl","osc"] {
-            let code=unsafe{(engine.api.option)(engine.handle,c(key)?.as_ptr(),c("no")?.as_ptr())};
-            if code != -5 {status(code)?;}
-        }
+        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,retired:AtomicBool::new(false),current_generation:AtomicU64::new(0),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
+        engine.disable_script_engines()?;
         for (key,value) in [("config","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
             ("idle","yes"),("keep-open","yes"),("access-references","no"),("load-unsafe-playlists","no"),
@@ -130,6 +126,16 @@ impl Mpv {
         }
         let initialized=unsafe {(engine.api.initialize)(handle)};crate::spike::record("initialize",initialized);status(initialized)?;
         Ok(engine)
+    }
+    fn disable_script_engines(&self)->Result<()> {
+        // mpv compiles these switches out with their corresponding script engines.
+        // Only OPTION_NOT_FOUND means the forbidden feature itself is unavailable;
+        // every other failure still closes initialization.
+        for key in ["load-scripts","ytdl","osc"] {
+            let code=unsafe{(self.api.option)(self.handle,c(key)?.as_ptr(),c("no")?.as_ptr())};
+            if code != -5 {status(code)?;}
+        }
+        Ok(())
     }
     fn option(&self,name:&str,value:&str)->Result<()> {let code=unsafe{(self.api.option)(self.handle,c(name)?.as_ptr(),c(value)?.as_ptr())};if code<0{crate::spike::record(name,code);}status(code)}
     fn set(&self,name:&str,value:&str)->Result<()> {status(unsafe{(self.api.property)(self.handle,c(name)?.as_ptr(),c(value)?.as_ptr())})}
@@ -185,6 +191,7 @@ impl Mpv {
     pub fn apply_equalizer(&self,next:&EqualizerSettings)->Result<()> {
         next.validate()?;
         let _transport=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        if self.retired.load(Ordering::Acquire){return Err(Error::EngineUnavailable)}
         let mut previous=self.equalizer.lock().map_err(|_|Error::EngineFailure)?;
         let was_paused=self.flag("pause");let was_failed=self.failed.load(Ordering::Acquire);
         // A failed rollback leaves an unknown DSP chain. Keep playback fenced until the
@@ -261,6 +268,7 @@ impl Mpv {
     pub fn execute(&self,command:Command)->Result<()> {
         // Hold generation through the native command; stale async work can never affect the next source.
         let mut generation=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        if self.retired.load(Ordering::Acquire){return Err(Error::EngineUnavailable)}
         match command {
             Command::Load{source} => {
                 if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure);}
@@ -273,7 +281,7 @@ impl Mpv {
                 // passthrough; only an observed PCM route receives the app's EQ afterwards.
                 self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
                 *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=source.url.clone();
-                self.load(&source)?;*generation=source.generation;Ok(())
+                self.load(&source)?;*generation=source.generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
             }
             other => {
                 let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
@@ -287,7 +295,7 @@ impl Mpv {
                     Command::Seek{milliseconds,..} if milliseconds.is_finite()&&(0.0..=1e12).contains(&milliseconds)=>self.command(&["seek",&(milliseconds/1000.0).to_string(),"absolute+exact"]),
                     Command::Rate{rate,..} if rate.is_finite()&&(0.25..=4.0).contains(&rate)=>self.set("speed",&rate.to_string()),
                     Command::Volume{volume,muted,..} if volume.is_finite()&&(0.0..=1.0).contains(&volume)=>{self.set("volume",&(volume*100.0).to_string())?;self.set("mute",if muted{"yes"}else{"no"})},
-                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.clear_file_facts();self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
+                    Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.current_generation.store(0,Ordering::Release);self.clear_file_facts();self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
                     _=>Err(Error::InvalidCommand)
                 }
             }
@@ -304,6 +312,7 @@ impl Mpv {
     pub(crate) fn load_local(&self,path:&Path,next_generation:u64,start_ms:f64,autoplay:bool)->Result<()> {
         if next_generation==0 || next_generation>9_007_199_254_740_991 || !start_ms.is_finite() || !(0.0..=1e12).contains(&start_ms) || !path.is_absolute(){return Err(Error::InvalidSource)}
         let mut generation=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        if self.retired.load(Ordering::Acquire){return Err(Error::EngineUnavailable)}
         if !self.equalizer_chain_known.load(Ordering::Acquire){return Err(Error::EngineFailure)}
         if next_generation<=self.newest_generation.load(Ordering::Acquire){return Err(Error::StaleGeneration)}
         self.loaded.store(false,Ordering::Release);
@@ -313,7 +322,7 @@ impl Mpv {
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
         self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
-        *generation=next_generation;Ok(())
+        *generation=next_generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
     }
     #[cfg(debug_assertions)]
     pub fn load_spike_fixture(&self,path:&Path)->Result<()> {
@@ -351,9 +360,20 @@ impl Mpv {
             if (*event).id==7&&!(*event).data.is_null(){let fields=&*((*event).data as *const EndFile);if fields.playlist_entry_id==self.expected_entry.load(Ordering::Acquire)&&fields.reason==4{self.failed.store(true,Ordering::Release);}}
         }}
     }
+    /// Close the transport before detaching its renderer. Queued mutations can no
+    /// longer reopen it; the render thread reads only atomics during retirement.
+    pub(crate) fn retire(&self)->Result<()> {
+        let mut generation=self.generation.lock().map_err(|_|Error::EngineFailure)?;
+        self.retired.store(true,Ordering::Release);
+        self.current_generation.store(0,Ordering::Release);
+        let result=self.command(&["stop"]);
+        *generation=0;self.clear_file_facts();self.set_surface_ready(false);
+        self.set_geometry_ready(false);self.equalizer_applied.store(false,Ordering::Release);
+        result
+    }
     pub fn set_surface_ready(&self,value:bool){self.surface_ready.store(value,Ordering::Release);if !value{self.frame_drawn.store(0,Ordering::Release);}}
     pub fn set_geometry_ready(&self,value:bool){self.geometry_ready.store(value,Ordering::Release);}
-    pub fn matches_generation(&self,generation:u64)->bool{generation>0&&self.generation.lock().map(|g|*g==generation).unwrap_or(false)}
+    pub fn matches_generation(&self,generation:u64)->bool{generation>0&&!self.retired.load(Ordering::Acquire)&&self.current_generation.load(Ordering::Acquire)==generation}
     pub fn render_generation(&self)->u64{let generation=self.newest_generation.load(Ordering::Acquire);if self.loaded.load(Ordering::Acquire){generation}else{0}}
     pub fn frame_drawn(&self,generation:u64){if generation>0{self.frame_drawn.store(generation,Ordering::Release);}}
     #[cfg(target_os="macos")]
@@ -374,8 +394,9 @@ impl Mpv {
     pub fn capture_playlist(api:Arc<Api>,inputs:&[&Path],output:&Path,rate:u32,channels:u8)->Result<()> {
         if inputs.is_empty() || inputs.len()>32{return Err(Error::InvalidCommand);}
         let handle=unsafe{(api.create)()};if handle.is_null(){return Err(Error::EngineUnavailable);}
-        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:false,native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
-        for (k,v) in [("config","no"),("load-scripts","no"),("ytdl","no"),("terminal","no"),("msg-level","all=no"),
+        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,retired:AtomicBool::new(false),current_generation:AtomicU64::new(1),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:false,native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
+        e.disable_script_engines()?;
+        for (k,v) in [("config","no"),("terminal","no"),("msg-level","all=no"),
             ("vo","null"),("ao","pcm"),("audio-format","s32"),("audio-display","no"),("gapless-audio","yes"),("replaygain","no"),("volume","100"),("pause","yes")] {e.option(k,v)?;}
         e.option("ao-pcm-file",output.to_str().ok_or(Error::InvalidCommand)?)?;e.option("ao-pcm-waveheader","no")?;
         e.option("audio-samplerate",&rate.to_string())?;e.option("audio-channels",&channels.to_string())?;
@@ -434,5 +455,12 @@ mod local_source_tests {
         }
         assert!(!matches!(engine.observation().state.as_str(),"playing"|"buffering"));
         std::fs::remove_file(playlist).unwrap();
+        engine.retire().unwrap();
+        assert!(!engine.matches_generation(3));
+        assert_eq!(engine.load_local(Path::new(&fixture),4,0.0,true),Err(Error::EngineUnavailable));
+        assert_eq!(engine.execute(Command::Play{generation:3}),Err(Error::EngineUnavailable));
+        assert_eq!(engine.apply_equalizer(&EqualizerSettings::default()),Err(Error::EngineUnavailable));
+        let observation=engine.observation();assert_eq!(observation.generation,0);assert!(!observation.native_surface_active);
+
     }
 }

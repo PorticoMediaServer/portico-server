@@ -9,8 +9,9 @@ static FRAMES:AtomicU64=AtomicU64::new(0);
 static COLORED:AtomicU64=AtomicU64::new(0);
 static PIXEL:AtomicU32=AtomicU32::new(0);
 static READ_ERROR:AtomicU32=AtomicU32::new(0);
+static TARGET_ID:AtomicU32=AtomicU32::new(0);
 static RENDERER:OnceLock<String>=OnceLock::new();
-pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.load(Ordering::Relaxed),"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"debugCenterRgba":PIXEL.load(Ordering::Relaxed).to_be_bytes(),"debugReadError":READ_ERROR.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
+pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.load(Ordering::Relaxed),"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"debugTargetFbo":TARGET_ID.load(Ordering::Relaxed),"debugCenterRgba":PIXEL.load(Ordering::Relaxed).to_be_bytes(),"debugReadError":READ_ERROR.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
 
 #[repr(C)]struct Param{kind:c_int,data:*mut c_void}
 #[repr(C)]struct Init{get:unsafe extern "C" fn(*mut c_void,*const c_char)->*mut c_void,context:*mut c_void}
@@ -44,8 +45,9 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
     area.set_widget_name("portico-native-video");fixed.put(&area,0,0);
     overlay.add(&fixed);overlay.add_overlay(&web);parent.pack_start(&overlay,true,true,0);
     let context:Rc<RefCell<Option<Context>>>=Rc::new(RefCell::new(None));
-    let current=context.clone();let source=engine.clone();
+    let current=context.clone();let source=Arc::downgrade(&engine);
     area.connect_realize(move |area| {
+        let Some(source)=source.upgrade()else{return};
         area.make_current();if area.error().is_some(){return;}
         let created=(||->Result<Context>{unsafe{
             let gl=Box::new(libloading::Library::new("libEGL.so.1").map_err(|_|Error::EngineUnavailable)?);
@@ -61,10 +63,16 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
     let current=context.clone();
     area.connect_render(move |area,_|{
         if let Some(ctx)=current.borrow().as_ref(){unsafe{
+            // Rebind GTK's target: libmpv restores standard GL defaults, not the
+            // caller's previous FBO. GTK may reuse the same GLArea context.
+            area.attach_buffers();
             let mut id=0;
             let p=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glGetIntegerv".as_ptr());
             if p.is_null(){return glib::Propagation::Proceed;}
             let get:GetInt=std::mem::transmute(p);get(0x8CA6,&mut id);
+            TARGET_ID.store(id as u32,Ordering::Relaxed);
+            let disable=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glDisable".as_ptr());
+            if !disable.is_null(){let disable:unsafe extern "C" fn(u32)=std::mem::transmute(disable);for flag in [0x0BE2,0x0C11,0x0B71,0x0B90,0x0B44]{disable(flag);}}
             let p=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glGetString".as_ptr());
             if !p.is_null(){let get:unsafe extern "C" fn(u32)->*const c_char=std::mem::transmute(p);let name=get(0x1F01);if !name.is_null(){let _=RENDERER.set(std::ffi::CStr::from_ptr(name).to_string_lossy().into_owned());}}
             let scale=area.scale_factor();let mut target=Fbo{id,width:area.allocated_width()*scale,height:area.allocated_height()*scale,format:0};let mut flip=1;
@@ -98,8 +106,8 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
         glib::Propagation::Stop
     });
     let current=context.clone();
-    let source=engine.clone();
-    area.connect_unrealize(move |area|{area.make_current();source.set_surface_ready(false);current.borrow_mut().take();});
+    let source=Arc::downgrade(&engine);
+    area.connect_unrealize(move |area|{area.make_current();if let Some(source)=source.upgrade(){source.set_surface_ready(false);}current.borrow_mut().take();});
     let weak=area.downgrade();
     glib::timeout_add_local(Duration::from_millis(16),move||{
         if let Some(area)=weak.upgrade(){area.queue_render();glib::ControlFlow::Continue}else{glib::ControlFlow::Break}
@@ -114,4 +122,14 @@ pub fn bounds(webview:&tauri::webview::PlatformWebview,bounds:crate::boundary::S
     area.set_size_request(bounds.width.ceil().max(1.0) as i32,bounds.height.ceil().max(1.0) as i32);
     fixed.move_(&area,bounds.x.round() as i32,bounds.y.round() as i32);
     area.set_visible(bounds.width>0.0&&bounds.height>0.0);Ok(())
+}
+
+/// Called on GTK's thread while the native client is retained by the close worker.
+pub fn retire(webview:&tauri::webview::PlatformWebview)->Result<()>{
+    let overlay=webview.inner().parent().ok_or(Error::Unsupported)?.downcast::<gtk::Overlay>().map_err(|_|Error::Unsupported)?;
+    let fixed=overlay.child().ok_or(Error::Unsupported)?.downcast::<gtk::Fixed>().map_err(|_|Error::Unsupported)?;
+    if let Some(area)=fixed.children().into_iter().find(|w|w.widget_name()=="portico-native-video"){
+        area.unrealize();fixed.remove(&area);
+    }
+    Ok(())
 }

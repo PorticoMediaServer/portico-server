@@ -8,3 +8,5 @@ pub fn attach(_webview:&tauri::webview::PlatformWebview,_api:Arc<Api>,_output:&A
     Err(Error::Unsupported)
 }
 pub fn bounds(_webview:&tauri::webview::PlatformWebview,_bounds:crate::boundary::SurfaceBounds)->Result<()> {Err(Error::Unsupported)}
+
+pub fn retire(_webview:&tauri::webview::PlatformWebview)->Result<()>{Ok(())}

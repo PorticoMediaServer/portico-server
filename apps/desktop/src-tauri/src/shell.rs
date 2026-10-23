@@ -1,5 +1,5 @@
 use crate::{audio::AudioOutput,boundary::{self,Command,Error,Observation,Result},mpv::{Api,Mpv}};
-use std::{path::PathBuf,sync::{Arc,Mutex}};
+use std::{path::PathBuf,sync::{Arc,Mutex,atomic::{AtomicU8,Ordering}}};
 use tauri::{Manager,WebviewWindow};
 use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::EqualizerStore};
 
@@ -13,8 +13,50 @@ use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::Equa
 pub struct EngineState(pub Mutex<std::result::Result<Arc<Mpv>,Error>>);
 pub struct EqualizerState(pub Mutex<std::result::Result<EqualizerStore,Error>>);
 pub struct DownloadsState(pub Arc<Mutex<std::result::Result<crate::download_commands::DownloadsSession,Error>>>);
+#[derive(Default)]
+struct ShutdownState(AtomicU8);
 fn caller(window:&WebviewWindow)->Result<()> {
+    if window.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{return Err(Error::EngineUnavailable)}
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
+}
+fn request_shutdown(app:&tauri::AppHandle){
+    if app.state::<ShutdownState>().0.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire).is_err(){return}
+    let app=app.clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        crate::spike::record("close-started",0);
+        // Synchronize with native initialization and preference mutations before taking
+        // the engine. The AppKit/GTK event loop remains live throughout native teardown.
+        let equalizer=app.state::<EqualizerState>();
+        let preferences=equalizer.0.lock().unwrap_or_else(|e|e.into_inner());
+        let native=std::mem::replace(&mut *app.state::<EngineState>().0.lock().unwrap_or_else(|e|e.into_inner()),Err(Error::EngineUnavailable)).ok();
+        drop(preferences);
+        let mut clean=true;
+        if let Some(native)=native.as_ref(){
+            let downloads=app.state::<DownloadsState>();
+            if let Ok(mut guard)=downloads.0.lock(){if let Ok(session)=guard.as_mut(){
+                clean&=session.record_observation(&native.observation(),true).is_ok();
+                session.retire_local();
+            }}else{clean=false;}
+            clean&=native.retire().is_ok();
+        }
+        if let Some(window)=app.get_webview_window("main"){
+            let (send,receive)=std::sync::mpsc::sync_channel(1);
+            if window.with_webview(move|webview|{let _=send.send(surface::retire(&webview));}).is_ok(){
+                clean&=receive.recv_timeout(std::time::Duration::from_secs(5)).is_ok_and(|r|r.is_ok());
+            }else{clean=false;}
+        }
+        if let Some(native)=native{
+            let start=std::time::Instant::now();
+            while Arc::strong_count(&native)>1&&start.elapsed()<std::time::Duration::from_secs(5){std::thread::sleep(std::time::Duration::from_millis(10));}
+            clean&=Arc::strong_count(&native)==1;
+            // The last owned client is destroyed on this worker while native callbacks
+            // can still execute on the live platform event loop.
+            drop(native);
+        }
+        crate::spike::record("close-finished",if clean{0}else{-1});
+        app.state::<ShutdownState>().0.store(2,Ordering::Release);
+        app.exit(if clean{0}else{1});
+    });
 }
 #[tauri::command]
 async fn desktop_downloads_bind(window:WebviewWindow,state:tauri::State<'_,DownloadsState>,engine:tauri::State<'_,EngineState>,scope:crate::download_commands::ViewerScope)->Result<String>{
@@ -203,7 +245,11 @@ pub fn run() {
         .manage(EngineState(Mutex::new(Err(Error::EngineUnavailable))))
         .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
         .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
+        .manage(ShutdownState::default())
         .manage(Arc::new(crate::window::ChromeState::default()))
+        .on_window_event(|window,event|{
+            if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
+        })
         .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_downloads_retire])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
@@ -230,6 +276,11 @@ pub fn run() {
                     }
                 });
             let main=main.build()?;
+            #[cfg(debug_assertions)]
+            if std::env::var_os("PORTICO_SPIKE_CLOSE").is_some(){
+                let window=main.clone();
+                std::thread::spawn(move||{std::thread::sleep(std::time::Duration::from_secs(13));let _=window.close();});
+            }
             let handle=app.handle().clone();
             let lib=library(app.handle()).and_then(|p|Api::open(&p));
             #[cfg(target_os="macos")]
@@ -242,6 +293,9 @@ pub fn run() {
                     let native=lib.and_then(|api|Mpv::new(api,&AudioOutput::default(),crate::mpv::VideoTarget::NativeView(0)));
                     crate::spike::record("worker-engine",if native.is_ok(){0}else{-1});
                     let equalizer=handle.state::<EqualizerState>();let preferences=equalizer.0.lock();
+                    if handle.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{
+                        if let Ok(native)=native{let _=native.retire();}return
+                    }
                     let result=native.and_then(|native|{
                         let store=preferences.as_ref().map_err(|_|Error::PreferencesUnavailable)?.as_ref().map_err(|e|*e)?;
                         native.apply_equalizer(&store.read()?.settings)?;Ok(native)
@@ -290,5 +344,12 @@ pub fn run() {
             Ok(())
         });
     // Error text from native libraries is deliberately not printed.
-    if builder.run(tauri::generate_context!()).is_err(){eprintln!("desktop_start_failed");}
+    match builder.build(tauri::generate_context!()){
+        Ok(app)=>app.run(|handle,event|{
+            if let tauri::RunEvent::ExitRequested{api,..}=event{
+                if handle.state::<ShutdownState>().0.load(Ordering::Acquire)!=2{api.prevent_exit();request_shutdown(handle);}
+            }
+        }),
+        Err(_)=>eprintln!("desktop_start_failed"),
+    }
 }

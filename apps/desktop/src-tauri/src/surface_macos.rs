@@ -77,3 +77,8 @@ pub fn bounds(webview:&tauri::webview::PlatformWebview,bounds:SurfaceBounds)->Re
         engine.set_surface_ready(true);Ok(())
     })
 }
+
+/// AppKit owns window relationships; no client API is called on this thread.
+pub fn retire(_webview:&tauri::webview::PlatformWebview)->Result<()>{
+    SURFACE.with(|slot|{slot.borrow_mut().take();});Ok(())
+}
