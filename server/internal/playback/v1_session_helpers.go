@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 // checkSessionPolicy enforces the owner's stream caps for a new presentation.
@@ -24,8 +25,15 @@ import (
 // converts anything while it is off), so a stream that only repackages the
 // file, which converts nothing and has its own owner switch, still plays.
 func checkSessionPolicy(ctx context.Context, tx *sql.Tx, p identity.Principal, replacing string) error {
+	streams, err := streamlimits.ReadTx(ctx, tx, p.AccountID)
+	if err != nil {
+		return err
+	}
 	var accountCap, serverCap sql.NullInt64
-	err := tx.QueryRowContext(ctx, `SELECT per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&accountCap, &serverCap)
+	if streams.EffectiveLimit != nil {
+		accountCap = sql.NullInt64{Int64: int64(*streams.EffectiveLimit), Valid: true}
+	}
+	err = tx.QueryRowContext(ctx, `SELECT server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&serverCap)
 	if err != nil {
 		return err
 	}
@@ -52,19 +60,7 @@ func checkSessionPolicy(ctx context.Context, tx *sql.Tx, p identity.Principal, r
 }
 
 func countPlaybackSlots(ctx context.Context, tx *sql.Tx, now time.Time, authority, account string, scoped bool, replacing string) (int64, error) {
-	query := `SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash
-      WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>? AND auth.expires_at>? AND auth.revoked=0 AND ps.id<>?
-      AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id
-        WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed'))`
-	stamp := now.UTC().Format(time.RFC3339)
-	args := []any{stamp, stamp, replacing}
-	if scoped {
-		query += ` AND auth.authority=? AND ps.account_id=?`
-		args = append(args, authority, account)
-	}
-	var n int64
-	err := tx.QueryRowContext(ctx, query, args...).Scan(&n)
-	return n, err
+	return streamlimits.CountTx(ctx, tx, authority, account, scoped, now, "", replacing)
 }
 
 // terminateControlOccurrence ends a v1 session (replacement or stop). The /v2

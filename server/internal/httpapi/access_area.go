@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
 
 	"portico.local/server/internal/access"
@@ -124,6 +125,10 @@ func accessFailure(w http.ResponseWriter, e error) {
 	if revisionFailure(w, e) {
 		return
 	}
+	if errors.Is(e, identity.ErrSignInKindLocal) || errors.Is(e, identity.ErrSignInKindPortico) || errors.Is(e, identity.ErrFactorSetupRequired) {
+		failure(w, e)
+		return
+	}
 	status, code, message := 500, "administration_error", "The request could not be completed."
 	switch {
 	// CD-51: a refused but valid session is 403 (or a hidden 404), never 401.
@@ -137,7 +142,7 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 404, "not_found", publicErrorMessage("not_found")
 	case errors.Is(e, errFeatureRestricted):
 		status, code, message = 403, "feature_restricted", publicErrorMessage("feature_restricted")
-	case errors.Is(e, access.ErrInvalid), errors.Is(e, servicelog.ErrClientUpload):
+	case requestinput.Is(e), errors.Is(e, identity.ErrDirectInput), errors.Is(e, access.ErrInvalid), errors.Is(e, servicelog.ErrClientUpload):
 		status, code, message = 400, "invalid_request", "Check the submitted fields and their limits."
 	case errors.Is(e, access.ErrIdempotencyKeyReused):
 		status, code, message = 409, "idempotency_key_reused", "This request conflicts with an earlier request."

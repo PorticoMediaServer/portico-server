@@ -6,11 +6,11 @@
   "status": 200,
   "response": {
     "authority": "local",
-    "serverId": "JbRYJAtcoMWqZLxoWk8Lmxf6icHUJ0hhEQn62KHzw-Q",
+    "serverId": "KY4ROljca7GRzeg2H_wE8mPdX3Y_l_po4H1fs_DAstU",
     "account": {
-      "id": "account",
+      "id": "_8vjJA7YFHJyYGPcsY7L16nSf3Viasz8AJTewr6NzwE",
       "username": "owner",
-      "primaryProfileId": "profile",
+      "primaryProfileId": "7VMtBQHTsGPktjrVjNaQ3xIZqh4iH-PoWK7p6PSBF1Q",
       "role": "owner",
       "revision": 1,
       "disabled": false,
@@ -18,7 +18,7 @@
     },
     "profiles": [
       {
-        "id": "profile",
+        "id": "7VMtBQHTsGPktjrVjNaQ3xIZqh4iH-PoWK7p6PSBF1Q",
         "name": "owner",
         "primary": true,
         "position": 0,
@@ -29,6 +29,12 @@
         "allowedLibraries": []
       }
     ],
-    "canManage": true
+    "canManage": true,
+    "capabilities": {
+      "manageAccount": true,
+      "managePeople": true,
+      "manageServer": true,
+      "manageSignIn": true
+    }
   }
 }
