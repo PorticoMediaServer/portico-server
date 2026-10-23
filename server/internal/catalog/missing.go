@@ -312,18 +312,33 @@ const missingBatch = 24
 // source that is offline, being scanned or waiting for its folder to be
 // accepted are left alone: only a healthy source's absences are acted on.
 func (s *Service) EmptyMissing(ctx context.Context, library string, cutoff time.Time, authorize func(*sql.Tx) error) (MissingEmptied, error) {
+	var authority MissingAuthority
+	if authorize != nil {
+		authority = func(_ context.Context, tx *sql.Tx) (MissingScope, error) {
+			return MissingScope{VisibilitySQL: "1"}, authorize(tx)
+		}
+	}
+	return s.EmptyMissingAuthorized(ctx, library, cutoff, authority)
+}
+
+// EmptyMissingAuthorized uses the same bounded removal algorithm with live
+// management and content authority resolved in each write transaction.
+func (s *Service) EmptyMissingAuthorized(ctx context.Context, library string, cutoff time.Time, authority MissingAuthority) (MissingEmptied, error) {
 	var out MissingEmptied
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassMaintenance), func(tx *sql.Tx) error {
 		out = MissingEmptied{}
-		if authorize != nil {
-			if err := authorize(tx); err != nil {
-				return err
-			}
+		scope, err := resolveMissingScope(ctx, tx, authority)
+		if err != nil {
+			return err
 		}
+		fileLibrary, fileArgs := scope.librarySQL("s.library_id")
+		titleLibrary, titleArgs := scope.librarySQL("cl.library_id")
 		type gone struct{ object, token string }
 		rows, err := tx.QueryContext(ctx, `SELECT o.id,o.asset_id FROM library_sources s CROSS JOIN inventory_objects o INDEXED BY inventory_objects_missing ON o.source_id=s.id
- WHERE (?1='' OR s.library_id=?1) AND s.health NOT IN('offline','root_changed','inventory_running') AND o.state='missing' AND o.retired=0 AND o.missing_since<>'' AND o.missing_since<=?2
- AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?3`, library, cutoff.UTC().Format(time.RFC3339Nano), missingBatch+1)
+ WHERE (?='' OR s.library_id=?) AND s.health NOT IN('offline','root_changed','inventory_running') AND o.state='missing' AND o.retired=0 AND o.missing_since<>'' AND o.missing_since<=?
+ AND `+fileLibrary+`
+ AND NOT EXISTS(SELECT 1 FROM catalog_assets asset JOIN catalog_asset_links link ON link.asset_id=asset.id JOIN catalog_entities missing_candidate ON missing_candidate.id=link.entity_id WHERE asset.token=o.asset_id AND NOT (`+scope.VisibilitySQL+`))
+ AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?`, append(append(append([]any{library, library, cutoff.UTC().Format(time.RFC3339Nano)}, fileArgs...), scope.VisibilityArgs...), missingBatch+1)...)
 		if err != nil {
 			return err
 		}
@@ -368,11 +383,11 @@ func (s *Service) EmptyMissing(ctx context.Context, library string, cutoff time.
 			}
 			out.Files++
 		}
-		titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id
- WHERE (?1='' OR cl.library_id=?1) AND m.missing_since_ms<=?2
+		titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id
+ WHERE (?='' OR cl.library_id=?) AND m.missing_since_ms<=? AND cl.retired=0 AND `+titleLibrary+` AND (`+scope.VisibilitySQL+`)
  AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id)
  AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running'))
- ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT ?3`, library, cutoff.UnixMilli(), missingBatch+1))
+ ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT ?`, append(append(append([]any{library, library, cutoff.UnixMilli()}, titleArgs...), scope.VisibilityArgs...), missingBatch+1)...))
 		if err != nil {
 			return err
 		}
@@ -454,6 +469,22 @@ type MissingTitlesPage struct {
 // MissingTitles lists missing titles, oldest first. library "" lists every
 // library. The cursor is opaque: the last row's time and id.
 func (s *Service) MissingTitles(ctx context.Context, library, cursor string, limit int) (MissingTitlesPage, error) {
+	return s.MissingTitlesAuthorized(ctx, library, cursor, limit, nil)
+}
+
+func (s *Service) MissingTitlesAuthorized(ctx context.Context, library, cursor string, limit int, authority MissingAuthority) (MissingTitlesPage, error) {
+	var out MissingTitlesPage
+	err := dbwork.WithReadSnapshot(ctx, s.db, func(ctx context.Context) error {
+		scope, err := resolveMissingScope(ctx, dbwork.Snapshot(ctx), authority)
+		if err != nil {
+			return err
+		}
+		out, err = s.WithContext(ctx).missingTitles(ctx, library, cursor, limit, scope)
+		return err
+	})
+	return out, err
+}
+func (s *Service) missingTitles(ctx context.Context, library, cursor string, limit int, visibility MissingScope) (MissingTitlesPage, error) {
 	rule := s.MissingRule(ctx)
 	out := MissingTitlesPage{Items: []MissingTitle{}, Rule: rule.Mode, Days: rule.Days}
 	if limit < 1 || limit > 200 {
@@ -467,21 +498,29 @@ func (s *Service) MissingTitles(ctx context.Context, library, cursor string, lim
 		}
 		afterMS, afterID = ms, id
 	}
-	if err := s.read().QueryRowContext(ctx, `SELECT COALESCE(sum(m.total),0) FROM catalog_libraries cl LEFT JOIN catalog_missing_title_counts m ON m.library_id=cl.id WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0`, library).Scan(&out.Total); err != nil {
-		return out, err
+	libraryPredicate, libraryArgs := visibility.librarySQL("cl.library_id")
+	if visibility.Libraries == nil && visibility.VisibilitySQL == "1" {
+		if err := s.read().QueryRowContext(ctx, `SELECT COALESCE(sum(m.total),0) FROM catalog_libraries cl LEFT JOIN catalog_missing_title_counts m ON m.library_id=cl.id WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0`, library).Scan(&out.Total); err != nil {
+			return out, err
+		}
+	} else {
+		countArgs := append(append([]any{library, library}, libraryArgs...), visibility.VisibilityArgs...)
+		if err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id WHERE (?='' OR cl.library_id=?) AND cl.retired=0 AND `+libraryPredicate+` AND (`+visibility.VisibilitySQL+`)`, countArgs...).Scan(&out.Total); err != nil {
+			return out, err
+		}
 	}
-	scope := "cl.retired=0"
-	args := []any{afterMS, afterID}
+	scope := "cl.retired=0 AND " + libraryPredicate + " AND (" + visibility.VisibilitySQL + ")"
+	args := append(append([]any{afterMS, afterID}, libraryArgs...), visibility.VisibilityArgs...)
 	if library != "" {
 		scope += " AND m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)"
 		args = append(args, library)
 	}
 	args = append(args, limit+1)
-	rows, err := s.read().QueryContext(ctx, `SELECT m.entity_id,m.missing_since_ms,pid(e.public_id),cl.library_id,k.name,e.title,e.year,
- COALESCE((SELECT sh.title FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=e.id),
-  (SELECT al.title FROM catalog_songs so JOIN catalog_entities al ON al.id=so.album_id WHERE so.entity_id=e.id),
-  (SELECT bk.title FROM catalog_book_files bf JOIN catalog_entities bk ON bk.id=bf.book_id WHERE bf.entity_id=e.id),'')
- FROM catalog_missing_titles m JOIN catalog_entities e ON e.id=m.entity_id JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=m.library_id
+	rows, err := s.read().QueryContext(ctx, `SELECT m.entity_id,m.missing_since_ms,pid(missing_candidate.public_id),cl.library_id,k.name,missing_candidate.title,missing_candidate.year,
+ COALESCE((SELECT sh.title FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=missing_candidate.id),
+  (SELECT al.title FROM catalog_songs so JOIN catalog_entities al ON al.id=so.album_id WHERE so.entity_id=missing_candidate.id),
+  (SELECT bk.title FROM catalog_book_files bf JOIN catalog_entities bk ON bk.id=bf.book_id WHERE bf.entity_id=missing_candidate.id),'')
+ FROM catalog_missing_titles m JOIN catalog_entities missing_candidate ON missing_candidate.id=m.entity_id JOIN catalog_kinds k ON k.id=missing_candidate.kind JOIN catalog_libraries cl ON cl.id=m.library_id
  WHERE (m.missing_since_ms,m.entity_id)>(?,?) AND `+scope+`
  ORDER BY m.missing_since_ms,m.entity_id LIMIT ?`, args...)
 	if err != nil {

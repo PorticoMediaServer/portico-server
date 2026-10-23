@@ -74,7 +74,7 @@ func identityRouteError(err error) error {
 		return nil
 	case errors.As(err, &public):
 		return err
-	case errors.Is(err, sql.ErrNoRows), errors.Is(err, entityid.ErrNotFound), errors.Is(err, catalog.ErrLibraryRemoving):
+	case errors.Is(err, sql.ErrNoRows), errors.Is(err, entityid.ErrNotFound), errors.Is(err, catalog.ErrLibraryRemoving), errors.Is(err, identity.ErrNotVisible):
 		return &apierror.Error{Code: "not_found", Cause: err}
 	case errors.Is(err, catalog.ErrLibraryConfigurationConflict):
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
@@ -140,7 +140,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 	registerDownloadProfileRevoke(r, d)
 	ownerErrors := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
-		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},
+		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, _ noBody) (catalog.MissingTitlesPage, error) {
 			limit := 50
 			if raw := q.URL.Query().Get("limit"); raw != "" {
@@ -150,11 +150,13 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				}
 				limit = n
 			}
-			out, err := d.Catalog.MissingTitles(ctx, q.URL.Query().Get("libraryId"), q.URL.Query().Get("cursor"), limit)
+			p, _ := d.foundationCaller(q)
+			library := q.URL.Query().Get("libraryId")
+			out, err := d.Catalog.MissingTitlesAuthorized(ctx, library, q.URL.Query().Get("cursor"), limit, d.missingLibraryAuthority(p, library))
 			return out, identityRouteError(err)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "empty_missing_titles", Method: "POST", Path: "/v1/admin/missing-titles/empty", Summary: "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
-		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, OptionalBody: true, Status: 200, Errors: ownerErrors},
+		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, OptionalBody: true, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in emptyMissingRequest) (catalog.MissingEmptied, error) {
 			p, _ := d.foundationCaller(q)
 			var total catalog.MissingEmptied
@@ -163,7 +165,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			deadline := time.Now().Add(8 * time.Second)
 			cutoff := time.Now()
 			for {
-				step, err := d.Catalog.EmptyMissing(ctx, in.LibraryID, cutoff, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+				step, err := d.Catalog.EmptyMissingAuthorized(ctx, in.LibraryID, cutoff, d.missingLibraryAuthority(p, in.LibraryID))
 				if err != nil {
 					return total, identityRouteError(err)
 				}

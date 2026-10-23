@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mediaanalysis"
+	"portico.local/server/internal/metadata"
 	"sort"
 )
 
@@ -348,6 +349,7 @@ type LibraryDocument struct {
 	Revision         int64                   `json:"revision"`
 	Digest           string                  `json:"digest"`
 	Settings         LibrarySettings         `json:"settings"`
+	Defaults         LibrarySettings         `json:"defaults"`
 	Matrix           AnalysisMatrix          `json:"analysisMatrix"`
 	Providers        []MetadataProvider      `json:"availableProviders"`
 	Modes            map[string][]string     `json:"enumerations"`
@@ -378,6 +380,15 @@ func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (L
 		return out, err
 	}
 	out.LibraryName, out.LibraryKind = name, kind
+	out.Defaults = DefaultLibrarySettings()
+	defaultProvider := metadata.DefaultAdministrationPolicy(kind)
+	for _, provider := range defaultProvider.Providers {
+		out.Defaults.Providers = append(out.Defaults.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: provider, Language: defaultProvider.Language, Region: defaultProvider.Region})
+	}
+	if len(out.Defaults.Providers) == 0 {
+		out.Defaults.Providers = []ProviderSelection{{MediaKind: libraryMediaKind(kind), Provider: "local"}}
+	}
+	redactLibrarySettings(&out.Defaults)
 	out.Modes["localTags"] = []string{"prefer", "off"}
 	if kind == "music" || kind == "audiobook" {
 		out.Modes["localTags"] = []string{"prefer", "supplement", "off"}
