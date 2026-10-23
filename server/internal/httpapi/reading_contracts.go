@@ -8,11 +8,17 @@ func (ReadingFormat) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}}
 }
 
+type ReadingDirection string
+
+func (ReadingDirection) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"ltr", "rtl", "vertical"}}
+}
+
 type ReadingMetadata struct {
-	Title     string `json:"title,omitempty"`
-	Author    string `json:"author,omitempty"`
-	Language  string `json:"language,omitempty"`
-	Direction string `json:"direction,omitempty"`
+	Title     string           `json:"title,omitempty"`
+	Author    string           `json:"author,omitempty"`
+	Language  string           `json:"language,omitempty"`
+	Direction ReadingDirection `json:"direction,omitempty"`
 }
 type ReadingResource struct {
 	Path string `json:"path"`
