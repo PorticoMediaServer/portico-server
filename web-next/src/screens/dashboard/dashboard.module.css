@@ -213,8 +213,8 @@
 
 /* Section17: the phone4 content is shared with the desktop dialog. Canonical type projections are steward-owned. */
 .stopDialog { font-family: var(--font); padding-inline: 28px; }
-.stopDialog h2 { font-size: var(--type-stop-title-size); line-height: var(--type-stop-title-line); font-weight: var(--type-stop-title-weight); letter-spacing: var(--type-stop-title-tracking); margin-right: 44px; }
-.stopDialog > p, .stopDialog > div:first-child > p { font-size: var(--type-stop-body-size); line-height: var(--type-stop-body-line); font-weight: var(--type-stop-body-weight); text-wrap: balance; }
+.stopDialog h2 { margin-right: 44px; }
+.stopDialog > p, .stopDialog > div:first-child > p { font-weight: var(--type-stop-body-weight); text-wrap: balance; }
 .stopBody { overflow: auto; }
 .viewerMessage { margin-top: 18px; }
 .viewerMessage label { display: block; color: var(--color-text-secondary); font-size: var(--type-chip-size); line-height: var(--type-chip-line); font-weight: var(--type-chip-weight); }
