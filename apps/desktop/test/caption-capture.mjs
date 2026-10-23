@@ -70,7 +70,7 @@ try{
   if(name==='normal'){
    await evaluate(`document.querySelector('[data-window-no-drag] button:nth-child(2)').focus()`);
    for(const [key,code,virtual] of [['Enter','Enter',13],[' ','Space',32]]){
-    await send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:virtual,...(key===' '?{text:' ',unmodifiedText:' '}: {})});
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:virtual,text:key==='Enter'?'\r':' ',unmodifiedText:key==='Enter'?'\r':' '});
     await send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:virtual});
     await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
    }

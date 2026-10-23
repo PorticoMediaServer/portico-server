@@ -332,6 +332,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire])
         .setup(|app| {
+            crate::spike::record("setup-started",0);
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
             let data=local_data(app.handle()).map_err(|_|preference_error())?;
@@ -342,6 +343,7 @@ pub fn run() {
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
             let downloads=data.join("offline");
             *app.state::<DownloadsState>().0.lock().map_err(|_|preference_error())?=crate::download_commands::DownloadsSession::open(&downloads);
+            crate::spike::record("stores-ready",0);
             let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
                 .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the
@@ -358,6 +360,7 @@ pub fn run() {
                     }
                 });
             let main=main.build()?;
+            crate::spike::record("window-created",0);
             crate::network::start();
             #[cfg(debug_assertions)]
             if std::env::var_os("PORTICO_SPIKE_CLOSE").is_some(){
@@ -395,6 +398,7 @@ pub fn run() {
             }
             #[cfg(not(target_os="macos"))]
             main.with_webview(move |webview| {
+                crate::spike::record("webview-attached",0);
                 // Keep the same store->engine lock order as preference commands. A setting
                 // saved while the webview starts must not be replaced by an earlier copy.
                 let equalizer_state=handle.state::<EqualizerState>();
@@ -415,6 +419,7 @@ pub fn run() {
                     tauri::async_runtime::spawn_blocking(move||{let _=native.load_spike_fixture(&PathBuf::from(path));});
                 }}
                 *handle.state::<EngineState>().0.lock().unwrap_or_else(|e|e.into_inner())=result;
+                crate::spike::record("native-state-stored",0);
             })?;
             #[cfg(feature="updater")]
             {
@@ -429,6 +434,7 @@ pub fn run() {
     // Error text from native libraries is deliberately not printed.
     match builder.build(tauri::generate_context!()){
         Ok(app)=>app.run(|handle,event|{
+            if matches!(event,tauri::RunEvent::Ready){crate::spike::record("event-loop-ready",0);}
             if let tauri::RunEvent::ExitRequested{api,..}=event{
                 if handle.state::<ShutdownState>().0.load(Ordering::Acquire)!=2{api.prevent_exit();request_shutdown(handle);}
             }

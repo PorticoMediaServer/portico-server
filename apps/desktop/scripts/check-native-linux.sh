@@ -4,7 +4,16 @@ set -eu
 cd "$(dirname "$0")/../../.."
 job="desktop-r29-$(date +%s)-$$"
 image="portico/$job"
-cleanup(){ docker image rm "$image" >/dev/null 2>&1 || true; }
+scope="${1:-engine}"
+case "$scope" in shell|startup|engine) ;; *) exit 64 ;; esac
+cleanup(){
+  if [ "$scope" = startup ] && [ -n "${PORTICO_RUNNER_OUTPUT:-}" ]; then
+    if [ -f "$TMPDIR/native-work/startup-report.native.log" ]; then
+      cp "$TMPDIR/native-work/startup-report.native.log" "$PORTICO_RUNNER_OUTPUT/native-startup.log"
+    else printf '%s\n' 'Native startup did not reach a recorded stage.' > "$PORTICO_RUNNER_OUTPUT/native-startup.log"; fi
+  fi
+  docker image rm "$image" >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 # Root's remote wrapper holds the machine slot for this entire sequential check.
 docker build --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-linux.Dockerfile .
@@ -12,8 +21,6 @@ docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Co
 # Tauri generates permission schemas beside its manifest. Only this exact per-job
 # archive is writable, with the runner uid so its final cleanup can remove every file.
 mkdir -p "$TMPDIR/native-work/home"
-scope="${1:-engine}"
-case "$scope" in shell|startup|engine) ;; *) exit 64 ;; esac
 docker run --rm --network=host --user "$(id -u):$(id -g)" --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
   --env HOME=/work/home --env CARGO_HOME=/work/cargo --env RUSTUP_TOOLCHAIN=1.99.0 \
   --env "PORTICO_NATIVE_CHECK=$scope" \
@@ -45,7 +52,9 @@ else
     export PORTICO_SPIKE_DATA=/work/startup-data PORTICO_SPIKE_REPORT=/work/startup-report.json PORTICO_SPIKE_CLOSE=1
     export PORTICO_MPV_LIBRARY=/work/no-native-library.so
     export LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
-    timeout 45 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- /work/cargo-target/debug/portico-desktop
+    timeout 45 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- gdb --batch --return-child-result \
+      -ex "set print frame-arguments none" -ex run -ex "thread apply all backtrace 12" \
+      --args /work/cargo-target/debug/portico-desktop
     python3 apps/desktop/test/native-startup.py
   fi
 fi
