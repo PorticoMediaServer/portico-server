@@ -9,6 +9,7 @@ import {openEpubArchive, safeArchivePath, type EpubAssets} from './archive.ts';
 import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 import {validateEpubRaster} from './media.ts';
+import {epubFontKey} from './font-obfuscation.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
@@ -104,9 +105,8 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
     async function loadBlob(path:string):Promise<Blob|null> {
       throwIfAborted(signal);const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
       let bytes=await assets.read(path,signal);throwIfAborted(signal);
-      let mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
+      const mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
       if(mime==='image/svg+xml'||/\.svg$/i.test(path))bytes=new TextEncoder().encode(secureMarkup(decoder.decode(bytes),'image/svg+xml'));
-      else mime=validateEpubRaster(bytes,path,mime)?.mime??mime;
       return new Blob([bytes as Uint8Array<ArrayBuffer>],{type:mime});
     }
     const close=async()=>{if(disposed)return;disposed=true;lifetime.abort();try{await view?.dispose();}finally{book?.destroy();await assets.dispose();}};
@@ -119,7 +119,7 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
           if(!['http://www.idpf.org/2008/embedding','http://ns.adobe.com/pdf/enc#RC'].includes(method.getAttribute('Algorithm')??''))throw new ReaderError('protected');
         }
       }
-      book=await (new EPUB({loadText,loadBlob,getSize:(path:string)=>byPath.get(path)?.size??0}) as Book).init();
+      book=await (new EPUB({loadText,loadBlob,getSize:(path:string)=>byPath.get(path)?.size??0,sha1:epubFontKey}) as Book).init();
       throwIfAborted(signal);
       if(!book.sections.length||book.sections.length>2048)throw new ReaderError('invalid_book');
       // Both the pre-loader and post-rewrite transformation are necessary:
@@ -128,16 +128,21 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
         const detail=(event as CustomEvent<{isScript:boolean;allow:boolean}>).detail;if(detail.isScript)detail.allow=false;
       });
       book.transformTarget.addEventListener('data',event=>{
-        const detail=(event as CustomEvent<{data:string|Blob|Promise<string|Blob>;type:string}>).detail;
+        const detail=(event as CustomEvent<{name?:string;data:string|Blob|Promise<string|Blob>;type:string}>).detail;
         if(detail.type==='text/css')detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureCss(typeof data==='string'?data:await data.text(),true);});
         if(['application/xhtml+xml','text/html','image/svg+xml'].includes(detail.type)) {
           detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureMarkup(typeof data==='string'?data:await data.text(),detail.type as 'application/xhtml+xml',true);});
         } else if(detail.type!=='text/css') {
-          detail.data=Promise.resolve(detail.data).then(data=>{
+          detail.data=Promise.resolve(detail.data).then(async data=>{
             throwIfAborted(signal);
-            // The engine wraps this Blob again; retain sniffed raster MIME
-            // instead of restoring an incorrect manifest declaration.
-            if(data instanceof Blob&&/^image\/(?:jpeg|png|gif|webp)$/.test(data.type))detail.type=data.type;
+            // Inspect media after standard font deobfuscation, before the
+            // engine creates a URL/browser decoder can consume it. Obfuscated
+            // font bytes can otherwise have a coincidental image signature.
+            if(data instanceof Blob) {
+              const bytes=new Uint8Array(await data.arrayBuffer());throwIfAborted(signal);
+              const observed=validateEpubRaster(bytes,detail.name??'',detail.type);
+              if(observed)detail.type=observed.mime;
+            }
             return data;
           });
         }

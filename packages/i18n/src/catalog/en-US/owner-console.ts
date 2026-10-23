@@ -87,6 +87,7 @@ export const ownerConsoleMessages = {
   'server.live.saved': 'Saved.',
   'server.live.permissionGone': 'An account that is no longer here',
   'error.live.invalidInput': 'The playlist or guide couldn’t be used. Check the addresses and try again.',
+  'error.live.recordingTemplate': 'This template can’t be used.',
   'error.live.hasDependencies': 'Recordings, recording rules or something playing still use this source. Pause it instead, or remove those first.',
   'error.live.networkPolicy': 'This address is on your home network. Confirm it only if you trust the device.',
   'error.live.credentials': 'The provider didn’t accept that username and password. Enter them again and check the source again.',
