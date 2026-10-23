@@ -84,6 +84,13 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
         assert(await driver.evaluate("!document.querySelector('button[type=submit]').disabled"));
         await driver.fill('input[name=code]', '');
       }
+      if (name === 'account3') {
+        for (let step = 0; step < 2; step++) {
+          await driver.send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9});
+          await driver.send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9});
+        }
+        assert(await driver.evaluate("document.activeElement?.innerText==='Approve device'"));
+      }
       await driver.send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 0, y: 0});
       await capture(name);
       report.states.push({name, ...await driver.evaluate('({text:document.body.innerText,overflow:document.documentElement.scrollWidth>innerWidth,content:[...document.querySelector("[data-auth-content]").children].map(x=>({tag:x.tagName,rect:x.getBoundingClientRect().toJSON()}))})')});
