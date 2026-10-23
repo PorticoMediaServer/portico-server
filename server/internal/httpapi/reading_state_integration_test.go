@@ -10,6 +10,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/reading"
 	"portico.local/server/internal/readingtest"
 )
@@ -28,20 +29,27 @@ func TestReadingPrivatePauseHistoryAndVersionIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Use the actual preference API, including its account/profile authority and CAS.
-	prefs := r.f.raw("GET", "/v1/preferences", r.f.owner.AccessToken, nil, nil)
+	prefs := r.f.raw("GET", "/v1/preferences?deviceClass=web", r.f.owner.AccessToken, nil, nil)
 	if prefs.Code != 200 {
 		t.Fatal(prefs.Code, prefs.Body.String())
 	}
 	var doc struct {
-		Data struct {
-			Revision int64 `json:"revision"`
-		} `json:"data"`
+		Data operations.PreferenceSnapshot `json:"data"`
 	}
-	if err = json.Unmarshal(prefs.Body.Bytes(), &doc); err != nil || doc.Data.Revision < 1 {
+	if err = json.Unmarshal(prefs.Body.Bytes(), &doc); err != nil {
 		t.Fatal(prefs.Body.String(), err)
 	}
+	var preferenceRevision int64
+	for _, document := range doc.Data.Documents {
+		if document.Scope == operations.ScopeProfileServer {
+			preferenceRevision = document.Revision
+		}
+	}
+	if preferenceRevision < 1 {
+		t.Fatal("profile preference document is missing")
+	}
 	paused := r.f.raw("PATCH", "/v1/preferences", r.f.owner.AccessToken, nil, map[string]any{
-		"expectedRevision": doc.Data.Revision, "idempotencyKey": "reading-pause", "scope": "profile-server", "deviceClass": "web",
+		"expectedRevision": preferenceRevision, "idempotencyKey": "reading-pause", "scope": "profile-server", "deviceClass": "web",
 		"values": map[string]any{"privacy.pauseWatchHistory": true},
 	})
 	if paused.Code != 200 {

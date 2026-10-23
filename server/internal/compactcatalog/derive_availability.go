@@ -91,8 +91,8 @@ func deriveLibraryAvailability(ctx context.Context, tx *sql.Tx, k Key, limit int
 	} else if err != nil {
 		return false, err
 	}
-	ids, err := scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e INDEXED BY catalog_entities_library JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1
- WHERE e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, k.ID, after, limit)
+	ids, err := scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e INDEXED BY catalog_entities_library JOIN catalog_kinds k ON k.id=e.kind
+ WHERE (k.playable=1 OR k.id IN(20,21)) AND e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, k.ID, after, limit)
 	if err != nil {
 		return false, err
 	}
@@ -149,17 +149,17 @@ func deriveRelated(ctx context.Context, tx *sql.Tx, ids string) error {
 
 func init() {
 	Register(DomainAvailability, Derivation{
-		Version: 1,
+		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveAvailability(ctx, tx, mustJSON(ids))
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
-			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id>? ORDER BY e.id LIMIT ?`, after, limit)
+			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE (k.playable=1 OR k.id IN(20,21)) AND e.id>? ORDER BY e.id LIMIT ?`, after, limit)
 		},
 	})
 	Register(DomainLibraryAvailability, Derivation{
-		Version: 1,
+		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			var done []int64
 			for _, k := range keys {

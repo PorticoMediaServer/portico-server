@@ -45,12 +45,13 @@ type Selection struct {
 }
 
 const selectPublication = `SELECT e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json
- FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id
- JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
- JOIN catalog_assets a ON a.id=link.asset_id
- JOIN inventory_objects o ON o.asset_id=a.token JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
- JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
+ FROM catalog_entities e CROSS JOIN reading_publications p ON p.item_id=e.id
+ CROSS JOIN catalog_libraries cl ON cl.id=e.library_id CROSS JOIN libraries lib ON lib.id=cl.library_id
+ CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
+ CROSS JOIN catalog_assets a ON a.id=link.asset_id
+ CROSS JOIN inventory_objects o INDEXED BY inventory_objects_asset ON o.asset_id=a.token
+ CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
@@ -143,7 +144,14 @@ func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID
 	if s.Storage.IsRemote(v.path) {
 		return nil, ErrUnavailable
 	}
-	roots := sourceaccess.New(s.Storage, s.Mounts)
+	// A typed nil mount service must not become a nonnil mountOwner interface.
+	// Unmanaged local roots still use the actual registration/helper boundary.
+	var roots *sourceaccess.Registry
+	if s.Mounts == nil {
+		roots = sourceaccess.New(s.Storage, nil)
+	} else {
+		roots = sourceaccess.New(s.Storage, s.Mounts)
+	}
 	lease, err := roots.Borrow(ctx, sourceaccess.Authority{OwnerID: "read:" + identity.Token(), RootID: v.rootID, RootPath: v.root, RelativePath: v.relative, Revision: v.incarnation + ":" + strconv.FormatInt(v.generation, 10), Lifetime: ctx, Validate: func(ctx context.Context) error { return s.validate(ctx, p, v) }})
 	if err != nil {
 		roots.Close()
@@ -272,6 +280,27 @@ func (f *Source) Validate() (failure error) {
 		return err
 	}
 	return f.checkObservation(o)
+}
+
+// StopAndRecheck ends a failed decode without reopening or retargeting its
+// source. Local custody supplies a fresh descriptor observation before closing.
+// Request cancellation only retires that request; it does not close the book.
+func (f *Source) StopAndRecheck(cause error) error {
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		return cause
+	}
+	err := f.Validate()
+	if f.onFailure != nil {
+		f.onFailure()
+	}
+	f.Close()
+	if err != nil {
+		return err
+	}
+	return cause
 }
 
 // PDFRange never buffers the publication, and never substitutes a full body

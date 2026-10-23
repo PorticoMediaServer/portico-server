@@ -17,6 +17,13 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+// NewReadingService lets the server composition retain the same authorized
+// service for HTTP, family retirement and shutdown. It creates no routes.
+func NewReadingService(d Dependencies) *reading.Service {
+	d.Reading = nil
+	return d.readingService()
+}
+
 func (d Dependencies) readingService() *reading.Service {
 	if d.Reading != nil {
 		return d.Reading
@@ -157,7 +164,7 @@ func (d Dependencies) serveReadingSource(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if string(header[:]) != "%PDF-" {
-		readingFailure(w, reading.ErrInvalid)
+		readingFailure(w, f.StopAndRecheck(reading.ErrInvalid))
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
@@ -210,12 +217,23 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 	}
 	e, err := reading.OpenEPUB(r.Context(), f, f.Size)
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, f.StopAndRecheck(err))
+		return
+	}
+	found := false
+	for _, resource := range e.Resources {
+		if resource.Path == r.PathValue("asset") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		readingFailure(w, reading.ErrInvalid)
 		return
 	}
 	b, mime, err := e.Asset(r.Context(), r.PathValue("asset"))
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, f.StopAndRecheck(err))
 		return
 	}
 	serveReadingBlob(w, r, f, mime, b)
@@ -232,26 +250,30 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	index, err := strconv.Atoi(r.PathValue("page"))
-	if err != nil {
+	if err != nil || index < 0 {
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
 	width := 0
 	if raw := r.URL.Query().Get("width"); raw != "" {
 		width, err = strconv.Atoi(raw)
-		if err != nil || width == 0 {
+		if err != nil || width < 32 || width > 2048 {
 			readingFailure(w, reading.ErrInvalid)
 			return
 		}
 	}
 	c, err := reading.OpenComic(r.Context(), f, f.Size)
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, f.StopAndRecheck(err))
+		return
+	}
+	if index >= len(c.Names) {
+		readingFailure(w, reading.ErrInvalid)
 		return
 	}
 	p, err := c.Page(r.Context(), index, width)
 	if err != nil {
-		readingFailure(w, err)
+		readingFailure(w, f.StopAndRecheck(err))
 		return
 	}
 	serveReadingBlob(w, r, f, p.Image.MIME, p.Bytes)

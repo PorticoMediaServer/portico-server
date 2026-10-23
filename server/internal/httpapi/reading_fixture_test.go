@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -58,8 +59,17 @@ func newReadingFixture(t *testing.T, kind, format string) *readingFixture {
 	d.Hosted = nil
 	d.directSchema = recordingaccess.NewSchema()
 	d.Reading = nil
-	s := d.readingService()
+	s := NewReadingService(d)
 	d.Reading = s
+	previous := f.id.OnFamilyRevokedTx
+	f.id.OnFamilyRevokedTx = func(ctx context.Context, tx *sql.Tx, family identity.FamilyState) error {
+		if previous != nil {
+			if err := previous(ctx, tx, family); err != nil {
+				return err
+			}
+		}
+		return s.OnFamilyRevokedTx(ctx, tx, family)
+	}
 	t.Cleanup(func() { s.Close() })
 	p, err := f.id.Authenticate(f.owner.AccessToken)
 	if err != nil {

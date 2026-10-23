@@ -2,6 +2,7 @@ package reading
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type Session struct {
 	ID           string
 	selection    Selection
 	actor, owner string
+	family       string
 	observed     storage.ObservedFileObservation
 	life         context.Context
 	cancel       context.CancelFunc
@@ -85,6 +87,37 @@ func (s *Service) BeginSession(ctx context.Context, p identity.Principal, item, 
 }
 
 func (s *Service) captureSession(p identity.Principal, f *Source) (*Session, error) {
+	session, err := s.captureSessionState(p, f)
+	if err != nil {
+		return nil, err
+	}
+	// Publish the session into the revocation map before the final live fence.
+	// A family change racing capture either reaches that map or fails this
+	// check. Never hold sessionMu across a database transaction.
+	if err = f.Validate(); err == nil {
+		err = session.life.Err()
+	}
+	if err != nil {
+		session.close()
+		return nil, err
+	}
+	return session, nil
+}
+
+func (s *Service) captureSessionState(p identity.Principal, f *Source) (*Session, error) {
+	if p.ExpiresAt.IsZero() || !p.ExpiresAt.After(time.Now()) {
+		return nil, identity.ErrUnauthorized
+	}
+	// Authorization already ran against the actual principal. Capture its real
+	// family identity for immediate retirement; this lookup grants no authority.
+	var family string
+	err := s.DB.QueryRowContext(f.ctx, `SELECT t.family_id FROM authorization_family_tokens t JOIN authorization_session_families f ON f.id=t.family_id WHERE t.token_hash=? AND f.revoked=0 AND t.generation=f.current_generation`, p.Hash).Scan(&family)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, identity.ErrUnauthorized
+	}
+	if err != nil {
+		return nil, err
+	}
 	item := f.ItemID
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
@@ -98,6 +131,7 @@ func (s *Service) captureSession(p identity.Principal, f *Source) (*Session, err
 	count := 0
 	for id, old := range s.sessions {
 		if old.life.Err() != nil {
+			old.close()
 			delete(s.sessions, id)
 			continue
 		}
@@ -111,11 +145,33 @@ func (s *Service) captureSession(p identity.Principal, f *Source) (*Session, err
 	if len(s.sessions) >= 128 || count >= 8 {
 		return nil, ErrLimit
 	}
-	life, cancel := context.WithCancel(context.Background())
-	out := &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, observed: f.observed, life: life, cancel: cancel}
+	// This is the actual authenticated token/horizon deadline, independent of
+	// idle expiry or provider throttling. It cannot extend captured authority.
+	life, cancel := context.WithDeadline(context.Background(), p.ExpiresAt)
+	out := &Session{ID: identity.Token(), selection: f.Selection, actor: p.Hash, owner: owner, family: family, observed: f.observed, life: life, cancel: cancel}
 	out.timer = time.AfterFunc(sessionIdle, out.close)
+	context.AfterFunc(life, out.close)
 	s.sessions[out.ID] = out
 	return out, nil
+}
+
+// OnFamilyRevokedTx composes with identity's existing family lifecycle hook.
+// It performs no SQL mutation or physical wait inside the caller's transaction.
+// Closing a narrowed/revoked family retires only its captured reader sessions;
+// live actor/library/title/source checks remain mandatory on every extent.
+func (s *Service) OnFamilyRevokedTx(ctx context.Context, _ *sql.Tx, family identity.FamilyState) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	for id, session := range s.sessions {
+		if family.ID != "" && session.family == family.ID {
+			session.close()
+			delete(s.sessions, id)
+		}
+	}
+	return nil
 }
 
 // Prepare inspects exactly the selected publication and captures its reader
