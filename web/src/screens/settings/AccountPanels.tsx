@@ -48,7 +48,7 @@ function Identity() {
   const {t} = useI18n();
   const hosted = session.hosted;
   const profileId = session.session?.viewer.profileId;
-  const profile = hosted?.profiles.find(p => p.id === profileId)?.name ?? session.local?.profiles.find(p => p.id === profileId)?.name;
+  const profile = session.local?.profiles.find(p => p.id === profileId)?.name;
   return (
     <Surface>
       <Text as="p" variant="label" tone="tertiary">{t('account.signedInAs')}</Text>
@@ -58,18 +58,13 @@ function Identity() {
   );
 }
 
-/** Direct-sign-in servers manage profiles here (name, picture, PIN, limits); a Portico Account lists its own. */
+/** Profiles are managed on this server for both sign-in kinds. */
 function Profiles() {
   const session = useSession();
   const {t} = useI18n();
   const [limits, setLimits] = useState<{id: string; name: string; readOnly?: boolean}>();
   if (session.session?.viewer.authority === 'local') return <><LocalProfiles onLimits={setLimits} />{limits ? <ProfileRestrictionsDialog profile={limits} onClose={() => setLimits(undefined)} /> : null}</>;
-  if (!session.hosted?.profiles.length) return null;
-  return (
-    <SettingsGroup title={t('profiles.title')} description={t('web.account.profilesHostedHelp')}>
-      {session.hosted.profiles.map(p => <SettingsRow key={p.id} icon="profile" label={p.name} meta={p.id === session.session?.viewer.profileId ? t('profile.current') : undefined} />)}
-    </SettingsGroup>
-  );
+  return null;
 }
 
 /** Password and two-step verification of a Portico Account are the account's, on the account site. */

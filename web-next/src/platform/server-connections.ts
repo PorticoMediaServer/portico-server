@@ -14,7 +14,8 @@ const canEncrypt=()=>!!globalThis.crypto?.subtle;
 /** Native credentials are never ordinary drafts/localStorage. The non-exportable
  * AES key and authenticated encrypted record are separate IndexedDB values. */
 export class BrowserProtectedStore<RecordType> {
- constructor(private readonly databaseName='portico.server-connections.v1', private readonly maximumBytes=192000){}
+ constructor(private readonly databaseName='portico.server-connections.v1', private readonly maximumBytes=192000, private readonly encryptedOnly=false){}
+ private requireEncryption(){if(this.encryptedOnly&&!canEncrypt())throw new RouteError('secure_context_required','This continuation requires protected browser storage.');}
  private async transaction<T>(mode:IDBTransactionMode,work:(store:IDBObjectStore,done:(v:T)=>void)=>void):Promise<T>{
   return new Promise((resolve,reject)=>{let db:IDBDatabase|undefined,tx:IDBTransaction|undefined,done=false,value:T;const finish=(error?:unknown)=>{if(done)return;done=true;clearTimeout(timer);db?.close();error?reject(new Error('The saved server connection could not be read or written.')):resolve(value);};const timer=setTimeout(()=>{try{tx?.abort();}catch{}finish(new Error());},5000);
    const request=indexedDB.open(this.databaseName,1);request.onupgradeneeded=()=>request.result.createObjectStore('vault');request.onerror=()=>finish(request.error);request.onblocked=()=>finish(new Error());request.onsuccess=()=>{db=request.result;if(done){db.close();return;}try{tx=db.transaction('vault',mode,mode==='readwrite'?{durability:'strict'}:undefined);if(mode==='readwrite'&&tx.durability!=='strict')throw new Error();tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx?.error);tx.onerror=()=>finish(tx?.error);work(tx.objectStore('vault'),v=>{value=v;});}catch(e){try{tx?.abort();}catch{}finish(e);}};
@@ -34,7 +35,7 @@ export class BrowserProtectedStore<RecordType> {
  }
  private async decode(values:{key?:CryptoKey;record?:Vault}):Promise<RecordType|undefined>{
   if(!values.record)return;
-  if(values.record.version===2){if(typeof values.record.plain!=='string'||values.record.plain.length>this.maximumBytes+16)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
+  if(values.record.version===2){if(this.encryptedOnly||typeof values.record.plain!=='string'||values.record.plain.length>this.maximumBytes+16)throw this.damaged();try{return JSON.parse(values.record.plain);}catch{throw this.damaged();}}
   // An encrypted record where nothing can decrypt it is as good as absent; the next save replaces it.
   if(!canEncrypt())return;
   if(!this.usable(values.key)||values.record.version!==1||!(values.record.iv instanceof Uint8Array)||values.record.iv.length!==12||!(values.record.cipher instanceof ArrayBuffer)||values.record.cipher.byteLength>this.maximumBytes+16)throw this.damaged();
@@ -43,7 +44,7 @@ export class BrowserProtectedStore<RecordType> {
   try{clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(values.record.iv),additionalData:new TextEncoder().encode(this.databaseName)},values.key,values.record.cipher);}catch(e){throw (e as {name?:unknown}|null)?.name==='OperationError'?this.damaged():e;}
   try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(clear));}catch{throw this.damaged();}finally{new Uint8Array(clear).fill(0);}
  }
- read(){return this.exclusive(async()=>this.decode(await this.values()));}
+ read(){this.requireEncryption();return this.exclusive(async()=>{this.requireEncryption();return this.decode(await this.values());});}
  /** The whole read, decision and write in one database transaction. Where the page has no
   * `crypto.subtle` it has no Web Locks either (plain HTTP), so `exclusive` only orders work
   * inside this tab; the database's own transactions are what order two tabs. Nothing here needs
@@ -68,7 +69,8 @@ export class BrowserProtectedStore<RecordType> {
    };
   });
  }
- change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{return this.exclusive(async()=>{
+ change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{this.requireEncryption();return this.exclusive(async()=>{
+  this.requireEncryption();
   if(!canEncrypt())return this.changeInOneTransaction(update);
   const values=await this.values();
   // A damaged record is treated as absent: a save replaces it, and an update that saves nothing

@@ -10,12 +10,14 @@ export type AccountSection = {id: string; label: string; badge?: string};
  * section nav when no server session is open. On narrow viewports the nav
  * becomes the section switcher above the content.
  */
-export function AccountShell({username, sections, section, onSection, children}: {
+export function AccountShell({username, sections, section, onSection, children, header}: {
   username: string;
   sections: readonly AccountSection[];
   section: string;
   onSection: (id: string) => void;
   children: React.ReactNode;
+  /** A workspace section can compose its frame-specific header and actions. */
+  header?: React.ReactNode;
 }) {
   const {t} = useI18n();
   const narrow = useNarrow();
@@ -45,7 +47,7 @@ export function AccountShell({username, sections, section, onSection, children}:
               </Link>
             </div>
           ) : null}
-          <PageHeader title={current.label} eyebrow={username} />
+          {header===undefined?<PageHeader title={current.label} eyebrow={username} />:header}
           {narrow ? (
             <div style={{padding: '0 var(--page-gutter)'}}>
               <Segmented label={t('web.hostedAccount.section')} options={sections.map(s => ({id: s.id, label: s.badge ? `${s.label} · ${s.badge}` : s.label}))} value={section} onChange={onSection} />

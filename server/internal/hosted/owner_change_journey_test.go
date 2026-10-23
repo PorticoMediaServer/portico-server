@@ -32,6 +32,9 @@ type repairReply struct {
 	Status            int             `json:"status"`
 	Body              json.RawMessage `json:"body"`
 	Root, TargetToken string
+	ServerToken       string
+	Headers           http.Header
+	BodyEmpty         bool
 	Finalizes         int
 }
 type repairBridge struct {
@@ -43,6 +46,7 @@ type repairBridge struct {
 	root        []byte
 	targetToken string
 	diagnostics *repairDiagnostics
+	serverToken string
 }
 
 // stdout protocol diagnostics and os/exec's stderr copier run independently.
@@ -112,6 +116,7 @@ func startOwnerBridge(t *testing.T, f *claimFixture) *repairBridge {
 		t.Fatal("producer root")
 	}
 	b.targetToken = initial.TargetToken
+	b.serverToken = initial.ServerToken
 	t.Cleanup(func() {
 		_, _ = io.WriteString(in, "{\"Action\":\"stop\"}\n")
 		in.Close()
@@ -302,19 +307,22 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 				if scenario == "name-collision" {
 					username = "strict-other"
 				}
-				member, e := f.id.CreateDirectMember(ctx, f.owner.AccessToken, identity.DirectMemberCreate{Username: username, Password: "Member-password-long", Name: username, AllowedLibraries: []string{}})
-				if e != nil {
+				// Existing Portico memberships carry no local password. Seed a
+				// legitimate separate account; never use the retired mixed path.
+				link := "another-portico-account"
+				if scenario == "linked-collision" {
+					link = "strict-other"
+				}
+				if _, e := f.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES('collision-member',?,X'','collision-profile')`, username); e != nil {
 					t.Fatal(e)
 				}
-				if scenario == "linked-collision" {
-					if _, e = f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'strict-other')`, member.ID); e != nil {
-						t.Fatal(e)
-					}
+				if _, e := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('collision-member',?)`, link); e != nil {
+					t.Fatal(e)
 				}
 			}
-			purpose, previous, target, token, profile := "change-owner", "admin", "strict-other", b.targetToken, "other_profile"
+			purpose, previous, target, token := "change-owner", "admin", "strict-other", b.targetToken
 			if strings.HasPrefix(scenario, "switch") {
-				purpose, previous, target, token, profile = "switch", "", "strict-owner", "claim-owner-access-token-fixture", "claim_profile"
+				purpose, previous, target, token = "switch", "", "strict-owner", "claim-owner-access-token-fixture"
 			}
 			if scenario == "success-member" {
 				previous = "member"
@@ -403,7 +411,7 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 				localClaimCall(t, h, f.owner.AccessToken, "cancel", map[string]any{"expected": retry.Operation}, 200)
 				return
 			}
-			if e = b.post("/v1/server-claims/approve-code", token, map[string]string{"code": pending.Code, "ownerProfileId": profile}, nil); e != nil {
+			if e = b.post("/v1/server-claims/approve-code", token, map[string]string{"code": pending.Code}, nil); e != nil {
 				t.Fatal("actual approval", e)
 			}
 			var events struct {
@@ -469,9 +477,9 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 					t.Fatal(e)
 				}
 				defer other.Close()
-				for _, query := range []string{`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES('race','STRICT-OTHER',X'00','race-profile')`, `UPDATE accounts SET username='strict-other' WHERE id='` + ownerID + `'`, `INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('race','strict-other')`} {
+				for _, query := range []string{`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES('race','STRICT-OTHER',X'','race-profile')`, `UPDATE accounts SET username='strict-other' WHERE id='` + ownerID + `'`, `INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('race','strict-other')`} {
 					if _, e = other.Exec(query); e == nil || !strings.Contains(e.Error(), "owner_change_identity_reserved") {
-						t.Fatal("competing identity writer bypassed durable collision fence")
+						t.Fatalf("competing identity writer bypassed durable collision fence: %s: %v", query, e)
 					}
 				}
 				close(release)
