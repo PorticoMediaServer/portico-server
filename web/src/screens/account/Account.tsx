@@ -62,7 +62,7 @@ export function AccountWorkspace() {
     {id: 'notifications', label: t('web.account.notifications'), ...(unread ? {badge: String(unread)} : {})},
   ];
   return (
-    <AccountShell username={hosted.account.username} sections={sections} section={tab} onSection={id => void navigate({to: '/account', search: {tab: id as AccountTab}, replace: true})}>
+    <AccountShell username={hosted.account.username} sections={sections} section={tab} header={tab==='notifications'?null:undefined} onSection={id => void navigate({to: '/account', search: {tab: id as AccountTab}, replace: true})}>
       {tab === 'sessions' ? <Sessions key={scope.familyId} scope={scope} /> : null}
       {tab === 'security' ? <><AccountSecurity key={scope.familyId} scope={scope} returning={returning} onReturned={() => void navigate({to: '/account', search: {tab: 'security'}, replace: true})} /><DataExport key={'x' + scope.familyId} scope={scope} /></> : null}
       {tab === 'servers' ? <Servers key={scope.familyId} scope={scope} /> : null}
