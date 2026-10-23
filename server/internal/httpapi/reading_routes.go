@@ -212,7 +212,7 @@ func (d Dependencies) closeReadingSession(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if err := d.readingService().CloseSession(p, r.PathValue("sessionId")); err != nil {
+	if err := d.readingService().CloseSessionContext(r.Context(), p, r.PathValue("sessionId")); err != nil {
 		readingFailure(w, err)
 		return
 	}

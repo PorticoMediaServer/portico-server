@@ -201,7 +201,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	defer f.Close()
 	document, err := Inspect(f)
 	if err != nil {
-		return nil, Publication{}, err
+		return nil, Publication{}, f.StopAndRecheck(err)
 	}
 	session, err := s.captureSession(p, f)
 	return session, document, err
@@ -287,11 +287,29 @@ func (s *Service) OpenSession(ctx context.Context, p identity.Principal, id stri
 	return f, nil
 }
 
+// CloseSessionContext also covers client PDF decode failures, whose parser
+// runs outside the server. Every explicit remote close releases child bodies,
+// rechecks the captured epoch without reopening media, and retires the reader.
+// Cleanup remains allowed for one's own hidden title and publishes no facts.
+func (s *Service) CloseSessionContext(ctx context.Context, p identity.Principal, id string) error {
+	session, err := s.findSession(p, id)
+	if err != nil {
+		return err
+	}
+	if session.remote != nil {
+		_ = session.remote.StopAndRecheck(ctx)
+	}
+	return s.closeCapturedSession(id, session)
+}
+
 func (s *Service) CloseSession(p identity.Principal, id string) error {
 	session, err := s.findSession(p, id)
 	if err != nil {
 		return err
 	}
+	return s.closeCapturedSession(id, session)
+}
+func (s *Service) closeCapturedSession(id string, session *Session) error {
 	session.close()
 	s.sessionMu.Lock()
 	delete(s.sessions, id)

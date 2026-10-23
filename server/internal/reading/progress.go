@@ -149,7 +149,7 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	case "epub":
 		e, err := f.epub()
 		if err != nil {
-			return nil, false, err
+			return nil, false, f.StopAndRecheck(err)
 		}
 		if location.Section != "" {
 			found := false
@@ -166,7 +166,7 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	case "cbz":
 		c, err := f.comic()
 		if err != nil {
-			return nil, false, err
+			return nil, false, f.StopAndRecheck(err)
 		}
 		if *location.PageIndex >= int64(len(c.Names)) {
 			return nil, false, ErrInvalid

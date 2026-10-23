@@ -359,7 +359,13 @@ func (f *Source) StopAndRecheck(cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-	err := f.Validate()
+	var err error
+	if f.remoteSession != nil {
+		err = f.remoteSession.remote.StopAndRecheck(f.ctx)
+		f.remoteSession.close()
+	} else {
+		err = f.Validate()
+	}
 	if f.onFailure != nil {
 		f.onFailure()
 	}
