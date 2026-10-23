@@ -235,7 +235,7 @@ func (o *OIDCLogin) viewTx(ctx context.Context, tx *sql.Tx, r oidcRow, completio
 	// or onboarding token.
 	if r.NativeCompletion {
 		var expected []byte
-		e := tx.QueryRowContext(ctx, `SELECT code_hash FROM identity_native_completions WHERE transaction_id=$1`, r.ID).Scan(&expected)
+		e := tx.QueryRowContext(ctx, `SELECT code_hash FROM identity_native_completions WHERE transaction_id=$1 AND expires_at>clock_timestamp()`, r.ID).Scan(&expected)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return nil, e
 		}
@@ -246,7 +246,9 @@ func (o *OIDCLogin) viewTx(ctx context.Context, tx *sql.Tx, r oidcRow, completio
 	if r.Status == "verified" || r.Status == "completed" || r.Status == "proof_issued" {
 		var known, contact bool
 		var cipher []byte
-		e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_external_identities i WHERE i.issuer=a.issuer AND i.subject=a.subject AND i.revoked_at IS NULL),a.email_verified OR EXISTS(SELECT 1 FROM identity_contact_challenges c WHERE c.transaction_id=t.id AND c.is_current AND c.verified_at IS NOT NULL) OR EXISTS(SELECT 1 FROM account_external_identities i JOIN account_contact_emails c ON c.account_id=i.account_id AND c.is_primary WHERE i.issuer=a.issuer AND i.subject=a.subject AND i.revoked_at IS NULL),COALESCE(a.suggested_name,''),t.onboarding_token_cipher,(t.status='verified' AND t.mfa_challenge_id IS NOT NULL) FROM identity_verified_assertions a JOIN identity_transactions t ON t.id=a.transaction_id WHERE a.transaction_id=$1`, r.ID).Scan(&known, &contact, &v.SuggestedName, &cipher, &v.MFARequired)
+		// Show only a contact verified for this transaction. An existing linked
+		// account's primary contact is not a provider assertion or a fallback.
+		e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_external_identities i WHERE i.issuer=a.issuer AND i.subject=a.subject AND i.revoked_at IS NULL),a.email_verified OR EXISTS(SELECT 1 FROM identity_contact_challenges c WHERE c.transaction_id=t.id AND c.is_current AND c.verified_at IS NOT NULL) OR EXISTS(SELECT 1 FROM account_external_identities i JOIN account_contact_emails c ON c.account_id=i.account_id AND c.is_primary WHERE i.issuer=a.issuer AND i.subject=a.subject AND i.revoked_at IS NULL),COALESCE(a.suggested_name,''),t.onboarding_token_cipher,(t.status='verified' AND t.mfa_challenge_id IS NOT NULL),COALESCE((SELECT c.address FROM identity_contact_challenges c WHERE c.transaction_id=t.id AND c.is_current AND c.verified_at IS NOT NULL),CASE WHEN a.email_verified THEN a.provider_email END,'') FROM identity_verified_assertions a JOIN identity_transactions t ON t.id=a.transaction_id WHERE a.transaction_id=$1`, r.ID).Scan(&known, &contact, &v.SuggestedName, &cipher, &v.MFARequired, &v.VerifiedEmail)
 		if e != nil {
 			return nil, e
 		}

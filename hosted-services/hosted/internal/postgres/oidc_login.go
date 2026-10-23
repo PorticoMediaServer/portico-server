@@ -30,6 +30,7 @@ type OIDCView struct {
 	OnboardingToken string    `json:"onboardingToken,omitempty"`
 	SuggestedName   string    `json:"suggestedName,omitempty"`
 	MFARequired     bool      `json:"mfaRequired,omitempty"`
+	VerifiedEmail   string    `json:"verifiedEmail,omitempty"`
 }
 type oidcRow struct {
 	ID, Provider, Status, Descriptor, Marker         string
