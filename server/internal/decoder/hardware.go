@@ -371,11 +371,11 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if !spec.supported() {
 		return out
 	}
-	if hardwareCircuitOpen(backend) {
+	if deviceCircuitOpen(backend, device) {
 		out.Reason = ProbeCircuitOpen
 		return out
 	}
-	recovery := hardwareNeedsProbe(backend)
+	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
 	d.mu.Lock()
 	if cached, ok := d.cache[key]; ok && !recovery {
@@ -464,11 +464,11 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	}
 	d.cache[key] = out
 	if out.Available {
-		clearHardwareCircuit(backend)
+		clearDeviceCircuit(backend, device)
 	} else if recovery {
 		// Retry after the same cooldown, not on every new playback request.
 		for range 3 {
-			RecordHardwareFailure(backend)
+			RecordHardwareDeviceFailure(backend, device)
 		}
 	}
 	d.mu.Unlock()
@@ -503,15 +503,15 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 		if !ok || !spec.supported() {
 			continue
 		}
-		if hardwareCircuitOpen(backend) {
+		if deviceCircuitOpen(backend, device) {
 			continue
 		}
 		cached, ok := d.cache[identity+"/"+string(backend)+"/"+device]
-		if !ok || hardwareNeedsProbe(backend) {
+		if !ok || deviceNeedsProbe(backend, device) {
 			cold = true
 			break
 		}
-		if cached.Available && !hardwareCircuitOpen(backend) {
+		if cached.Available && !deviceCircuitOpen(backend, device) {
 			d.mu.Unlock()
 			return cached
 		}
@@ -559,7 +559,7 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 		}
 		probe := d.Probe(ctx, executable, HardwareBackend(configured), device)
-		if probe.Available && !hardwareCircuitOpen(probe.Backend) {
+		if probe.Available && !deviceCircuitOpen(probe.Backend, probe.Device) {
 			return probe
 		}
 		fallback := HardwareProbe{Backend: BackendSoftware, Available: true, Reason: probe.Reason, Identity: probe.Identity}

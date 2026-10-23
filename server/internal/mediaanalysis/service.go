@@ -22,6 +22,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/mediaartifact"
+	"portico.local/server/internal/sonic"
 )
 
 const Algorithm = "portico-analysis-3"
@@ -41,6 +42,7 @@ type Input interface {
 }
 type Decode func(context.Context, string, decoder.AnalysisSpec, func(io.Reader) error) error
 type Options struct {
+	Sonic             *sonic.Runtime
 	DB                *sql.DB
 	Directory, FFmpeg string
 	Open              func(context.Context, string, string) (Input, error)
@@ -57,11 +59,13 @@ type Service struct {
 	options   Options
 	// Serializes closed-byte publication/reference checks, opening leases and GC.
 	// Source IO and decoder execution never hold this mutex or a database writer.
-	publication sync.Mutex
-	slot        chan struct{}
-	physical    *livechannels.PhysicalLocks
-	custody     *artifactCustody
-	inventory   *mediaartifact.Inventory
+	publication     sync.Mutex
+	sonicProgressMu sync.Mutex
+	sonicProgress   map[string][]sonicProgressSample
+	slot            chan struct{}
+	physical        *livechannels.PhysicalLocks
+	custody         *artifactCustody
+	inventory       *mediaartifact.Inventory
 }
 
 func New(o Options) (*Service, error) {
@@ -125,6 +129,8 @@ type binding struct {
 	ProbeEvidence, SourceBinding, WorkAlgorithm                       string
 	Trickplay                                                         catalog.TrickplaySettings
 	Video                                                             assets.StreamDetail
+	SonicTracks                                                       []sonicTrackBinding
+	SonicBinding                                                      string
 }
 
 func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b binding, err error) {
@@ -159,6 +165,9 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 		}
 	}
 	b.DurationUS, err = exactUS(duration)
+	if err != nil && (b.AudioCodec == "mpc7" || b.AudioCodec == "mpc8") {
+		b.DurationUS, err = musepackDurationUS(ctx, tx, b.AssetID, b.AudioCodec, duration)
+	}
 	if err != nil {
 		return
 	}
@@ -184,6 +193,9 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 		}
 	}
 	b.SourceBinding = token(b.Source.Incarnation, strconv.FormatInt(b.Source.Generation, 10), b.ProbeEvidence)
+	if err == nil && p.Allows(catalog.SonicOperation) {
+		b.SonicTracks, b.SonicBinding, err = sonicBindingsTx(ctx, tx, b)
+	}
 	b.WorkAlgorithm = Algorithm
 	if b.Container == "strm" {
 		b.WorkAlgorithm += ":" + token(b.ProbeEvidence)

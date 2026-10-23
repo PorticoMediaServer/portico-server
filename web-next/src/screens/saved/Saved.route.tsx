@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -8,7 +8,8 @@ import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
 import {SavedScreen, type SavedEffects} from './Saved';
-import {createSavedRuntime} from './runtime';
+import {SavedHost, useRetainedSavedOwner} from './SavedHost';
+import type {RetainedSavedOwner} from './retained-owner';
 import {parseSavedScreenRoute, savedRouteKey} from './route';
 
 const networkSnapshot = () => navigator.onLine;
@@ -16,7 +17,7 @@ const networkSubscribe = (changed: () => void) => {
   window.addEventListener('online', changed);window.addEventListener('offline', changed);
   return () => {window.removeEventListener('online', changed);window.removeEventListener('offline', changed);};
 };
-function BoundSaved({captured}: {captured: ProtectedLibraryScreen}) {
+function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner: RetainedSavedOwner}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!;
   const route = parseSavedScreenRoute(useSearch({from: '/saved'}));
   const selectedRoute = useRef(route), playback = useRef(captured.binding.playback);
@@ -24,14 +25,7 @@ function BoundSaved({captured}: {captured: ProtectedLibraryScreen}) {
   const hasPlayback = !!captured.binding.playback;
   const online = useSyncExternalStore(networkSubscribe, networkSnapshot, () => true), width = useShellWidth();
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
-  const runtime = useMemo(() => {
-    const session = captured.context.session(), viewer = session.viewer;
-    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Saved authority unavailable', 'AbortError');
-    return createSavedRuntime({api: context.api, scope: {serverId: viewer.serverId, authority: viewer.authority,
-      accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
-      isCurrent: context.isCurrent, deviceId: session.deviceId});
-  }, [context, captured.context]);
-  useEffect(() => () => runtime.dispose(), [runtime]);
+  const runtime = owner.runtime, native = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   const effects: SavedEffects = useMemo(() => ({
     openEntry: context.effects.openEntry,
     async playEntry(entry: ContentEntry, signal: AbortSignal) {
@@ -50,6 +44,7 @@ function BoundSaved({captured}: {captured: ProtectedLibraryScreen}) {
       window.location.assign(context.api.mediaUrl(grant.url));
     },
     reportError: context.effects.reportError,
+    ...(native.saveReadyPreparation ? {saveReadyPreparation: native.saveReadyPreparation} : {}),
     ...(hasPlayback ? {async playResource(target: {kind: 'playlist' | 'collection' | 'view'; id: string; shuffle: boolean}, signal: AbortSignal) {
       const key = savedRouteKey(selectedRoute.current), capturedPlayback = playback.current;
       const current = () => context.isCurrent() && runtime.operations.current && savedRouteKey(selectedRoute.current) === key;
@@ -59,8 +54,8 @@ function BoundSaved({captured}: {captured: ProtectedLibraryScreen}) {
       await capturedPlayback.runtime.playFromQueue(target.kind === 'view' ? {saved: {id: target.id}} : {container: {kind: target.kind, id: target.id}},
         {signal, isCurrent: current}, {shuffle: target.shuffle});
     }} : {}),
-  }), [context, runtime, hasPlayback]);
-  return <SavedScreen runtime={runtime} route={route} online={online} downloadsOffered artwork={context.artwork}
+  }), [context, runtime, hasPlayback, native.saveReadyPreparation]);
+  return <SavedScreen runtime={runtime} localDownloads={native.localDownloads} route={route} online={online} downloadsOffered artwork={context.artwork}
     preparationArtwork={preparation => {
       // Only already-authorized bounded Home facts are reused. There is no
       // guessed item image URL or per-row catalogue scan for missing artwork.
@@ -76,6 +71,10 @@ function BoundSaved({captured}: {captured: ProtectedLibraryScreen}) {
 }
 function SavedRouteScreen() {
   const captured = useProtectedWebScreenContext();
-  return captured ? <BoundSaved captured={captured}/> : null;
+  return captured ? <SavedRouteOwner captured={captured}/> : null;
 }
-export default defineWebScreen({id: 'saved', component: SavedRouteScreen, validateSearch: parseSavedScreenRoute});
+function SavedRouteOwner({captured}: {captured: ProtectedLibraryScreen}) {
+  const owner = useRetainedSavedOwner(captured.context);
+  return owner ? <BoundSaved captured={captured} owner={owner}/> : null;
+}
+export default defineWebScreen({id: 'saved', component: SavedRouteScreen, retainedHost: SavedHost, validateSearch: parseSavedScreenRoute});
