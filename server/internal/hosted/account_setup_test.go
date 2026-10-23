@@ -64,7 +64,7 @@ func TestAccountSetupActualClaimAndVerifiedIdentityCreatePasswordlessOwner(t *te
 	if e = f.db.QueryRow(`SELECT password_hash,profile_id FROM accounts WHERE id=?`, out.Account.ID).Scan(&hash, &profile); e != nil || len(hash) != 0 || profile == "" {
 		t.Fatal("local password fallback", e)
 	}
-	if _, e = f.id.DirectLogin(ctx, "verified_username", "Testing1!"); !errors.Is(e, identity.ErrUnauthorized) {
+	if _, e = f.id.DirectLogin(ctx, "verified_username", "Testing1!"); !errors.Is(e, identity.ErrSignInKindPortico) {
 		t.Fatal("Portico owner accepts password", e)
 	}
 	if _, e = f.id.Authenticate(out.Session.AccessToken); e != nil {
