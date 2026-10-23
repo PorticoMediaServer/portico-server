@@ -11,6 +11,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -43,6 +44,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "account_move_waiting", Status: 403, Message: identity.ErrMoveWaiting.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_portico", Status: 403, Message: identity.ErrSignInKindPortico.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_local", Status: 403, Message: identity.ErrSignInKindLocal.Error(), Retry: apierror.Never},
+		{Code: "portico_services_unavailable", Status: 503, Message: hosted.ErrServicesUnavailable.Error(), Retry: apierror.SameRequest},
 		{Code: "idempotency_key_required", Status: 428, Message: "Send an Idempotency-Key with this request.", Retry: apierror.Never},
 		{Code: "session_ended", Status: 410, Message: "This playback has ended.", Retry: apierror.Never},
 		{Code: "conversion_capacity", Status: 429, Message: "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.", Retry: apierror.SameRequest},

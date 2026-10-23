@@ -382,7 +382,7 @@ export function useProfileName(): string {
   const session = useSession();
   const {t} = useI18n();
   const id = session.session?.viewer.profileId;
-  return session.hosted?.profiles.find(p => p.id === id)?.name ?? session.local?.profiles.find(p => p.id === id)?.name ?? session.hosted?.account.displayName ?? session.local?.username ?? t('web.shell.profileFallback');
+  return session.local?.profiles.find(p => p.id === id)?.name ?? session.hosted?.account.displayName ?? session.local?.username ?? t('web.shell.profileFallback');
 }
 
 /** WEB-SYS-10: one colour system for profile avatars, the profile's own art colour (`--profile-art-*`).
