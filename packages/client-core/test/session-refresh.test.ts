@@ -158,6 +158,32 @@ test('refreshes proactively two minutes before expiry and stores the rotation at
   refresher.stop();
 });
 
+test('stopping inside rotation adoption stays stopped without reviving renewal timers', async t => {
+  const {server, store, env, timers} = setup(t);
+  const session = server.initial();
+  const api = new HttpLocalApi(ORIGIN, session.accessToken, server.fetch);
+  let refresher: LocalSessionRefresher;
+  let rotations = 0;
+  refresher = new LocalSessionRefresher({env, api, session,
+    onRotated: () => { rotations++; refresher.stop(); },
+    setTimer: timers.setTimer, clearTimer: timers.clearTimer, random: () => 0,
+  });
+  t.after(() => refresher.stop());
+  const phases: string[] = [];
+  refresher.subscribe(() => phases.push(refresher.getSnapshot().phase));
+  timers.advance(13 * MIN + 1);
+  await settle();
+  assert.equal(rotations, 1, 'the actual stored refresh reached adoption');
+  assert.equal(store.peek()?.session.accessToken, 'access_2');
+  assert.equal(refresher.getSnapshot().phase, 'stopped');
+  assert.deepEqual(phases, ['refreshing', 'stopped'], 'no active publication follows retirement');
+  assert.equal(timers.pending(), 0, 'neither renewal nor permissions timer survived retirement');
+  timers.advance(24 * 60 * MIN);
+  await settle();
+  assert.equal(server.refreshCalls, 1, 'the retired runtime never renews again');
+  assert.equal(timers.pending(), 0);
+});
+
 test('a request that finds the token about to expire waits for one refresh first', async t => {
   const {server, tab} = setup(t);
   const {api, refresher} = tab();

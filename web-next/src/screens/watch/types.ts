@@ -34,6 +34,7 @@ export type WatchTrickplay = Readonly<{
 export type WatchSurfaces = Readonly<{
   available: readonly WatchPanel[];
   render: (context: WatchPanelContext) => ReactNode;
+  playOn?: Readonly<{active: boolean; open(anchor?: HTMLButtonElement): void; close(): void}>;
   together?: ReactNode;
   prompts?: ReactNode;
   notices?: ReactNode;
