@@ -47,7 +47,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const mode = geometry?.mode ?? (!fullWindow && shapePortrait ? 'portrait' : 'full');
   const portrait = mode === 'portrait' || mode === 'book', permanent = mode === 'tabletop';
   const mobile = width < 1024;
-  const open = expanded && valid && presentation.kind === 'video';
+  const open = expanded && valid && presentation.kind === 'video' && !snapshot.dock.remote;
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', binding.environment) : undefined;
   const can = (kind: string) => !!presentation?.controls.includes(kind as never);
   const send = useCallback((intent: WatchIntent) => {
@@ -92,6 +92,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     const keydown = (event: KeyboardEvent) => {
       keyboardFocus.current = true;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || more || shortcuts) return;
+      if ((event.key === ' ' || event.key === 'Enter') && event.target instanceof Element && event.target.closest('button,a')) return;
       let intent: WatchIntent | undefined;
       const p = current.current.snapshot.presentation;
       if (!p) return;
@@ -117,6 +118,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     return () => window.removeEventListener('keydown', keydown);
   });
   const bounds = watchSeekBounds(snapshot), position = presentation?.positionSeconds ?? 0, duration = presentation?.durationSeconds ?? 0;
+  const endsAt = presentation?.playing && duration > position && presentation.rate > 0
+    ? new Intl.DateTimeFormat(binding.environment.locale ?? 'en-US', {hour: 'numeric', minute: '2-digit'}).format(new Date(Date.now() + (duration - position) / presentation.rate * 1000)) : undefined;
   const mainKind = presentation?.finished ? 'replay' : presentation?.playing ? 'pause' : 'play';
   const episode = identity?.subtitle.some(part => part.id === 'episode-label');
   const skip = (delta: number) => { const seconds = watchSeek(snapshot, position + delta); if (seconds !== null) send({kind: 'seek', seconds}); };
@@ -129,6 +132,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     <Control icon="i-next" label={t(episode ? 'next.dock.nextEpisode' : 'next.dock.next')} disabled={!can('next')} action={() => send({kind: 'next'})} />
   </div>;
   const quality = surfaces?.quality && fence && sameFence(surfaces.quality.fence, fence) ? surfaces.quality : undefined;
+  const tracks = surfaces?.tracks && fence && sameFence(surfaces.tracks.fence, fence) ? surfaces.tracks : undefined;
+  const namedTrack = (section: 'audio' | 'subtitles', label: string | undefined) => tracks && label !== undefined && surfaces?.available.includes(section) ? <button type="button" className={styles.trackPill} onClick={event => showPanel(section, event.currentTarget)}>
+    <Icon name={section === 'subtitles' ? 'i-cc' : 'i-audio'} size={17} />{t(section === 'subtitles' ? 'player.opt.subtitles' : 'player.opt.audio')}<span>{label}</span>
+  </button> : null;
   const qualityButton = quality && surfaces?.available.includes('quality') ? <button type="button" className={styles.pill} aria-label={quality.accessibleLabel} title={t('player.opt.quality')} onClick={event => showPanel('quality', event.currentTarget)}>
     {portrait && <Icon name="i-quality" size={15} />}{quality.automatic && <span>{t('next.controls.auto')}</span>}{quality.label}
   </button> : null;
@@ -169,16 +176,17 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
               onChange={event => { const seconds = watchSeek(snapshot, event.currentTarget.valueAsNumber); if (seconds !== null) send({kind: 'seek', seconds}); }} />
           </span>
         </div>
-        <div className={styles.times}><b>{watchClock(position)}</b><span>{portrait ? watchClock(duration) : <b>{duration > 0 ? `−${watchClock(Math.max(0, duration - position))}` : ''}</b>}</span></div>
+        <div className={styles.times}><b>{watchClock(position)}</b><span>{portrait ? watchClock(duration) : <>{!mobile && endsAt && <>{t('guide.ends', {time: endsAt})}<span className={styles.gap} aria-hidden="true" /></>}<b>{duration > 0 ? `−${watchClock(Math.max(0, duration - position))}` : ''}</b></>}</span></div>
         <div className={styles.controls}>
           <div className={styles.leading}>{surfaces?.available.includes('episodes') && <Button size="small" variant="glass" icon="i-stack" onClick={event => showPanel('episodes', event.currentTarget)}>{t('next.controls.episodes')}</Button>}</div>
           {transport}
           <div className={styles.trailing}>
             {can('volume') && <span className={styles.volume}><Control icon="i-vol" label={t(presentation?.muted ? 'player.unmute' : 'player.mute')} action={() => send({kind: 'mute'})} />
               <Slider min={0} max={1} step={.01} value={presentation?.muted ? 0 : presentation?.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></span>}
-            {!portrait && panelButton('subtitles-audio', 'i-cc', t('next.dock.subtitlesAudio'))}
+            {!portrait && !mobile && panelButton('subtitles-audio', 'i-cc', t('next.dock.subtitlesAudio'))}
+            {!portrait && mobile && <>{namedTrack('subtitles', tracks?.subtitles)}{namedTrack('audio', tracks?.audio)}</>}
             {qualityButton}
-            {!portrait && surfaces?.available.includes('speed') && <button type="button" className={styles.pill} aria-label={t('next.dock.speed', {rate: presentation?.rate ?? 1})} onClick={event => showPanel('speed', event.currentTarget)}>{t('next.dock.rate', {rate: presentation?.rate ?? 1})}</button>}
+            {!mobile && surfaces?.available.includes('speed') && <button type="button" className={styles.pill} aria-label={t('next.dock.speed', {rate: presentation?.rate ?? 1})} onClick={event => showPanel('speed', event.currentTarget)}>{t('next.dock.rate', {rate: presentation?.rate ?? 1})}</button>}
             {!mobile && windowPort?.pictureInPicture && <Control icon="i-pip" label={t('player.pictureInPicture')} active={windowPort.pictureInPicture.active} action={() => effect(windowPort.pictureInPicture!.toggle)} />}
             {(portrait || !mobile && windowPort?.fullscreen) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
           </div>

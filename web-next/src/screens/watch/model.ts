@@ -32,5 +32,5 @@ export function watchIsPortrait(width: number, height: number): boolean {
 }
 /** Shortcut capture stays out of text fields, sliders, menus and other modal surfaces. */
 export function watchShortcutTarget(target: EventTarget | null): boolean {
-  return typeof Element !== 'undefined' && target instanceof Element && !!target.closest('input,textarea,select,button,a,[contenteditable="true"],[role="slider"],[role="menu"],[role="dialog"]');
+  return typeof Element !== 'undefined' && target instanceof Element && !!target.closest('input,textarea,select,[contenteditable="true"],[role="slider"],[role="menu"],[role="dialog"]');
 }

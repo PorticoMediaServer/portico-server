@@ -50,6 +50,9 @@
 .pill { font-size: var(--watch-time-size); font-weight: var(--watch-pill-weight); height: 34px; padding: 0 12px; border-radius: 17px; display: inline-flex; align-items: center; gap: 6px; color: var(--color-text); white-space: nowrap; background: color-mix(in srgb, var(--color-text) 10%, transparent); margin: 0 3px; border: 0; font-variant-numeric: tabular-nums; pointer-events: auto; cursor: pointer; }
 .pill span { color: var(--color-text-tertiary); font-weight: var(--type-caption-strong-weight); }
 .pill:hover { background: color-mix(in srgb, var(--color-text) 20%, transparent); }
+.trackPill { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px 0 11px; border-radius: 18px; border: 0; color: var(--color-text); background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); font-size: var(--watch-time-size); font-weight: var(--watch-pill-weight); cursor: pointer; pointer-events: auto; }
+.trackPill > span { color: var(--color-text-tertiary); }
+.trackPill:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .volume { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; pointer-events: auto; }
 .volume > :last-child { width: 84px; }
 .center { display: none; }
@@ -69,6 +72,8 @@
 .watch[data-mode='portrait'] .center { display: flex; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); justify-content: center; }
 .watch[data-mode='portrait'] .transport { justify-content: space-evenly; width: 100%; gap: 0; }
 .watch[data-mode='portrait'] .control[data-main] { width: 58px; height: 58px; background: var(--color-text); color: var(--color-ink); }
+.watch[data-mode='portrait'] .center .control:has(small) { width: 46px; height: 46px; }
+.watch[data-mode='portrait'] .center .control:has(small) svg { width: 34px; height: 34px; }
 .watch[data-mode='portrait'] .bottom { padding: 0 6px 8px 14px; display: flex; align-items: center; gap: 5px; }
 .watch[data-mode='portrait'] .seek { position: absolute; bottom: -1px; left: 0; right: 0; height: 3px; }
 .watch[data-mode='portrait'] .rail, .watch[data-mode='portrait'] .rail > i { height: 3px; border-radius: 0; }
@@ -82,7 +87,8 @@
 .watch[data-mode='tabletop'] .shade { background: var(--color-ink); }
 .watch[data-mode='tabletop'] .pictureTap { pointer-events: none; }
 @media (max-width: 1023px) and (orientation: landscape) {
-  .watch { --watch-title-size: 16.5px; --watch-title-line: normal; --watch-title-tracking: -.015em; --watch-subtitle-size: 13px; --watch-subtitle-weight: 600; --watch-time-size: 12.5px; --watch-time-weight: 700; --watch-skip-size: 11.5px; }
+  .watch { --watch-title-size: 16.5px; --watch-title-line: normal; --watch-title-tracking: -.015em; --watch-subtitle-size: 13px; --watch-subtitle-weight: 600; --watch-time-size: 12.5px; --watch-time-weight: 700; --watch-skip-size: 11.5px; --watch-track-size: 13.5px; }
+  .trackPill { font-size: var(--watch-track-size); }
   .top { inset: 12px max(54px, env(safe-area-inset-right)) auto max(54px, env(safe-area-inset-left)); padding: 0; gap: 6px; align-items: center; }
   .identity { margin-left: 2px; }
   .identity h2 { margin-bottom: 1px; }

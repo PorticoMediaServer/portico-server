@@ -12,7 +12,7 @@ export type WatchBindings = Readonly<{
   skips: Readonly<{back: number; forward: number}>;
   reportError: (error: unknown) => void;
 }>;
-export type WatchPanel = 'options' | 'subtitles-audio' | 'quality' | 'speed' | 'episodes' | 'play-on' | 'info' | 'file-info' | 'versions' | 'equalizer';
+export type WatchPanel = 'options' | 'subtitles-audio' | 'subtitles' | 'audio' | 'quality' | 'speed' | 'episodes' | 'play-on' | 'info' | 'file-info' | 'versions' | 'equalizer';
 export type WatchPanelContext = Readonly<{
   panel: WatchPanel | null;
   snapshot: WebPlaybackRuntimeSnapshot;
@@ -30,6 +30,7 @@ export type WatchSurfaces = Readonly<{
   notices?: ReactNode;
   /** Actual delivered-quality copy from the media adapter, bound to this source. */
   quality?: Readonly<{fence: PlaybackFence; automatic: boolean; label: string; accessibleLabel: string}>;
+  tracks?: Readonly<{fence: PlaybackFence; audio?: string; subtitles?: string}>;
   /** One retained title body owns its tab, season, paging and scroll, also when hidden. */
   body?: ReactNode;
   myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
