@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"portico.local/hosted/claimweb"
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/httpapi"
@@ -345,5 +346,38 @@ func TestClaimV2OwnershipOutcomesAndOldReturnRevocation(t *testing.T) {
 				t.Fatal("transfer receipt", e)
 			}
 		})
+	}
+}
+
+func TestRegisteredReturnCallerServerAndOwnerProjectionBoundaries(t *testing.T) {
+	f := registeredReturnFixture(t)
+	otherToken := "claim-other-access-token-fixture"
+	if _, e := f.store.DB.Exec(`INSERT INTO account_sessions(token_hash,account_id,family_id,expires_at) VALUES($1,'strict-other','strict-other-family',clock_timestamp()+interval '15 minutes')`, security.Hash(otherToken)); e != nil {
+		t.Fatal(e)
+	}
+	// The same authenticated account cannot use this registration on another
+	// server; another account cannot use it on this server.
+	changed := f.start
+	changed.ServerID = "srv_another_server"
+	returnCall(t, f.handler, "/v1/server-returns/start", "claim-owner-access-token-fixture", changed, 401)
+	returnCall(t, f.handler, "/v1/server-returns/start", otherToken, f.start, 401)
+	if _, e := f.store.DB.Exec(`UPDATE accounts SET display_name='Private personal name never projected' WHERE id='strict-owner'`); e != nil {
+		t.Fatal(e)
+	}
+	q := claimweb.Request{Kind: "portico.claim.web.v2", Audience: "https://hosted.example", OperationID: "owner_projection", ServerID: f.input.ServerID, PublicKey: f.input.PublicKey, Name: "Shared server", Address: "https://server.example:32500", Purpose: "change-owner", CurrentOwnerAccountID: f.expected.AccountID, PreviousOwnerRole: "admin", IssuedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(4 * time.Minute)}
+	pending, e := f.store.RegisterWebClaim(context.Background(), q, f.keys.SealKey)
+	if e != nil {
+		t.Fatal(e)
+	}
+	handler := &httpapi.ClaimHandler{Web: &httpapi.ClaimWeb{Store: f.store, Keys: f.keys, Audience: q.Audience}, Service: f.service, CaptureAuthority: f.store.CaptureClaimAuthority}
+	raw := returnCall(t, handler, "/v1/server-claims/lookup", otherToken, httpapi.ClaimCodeRequest{Code: pending.Code}, 200)
+	var result claimweb.Pending
+	if json.Unmarshal(raw, &result) != nil || result.CurrentOwnerUsername != "strict-owner" || result.Purpose != "change-owner" || result.PreviousOwnerRole != "admin" {
+		t.Fatal("unverified owner projection")
+	}
+	for _, private := range []string{"Private personal name never projected", "displayName", "email", "completionCode", "src_"} {
+		if bytes.Contains(raw, []byte(private)) {
+			t.Fatal("owner privacy projection", private)
+		}
 	}
 }
