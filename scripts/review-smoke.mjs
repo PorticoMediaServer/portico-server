@@ -11,11 +11,11 @@ try {
  step='source-cutoff';const stamp=await(await page.request.get(origin+'/portico-build.json')).json();if(stamp.commit!==commit || (stamp.serverCommit && stamp.serverCommit!==commit))throw Error('source-cutoff');
  step='signed-out-root';await page.goto(origin+'/',{waitUntil:'networkidle'});
  await page.locator('input[name="username"]').waitFor();await page.locator('input[name="password"]').waitFor();
- await page.locator('form button[type="submit"]').waitFor();console.log('PASS signed-out / renders sign-in form');
+ await page.locator('form button[type="submit"]').waitFor();console.log('PASS signed-out / renders sign-in form');console.log(JSON.stringify({event:'signed-out / renders sign-in form',utc:new Date().toISOString(),origin,commit}));
  step='sign-in-document-reload';const response=await page.goto(origin+'/sign-in',{waitUntil:'networkidle'});
  if(response.status()!==200 || !response.headers()['content-type'].includes('text/html'))throw Error('document');
  await page.reload({waitUntil:'networkidle'});await page.locator('input[name="password"]').waitFor();
- await page.screenshot({path:out+'/sign-in.png'});console.log('PASS /sign-in document and reload');console.log('PRIVATE_STDIN_READY');
+ await page.screenshot({path:out+'/sign-in.png'});console.log('PASS /sign-in document and reload');console.log(JSON.stringify({event:'/sign-in document and reload',utc:new Date().toISOString(),origin,commit}));console.log('PRIVATE_STDIN_READY');
  let input='';for await(const chunk of process.stdin){input+=chunk;if(input.includes('\n'))break;}
  const credentials=JSON.parse(input);input='';credentialPhase=true;
  step='owner-sign-in';await page.locator('input[name="username"]').fill(credentials.username);await page.locator('input[name="password"]').fill(credentials.password);credentials.password='';
@@ -24,14 +24,14 @@ try {
  if(new URL(page.url()).pathname==='/profiles'){await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/justin/i}).first().click();}
  const trigger=page.getByRole('button',{name:/Switch profile or server/});await trigger.waitFor();
  await page.getByRole('link',{name:'Home',exact:true}).waitFor();await page.locator('[data-home-document]').waitFor();if(new URL(page.url()).pathname!=='/')throw Error('home-route');
- await page.screenshot({path:out+'/owner-home.png'});console.log('PASS owner sign-in -> Home');
+ await page.screenshot({path:out+'/owner-home.png'});console.log('PASS owner sign-in -> Home');console.log(JSON.stringify({event:'owner sign-in -> Home',utc:new Date().toISOString(),origin,commit}));
  step='second-profile';const profileDocument=await page.goto(origin+'/profiles',{waitUntil:'networkidle'});if(profileDocument.status()!==200 || !profileDocument.headers()['content-type'].includes('text/html'))throw Error('profile-document');await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/Review/}).first().click();await page.locator('[data-home-document]').waitFor();
  await trigger.waitFor();await trigger.click();await page.getByRole('menuitem',{name:/justin/i}).waitFor();
- console.log('PASS second profile Review reached; owner available to switch back');
+ console.log('PASS second profile Review reached; owner available to switch back');console.log(JSON.stringify({event:'second profile Review reached; owner available to switch back',utc:new Date().toISOString(),origin,commit}));
  step='sign-out';await page.getByRole('menuitem',{name:'Sign out of Portico demo',exact:true}).click();
  await page.locator('input[name="username"]').waitFor();await page.locator('input[name="password"]').waitFor();
  if(await page.locator('input[name="password"]').inputValue())throw Error('password-retained');
- console.log('PASS sign-out -> sign-in');
+ console.log('PASS sign-out -> sign-in');console.log(JSON.stringify({event:'sign-out -> sign-in',utc:new Date().toISOString(),origin,commit}));
  console.log(JSON.stringify({result:'FOUR_SMOKES_PASS',commit,diagnostics:failures}));
 } catch(error){console.log(JSON.stringify({result:'SMOKE_FAIL',step,errorType:error.name,diagnostics:failures}));process.exitCode=1;}
 finally {
@@ -39,7 +39,7 @@ finally {
   try {
    await page.locator('input').evaluateAll(nodes=>nodes.forEach(node=>{node.value='';node.removeAttribute('value');}));
    const document=await page.evaluate(()=>{const clone=document.documentElement.cloneNode(true);clone.querySelectorAll('input,textarea').forEach(node=>{node.removeAttribute('value');node.textContent='';});return clone.outerHTML;});
-   fs.writeFileSync(out+'/failure-dom.html',document);
+   fs.writeFileSync(out+'/failure-dom.log',document);
    await Promise.allSettled(pendingResponses);console.log(JSON.stringify({diagnosis:{responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+new URL(page.url()).pathname,title:await page.title(),console:consoleEvents,requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
   }catch{console.log('Diagnostic page unavailable after browser failure');}
  }
