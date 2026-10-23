@@ -363,12 +363,11 @@ func TestListeningPreferencesCASAndProfileIsolation(t *testing.T) {
 	s, db, _ := listeningFixture(t)
 	allow := func(context.Context, *sql.Tx, string) error { return nil }
 	p, e := s.ListeningPreferences(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, allow)
-	if e != nil || !p.AutoplayNext || p.Revision != 1 {
+	if e != nil || p.BookRate != 1 || p.Revision != 1 {
 		t.Fatal(p, e)
 	}
 	old := p
 	p.BookRate = 1.5
-	p.AutoplayNext = true
 	p.PassoutMinutes = 30
 	saved, e := s.SaveListeningPreferences(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, p, allow)
 	if e != nil || saved.Revision != 2 {
@@ -378,15 +377,15 @@ func TestListeningPreferencesCASAndProfileIsolation(t *testing.T) {
 		t.Fatal("stale save accepted", e)
 	}
 	other, e := s.ListeningPreferences(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "other"}, allow)
-	if e != nil || !other.AutoplayNext || other.BookRate != 1 {
+	if e != nil || other.BookRate != 1 || other.PassoutMinutes != 0 {
 		t.Fatal("preferences escaped profile", other, e)
 	}
 	values, _, _, e := operations.EffectivePreferences(db, identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, "")
-	if e != nil || !values.Bool("playback.autoplayNext") || values.Float("audiobooks.defaultSpeed") != 1.5 {
+	if e != nil || values.Float("audiobooks.defaultSpeed") != 1.5 || values.Int("playback.sleepTimerMinutes") != 30 {
 		t.Fatal("registry and listening disagree", values, e)
 	}
 	invalid := saved
-	invalid.MusicRate = 3
+	invalid.BookRate = 9
 	if _, e = s.SaveListeningPreferences(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, invalid, allow); e == nil {
 		t.Fatal("unsupported speed saved")
 	}

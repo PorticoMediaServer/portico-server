@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {ListeningService,loadListeningSelection,listeningItemInput,parseListeningJourney,parseListeningPreferences,readListeningItem,readListeningContext,type ListeningRequest} from '../src/listening.ts';
 import type {PlaybackService} from '../src/index.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
-const prefs={revision:0,musicRate:1,bookRate:1.5,autoplayNext:true,passoutMinutes:0};
+const prefs={revision:0,bookRate:1.5,passoutMinutes:0};
 const wrapped=(data:unknown,other={})=>({scope:{...scope,...other},data});
 const settle=()=>new Promise<void>(resolve=>setImmediate(resolve));
 const target={libraryId:'library',kind:'album' as const,id:'album'};
@@ -30,7 +30,7 @@ function setup(options:{preferences?:Partial<typeof prefs>;context?:(id:string)=
 }
 test('preferences strictly validate rates, revision and bounded inactivity choices; scope is never caller-switchable',async()=>{
  assert.deepEqual(parseListeningPreferences(prefs),prefs);
- for(const patch of [{revision:-1},{bookRate:NaN},{musicRate:3},{autoplayNext:'true'},{passoutMinutes:1}])assert.throws(()=>parseListeningPreferences({...prefs,...patch}));
+ for(const patch of [{revision:-1},{bookRate:NaN},{musicRate:1},{musicRate:'go'},{autoplayNext:true},{passoutMinutes:1}])assert.throws(()=>parseListeningPreferences({...prefs,...patch}));
  assert.throws(()=>parseListeningJourney({target:{...target,libraryId:'other'},actions:['play'],resumeUnavailable:false},'library'));
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song'},{profileId:'other'}),scope,'song'));
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song',bookId:''}),scope,'song'));
@@ -39,7 +39,8 @@ test('songs stay at recorded speed; audiobook session speed survives parts witho
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:id==='song'||id==='song2'?'song':'audiobook_file'})});t.after(()=>f.service.dispose());await settle();
  f.engine.update({playbackRun:1});
  await assert.rejects(f.service.setRate(1.25));assert.equal(f.engine.rates.at(-1),1);assert.equal(f.writes.length,0,'songs have no speed setting');
- assert.equal(f.service.getSnapshot().preferences?.musicRate,1);
+ assert.deepEqual(f.service.getSnapshot().preferences,prefs);
+ assert.deepEqual(f.engine.policies.at(-1).preferences,{bookRate:1.5,passoutMinutes:0});
  f.engine.update({itemId:'part',session:{id:'book-session',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),1.5,'another kind starts at its own default');
  f.engine.update({session:{id:'book-session',generation:2}});assert.equal(f.engine.rates.at(-1),1.5);
  await f.service.setRate(2);assert.equal(f.engine.rates.at(-1),2);
@@ -60,10 +61,10 @@ test('inactivity preference is enforced and deliberate foreground interactions r
  f.setNow(29*60000);f.service.interact();f.setNow(58*60000);f.service.tick();assert.equal(f.engine.pauses,0);
  f.setNow(59*60000);f.service.tick();assert.equal(f.engine.pauses,1);assert.match(f.service.getSnapshot().message!,/without interaction/);
 });
-test('a stale video autoplay preference cannot block album continuation',async t=>{
- const f=setup({preferences:{autoplayNext:true}});t.after(()=>f.service.dispose());await settle();assert.equal(f.service.mayAdvance(),true);
- await assert.rejects(f.service.savePreferences({autoplayNext:false}));
- f.service.interact();assert.equal(f.service.mayAdvance(),true);await f.service.savePreferences({autoplayNext:true});assert.equal(f.service.mayAdvance(),true);
+test('album continuation has no listening preference switch',async t=>{
+ const f=setup();t.after(()=>f.service.dispose());await settle();assert.equal(f.service.mayAdvance(),true);
+ await f.service.savePreferences({bookRate:2});assert.equal(f.service.mayAdvance(),true);
+ assert.deepEqual(f.writes,[{revision:0,bookRate:2,passoutMinutes:0}]);
 });
 test('item timer requires an actual ended observation and book timer survives ordered parts',async t=>{
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});t.after(()=>f.service.dispose());await settle();
@@ -94,7 +95,7 @@ test('late old-profile reads and disposed clocks cannot publish or pause',async(
 test('save conflict retains actual preference and demands explicit reload; context retry is real',async t=>{
  let failedContext=true;const f=setup({request:async(path,_body,method)=>{if(path==='/v1/listening/preferences'){if(method==='PUT')throw Object.assign(new Error('conflict'),{code:'listening_preferences_conflict'});return wrapped(prefs);}if(failedContext)throw new Error('offline');return wrapped({itemId:'song',libraryId:'library',kind:'song'});}});t.after(()=>f.service.dispose());await settle();
  assert.equal(f.service.getSnapshot().context,null);failedContext=false;f.service.retryContext();await settle();assert.equal(f.service.getSnapshot().context?.itemId,'song');
- await assert.rejects(f.service.savePreferences({bookRate:2}),/changed on another device/);assert.equal(f.service.getSnapshot().preferences?.autoplayNext,true);assert.equal(f.service.getSnapshot().phase,'error');await f.service.refreshPreferences();assert.equal(f.service.getSnapshot().phase,'ready');
+ await assert.rejects(f.service.savePreferences({bookRate:2}),/changed on another device/);assert.deepEqual(f.service.getSnapshot().preferences,prefs);assert.equal(f.service.getSnapshot().phase,'error');await f.service.refreshPreferences();assert.equal(f.service.getSnapshot().phase,'ready');
 });
 test('full listening action reads every signed page, preserving server order and mix seed',async()=>{
  const items=Array.from({length:205},(_,i)=>listeningItemInput(`song-${i}`,target));let calls=0;
@@ -170,7 +171,7 @@ test('PERF-24: a video session never asks for listening details; a listening one
 });
 
 // P1 (web, 24 Sep): an album stopped after track 1 when the listening preferences hadn't been
-// read (or couldn't be). Unknown preferences count as the server default (autoplay on).
+// read (or couldn't be). Preference loading must not gate queue continuation.
 test('a song advances before the listening preferences are known', async t => {
  const f=setup({request:async(path)=>{if(path==='/v1/listening/preferences')throw Object.assign(new Error('unavailable'),{status:503});const id=path.split('/')[3];return wrapped({itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});}});
  t.after(()=>f.service.dispose());await settle();await settle();

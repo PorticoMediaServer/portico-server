@@ -45,8 +45,8 @@ audio selection, appearance, region and reader defaults. Actual renderer support
 belongs to each platform; the facade does not claim unsupported OS capabilities.
 
 `/v1/listening/preferences` shares the profile revision and projects audiobook
-speed and sleep timer. Music always plays at recorded speed (`musicRate: 1`), and
-albums and audiobook parts continue (`autoplayNext: true`) independently of the
-video next-episode setting. Writes reject other values for these fixed fields.
+speed and sleep timer. These and the shared revision are its only fields. Music
+plays at recorded speed, and albums and audiobook parts continue independently
+of the video next-episode setting. Neither behavior is a listening preference.
 `music.defaultSpeed` is retired and is never persisted. Other music effects and
 quality fields remain owned by the music registry producer.

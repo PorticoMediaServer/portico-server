@@ -23,7 +23,25 @@ func TestListeningHTTPPreferenceEnvelopeAndCAS(t *testing.T) {
 	if read.Code != 200 || !bytes.Contains(read.Body.Bytes(), []byte(`"profileId":"profile"`)) {
 		t.Fatal(read.Code, read.Body.String())
 	}
-	body := map[string]any{"revision": 1, "musicRate": 1, "bookRate": 1.5, "autoplayNext": true, "passoutMinutes": 30}
+	for _, removed := range []string{"musicRate", "autoplayNext"} {
+		if bytes.Contains(read.Body.Bytes(), []byte(`"`+removed+`"`)) {
+			t.Fatal("removed listening field returned", read.Body.String())
+		}
+	}
+	body := map[string]any{"revision": 1, "bookRate": 1.5, "passoutMinutes": 30}
+	for _, retired := range []map[string]any{{"musicRate": 1}, {"musicRate": "go"}, {"autoplayNext": true}} {
+		withRetired := make(map[string]any)
+		for key, value := range body {
+			withRetired[key] = value
+		}
+		for key, value := range retired {
+			withRetired[key] = value
+		}
+		response := f.call("PUT", "/v1/listening/preferences", withRetired)
+		if response.Code != 400 {
+			t.Fatal("removed listening field accepted", response.Code, response.Body.String())
+		}
+	}
 	for key := range body {
 		incomplete := make(map[string]any)
 		for k, v := range body {
