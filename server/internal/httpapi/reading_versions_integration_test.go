@@ -10,6 +10,7 @@ import (
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
 	"portico.local/server/internal/readingtest"
 )

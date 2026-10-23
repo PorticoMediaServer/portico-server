@@ -178,3 +178,60 @@ func TestReadingPrivateSourceChangeRootEscapeAndSourceDisable(t *testing.T) {
 		t.Fatal("escaped symlink opened")
 	}
 }
+
+func TestReadingPrivateCancellationAndSessionClosureStopReaders(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	ctx := context.Background()
+	session, _, err := r.s.Prepare(ctx, r.p, r.item, r.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, cancel := context.WithCancel(ctx)
+	reader, err := r.s.OpenSession(request, r.p, session.ID)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if n, err := reader.ReadAt(make([]byte, 5), 0); err != nil || n != 5 {
+		t.Fatal(n, err)
+	}
+	cancel()
+	if n, err := reader.ReadAt(make([]byte, 5), 0); n != 0 || err == nil {
+		t.Fatal("cancelled request returned bytes", n, err)
+	}
+	// A cancelled extent does not turn its session into a new bearer grant or
+	// reopen the old helper. Other requests acquire fresh rooted readers.
+	a, err := r.s.OpenSession(ctx, r.p, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := r.s.OpenSession(ctx, r.p, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	login := readingOwnerLogin(t, r)
+	if login.Session == nil {
+		t.Fatal("missing real sign-in session")
+	}
+	other, err := r.f.id.Authenticate(login.Session.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.s.OpenSession(ctx, other, session.ID); err == nil {
+		t.Fatal("different sign-in family borrowed the reader session")
+	}
+	if err = r.s.CloseSession(r.p, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []*reading.Source{a, b} {
+		if n, err := source.ReadAt(make([]byte, 5), 0); n != 0 || err == nil {
+			t.Fatal("closed session returned bytes", n, err)
+		}
+	}
+	if _, err = r.s.OpenSession(ctx, r.p, session.ID); err == nil {
+		t.Fatal("closed session reopened")
+	}
+}

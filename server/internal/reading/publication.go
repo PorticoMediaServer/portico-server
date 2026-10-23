@@ -98,10 +98,12 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
 	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT min(candidate.asset_id) FROM reading_publications candidate WHERE candidate.item_id=e.id)
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id
+ ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=candidate.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND eligible.available=1) DESC,candidate.asset_id LIMIT 1)
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
- WHERE e.kind IN(20,21) AND e.retired=0 AND cl.retired=0 AND lib.kind IN('book','comic')
+ WHERE e.retired=0 AND cl.retired=0
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
  AND e.id>? AND (?='' OR cl.library_id=?) AND (` + filter + `) ORDER BY e.id LIMIT ?`
 	values := append([]any{after, library, library}, args...)
 	values = append(values, limit+1)
@@ -141,7 +143,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	defer g.Rollback()
 	tx := g.Tx()
 	var library string
-	if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.public_id=pid_blob(?) AND e.kind IN(20,21) AND e.retired=0 AND cl.retired=0 AND lib.kind IN('book','comic')`, item).Scan(&library); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21))`, item).Scan(&library); err != nil {
 		return nil, ErrUnavailable
 	}
 	if s.Authorize == nil {
