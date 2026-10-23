@@ -31,17 +31,18 @@ export type MusicOutputFacts=Readonly<{
  bitPerfect?:boolean;bitPerfectMode?:'android14-usb'|'desktop-exclusive';exclusive?:boolean;volume?:number;
 }>;
 export type MusicSignalInput=Readonly<{
- source:MusicFormatFacts;server?:MusicServerSignal;output:MusicOutputFacts;short?:boolean;
+ source:MusicFormatFacts;server?:MusicServerSignal;output:MusicOutputFacts;
  eqOn:boolean;eqApplied:boolean;normalization:'off'|'track'|'album';levelingApplied:boolean;
  /** Actual gain used by this song's renderer, after Never boost/peak limits. */
  levelingGainDb?:number;
 }>;
 export type SignalStep=Readonly<{
  id:'file'|'server'|'leveling'|'eq'|'output'|'volume';label:SignalText|string;
- value?:SignalText|string;note?:SignalText;changed:boolean;
+ value?:SignalText|string;note?:SignalText;percent?:number;changed:boolean;
 }>;
 export type MusicSignalModel=Readonly<{
- source?:SignalText|string;state?:SignalText;stateLoss?:SignalText;foldSourceIntoState:boolean;
+ /** Long form for desktop/accessibility; short form for phone/TV visual lines. */
+ source?:SignalText|string;shortSource?:SignalText|string;state?:SignalText;stateLoss?:SignalText;foldSourceIntoState:boolean;
  rule:1|2|3|4|5|6|'desktop-volume';healthy:boolean;
  pill:SignalText;steps:readonly SignalStep[];
 }>;
@@ -130,7 +131,7 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  const leveling=server?.loudnessAppliedDb!==undefined||input.levelingApplied;
  steps.push({id:'leveling',label:text('player.signal.step.leveling'),value:output.passthrough?text('player.signal.notApplied'):input.normalization==='off'?text('player.signal.off'):leveling&&gainKnown(gain)?text('player.signal.leveling.applied',{mode:input.normalization,gain:signalGain(gain)}):text('player.signal.notApplied'),changed:output.passthrough!==true&&gainChanged});
  steps.push({id:'eq',label:text('player.signal.step.eq'),value:output.passthrough?text('player.signal.notApplied'):!input.eqOn?text('player.signal.off'):input.eqApplied?text('player.signal.eq.on'):text('player.signal.notApplied'),changed:output.passthrough!==true&&input.eqApplied});
- if(output.platform==='desktop'&&output.exclusive===true)steps.push({id:'volume',label:text('player.volume'),value:volumeChanged?text('player.signal.line.volume',{level:output.volume!}):undefined,changed:volumeChanged});
+ if(output.platform==='desktop'&&output.exclusive===true)steps.push({id:'volume',label:text('player.volume'),...(typeof output.volume==='number'&&output.volume>=0&&output.volume<=1?{percent:output.volume}:{}),changed:volumeChanged});
  let outputValue:SignalText|undefined;
  if(output.passthrough)outputValue=text('player.signal.line.passthrough');
  else if(output.resampledBy&&positive(output.sampleRate))outputValue=text('player.signal.output.resampled',{rate:rate(output.sampleRate)});
@@ -138,11 +139,11 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  else if(bitPerfect&&positive(output.bitDepth)&&positive(output.sampleRate))outputValue=text('player.signal.output.bitPerfect',{bits:output.bitDepth,rate:rate(output.sampleRate)});
  else if(matched)outputValue=text('player.signal.rateMatched',{rate:rate(output.sampleRate!)});
  steps.push({id:'output',label:output.name??(output.usbDac?text('player.signal.output.usbDac'):text('player.signal.step.output',{output:output.device})),value:outputValue,changed:output.resampledBy!==undefined||output.atmosLost===true,...(matched?{note:text('player.signal.output.switched')}:output.platform==='browser'?{note:text('player.signal.output.browserNote')}:{})});
- return Object.freeze({source:foldSourceIntoState?undefined:musicSignalSource(source,input.short),state,stateLoss,foldSourceIntoState,rule,healthy:rule===5&&(bitPerfect||passthrough),pill,steps:Object.freeze(steps.map(s=>Object.freeze(s)))});
+ return Object.freeze({source:foldSourceIntoState?undefined:musicSignalSource(source),shortSource:foldSourceIntoState?undefined:musicSignalSource(source,true),state,stateLoss,foldSourceIntoState,rule,healthy:rule===5&&(bitPerfect||passthrough),pill,steps:Object.freeze(steps.map(s=>Object.freeze(s)))});
 }
 export function musicSignalAccessibleName(model:MusicSignalModel,t:SignalTranslate):string|undefined{
  const source=typeof model.source==='string'?model.source:model.source?formatSignalText(model.source,t):undefined;
- const state=model.state?formatSignalText(model.state,t):undefined;
+ const state=model.state?[formatSignalText(model.state,t),...(model.stateLoss?[formatSignalText(model.stateLoss,t)]:[])].join(', '):undefined;
  // A folded DSD state already includes the source once.
  if(!source)return state?t('player.signal.a11ySourceOnly',{source:state}):undefined;
  return state?t('player.signal.a11y',{source,state}):t('player.signal.a11ySourceOnly',{source});
