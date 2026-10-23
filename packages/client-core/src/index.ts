@@ -1834,7 +1834,6 @@ export type HostedAccount = {
   username: string;
   displayName: string;
 };
-export type HostedProfile = { id: string; name: string };
 export type HostedSession = {
   refreshToken?: string;
   familyId: string;
@@ -1842,7 +1841,6 @@ export type HostedSession = {
   accessToken: string;
   expiresAt: string;
   account: HostedAccount;
-  profiles: HostedProfile[];
 };
 /**
  * Whether Hosted has heard from a server recently (its presence lease). Absent
@@ -2045,7 +2043,7 @@ export * from './account-reset.ts';
 export * from './same-tab-return.ts';
 
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
-export {ServerSignInProbe, parseServerSignIn, signInLabelKey, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
+export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} from './tv-consent.ts';
 export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFolder,removeLibraryFolder} from './server-admin/libraries.ts';
 export {readLibraryInventoryConfig} from './library-inventory.ts';

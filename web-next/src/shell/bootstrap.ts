@@ -1,4 +1,4 @@
-import type {CredentialSessionService, HttpLocalApi, LocalSession, SystemInfo} from '@core/index.ts';
+import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
 import {selectedViewerRecord} from '@core/viewer-selection.ts';
@@ -13,7 +13,9 @@ import {runEventFeed} from '@core/event-feed.ts';
 import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserViewerStorage} from '../platform/viewer-selection-storage';
-import {browserAccount} from '../platform/account';
+import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
+import {defaultI18n} from '@i18n';
+import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
 import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
 import {freshnessFor, type FreshnessRuntime} from '../platform/freshness';
@@ -26,7 +28,7 @@ export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
   facts: ShellFacts; epoch: number; viewerFence: string; isCurrent: () => boolean;
-  signOut: () => void;
+  signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
   getBinding: () => ShellBindings;
@@ -43,33 +45,24 @@ export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
   return a.sessionFamilyId === b.sessionFamilyId && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => a.viewer[key] === b.viewer[key]);
 }
 
-type ShellAccount = Pick<ShellIdentity, 'username' | 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts'>;
-/** Synchronize through the public readiness API without renewing healthy local playback. */
-export async function hostedShellProfile(service: Pick<CredentialSessionService, 'synchronize' | 'getSnapshot'>, viewer: Pick<LocalSession['viewer'], 'accountId' | 'profileId'>): Promise<ShellAccount> {
-  await service.synchronize();
-  const current = service.getSnapshot().session;
-  if (!current || current.account.id !== viewer.accountId) throw new Error('The selected Portico Account profile is unavailable.');
-  const profile = current.profiles.find(candidate => candidate.id === viewer.profileId);
-  if (!profile) throw new Error('The selected Portico Account profile is unavailable.');
-  return {username: current.account.username, profileName: profile.name, profiles: current.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? ''})),
-    canManageProfiles: false, accountFacts: []};
-}
+type ShellAccount = Pick<ShellIdentity, 'username' | 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts' | 'capabilities'>;
 export async function currentShellProfile(api: HttpLocalApi, session: LocalSession, signal: AbortSignal): Promise<ShellAccount> {
   const v = session.viewer;
-  if (v.authority === 'local') {
+  if (v.authority !== 'local') throw new Error('Profiles must come from this server.');
+  {
     const snapshot = parseDirectSnapshot(await api.request(routePath('get_direct_account'), 'GET', undefined, signal), {authority: 'local', accountId: v.accountId, serverId: v.serverId}, true);
     const profile = snapshot.profiles.find(candidate => candidate.id === v.profileId);
     if (!profile) throw new Error('The selected profile is no longer present.');
-    return {username: snapshot.account.username, profileName: profile.name, profileArt: profile.art, primaryProfile: profile.primary, canManageProfiles: snapshot.canManage,
+    if (!profile.primary && Object.values(snapshot.capabilities).some(Boolean)) throw new Error('Management is available only on the main profile.');
+    return {capabilities: snapshot.capabilities, username: snapshot.account.username, profileName: profile.name, profileArt: profile.art, primaryProfile: profile.primary, canManageProfiles: snapshot.canManage,
       profiles: snapshot.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? '', art: value.art, pinRequired: value.pinRequired})),
       accountFacts: []};
   }
-  // Existing Portico Account bootstrap owns the account credential and its genuine names.
-  return hostedShellProfile(browserAccount().service, v);
+
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<ShellFacts> {
   const [libraries, profile, settings, system, guide] = await Promise.all([
-    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), preferences.preferences('web'), api.request<SystemInfo>(routePath('get_system'), 'GET', undefined, signal),
+    api.request(routePath('get_libraries'), 'GET', undefined, signal).then(parseLibraryList), currentShellProfile(api, session, signal), preferences.preferences('web'), api.request(routePath('get_system'), 'GET', undefined, signal).then(parseServerSignIn),
     fetchGuideSourceSummaries(api, session.viewer.serverId, Intl.DateTimeFormat().resolvedOptions().timeZone, signal).catch(error => {
       if ((error as {status?: number}).status === 403) return undefined;
       throw error;
@@ -78,7 +71,8 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
   await inbox.load();
   signal.throwIfAborted();
-  return {identity: {viewer: session.viewer, libraries: libraries.items, ...profile,
+  return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, signIn:system.signIn, ...profile,
+    accountFacts:[{id:'sign-in',role:'status',text:defaultI18n.t(signInLabelKey(system.signIn))}],
     liveAvailable: !!guide?.sources.length, unread: inbox.getSnapshot().unread, showNotificationDot: settings.effective['notifications.badges'] === true}, preferences: settings, serverName: system.name};
 }
 
@@ -93,6 +87,7 @@ export class ShellBootstrap {
   constructor(private readonly assemble: ShellAssembler, private readonly environment: {
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
+    actions?: () => BrowserAppSessionActions;
   } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -138,13 +133,10 @@ export class ShellBootstrap {
       const captured = session;
       signingOut = true;
       this.fence(); this.publish({phase: 'signed-out'});
-      // Retire this exact family; another tab's later selection is never erased.
-      void api.logout().finally(async () => {
-        try { await Promise.allSettled([forgetBrowserConnection(captured), browserViewerStorage.clearIfFamily?.(captured.sessionFamilyId)]); }
-        finally { api.getRouteConnection()?.dispose(); }
-      }).catch(() => {});
+      // Remove the exact local credential before remote cleanup; switching never signs out peers.
+      void (this.environment.actions?.()??browserAppSessionActions()).signOutServer(captured).catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());
     };
-    const auth = new LocalSessionRefresher({api, env: browserConnectionEnvironment(), session,
+    const auth = new LocalSessionRefresher({api, env: browserConnectionEnvironment(session.viewer.serverId), session,
       onRotated: next => {
         if (!isCurrent()) return;
         const authorityChanged = !sameShellAuthority(session, next); session = next;
@@ -175,7 +167,10 @@ export class ShellBootstrap {
     const authorityKey = JSON.stringify([session.sessionFamilyId, session.viewer.role, document.viewerFence]);
     const artwork = authenticatedArtwork({api, auth, identity: {serverId: session.viewer.serverId, viewerId: viewerId(session), authorityKey}, currentToken: () => session.accessToken, isCurrent});
     cleanups.push(() => artwork.dispose());
-    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, epoch, viewerFence: document.viewerFence, isCurrent, signOut});
+    const signOutPorticoAccount=facts.identity.signIn==='portico'?()=>{if(!isCurrent())return;signingOut=true;this.fence();this.publish({phase:'signed-out'});void signOutBrowserPorticoAccount().catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());}:undefined;
+    const switchProfile=async(profileId:string,pin:string,signal:AbortSignal)=>{if(!isCurrent())throw new Error('The viewer changed.');await (this.environment.actions?.()??browserAppSessionActions()).switchProfile(api,session,profileId,pin,signal,isCurrent);if(isCurrent())this.restart();};
+    const savedServers=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers.map(value=>({id:value.connection.pin.serverId,label:value.connection.pin.serverId===session.viewer.serverId?facts.serverName:new URL(value.connection.logicalOrigin).host}));
+    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, epoch, viewerFence: document.viewerFence, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
     cleanups.push(runEventFeed(events, freshness.hub, browserFeedEnvironment(assembly.busy, assembly.onBusy)));
@@ -201,5 +196,6 @@ export class ShellBootstrap {
     globalThis.document.documentElement.dataset.reduceMotion = String(facts.preferences.effective['appearance.reduceMotion'] === true);
     publishBinding();
   }
+  selectServer = async (serverId:string) => {this.fence();this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);await this.start();}catch(error){this.publish({phase:'error',error});}};
   dispose = () => { this.fence(); this.publish({phase: 'signed-out'}); };
 }

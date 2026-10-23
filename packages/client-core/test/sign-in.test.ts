@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseServerSignIn, ServerSignInProbe, signInLabelKey} from '../src/sign-in.ts';
+import {parseServerSignIn, ServerSignInProbe, signInLabelKey, serverSignInSettingsURL} from '../src/sign-in.ts';
 const system = (signIn = 'local') => ({id: 'server', name: 'Study', signIn, version: '1', setupRequired: false, hostedConfigured: true, hostedAttached: false});
+test('Change this on the web opens Sign-in on the exact chosen server without secrets or alternate authorities',()=>{
+  assert.equal(serverSignInSettingsURL('http://192.168.1.5:32500'),'http://192.168.1.5:32500/settings?scope=server&section=signin');
+  for(const address of ['https://user:pass@server.test','https://server.test/?code=secret','https://server.test/#secret','javascript:alert(1)','https://server.test/path'])assert.throws(()=>serverSignInSettingsURL(address));
+});
 test('explicit kind alone controls credential route and correct label, never old attached flag', async () => {
   for (const signIn of ['local', 'portico'] as const) {
     const calls: unknown[] = [];

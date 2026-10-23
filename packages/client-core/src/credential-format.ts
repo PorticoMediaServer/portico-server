@@ -19,14 +19,12 @@ function context(raw:unknown):CredentialContext {
  return result;
 }
 function session(raw:unknown,mode:'native'|'browser',stored:boolean):HostedSession {
- if(!object(raw))invalid();keys(raw,['accessToken','expiresAt','familyId','refreshExpiresAt','account','profiles'],['refreshToken']);
+ if(!object(raw))invalid();keys(raw,['accessToken','expiresAt','familyId','refreshExpiresAt','account'],['refreshToken']);
  const familyId=text(raw.familyId,128);
- if(!currentUTCTimestamp(raw.expiresAt)||!currentUTCTimestamp(raw.refreshExpiresAt)||utcOrderKey(raw.expiresAt)>utcOrderKey(raw.refreshExpiresAt)||!object(raw.account)||!Array.isArray(raw.profiles)||raw.profiles.length>100)invalid();
+ if(!currentUTCTimestamp(raw.expiresAt)||!currentUTCTimestamp(raw.refreshExpiresAt)||utcOrderKey(raw.expiresAt)>utcOrderKey(raw.refreshExpiresAt)||!object(raw.account))invalid();
  keys(raw.account,['id','username','displayName']);
- const profiles=raw.profiles.map(value=>{if(!object(value))invalid();keys(value,['id','name']);return{id:text(value.id),name:text(value.name,2048)};});
- if(new Set(profiles.map(value=>value.id)).size!==profiles.length)invalid();
  const common={familyId,expiresAt:raw.expiresAt,refreshExpiresAt:raw.refreshExpiresAt,
-  account:{id:text(raw.account.id),username:text(raw.account.username),displayName:text(raw.account.displayName,2048)},profiles};
+  account:{id:text(raw.account.id),username:text(raw.account.username),displayName:text(raw.account.displayName,2048)}};
  if(mode==='native')return {...common,accessToken:text(raw.accessToken,16384),refreshToken:text(raw.refreshToken,16384)};
  if(raw.refreshToken!==undefined||typeof raw.accessToken!=='string'||raw.accessToken.length>16384||/[\x00-\x1f\x7f]/.test(raw.accessToken)||(stored&&raw.accessToken!==''))invalid();
  // Browser persistence intentionally contains coordination metadata, never access/refresh credentials.
