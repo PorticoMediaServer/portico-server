@@ -40,6 +40,8 @@ export const selectionMessages = {
   'next.selection.editAccessibility': 'Edit, for the owner and people allowed to edit',
   'next.selection.more': 'More',
   'next.selection.moreActions': 'More actions',
+  'next.selection.moreEditDescription': 'Fields shared by {items}, with Mixed where they differ',
+  'next.selection.moreDownloadDescription': 'About {size} at {quality}',
   'next.selection.addToCollection': 'Add to collection…',
   'next.selection.favorite': 'Add to Favorites',
   'next.selection.removeFromMyList': 'Remove from My List',
