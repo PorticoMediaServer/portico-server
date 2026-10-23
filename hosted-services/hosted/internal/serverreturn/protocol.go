@@ -5,20 +5,11 @@ package serverreturn
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
 	"portico.local/apikit"
 	"portico.local/hosted/trust"
 	"reflect"
-	"regexp"
 	"time"
 )
-
-var ErrInvalid = errors.New("invalid server return")
-var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
-var secret = regexp.MustCompile(`^[A-Za-z0-9_-]{32,128}$`)
-
-func Purpose(v string) bool      { return v == "sign-in" || claimPurpose(v) }
-func claimPurpose(v string) bool { return v == "setup" || v == "switch" || v == "change-owner" }
 
 // Binding is the owner-claim binding. Ordinary sign-in never authorizes a claim.
 func Binding(purpose, current, previous string) bool {
@@ -76,21 +67,6 @@ type Started struct {
 type Return struct {
 	Location string `json:"location"`
 }
-type Exchange struct {
-	Code            string `json:"code"`
-	TransactionID   string `json:"transactionId"`
-	Verifier        string `json:"verifier"`
-	RegistrationID  string `json:"registrationId"`
-	ServerChallenge string `json:"serverChallenge"`
-	InstallationID  string `json:"installationId"`
-	Purpose         string `json:"purpose"`
-}
-
-func (q Exchange) Valid() bool {
-	return secret.MatchString(q.Code) && identifier.MatchString(q.TransactionID) && secret.MatchString(q.Verifier) && identifier.MatchString(q.RegistrationID) && secret.MatchString(q.ServerChallenge) && secret.MatchString(q.InstallationID) && Purpose(q.Purpose)
-}
-func (Exchange) String() string     { return "[server return redacted]" }
-func (q Exchange) GoString() string { return q.String() }
 
 const ReturnPath = "/auth/portico-return"
 
@@ -134,7 +110,6 @@ type Grant struct {
 // These are the schemas emitted by the actual producer generator. Purpose
 // alternatives retain their discriminator constraints in the runtime decoder.
 type startShape Start
-type exchangeShape Exchange
 
 func (Start) JSONSchema() map[string]any {
 	shape, e := apikit.Schema(reflect.TypeFor[startShape]())
@@ -161,16 +136,4 @@ func (Start) JSONSchema() map[string]any {
 		variants = append(variants, variant)
 	}
 	return map[string]any{"oneOf": variants}
-}
-func (Exchange) JSONSchema() map[string]any {
-	shape, e := apikit.Schema(reflect.TypeFor[exchangeShape]())
-	if e != nil {
-		panic(e)
-	}
-	props := shape["properties"].(map[string]any)
-	props["purpose"] = map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner", "sign-in"}}
-	for _, field := range []string{"code", "verifier", "serverChallenge", "installationId"} {
-		props[field] = map[string]any{"type": "string", "minLength": 32, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}
-	}
-	return shape
 }
