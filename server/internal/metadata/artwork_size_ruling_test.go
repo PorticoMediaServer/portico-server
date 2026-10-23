@@ -3,9 +3,9 @@ package metadata
 import (
 	"bytes"
 	"context"
- "crypto/sha256"
- "encoding/hex"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"image"
 	"io"
 	"net/http"
@@ -269,7 +269,13 @@ func TestLargerFolderPictureReadsOriginalLocalBytesAgain(t *testing.T) {
 	key := hex.EncodeToString(digest[:])
 	reads := 0
 	s.LocalArtwork = func(requested string) (*os.File, string, error) {
-		if requested != key { t.Error("unexpected local original key", requested) } reads++; f, e := os.Open(path); return f, "image/png", e }
+		if requested != key {
+			t.Error("unexpected local original key", requested)
+		}
+		reads++
+		f, e := os.Open(path)
+		return f, "image/png", e
+	}
 	sized, err := s.artworkSizeContext(ctx)
 	if err != nil {
 		t.Fatal(err)
