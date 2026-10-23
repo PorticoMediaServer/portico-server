@@ -4,7 +4,7 @@ GET and PATCH `/v1/preferences` publish and update the server's canonical typed
 registry. Clients use its defaults, domains and clamps. `null` removes only the
 addressed override. A stored value equal to the default is still explicit;
 `effectiveSource` reports that distinction. Empty language lists are explicit:
-no preferred audio language follows the file default, and no subtitle language
+no preferred audio language is read as `[@original]`, and no subtitle language
 keeps automatic subtitles off.
 
 Overrides use normalized `preference_scopes`, `preference_values` and ordered
@@ -23,9 +23,13 @@ inside the same write transaction, and idempotent replay emits no new event.
 
 Audio language defaults to `[@appLanguage, @original]`, subtitles to
 `[@appLanguage]`, and subtitle mode to `foreign`. Language entries otherwise use
-canonical BCP-47 tags and reject duplicates. `@original` is audio-only, with the
-file's default track as the honest fallback when original-language metadata is
-unavailable. App language resolves from the request's `X-Portico-App-Language` (the catalogue
+canonical BCP-47 tags and reject duplicates. `@original` is audio-only and uses
+the title's published catalogue language, supplied only on the server. A known
+language selects a non-commentary match, or falls through to the next language
+entry if no match exists. An unknown language uses the exact file default, then
+the first non-commentary track. Exhausted lists use the default, then the first
+track. Explicit and carried session choices keep precedence. App language resolves
+from the request's `X-Portico-App-Language` (the catalogue
 actually displayed after client fallback), then the explicit profile locale, then
 the app's English catalogue fallback. The OS Accept-Language is not substituted
 for a catalogue the app does not ship. Original never counts as one of “my languages”.
@@ -43,6 +47,11 @@ binary/decimal size units. The device alone determines the time zone.
 The exported client-core `preference-effects.ts` facade projects subtitle style,
 audio selection, appearance, region and reader defaults. Actual renderer support
 belongs to each platform; the facade does not claim unsupported OS capabilities.
+Before Phase 8, the 15 Reading values are read and written only by Settings,
+through `readingPreferences` and `readingPreferencesPatch`. They make no reader
+effect claim. The pure patch helper validates only submitted facade properties
+against the server's registry; `null` clears the override. Revision and transport
+remain with `PreferencesReader`.
 
 `/v1/listening/preferences` shares the profile revision and projects audiobook
 speed and sleep timer. These and the shared revision are its only fields. Music

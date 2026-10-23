@@ -299,9 +299,9 @@ func (p ClientProfile) passthroughDeclared(codec string) bool {
 // chooseAudio picks the programme audio for a session: the viewer's explicit
 // choice, else the language picked earlier in this playback, else
 // the first track in a preferred language, else the container's default, else
-// the first track. A commentary is never chosen automatically while an
-// ordinary track exists.
-func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred []string) (*SourceAudio, string) {
+// the first track. Original language comes only from published catalogue facts;
+// when unknown, @original keeps the file default, then an ordinary track.
+func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred []string, originalLanguage string) (*SourceAudio, string) {
 	if len(tracks) == 0 {
 		return nil, ""
 	}
@@ -319,10 +319,22 @@ func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred [
 			}
 		}
 	}
+	if len(preferred) == 0 {
+		preferred = []string{"@original"}
+	}
+	original := languageKey(originalLanguage)
 	for _, want := range preferred {
 		if want == "@original" {
+			if original != "" {
+				for i := range tracks {
+					if !tracks[i].Commentary && languageKey(tracks[i].Language) == original {
+						return &tracks[i], "original_language"
+					}
+				}
+				continue
+			}
 			for i := range tracks {
-				if tracks[i].Default && !tracks[i].Commentary {
+				if tracks[i].Default {
 					return &tracks[i], "original_default"
 				}
 			}
@@ -346,13 +358,8 @@ func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred [
 		}
 	}
 	for i := range tracks {
-		if tracks[i].Default && !tracks[i].Commentary {
+		if tracks[i].Default {
 			return &tracks[i], "default"
-		}
-	}
-	for i := range tracks {
-		if !tracks[i].Commentary {
-			return &tracks[i], "first"
 		}
 	}
 	return &tracks[0], "first"
@@ -365,12 +372,15 @@ func languageKey(s string) string {
 	if i := strings.IndexAny(s, "-_"); i > 0 {
 		s = s[:i]
 	}
+	if s == "cn" {
+		return "yue"
+	}
 	if len(s) == 3 {
 		if two, ok := subtitles.TwoLetterLanguage(s); ok {
 			return two
 		}
 	}
-	if s == "und" || s == "unknown" {
+	if s == "und" || s == "unknown" || s == "xx" {
 		return ""
 	}
 	return s

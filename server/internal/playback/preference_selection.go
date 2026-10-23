@@ -5,9 +5,11 @@ import "sort"
 // Selection policies rank tracks within the language already chosen, keeping
 // explicit and carried session choices ahead of saved defaults. They never
 // change source facts or force a conversion merely by relabelling a track.
-func chooseAudioWithPolicy(tracks []SourceAudio, explicit int, carried string, languages []string, policy string, preferDescription bool, client ClientProfile) (*SourceAudio, string) {
-	chosen, reason := chooseAudio(tracks, explicit, carried, languages)
-	if chosen == nil || reason == "explicit" || reason == "carried" {
+func chooseAudioWithPolicy(tracks []SourceAudio, explicit int, carried string, languages []string, originalLanguage, policy string, preferDescription bool, client ClientProfile) (*SourceAudio, string) {
+	chosen, reason := chooseAudio(tracks, explicit, carried, languages, originalLanguage)
+	// Only a language match has format ties. Unknown-original and exhausted-list
+	// fallbacks keep the exact file default or first track selected above.
+	if chosen == nil || reason != "preferred_language" && reason != "original_language" {
 		return chosen, reason
 	}
 	ranked := make([]SourceAudio, 0, len(tracks))
