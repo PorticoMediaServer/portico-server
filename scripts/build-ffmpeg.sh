@@ -127,8 +127,15 @@ PY
   ;;
  *) echo 'Unknown target' >&2;exit 2;;
 esac
+# A test asset, not a dependency of the distributed server/player.
+export PORTICO_FFMPEG_TEST_FONT="$ROOT/packages/reader-core/assets/Literata[opsz,wght].ttf"
+mkdir -p "$INPUT/LICENSES/fixtures"
+cp "$ROOT/packages/reader-core/assets/OFL.txt" "$INPUT/LICENSES/fixtures/Literata-OFL.txt"
 mkdir -p "$WORK/provenance"
 mkdir -p "$WORK/provenance/contract" "$WORK/provenance/scripts"
+mkdir -p "$WORK/provenance/fixtures/subtitles"
+cp "$PORTICO_FFMPEG_TEST_FONT" "$WORK/provenance/fixtures/subtitles/Literata.ttf"
+cp "$ROOT/packages/reader-core/assets/OFL.txt" "$ROOT/packages/reader-core/assets/SOURCES.md" "$WORK/provenance/fixtures/subtitles/"
 mkdir -p "$WORK/provenance/portico-disc"
 cp "$WORK/checked-portico-disc.c" "$WORK/provenance/portico-disc/portico-disc.c"
 cp "$WORK/checked-portico-disc.LICENSE" "$WORK/provenance/portico-disc/LICENSE"

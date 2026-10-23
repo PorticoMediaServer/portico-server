@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
     parser.add_argument('--scratch', required=True, type=Path)
+    parser.add_argument('--font', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
     args = parser.parse_args()
     manifest = json.loads((args.bundle / 'toolchain-manifest.json').read_text())
@@ -24,10 +25,17 @@ def main():
     ffprobe = ffmpeg.with_name('ffprobe' + suffix)
     args.scratch.mkdir(parents=True, exist_ok=True)
     results = []
+    font_contract = json.loads((args.bundle / 'sources.lock.json').read_text())['testFixtures']['subtitleFont']
+    font_bytes = args.font.read_bytes()
+    if hashlib.sha256(font_bytes).hexdigest() != font_contract['sha256']:
+        raise ValueError('Subtitle fixture font differs from the locked MAIN asset')
+    license_path = args.bundle / 'LICENSES/fixtures/Literata-OFL.txt'
+    if hashlib.sha256(license_path.read_bytes()).hexdigest() != font_contract['licenseSHA256']:
+        raise ValueError('Subtitle fixture font license is missing or changed')
 
     def command(tool, flags):
         proc = subprocess.run([str(tool), *flags], stdin=subprocess.DEVNULL,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, cwd=work)
         if len(proc.stdout) > 4 << 20 or len(proc.stderr) > 4 << 20:
             raise ValueError('recipe output exceeded 4 MiB')
         if proc.returncode:
@@ -58,6 +66,32 @@ def main():
             raise ValueError('H.264/AAC encode and continuous 24-frame decode did not agree')
         results.append({'id': 'h264-aac-continuous-24fps', 'frames': len(frames),
                         'decodedFrameMD5SHA256': hashlib.sha256(decoded).hexdigest()})
+
+        # Use a locked OFL font, so this exercises actual libass rasterization
+        # without depending on fonts installed on the qualification host.
+        (work / 'fonts').mkdir()
+        (work / 'fonts/Literata.ttf').write_bytes(font_bytes)
+        (work / 'subtitle.ass').write_text('''[Script Info]
+ScriptType: v4.00+
+PlayResX: 128
+PlayResY: 72
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Literata,18,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,2,2,2,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Portico
+''')
+        rendered = convert('-i', video, '-map', '0:v:0', '-an',
+                           '-vf', 'ass=subtitle.ass:fontsdir=fonts,format=yuv420p', '-f', 'framemd5', '-')
+        burned_frames = [line for line in rendered.splitlines() if line and not line.startswith(b'#')]
+        changed = [a.rsplit(b',', 1)[-1].strip() != b.rsplit(b',', 1)[-1].strip()
+                   for a, b in zip(frames, burned_frames)]
+        if len(burned_frames) != 24 or not all(changed):
+            raise ValueError('ASS/libass subtitle burn-in did not change actual decoded video')
+        results.append({'id': 'libass-actual-burn-in', 'frames': 24,
+                        'fontSHA256': font_contract['sha256'],
+                        'renderedFrameMD5SHA256': hashlib.sha256(rendered).hexdigest()})
 
         # Encoded fixtures are generated here, never substituted licensed media.
         # TrueHD-in-MP4 is a plain codec round trip, not an Atmos/JOC fixture.

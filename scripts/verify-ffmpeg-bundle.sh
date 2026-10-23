@@ -6,4 +6,4 @@ set -euo pipefail
 python3 "$(dirname "$0")/verify-ffmpeg-manifest.py" "$1"
 python3 "$(dirname "$0")/verify-ffmpeg-features.py" "$1" --report "$1/../feature-report-$(basename "$1").json"
 python3 "$(dirname "$0")/verify-disc-bundle.py" "$1" --fixtures "${PORTICO_DISC_FIXTURES:?Set PORTICO_DISC_FIXTURES to the checked disc fixture manifest}" --fixture-sha256 "${PORTICO_DISC_FIXTURES_SHA256:?Set the checked disc fixture manifest SHA256}" --report "$1/../disc-report-$(basename "$1").json"
-python3 "$(dirname "$0")/verify-ffmpeg-recipes.py" "$1" --scratch "${TMPDIR:?Set TMPDIR to job scratch on disk}" --report "$1/../runtime-report-$(basename "$1").json"
+python3 "$(dirname "$0")/verify-ffmpeg-recipes.py" "$1" --font "${PORTICO_FFMPEG_TEST_FONT:-$(dirname "$0")/../packages/reader-core/assets/Literata[opsz,wght].ttf}" --scratch "${TMPDIR:?Set TMPDIR to job scratch on disk}" --report "$1/../runtime-report-$(basename "$1").json"
