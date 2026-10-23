@@ -73,6 +73,12 @@ jobs:
       - name: Test module
         run: ../scripts/test-go-module.sh '${{ matrix.module }}'
         working-directory: ${{ matrix.module }}
+      - name: Go test capacity after tests
+        if: ${{ !cancelled() }}
+        run: |
+          for path in /sys/fs/cgroup/cpu.stat /proc/loadavg; do
+            if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
+          done
       - name: Check generated contracts
         if: matrix.module == 'server'
         run: |
