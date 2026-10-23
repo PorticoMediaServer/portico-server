@@ -67,6 +67,9 @@ type Stream struct {
 	// Only an observed PMT dependency supplies this PID. STN EL membership
 	// alone never invents a relationship to a neighbouring or first video PID.
 	DolbyVisionBasePID *int `json:"dolbyVisionBasePid,omitempty"`
+	// VideoRole is the observed libbluray STN category, when supplied. It is
+	// not inferred from resolution, PID order, RPU presence or file naming.
+	VideoRole string `json:"videoRole,omitempty"`
 }
 type Chapter struct {
 	StartMs int64 `json:"startMs"`
@@ -151,6 +154,11 @@ func DecodeProbe(raw []byte) (Probe, error) {
 		}
 		for _, s := range t.Streams {
 			if s.ClipSequence < 0 || p.Kind == "bluray" && s.ClipSequence >= len(t.Clips) || s.PID < 0 || s.PID > 8191 || s.Coding < 0 || s.Coding > 255 || !isoLanguage.MatchString(s.Language) || (s.Kind != "video" && s.Kind != "audio" && s.Kind != "subtitle" && s.Kind != "interactive") || s.DolbyVisionEnhancementLayer && !s.DolbyVisionEnhancementKnown {
+				return p, ErrProtocol
+			}
+			if s.VideoRole != "" && (p.Kind != "bluray" || s.Kind != "video" ||
+				(s.VideoRole != "primary" && s.VideoRole != "secondary" && s.VideoRole != "enhancement") ||
+				(s.VideoRole == "enhancement") != s.DolbyVisionEnhancementLayer) {
 				return p, ErrProtocol
 			}
 			if s.DolbyVisionBasePID != nil && (p.Kind != "bluray" || !s.DolbyVisionEnhancementLayer ||
