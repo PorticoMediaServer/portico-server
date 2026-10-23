@@ -86,6 +86,7 @@ export function decodeServerRegistrationLeaveResponse(input: unknown): types.Ser
 export function decodeServerRemoveResponse(input: unknown): types.ServerRemoveResponse { return decode("ServerRemoveResponse", input) as types.ServerRemoveResponse; }
 export function decodeServerReturnCompleteResponse(input: unknown): types.ServerReturnCompleteResponse { return decode("ServerReturnCompleteResponse", input) as types.ServerReturnCompleteResponse; }
 export function decodeServerReturnExchangeResponse(input: unknown): types.ServerReturnExchangeResponse { return decode("ServerReturnExchangeResponse", input) as types.ServerReturnExchangeResponse; }
+export function decodeServerReturnRegistrationResponse(input: unknown): types.ServerReturnRegistrationResponse { return decode("ServerReturnRegistrationResponse", input) as types.ServerReturnRegistrationResponse; }
 export function decodeServerReturnStartResponse(input: unknown): types.ServerReturnStartResponse { return decode("ServerReturnStartResponse", input) as types.ServerReturnStartResponse; }
 export function decodeServerRoutesGetResponse(input: unknown): types.ServerRoutesGetResponse { return decode("ServerRoutesGetResponse", input) as types.ServerRoutesGetResponse; }
 export function decodeServerRoutesObserveResponse(input: unknown): types.ServerRoutesObserveResponse { return decode("ServerRoutesObserveResponse", input) as types.ServerRoutesObserveResponse; }
