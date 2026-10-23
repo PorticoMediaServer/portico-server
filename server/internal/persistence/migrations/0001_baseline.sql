@@ -2947,7 +2947,7 @@ CREATE TABLE dvr_recording_grants(
  authority TEXT NOT NULL CHECK(authority='local'),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),inherit_profiles INTEGER NOT NULL CHECK(inherit_profiles IN(0,1)),revision INTEGER NOT NULL,
  PRIMARY KEY(authority,account_id,profile_id)) STRICT;
-CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,live_tuner_conflict TEXT NOT NULL DEFAULT 'keep-watching' CHECK(live_tuner_conflict IN('keep-watching','stop-watching'))) STRICT;
+CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,live_tuner_conflict TEXT NOT NULL DEFAULT 'keep-watching' CHECK(live_tuner_conflict IN('keep-watching','stop-watching')),show_folder_template TEXT NOT NULL DEFAULT '',movie_folder_template TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
@@ -4853,7 +4853,7 @@ INSERT INTO networking_certificate_settings(singleton,enabled,public_port,public
 INSERT INTO networking_claim_schema(singleton,version) VALUES(1,3);
 INSERT INTO live_allocation_reconcile_cursor(singleton,cursor) VALUES(1,'');
 INSERT INTO lc_maintenance_cursor(singleton,position,channel_id) VALUES(1,-1,'');
-INSERT INTO dvr_storage_policy(singleton,revision,retention_days,episode_limit,floor_bytes,cap_bytes) VALUES(1,1,0,0,0,0);
+INSERT INTO dvr_storage_policy(singleton,revision,retention_days,episode_limit,floor_bytes,cap_bytes) VALUES(1,1,0,0,10000000000,0);
 INSERT INTO hosted_membership_sync(singleton,acked,full_pending,next_at,attempts,full_through,full_page,full_cursor,custodian) VALUES(1,0,1,0,0,0,0,'',NULL);
 INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','backup');
 INSERT INTO catalog_collection_visible_state(id,class_cursor,generation_cursor,item_cursor,backfill_done,turn) VALUES(1,0,0,0,0,0);
@@ -7990,4 +7990,83 @@ CREATE TABLE asset_stream_breadth(
  dovi_cm_version TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(asset_id,stream_index),
  FOREIGN KEY(asset_id,stream_index) REFERENCES asset_streams(asset_id,stream_index) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE dvr_recording_layouts(
+ recording_id TEXT PRIMARY KEY REFERENCES dvr_recordings(id),
+ owner_key TEXT NOT NULL,artifact_id TEXT NOT NULL,layout_revision INTEGER NOT NULL CHECK(layout_revision>=1),
+ root_path TEXT NOT NULL,root_identity TEXT NOT NULL,source_relative_path TEXT NOT NULL,source_identity TEXT NOT NULL,
+ target_relative_path TEXT NOT NULL,target_identity TEXT NOT NULL DEFAULT '',object_digest TEXT NOT NULL,
+ byte_size INTEGER NOT NULL CHECK(byte_size>0),phase TEXT NOT NULL CHECK(phase IN('prepared','linked','retired')),
+ target_base_relative_path TEXT NOT NULL,collision_ordinal INTEGER NOT NULL CHECK(collision_ordinal>=1)
+) STRICT;
+CREATE UNIQUE INDEX dvr_recording_layouts_live_path ON dvr_recording_layouts(root_identity,target_relative_path) WHERE phase!='retired';
+CREATE INDEX dvr_recording_layouts_linked_path ON dvr_recording_layouts(root_path||'/'||target_relative_path) WHERE phase='linked';
+
+CREATE TABLE inventory_disc_facts(
+ object_id TEXT PRIMARY KEY REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL, source_generation INTEGER NOT NULL CHECK(source_generation>0),
+ root_incarnation TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN('bluray','dvd')),
+ packaging TEXT NOT NULL CHECK(packaging IN('iso','folder')),
+ encryption TEXT NOT NULL CHECK(encryption IN('none','aacs','bdplus','css')),
+ fingerprint TEXT NOT NULL CHECK(length(fingerprint)=64)
+) STRICT;
+CREATE INDEX inventory_disc_facts_asset ON inventory_disc_facts(asset_id,object_id);
+CREATE TABLE inventory_disc_titles(
+ object_id TEXT NOT NULL REFERENCES inventory_disc_facts(object_id) ON DELETE CASCADE,
+ title_key TEXT NOT NULL, selection_token TEXT NOT NULL UNIQUE,
+ title_number INTEGER NOT NULL CHECK(title_number>0), disc_order INTEGER NOT NULL CHECK(disc_order>=0),
+ duration_ms INTEGER NOT NULL CHECK(duration_ms>=60000), angle_count INTEGER NOT NULL CHECK(angle_count BETWEEN 1 AND 255),
+ playlist INTEGER CHECK(playlist IS NULL OR playlist BETWEEN 0 AND 99999),
+ dvd_title INTEGER NOT NULL DEFAULT 0, vts INTEGER NOT NULL DEFAULT 0, pgc INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(object_id,title_key), UNIQUE(object_id,title_number)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_clips(
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,sequence INTEGER NOT NULL,
+ file TEXT NOT NULL,in_time_90k INTEGER NOT NULL,out_time_90k INTEGER NOT NULL,
+ PRIMARY KEY(object_id,title_key,sequence),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_streams(
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,stream_order INTEGER NOT NULL,
+ clip_sequence INTEGER NOT NULL,pid INTEGER NOT NULL,kind TEXT NOT NULL,coding INTEGER NOT NULL,language TEXT NOT NULL,
+ dv_enhancement INTEGER NOT NULL CHECK(dv_enhancement IN(0,1)),dv_enhancement_known INTEGER NOT NULL CHECK(dv_enhancement_known IN(0,1)),
+ dv_base_pid INTEGER, video_role TEXT NOT NULL DEFAULT'',
+ PRIMARY KEY(object_id,title_key,stream_order),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_disc_chapters(
+ object_id TEXT NOT NULL,title_key TEXT NOT NULL,chapter_order INTEGER NOT NULL,start_ms INTEGER NOT NULL,
+ PRIMARY KEY(object_id,title_key,chapter_order),
+ FOREIGN KEY(object_id,title_key) REFERENCES inventory_disc_titles(object_id,title_key) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE playback_observed_output(
+ session_id TEXT PRIMARY KEY REFERENCES playback_v1_sessions(id) ON DELETE CASCADE,
+ session_generation INTEGER NOT NULL CHECK(session_generation>0),
+ generation INTEGER NOT NULL CHECK(generation>0),
+ seq INTEGER NOT NULL CHECK(seq>=0),
+ observed_ms INTEGER NOT NULL CHECK(observed_ms>=0),
+ video_known INTEGER NOT NULL CHECK(video_known IN(0,1)),
+ video_width INTEGER NOT NULL CHECK(video_width BETWEEN 0 AND 32768),
+ video_height INTEGER NOT NULL CHECK(video_height BETWEEN 0 AND 32768),
+ video_fps REAL NOT NULL CHECK(video_fps BETWEEN 0 AND 1000),
+ video_bit_depth INTEGER NOT NULL CHECK(video_bit_depth IN(0,8,10,12,16)),
+ video_range TEXT NOT NULL,
+ screen_known INTEGER NOT NULL CHECK(screen_known IN(0,1)),
+ dynamic_range TEXT NOT NULL,
+ refresh_hz REAL NOT NULL CHECK(refresh_hz BETWEEN 0 AND 1000),
+ audio_known INTEGER NOT NULL CHECK(audio_known IN(0,1)),
+ audio_handling TEXT NOT NULL,
+ audio_codec TEXT NOT NULL,
+ object_audio TEXT NOT NULL,
+ channels INTEGER NOT NULL CHECK(channels BETWEEN 0 AND 64),
+ channel_layout TEXT NOT NULL,
+ sample_rate INTEGER NOT NULL CHECK(sample_rate BETWEEN 0 AND 1536000),
+ bit_depth INTEGER NOT NULL CHECK(bit_depth IN(0,16,20,24,32)),
+ subtitles_known INTEGER NOT NULL CHECK(subtitles_known IN(0,1)),
+ subtitle_rendering TEXT NOT NULL,
+ delivered_kbps INTEGER NOT NULL CHECK(delivered_kbps BETWEEN 0 AND 1000000)
 ) STRICT;
