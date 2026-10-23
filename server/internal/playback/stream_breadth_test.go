@@ -60,3 +60,39 @@ func TestVideoBreadthRelationalReadback(t *testing.T) {
 		t.Fatal("stale stream facts survived", rows, e)
 	}
 }
+
+func TestObservedInterlaceNormalizedReadback(t *testing.T) {
+	db, e := persistence.Open(filepath.Join(t.TempDir(), "state"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	_, _, asset := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "film", "Film", compactcatalog.Asset{Path: "/test/film.mkv", Size: 100, ModifiedNS: 1, Container: "matroska", VideoCodec: "h264", Duration: 10})
+	for _, state := range []string{assets.InterlaceFieldOrderProgressive, assets.InterlaceFieldOrderInterlaced, assets.InterlaceDecodedInterlaced, "decoded_frames", ""} {
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Deliberately opposite legacy JSON flag: normalized actual evidence wins
+		// for safe projection; false alone cannot establish progressive.
+		err = assets.PersistStreams(tx, asset, 100, 1, []assets.Stream{{Index: 0, Type: "video", Codec: "h264", Detail: assets.StreamDetail{Interlaced: true, StreamBreadth: assets.StreamBreadth{InterlaceAnalysis: state}}}})
+		if err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+		if err = tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		facts, err := loadDeliverySource(context.Background(), db, asset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observed := facts.Video.ObservedInterlaced()
+		if (observed != nil) != (state == assets.InterlaceFieldOrderProgressive || state == assets.InterlaceFieldOrderInterlaced || state == assets.InterlaceDecodedInterlaced) {
+			t.Fatal(state, observed)
+		}
+		if observed != nil && *observed != (state != assets.InterlaceFieldOrderProgressive) {
+			t.Fatal(state, *observed)
+		}
+	}
+}
