@@ -192,7 +192,12 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 				w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID})
 				var manifest ReadingSessionResponse
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &manifest) != nil || manifest.SessionID == "" || manifest.Sequential {
-					t.Fatal("real remote prepare", w.Code, w.Body.String())
+					p, authErr := f.id.Authenticate(token)
+					if authErr != nil {
+						t.Fatal("real remote actor after refusal", authErr)
+					}
+					_, _, sourceErr := d.Reading.Prepare(context.Background(), p, item.ID, item.SourceID)
+					t.Fatal("real remote prepare", w.Code, w.Body.String(), "private source stage", sourceErr)
 				}
 				base := "/v1/reading/sessions/" + manifest.SessionID
 				if !savedProfile {

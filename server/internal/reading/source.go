@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -255,10 +256,14 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 			var err error
 			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
 			if err != nil {
-				return 0, err
+				return 0, fmt.Errorf("reading range acquisition: %w", err)
 			}
 		}
-		return f.remoteRange.ReadAt(f.ctx, b, offset)
+		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
+		if err != nil {
+			return n, fmt.Errorf("reading range extent: %w", err)
+		}
+		return n, nil
 	}
 	wanted := min(int64(len(b)), f.Size-offset)
 	done := 0
