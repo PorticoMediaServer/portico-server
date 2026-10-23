@@ -17,6 +17,7 @@ import (
 
 	"portico.local/server/internal/authoritygate"
 	"portico.local/server/internal/claimweb"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
 )
@@ -270,8 +271,17 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	case <-time.After(3 * time.Second):
 		t.Fatal("typed expired capture without watch was stranded")
 	}
+	// The revoker runs inside the cancellation writer. Its signal is earlier
+	// than durable publication; a WAL reader can still see the old snapshot.
+	// Queue a writer barrier so the assertions observe commit or rollback,
+	// without polling, sleeping, or treating the hook as a commit receipt.
+	barrier, err := dbwork.Begin(ctx, db, dbwork.ClassSecurityFence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer barrier.Rollback()
 	var phase, moveStage string
-	if err = db.QueryRow(`SELECT c.phase,m.stage FROM identity_owner_completions c JOIN identity_moves m ON m.id=c.move_id`).Scan(&phase, &moveStage); err != nil || phase != "cancelled" || moveStage != "cancelled" || calls != 3 {
+	if err = barrier.Tx().QueryRow(`SELECT c.phase,m.stage FROM identity_owner_completions c JOIN identity_moves m ON m.id=c.move_id`).Scan(&phase, &moveStage); err != nil || phase != "cancelled" || moveStage != "cancelled" || calls != 3 {
 		t.Fatal("no-watch expiry retained move or contacted Hosted", err, phase, moveStage, calls)
 	}
 }
