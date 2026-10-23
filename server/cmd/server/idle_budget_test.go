@@ -127,8 +127,8 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 			profile := dbwork.StatementProfile()
 			dbwork.ProfileStatements(false)
 			sort.Slice(profile, func(i, j int) bool { return profile[i].Count > profile[j].Count })
-			if len(profile) > 12 {
-				profile = profile[:12]
+			if len(profile) > 48 {
+				profile = profile[:48]
 			}
 			report.Top = profile
 		}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/segmentdetect"
 	"portico.local/server/internal/segmentdetect/segmentsynth"
@@ -113,6 +114,32 @@ func (f *segmentFixture) settle() {
 		}
 	}
 	f.t.Fatal("the segment worker did not settle")
+}
+
+func TestSegmentCatchupSettlesWithoutPublishingUnchangedProgress(t *testing.T) {
+	f := newSegmentFixture(t)
+	ctx := context.Background()
+	if _, err := f.service.segmentCatchup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := dbwork.ChangingCommits()
+	for range 3 {
+		if more, err := f.service.segmentCatchup(ctx); err != nil || more {
+			t.Fatalf("settled catchup: more=%v err=%v", more, err)
+		}
+	}
+	if got := dbwork.ChangingCommits() - before; got != 0 {
+		t.Fatalf("unchanged catchup published %d changing commits", got)
+	}
+	// Real inventory progress must still queue the newly discovered episode.
+	f.episode("new-episode", 1, 1, 0)
+	if _, err := f.service.segmentCatchup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var queued int
+	if err := f.c.DB.QueryRow(`SELECT count(*) FROM segment_files WHERE object_id=? AND state='pending'`, f.objects["new-episode"]).Scan(&queued); err != nil || queued != 1 {
+		t.Fatalf("new inventory was not queued: %d %v", queued, err)
+	}
 }
 
 type fixtureMarker struct {
