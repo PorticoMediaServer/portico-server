@@ -135,7 +135,7 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.name":                                               {"internal/identity/service.go", "literal:name", "Name the server in identity documents"},
 	"operations.Settings.notificationDays":                                   {"internal/operations/evidence.go", "NotificationDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.pausedSessionTimeoutMinutes":                        {"internal/httpapi/playback_v1_routes.go", "PausedSessionTimeoutMinutes", "Expire paused playback sessions"},
-	"operations.Settings.perAccountCap":                                      {"internal/playback/v1_session_helpers.go", "literal:per_account_cap", "Admit streams against the owner cap"},
+	"operations.Settings.perAccountCap":                                      {"internal/streamlimits/limits.go", "literal:per_account_cap", "Resolve the account limit against the owner hard ceiling for playback admission"},
 	"operations.Settings.planningPolicy":                                     {"internal/playback/delivery_plan.go", "PlanningPolicy", "Plan media delivery using owner policy"},
 	"operations.Settings.playHistoryDays":                                    {"internal/operations/evidence.go", "PlayHistoryDays", "Prune the corresponding history by its retention rule"},
 	"operations.Settings.playedRetentionMs":                                  {"internal/httpapi/delivery_settings_adapter.go", "PlayedRetentionMs", "Pace conversion and retain played segments"},
