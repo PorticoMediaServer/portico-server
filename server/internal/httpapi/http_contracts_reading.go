@@ -12,6 +12,11 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, ReadingItemsResponse](registry, m); err != nil {
 		return err
 	}
+	m = metadata("get_reading_continue", "GET", "/v1/reading/continue", "List the viewer's unfinished reading publications", apikit.ScopeRead)
+	m.Query = []string{"libraryId", "cursor", "limit"}
+	if err := apikit.RegisterHTTP[struct{}, ReadingContinueResponse](registry, m); err != nil {
+		return err
+	}
 	m = metadata("get_items_itemId_reading_versions", "GET", "/v1/items/{itemId}/reading/versions", "List a reading publication's actual versions", apikit.ScopeRead)
 	if err := apikit.RegisterHTTP[struct{}, ReadingVersionsResponse](registry, m); err != nil {
 		return err

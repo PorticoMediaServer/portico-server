@@ -16,6 +16,7 @@ export function currentWatchPolicy(binding: Pick<WatchPolicyBinding, 'getSnapsho
     || shown.authority !== live.authority || live.dock.remote?.phase === 'playing'
     || shown.presentation?.kind !== 'video' || !shown.presentation.expanded || live.presentation?.kind !== 'video' || !live.presentation.expanded) return null;
   if (!sameFence(shown.presentation.fence, fence) || !sameFence(live.presentation.fence, fence)) return null;
+  if (!shown.presentation.controls.includes('seek') || !live.presentation.controls.includes('seek')) return null;
   return {fence, shown: shown.presentation.policy, live: live.presentation.policy};
 }
 

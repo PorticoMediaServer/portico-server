@@ -37,6 +37,14 @@ type ReadingItemsResponse struct {
 	Items      []ReadingItem `json:"items"`
 	NextCursor string        `json:"nextCursor,omitempty"`
 }
+type ReadingContinueItem struct {
+	Item     ReadingItem     `json:"item"`
+	Progress ReadingProgress `json:"progress"`
+}
+type ReadingContinueResponse struct {
+	Items      []ReadingContinueItem `json:"items"`
+	NextCursor string                `json:"nextCursor,omitempty"`
+}
 type ReadingVersion struct {
 	SourceID           string        `json:"sourceId"`
 	Format             ReadingFormat `json:"format"`

@@ -78,6 +78,14 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			}
 		}
 		method, template, _ := strings.Cut(pattern, " ")
+		isList := template == "/v1/reading/items" || template == "/v1/reading/continue"
+		if template == "/v1/reading/continue" {
+			page := int64(0)
+			w := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+manifest.SessionID+"/progress", token, manifest.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: "pdf", PageIndex: &page, Progression: .25}})
+			if w.Code != 200 {
+				t.Fatal("actual continue position", w.Code, w.Body.String())
+			}
+		}
 		expectedRevision := int64(0)
 		request := func(bearer string, m ReadingSessionResponse) *httptest.ResponseRecorder {
 			path := strings.NewReplacer("{itemId}", r.item, "{sessionId}", m.SessionID, "{pageIndex}", "0").Replace(template)
@@ -90,7 +98,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 				path += "?path=" + url.QueryEscape(m.Spine[0])
 			case strings.Contains(template, "/pages/"):
 				path += "?width=32"
-			case template == "/v1/reading/items":
+			case isList:
 				path += "?limit=1"
 			case method == "POST":
 				body = ReadingSessionRequest{r.item, r.source}
@@ -168,7 +176,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			if w.Code != want {
 				t.Fatalf("visible Reading control: %d %s", w.Code, w.Body.String())
 			}
-			if template == "/v1/reading/items" || strings.Contains(template, "{itemId}") {
+			if isList || strings.Contains(template, "{itemId}") {
 				if !strings.Contains(w.Body.String(), r.source) {
 					t.Fatal("visible list/version omitted actual source")
 				}
@@ -188,7 +196,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 		if method != "DELETE" {
 			w := request(token, manifest)
 			assertPrivate(w)
-			if template == "/v1/reading/items" {
+			if isList {
 				var list ReadingItemsResponse
 				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 0 || list.NextCursor != "" {
 					t.Fatal("restricted bounded list", w.Code, w.Body.String())
@@ -232,7 +240,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			if w.Code != 204 || w.Body.Len() != 0 {
 				t.Fatal("own hidden session cleanup", w.Code, w.Body.String())
 			}
-		} else if template == "/v1/reading/items" {
+		} else if isList {
 			assertPrivate(w)
 			var list ReadingItemsResponse
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Items) != 0 {
