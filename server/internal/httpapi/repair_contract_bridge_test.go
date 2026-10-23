@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/hostedtrust"
