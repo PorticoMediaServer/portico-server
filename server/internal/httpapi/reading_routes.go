@@ -38,6 +38,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 		})
 	}
 	register("GET /v1/reading/items", []string{"libraryId", "cursor", "limit"}, d.listReadingItems)
+	register("GET /v1/reading/continue", []string{"libraryId", "cursor", "limit"}, d.readingContinue)
 	register("GET /v1/items/{itemId}/reading/versions", nil, d.readingVersions)
 	register("POST /v1/reading/sessions", nil, d.prepareReadingSession)
 	register("GET /v1/reading/sessions/{sessionId}/progress", nil, d.readingSessionProgress)
@@ -79,6 +80,32 @@ func (d Dependencies) listReadingItems(w http.ResponseWriter, r *http.Request) {
 	out := ReadingItemsResponse{Items: []ReadingItem{}, NextCursor: page.NextCursor}
 	for _, item := range page.Items {
 		out.Items = append(out.Items, ReadingItem{item.ID, item.LibraryID, item.Title, ReadingFormat(item.Format), item.SourceID, item.InventoryAvailable})
+	}
+	write(w, 200, out)
+}
+
+func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
+	p, ok := d.readingPrincipal(w, r)
+	if !ok {
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		var err error
+		if limit, err = strconv.Atoi(raw); err != nil {
+			readingFailure(w, reading.ErrInvalid)
+			return
+		}
+	}
+	page, err := d.readingService().Continue(r.Context(), p, r.URL.Query().Get("libraryId"), r.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		readingFailure(w, err)
+		return
+	}
+	out := ReadingContinueResponse{Items: []ReadingContinueItem{}, NextCursor: page.NextCursor}
+	for _, row := range page.Items {
+		v := row.Item
+		out.Items = append(out.Items, ReadingContinueItem{Item: ReadingItem{v.ID, v.LibraryID, v.Title, ReadingFormat(v.Format), v.SourceID, v.InventoryAvailable}, Progress: *readingProgressProjection(&row.Progress)})
 	}
 	write(w, 200, out)
 }
