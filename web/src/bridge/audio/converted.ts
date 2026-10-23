@@ -75,9 +75,7 @@ export class ConvertedSource implements PcmSource {
     this.channels = plan.channels;
     this.at = fromFrame;
     this.locked = o.locked;
-    // Preserve a neutral receiver for an injected native browser fetch.
-    const fetcher = o.fetch ?? ((u, i) => fetch(u, i));
-    this.fetcher = (u, i) => fetcher(u, i);
+    this.fetcher = o.fetch ?? ((u, i) => fetch(u, i));
   }
 
   unlock() { this.locked = false; const w = this.waiting; this.waiting = []; for (const f of w) f(); }

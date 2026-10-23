@@ -66,9 +66,7 @@ export class RangeReader implements ByteReader {
   private readonly onBytes?: (count: number) => void;
   constructor(o: {url: string; key: string; size?: number; cache: ByteCache; fetch?: RangeFetch; limit?: number; /** Bytes arrived from the server (not from the cache). */ onBytes?: (count: number) => void}) {
     this.url = o.url; this.key = o.key; this.size = o.size; this.cache = o.cache; this.onBytes = o.onBytes;
-    // An injected browser fetch is a callback, not a method of this reader.
-    const fetcher = o.fetch ?? ((u, i) => fetch(u, i));
-    this.fetcher = (u, i) => fetcher(u, i);
+    this.fetcher = o.fetch ?? ((u, i) => fetch(u, i));
     this.limit = o.limit ?? Infinity;
   }
   /** At commit: the whole file may now be fetched. */
