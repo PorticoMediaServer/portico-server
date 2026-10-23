@@ -27,6 +27,8 @@ export class SecurePendingStorage<T> {
       throw new RouteError('secure_context_required', 'This continuation requires a secure browser context.');
   }
   private store() {this.requireSecure(); return this.storage ??= this.create();}
+  /** Check before creating even a tab locator or issuing a preparation request. */
+  assertAvailable() {this.requireSecure();}
   async read() {const value = await this.store().read(); this.requireSecure(); return value;}
   async change(update: (current: T | undefined) => T | undefined) {
     await this.store().change(current => {this.requireSecure(); return update(current);});

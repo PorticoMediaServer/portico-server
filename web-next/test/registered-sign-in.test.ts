@@ -1,0 +1,99 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {BrowserRegisteredSignIn} from '../src/platform/registered-sign-in.ts';
+import {routeBase64} from '@core/route-identity.ts';
+import type {ReturnPending, RegisteredSignIn} from '@core/same-tab-return.ts';
+import type {DirectSignIn} from '@core/profile-management.ts';
+
+type Ports = ConstructorParameters<typeof BrowserRegisteredSignIn>[0];
+type Pending = Awaited<ReturnType<Ports['journal']['read']>>;
+const origin = 'https://server.example', hostedOrigin = 'https://accounts.example';
+const installation = 'b938fb7e-54a0-425b-904e-f896ad76455a';
+async function fixture() {
+  const raw = new Uint8Array(32).fill(17), prefix = new TextEncoder().encode('portico.server.identity.v1\0');
+  const bytes = new Uint8Array(prefix.length + raw.length); bytes.set(prefix); bytes.set(raw, prefix.length);
+  const hash = async (data: Uint8Array) => routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(data))));
+  const pin = {serverId: 'srv_' + await hash(bytes), publicKey: routeBase64(raw), fingerprint: await hash(raw)};
+  const pending: ReturnPending = {serverId: pin.serverId, purpose: 'sign-in', claimOperationId: 'actual_installed_operation',
+    registrationId: 'ret_' + 'r'.repeat(43), registrationOrigin: origin, state: 's'.repeat(43), verifier: 'v'.repeat(43),
+    serverChallenge: 'c'.repeat(43), installationId: installation, createdAt: Date.now(), moveTicket: 'm'.repeat(43)};
+  let saved: Pending, revision = 7, currentInstallation = installation, grant: DirectSignIn = {
+    kind: 'signed-in', accountScoped: true, passwordChangeRequired: false,
+    snapshot: {authority: 'local', serverId: pin.serverId, canManage: true,
+      capabilities: {manageAccount: true, managePeople: false, manageServer: false, manageSignIn: false},
+      account: {id: 'server-account', username: 'person', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: [], hostedAccountId: 'actual-hosted-account'},
+      profiles: [{id: 'main', name: 'Main', primary: true, art: 'blue', position: 0, revision: 1, pinRevision: 1, pinRequired: true}]},
+    session: {accessToken: 'server-access', refreshToken: 'server-refresh', sessionFamilyId: 'new-server-family', tokenGeneration: '1', installationId: installation,
+      expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {authority: 'local', serverId: pin.serverId, accountId: 'server-account', profileId: 'main', role: 'account'}},
+  };
+  const calls: string[] = [], retired: string[] = [], exposed: RegisteredSignIn[] = [];
+  const connection = {pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {calls.push('dispose-prepared');}};
+  const api = {baseUrl: origin, getRouteConnection: () => connection, setAccessToken: () => {}} as never;
+  const boundConnection = {dispose: () => {calls.push('dispose-bound');}};
+  let gate: Promise<void> | undefined, resolveGate: (() => void) | undefined;
+  const storage = {read: async () => undefined, change: async () => {}};
+  const ports: Ports = {
+    journal: {assertAvailable: () => {calls.push('secure-context');}, read: async () => saved, change: async update => {saved = update(saved);}},
+    sessions: {read: async () => ({version: 1, revision, servers: []}), connectionStorage: (_id, admission) => {assert.equal(admission?.expectedRevision, 7); calls.push('admission'); return storage;}},
+    environment: () => ({storage}), installationId: () => currentInstallation,
+    startURL: value => {assert.equal(saved?.pending.verifier, pending.verifier); exposed.push(value); return hostedOrigin + '/#canonical-builder-result';},
+    prepare: (async (_api, store) => {
+      if (gate) await gate;
+      await store.change(() => pending);
+      return {start: {serverId: pin.serverId, purpose: 'sign-in', claimOperationId: pending.claimOperationId, registrationId: pending.registrationId,
+        state: pending.state, codeChallenge: 'p'.repeat(43), serverChallenge: pending.serverChallenge, installationId: pending.installationId},
+        registration: {id: pending.registrationId, origin}, hostedOrigin, expiresAt: new Date(pending.createdAt + 299000).toISOString()};
+    }) as Ports['prepare'],
+    connect: (async () => {calls.push('connect'); return {api, connection};}) as Ports['connect'],
+    consume: (async (_api, store) => {assert.equal(saved, undefined, 'the durable journal is spent before the request'); assert.equal((await store.read())?.state, pending.state); calls.push('exchange'); if (gate) await gate; return grant;}) as Ports['consume'],
+    connectPortico: (async (_origin, _pin, source) => {assert.equal(source.accountId, 'actual-hosted-account'); calls.push('route-key'); return {api, connection: boundConnection, hosted: {origin: hostedOrigin, accountId: source.accountId, key: {keyId: 'key', publicKey: pin.publicKey}}};}) as Ports['connectPortico'],
+    remember: async () => {calls.push('remember');}, retire: async (_api, session) => {retired.push(session.sessionFamilyId);},
+  };
+  const flow = new BrowserRegisteredSignIn(ports);
+  const callback = {href: origin + '/auth/portico-return', fragment: '#code=src_' + 'a'.repeat(43) + '&state=' + pending.state + '&transaction=srt_' + 't'.repeat(43)};
+  const prepare = () => flow.prepare(api, origin, hostedOrigin, installation, {moveTicket: pending.moveTicket});
+  return {flow, prepare, callback, calls, retired, exposed, saved: () => saved,
+    revise: () => {revision++;}, changeInstallation: () => {currentInstallation = 'changed-installation'.padEnd(43, '_');},
+    mutate: (update: (old: NonNullable<Pending>) => Pending) => {saved = update(saved!);},
+    hold: () => {gate = new Promise(resolve => {resolveGate = resolve;});}, release: () => {resolveGate?.(); gate = undefined;},
+    grant: (value: DirectSignIn) => {grant = value;}, answer: () => grant};
+}
+test('preparation protects verifier/move proof and captures actual UUID/revision before exposing only canonical RegisteredSignIn', async () => {
+  const f = await fixture(); assert.equal(await f.prepare(), hostedOrigin + '/#canonical-builder-result');
+  assert.equal(f.saved()?.expectedRevision, 7); assert.equal(f.saved()?.pending.installationId, installation);
+  assert.equal(f.exposed[0].start.claimOperationId, 'actual_installed_operation');
+  assert.doesNotMatch(JSON.stringify(f.exposed), /verifier|moveTicket|server-access|server-refresh/);
+});
+test('cancelled preparation cannot leave a late durable pending record', async () => {
+  const f = await fixture(); f.hold(); const work = f.prepare(); await new Promise(resolve => setImmediate(resolve));
+  f.flow.cancel(); f.release(); await assert.rejects(work, {code: 'cancelled'}); assert.equal(f.saved(), undefined);
+});
+test('a changed app selection prevents handoff and removes only this pending attempt', async () => {
+  const f = await fixture(); f.hold(); const work = f.prepare(); await new Promise(resolve => setImmediate(resolve));
+  f.revise(); f.release(); await assert.rejects(work, {code: 'cancelled'}); assert.equal(f.saved(), undefined);
+});
+test('normal completion spends the journal once and durably admits the exact server/account before returning', async () => {
+  const f = await fixture(); await f.prepare(); await f.flow.finish(f.callback);
+  assert.deepEqual(f.calls.filter(value => value !== 'secure-context'), ['connect', 'exchange', 'route-key', 'admission', 'remember', 'dispose-prepared']);
+  assert.deepEqual(f.retired, []); await assert.rejects(f.flow.finish(f.callback), {code: 'invalid_return'});
+});
+for (const change of ['revision', 'installation', 'expired', 'owner-fragment'] as const) test('callback refuses ' + change + ' before a server exchange', async () => {
+  const f = await fixture(); await f.prepare();
+  if (change === 'revision') f.revise();
+  if (change === 'installation') f.changeInstallation();
+  if (change === 'expired') f.mutate(old => ({...old, expiresAt: '2000-01-01T00:00:00Z'}));
+  await assert.rejects(f.flow.finish(change === 'owner-fragment' ? {...f.callback, fragment: '#transaction=owner'} : f.callback));
+  assert.equal(f.calls.includes('exchange'), false); assert.equal(f.saved(), undefined);
+});
+test('a grant completed after cancellation retires only its captured family and never becomes a selected session', async () => {
+  const f = await fixture(); await f.prepare(); f.hold(); const work = f.flow.finish(f.callback);
+  while (!f.calls.includes('exchange')) await new Promise(resolve => setImmediate(resolve));
+  f.flow.cancel(); f.release(); await assert.rejects(work, {code: 'cancelled'});
+  assert.deepEqual(f.retired, ['new-server-family']); assert.equal(f.calls.includes('remember'), false);
+});
+test('a selection changed while exchanging cannot publish the returned server family', async () => {
+  const f = await fixture(); await f.prepare(); f.hold(); const work = f.flow.finish(f.callback);
+  while (!f.calls.includes('exchange')) await new Promise(resolve => setImmediate(resolve));
+  f.revise(); f.release(); await assert.rejects(work, {code: 'cancelled'});
+  assert.deepEqual(f.retired, ['new-server-family']); assert.equal(f.calls.includes('route-key'), false);
+});
