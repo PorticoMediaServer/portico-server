@@ -156,6 +156,11 @@
                     },
                     "dolbyVisionEnhancementKnown": {
                       "type": "boolean"
+                    },
+                    "dolbyVisionBasePid": {
+                      "type": "integer",
+                      "minimum": 32,
+                      "maximum": 8190
                     }
                   },
                   "required": [
