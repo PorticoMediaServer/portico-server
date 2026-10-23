@@ -84,3 +84,21 @@ scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --a
 ```
 
 The old service/configuration and old database remain available for rollback; a new binary never opens old state. The new unit uses `PORTICO_SERVICE=1` and explicitly permits its normal `/var/cache/portico` transcode path. Server transcoding stays disabled on this1CPU/1GB review box. A release APK uses the normal Welcome/local-server flow with `https://demo.getportico.tv` typed by the reviewer; no DEV proof entry, injected runtime or embedded credentials.
+
+### Setup and catalogue guards
+
+Complete fresh setup through `POST /v1/setup/browser`, `POST /v1/setup` with local auth, then `GET /v1/setup/state` and `POST /v1/setup/finish` with the returned revision. Create the second profile with `POST /v1/direct/profiles`; profile lists come back in that response. Disable transcoding with the revisioned owner console-settings API and verify `effective.transcodingEnabled` is false. Never carry an old session, server identity, database or installation into the fresh cycle.
+
+Create Movies, TV Shows, Anime, Music and Audiobooks through `POST /v1/libraries`, then scan each with `POST /v1/libraries/{id}/scans`. Follow the returned job through `GET /v1/admin/ingestion/jobs/{jobId}`. Health readiness does not imply catalogue analysis is finished. The approved review view `/srv/portico-review-r40` preserves the original `/srv/portico-demo-20260919` files and contains the retained continuous Infected/Rick/Solo timelines plus four full-duration Rumours FLACs. Other retained clips keep their actual lengths; never substitute a title-runtime manifest for probe results.
+
+Before personal progress or clock comparisons, require positive agreement between `GET /v1/items/{id}/detail` (`item.durationMs`), playback-options versions and parts, and file-info files (`durationMs`). Use the real personal revision for each separate personal-state operation. Current album songs come from `GET /v1/albums/{id}/songs`; their runtime sum and the genuine queue's `totalDurationMs` must agree. A controlled paused API occurrence/history fixture does not establish decoding or visible playback. Frame pairs remain the screen owner's/tester's work.
+
+### Embedded arm64 APK
+
+Use a clean exact native MAIN checkout and a dependency seed with its identical native lockfile:
+
+```sh
+python3 scripts/build-review-apk.py --repo /path/to/clean-native-main --seed /path/to/matching/apps/native/node_modules --engine /path/to/retained/media-engine/out/android --scratch /home/justin/projects/Portico/.scratch/release-r40 --artifacts /home/justin/projects/Portico/.artifacts/release-r40/native-COMMIT
+```
+
+The helper uses the Android slot, two workers/CPU affinity, current-source JNI, arm64 engine verification, notices and embedded-JS/ABI checks. It requires an unused owned dependency path; remove only that checkout's finished disposable dependency/build output after retaining the APK. Signatures are verified before review publication. The retained baseline engine is8.1.2; a source-only8.1.3 or different native MAIN is never an interchangeable payload. Publish the artifact's actual native cohort and retain the previous artifact until the next one is ready.
