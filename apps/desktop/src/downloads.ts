@@ -1,4 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
+import {sameSavedDownloadsScope,type SavedLocalDownloadGroup,type SavedLocalGroupSelector,type SavedOtherDownloadsConfirmation} from '../../../web-next/src/screens/saved/downloads-port.ts';
 import {parseDownloadTitle, type DownloadTitle, type DownloadReceipt} from '../../../packages/client-core/src/downloads.ts';
 
 // App-owned transport. UI owners consume the canonical web port after its MAIN landing.
@@ -54,6 +55,27 @@ function capacity(value:unknown):Capacity{
   if(freeBytes>totalBytes)return invalid();
   return Object.freeze({totalBytes,freeBytes,usedBytes:integer(v.usedBytes),otherDownloadsBytes:integer(v.otherDownloadsBytes)});
 }
+function selector(value:SavedLocalGroupSelector):SavedLocalGroupSelector{
+  if(!['songs','episodes'].includes(value.kind))return invalid();
+  return Object.freeze({kind:value.kind,parentId:id(value.parentId),...(value.groupId!==undefined?{groupId:value.groupId===''?'':id(value.groupId)}:{})});
+}
+function groups(value:unknown):readonly SavedLocalDownloadGroup[]{
+  if(!Array.isArray(value))return invalid();
+  return Object.freeze(value.map(raw=>{
+    const v=object(raw);if(!['songs','episodes'].includes(String(v.kind)))return invalid();
+    const bytes=integer(v.bytes),bytesDone=integer(v.bytesDone),count=integer(v.count);
+    if(!count||bytesDone>bytes)return invalid();
+    const optional:{-readonly [K in keyof SavedLocalDownloadGroup]?:SavedLocalDownloadGroup[K]}={};
+    if(v.parentTitle!==undefined){const title=text(v.parentTitle);if(!title.trim())return invalid();optional.parentTitle=title;}
+    if(v.artist!==undefined){const artist=text(v.artist);if(!artist.trim())return invalid();optional.artist=artist;}
+    if(v.quality!==undefined)optional.quality=id(v.quality);
+    if(v.state!==undefined){if(!['queued','downloading','paused','failed','ready'].includes(String(v.state)))return invalid();optional.state=v.state as LocalDownload['state'];}
+    if(v.held!==undefined)optional.held=boolean(v.held);
+    if(v.artworkId!==undefined)optional.artworkId=digest(v.artworkId);
+    if(v.offlineAccess!==undefined){if(!['valid','needsCheckIn'].includes(String(v.offlineAccess)))return invalid();optional.offlineAccess=v.offlineAccess as 'valid'|'needsCheckIn';}
+    return Object.freeze({kind:v.kind as 'songs'|'episodes',parentId:id(v.parentId),groupId:v.groupId===''?'':id(v.groupId),count,bytes,bytesDone,revision:digest(v.revision),...optional});
+  }));
+}
 function aborted():never{throw new DOMException('Aborted','AbortError');}
 function checkScope(scope:DownloadScope):DownloadScope{
   if(!['local','hosted'].includes(scope.authority))return invalid();
@@ -86,6 +108,18 @@ export class DesktopDownloadStore {
   list(cursor:DownloadCursor|null=null,signal?:AbortSignal){return this.request({action:'list',cursor,limit:100},'page',page,signal);}
   entry(entryId:string,signal?:AbortSignal){return this.request({action:'entry',id:digest(entryId)},'entry',parseLocalDownload,signal);}
   capacity(signal?:AbortSignal){return this.request({action:'capacity'},'capacity',capacity,signal);}
+  groups(signal?:AbortSignal){return this.request({action:'groups'},'groups',groups,signal);}
+  actionGroup(group:SavedLocalGroupSelector,expectedRevision:string,operation:'remove'|'pause'|'resume'|'retry',signal?:AbortSignal){
+    if(!['remove','pause','resume','retry'].includes(operation))return Promise.reject(new Error('invalid_command'));
+    return this.request({action:'groupAction',selector:selector(group),expectedRevision:digest(expectedRevision),operation},'done',()=>undefined,signal);
+  }
+  previewOtherProfiles(signal?:AbortSignal):Promise<SavedOtherDownloadsConfirmation>{
+    return this.request({action:'previewOtherProfiles'},'otherProfiles',value=>{const v=object(value);return Object.freeze({scope:this.scope,snapshotToken:digest(v.snapshotToken),bytes:integer(v.bytes)});},signal);
+  }
+  removeOtherProfiles(confirmation:SavedOtherDownloadsConfirmation,signal?:AbortSignal){
+    if(!sameSavedDownloadsScope(this.scope,confirmation.scope))return Promise.reject(new Error('downloads_conflict'));
+    return this.request({action:'removeOtherProfiles',snapshotToken:digest(confirmation.snapshotToken)},'done',()=>undefined,signal);
+  }
   rules(signal?:AbortSignal){return this.request({action:'rules'},'rules',rules,signal);}
   setRules(expectedRevision:number,value:DownloadRules,signal?:AbortSignal){return this.request({action:'setRules',expectedRevision:integer(expectedRevision),value},'rules',rules,signal);}
   enroll(input:Readonly<{preparationId:string;itemId:string;quality:string;sha256:string;bytes:number;title:DownloadTitle}>,signal?:AbortSignal){

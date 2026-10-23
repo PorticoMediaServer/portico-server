@@ -34,3 +34,31 @@ test('artwork is a native byte Blob or null; raw errors never reach UI',async()=
  const blob=await store.getArtwork(rowId);assert.equal(blob?.type,'image/png');assert.deepEqual([...new Uint8Array(await blob!.arrayBuffer())],[137,80,78,71]);store.dispose();
  assert.equal(downloadFailure(new Error('/private/path?secret=hidden')).message,'downloads_unavailable');assert.equal(downloadFailure('downloads_conflict').message,'downloads_conflict');
 });
+
+test('MAIN group facts are complete native aggregates without first-row metadata or guessed access',async()=>{
+ const revision='d'.repeat(64);let actual:Record<string,unknown>={kind:'songs',parentId:'album',groupId:'disc',count:4,bytes:32,bytesDone:16,revision,offlineAccess:'needsCheckIn'};
+ const calls:Record<string,unknown>[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,bridge(async(_,op)=>{calls.push({...op});return op.action==='groups'?{kind:'groups',value:[actual]}:{kind:'done'}}));
+ try{
+  let groups=await store.groups();assert.equal(groups[0].count,4);assert.equal(groups[0].offlineAccess,'needsCheckIn');assert.equal('artist' in groups[0],false);assert.equal('parentTitle' in groups[0],false);
+  actual={...actual,parentTitle:'Uniform native album',artist:'Uniform native artist',held:false,state:'ready',offlineAccess:'valid'};
+  groups=await store.groups();assert.equal(groups[0].artist,'Uniform native artist');assert.equal(groups[0].parentTitle,'Uniform native album');
+  await store.actionGroup({kind:'songs',parentId:'album',groupId:'disc'},revision,'pause');
+  assert.deepEqual(calls.at(-1),{action:'groupAction',selector:{kind:'songs',parentId:'album',groupId:'disc'},expectedRevision:revision,operation:'pause'});
+  actual={...actual,bytesDone:33};await assert.rejects(store.groups(),/downloads_unavailable/);
+ }finally{store.dispose();}
+});
+
+test('other-profile removal sends exact native confirmation and rejects every different captured scope',async()=>{
+ const token='e'.repeat(64),calls:Record<string,unknown>[]=[];
+ const store=await DesktopDownloadStore.bind(scope,()=>true,bridge(async(_,op)=>{calls.push({...op});return op.action==='previewOtherProfiles'?{kind:'otherProfiles',value:{snapshotToken:token,bytes:777}}:{kind:'done'}}));
+ try{
+  const confirmation=await store.previewOtherProfiles();assert.deepEqual(confirmation,{scope,snapshotToken:token,bytes:777});
+  for(const key of ['authority','serverId','accountId','profileId','sessionFamilyId'] as const){
+   const other={...confirmation,scope:{...scope,[key]:key==='authority'?'hosted':'other'}};
+   await assert.rejects(store.removeOtherProfiles(other),/downloads_conflict/);
+  }
+  assert.equal(calls.length,1);await store.removeOtherProfiles(confirmation);
+  assert.deepEqual(calls.at(-1),{action:'removeOtherProfiles',snapshotToken:token});
+ }finally{store.dispose();}
+});
