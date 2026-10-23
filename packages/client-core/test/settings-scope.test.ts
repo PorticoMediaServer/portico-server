@@ -31,17 +31,14 @@ test('rows stored in the registry are never marked as this one device, and rows 
   assert.equal(quality && 'scope' in quality ? quality.scope : undefined, 'deviceClass');
 });
 
-test('the Player setting is offered only where there is a second player to choose, never on the web, and belongs to the one device', () => {
-  const find = (platform: SettingsPlatform, playerEngines?: boolean) => settingsStructure({platform, owner: false, capabilities: {playerEngines}} as Parameters<typeof settingsStructure>[0])
-    .headings.flatMap(h => h.pages.flatMap(p => p.sections.flatMap(s => s.rows))).find(row => row.kind === 'composite' && row.id === 'playerEngine');
-  assert.equal(find('phone'), undefined, 'a build without mpv has nothing to choose');
-  assert.equal(find('web', true), undefined);
-  for (const platform of ['phone', 'tv'] as const) {
-    const row = find(platform, true);
-    assert.ok(row && row.kind === 'composite');
-    assert.equal(row.storage, 'device');
-    assert.equal(row.scope, 'device');
-    assert.deepEqual(row.control.type === 'choice' ? row.control.choices.map(c => c.value) : [], ['automatic', 'native', 'mpv']);
+test('Quality & data does not offer the retired Player or passthrough controls', () => {
+  for (const platform of ['web', 'phone', 'tv'] as const) {
+    const quality = settingsStructure({platform, owner: false, capabilities: {playerEngines: true, audioPassthrough: true}})
+      .headings.flatMap(heading => heading.pages).find(page => page.id === 'quality');
+    assert.ok(quality, 'Quality & data remains available');
+    const ids = quality.sections.flatMap(section => section.rows).flatMap(row => row.kind === 'composite' ? [row.id] : []);
+    assert.equal(ids.includes('playerEngine'), false);
+    assert.equal(ids.includes('disablePassthrough'), false);
   }
   const i18n = createI18n({locale: 'en-US'} as Parameters<typeof createI18n>[0]);
   assert.equal(i18n.t('settings.row.player'), 'Player');

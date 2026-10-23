@@ -7954,3 +7954,23 @@ CREATE TABLE account_stream_limits(
  stream_limit INTEGER,
  CHECK((mode='limit' AND stream_limit IS NOT NULL AND stream_limit BETWEEN 1 AND 1000) OR (mode IN('inherit','unlimited') AND stream_limit IS NULL))
 ) STRICT;
+
+CREATE TABLE asset_stream_breadth(
+ asset_id TEXT NOT NULL,
+ stream_index INTEGER NOT NULL,
+ audio_description INTEGER NOT NULL DEFAULT 0 CHECK(audio_description IN(0,1)),
+ audio_variant TEXT NOT NULL DEFAULT '',
+ chroma_subsampling TEXT NOT NULL DEFAULT '',
+ fps_numerator INTEGER NOT NULL DEFAULT 0 CHECK(fps_numerator>=0),
+ fps_denominator INTEGER NOT NULL DEFAULT 0 CHECK(fps_denominator>=0),
+ frame_rate_mode TEXT NOT NULL DEFAULT '' CHECK(frame_rate_mode IN('','constant','variable')),
+ interlace_analysis TEXT NOT NULL DEFAULT '',
+ telecine INTEGER NOT NULL DEFAULT 0 CHECK(telecine IN(0,1)),
+ dovi_rpu INTEGER NOT NULL DEFAULT 0 CHECK(dovi_rpu IN(0,1)),
+ dovi_base_layer INTEGER NOT NULL DEFAULT 0 CHECK(dovi_base_layer IN(0,1)),
+ dovi_metadata_known INTEGER NOT NULL DEFAULT 0 CHECK(dovi_metadata_known IN(0,1)),
+ dovi_enhancement_type TEXT NOT NULL DEFAULT '' CHECK(dovi_enhancement_type IN('','mel','fel')),
+ dovi_cm_version TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(asset_id,stream_index),
+ FOREIGN KEY(asset_id,stream_index) REFERENCES asset_streams(asset_id,stream_index) ON DELETE CASCADE
+) STRICT;
