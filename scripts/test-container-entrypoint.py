@@ -9,7 +9,7 @@ import unittest
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = json.loads((ROOT / 'third_party/ffmpeg/sources.lock.json').read_text())['linuxSourceBuild']['compilerImage']
+IMAGE = os.environ.get('PORTICO_ENTRYPOINT_TEST_IMAGE') or json.loads((ROOT / 'third_party/ffmpeg/sources.lock.json').read_text())['linuxSourceBuild']['compilerImage']
 
 
 class EntrypointTests(unittest.TestCase):
