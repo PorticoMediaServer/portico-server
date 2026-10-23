@@ -26,13 +26,19 @@ export SOURCE_DATE_EPOCH="$(python3 -c 'import json,sys;print(json.load(open(sys
 # The helper is owned by the video source lane. A job must name its checked
 # source commit explicitly; an uncommitted or unrelated WIP file is not intake.
 DISC_SOURCE="$ROOT/third_party/portico-disc/portico-disc.c"
+DISC_HEADER="$ROOT/third_party/portico-disc/mpegts_dovi.h"
 if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" != 1 && "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]]; then
   [[ ${PORTICO_DISC_SOURCE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || { echo 'Set PORTICO_DISC_SOURCE_COMMIT to the checked disc source commit' >&2; exit 1; }
+  [[ "$PORTICO_DISC_SOURCE_COMMIT" == "$(readlock discHelper sourceCommit)" ]] || { echo 'Disc helper commit differs from the canonical checked source lock' >&2; exit 1; }
   git -C "$ROOT" merge-base --is-ancestor "$PORTICO_DISC_SOURCE_COMMIT" origin/main || { echo 'Disc input must be merged on main' >&2; exit 1; }
   git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/portico-disc.c
   [[ -f "$DISC_SOURCE" && ! -L "$DISC_SOURCE" ]] || { echo 'Checked disc source is missing' >&2; exit 1; }
   git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/portico-disc.c" > "$WORK/checked-portico-disc.c"
   cmp "$WORK/checked-portico-disc.c" "$DISC_SOURCE"
+  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/mpegts_dovi.h
+  [[ -f "$DISC_HEADER" && ! -L "$DISC_HEADER" ]] || { echo 'Checked disc PSI header is missing' >&2; exit 1; }
+  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/mpegts_dovi.h" > "$WORK/mpegts_dovi.h"
+  cmp "$WORK/mpegts_dovi.h" "$DISC_HEADER"
   git -C "$ROOT" diff --quiet HEAD -- LICENSE
   git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:LICENSE" > "$WORK/checked-portico-disc.LICENSE"
   cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/LICENSE"
@@ -94,6 +100,7 @@ PYLICENSE
   if [[ "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]]; then
     mkdir -p "$WORK/recipe/portico-disc"
     cp "$WORK/checked-portico-disc.c" "$WORK/recipe/portico-disc/portico-disc.c"
+    cp "$WORK/mpegts_dovi.h" "$WORK/recipe/portico-disc/mpegts_dovi.h"
     cp "$WORK/checked-portico-disc.LICENSE" "$WORK/recipe/portico-disc/LICENSE"
     cp "$ROOT/scripts/build-portico-disc.py" "$WORK/recipe/portico-disc/build-portico-disc.py"
   fi
@@ -151,7 +158,10 @@ cp "$PORTICO_FFMPEG_TEST_FONT" "$WORK/provenance/fixtures/subtitles/Literata.ttf
 cp "$ROOT/packages/reader-core/assets/OFL.txt" "$ROOT/packages/reader-core/assets/SOURCES.md" "$WORK/provenance/fixtures/subtitles/"
 mkdir -p "$WORK/provenance/portico-disc"
 cp "$WORK/checked-portico-disc.c" "$WORK/provenance/portico-disc/portico-disc.c"
+cp "$WORK/mpegts_dovi.h" "$WORK/provenance/portico-disc/mpegts_dovi.h"
 cp "$WORK/checked-portico-disc.LICENSE" "$WORK/provenance/portico-disc/LICENSE"
+cp "$ROOT/third_party/portico-disc/"{NOTICE.md,contract.md,schema1.json,fixture-expectations.json} "$WORK/provenance/portico-disc/"
+cp -al "$ROOT/fixtures/discs" "$WORK/provenance/fixtures/discs"
 cp "$ROOT/third_party/ffmpeg/"*.json "$ROOT/third_party/ffmpeg/NOTICE.md" "$WORK/provenance/contract/"
 cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
 cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
@@ -177,9 +187,11 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$LANE_SCRATCH/libdovi/sources" "$WORK/provenance/libdovi/sources"
   cp "$WORK/libdovi/"{vendor-source.tar.xz,vendor-lock.json,fetch.sh,build.sh,contract.json,expected.json,compiler-and-licenses.json} "$WORK/provenance/libdovi/"
   cp -a "$WORK/libdovi/license-supplements" "$WORK/provenance/libdovi/"
-  cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$WORK/provenance/libdovi/"
+  cp "$INPUT/libdovi-build.json" "$INPUT/dovi-profile-build.json" "$INPUT/dovi-video-build.json" "$WORK/provenance/libdovi/"
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
+  cp "$ROOT/third_party/ffmpeg/portico-dovi-join.patch" "$WORK/provenance/contract/"
+  cp "$ROOT/scripts/qualify-linux-ffmpeg-hdr.py" "$ROOT/scripts/qualify-hdr-video.py" "$ROOT/scripts/qualify-dovi-join.py" "$WORK/provenance/scripts/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
 tar -C "$WORK" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner --exclude=recipe/.git --exclude=recipe/workspace --exclude=recipe/artifacts --exclude=recipe/.cache/images -I 'xz -T1' -cf "$WORK/corresponding-source.tar.xz" recipe provenance

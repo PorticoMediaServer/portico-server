@@ -92,6 +92,7 @@ def main():
               'capture-compiler.py': root / 'scripts/capture-ffmpeg-compiler.py',
               'sources.lock.json': root / 'third_party/ffmpeg/sources.lock.json',
               'portico-disc.c': work / 'recipe/portico-disc/portico-disc.c',
+              'mpegts_dovi.h': work / 'recipe/portico-disc/mpegts_dovi.h',
               'LICENSE': work / 'recipe/portico-disc/LICENSE',
               'Dockerfile': work / 'recipe/Dockerfile',
               'dovi-profile-packets.c': root / 'third_party/ffmpeg/tests/dovi-profile-packets.c',
@@ -161,6 +162,8 @@ def main():
                 any(r['sourceArchiveSHA256'] != source_sha or r['binaries'] != binaries for r in rounds)):
             raise ValueError('Completed repeated executable proof changed')
         print('Reused two identical source-built executable rounds with unchanged inputs')
+        if not args.verify_completed_only:
+            subprocess.run(['python3', str(root / 'scripts/qualify-linux-ffmpeg-hdr.py'), '--work', str(work)], check=True)
         return
     if args.verify_completed_only:
         raise ValueError('Packaging requires a completed two-round source build')
@@ -300,6 +303,7 @@ cat /ffbuild/dovi-profile-packets.json
         str(p.relative_to(qualification_prefix)): digest(p)
         for p in sorted(qualification_prefix.rglob('*')) if p.is_file()}, indent=2) + '\n')
     shutil.rmtree(work / 'linux-compile')
+    subprocess.run(['python3', str(root / 'scripts/qualify-linux-ffmpeg-hdr.py'), '--work', str(work)], check=True)
     print('Two source builds produced identical ffmpeg, ffprobe and portico-disc executable hashes')
 
 

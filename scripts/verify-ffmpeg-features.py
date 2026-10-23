@@ -96,9 +96,14 @@ def main():
     profile_dovi = run('-h', 'bsf=dovi_profile')
     if not re.search(r'(?m)^\s+-mode\s+<int>.*\(from 2 to 2\).*\(default 2\)', profile_dovi):
         missing.append('metadata.dovi-profile:mode-exactly-2')
+    join_help = run('-h', 'demuxer=mpegts')
+    join_default_off = bool(re.search(r'(?m)^\s+-merge_dovi\s+<boolean>.*\(default false\)', join_help))
+    if not join_default_off:
+        missing.append('metadata.dovi-join:default-off-mpegts-option')
     report = {'target': target, 'contractId': contract['contractId'], 'version': run('-version').splitlines()[0],
               'sourceCommit': lock['ffmpeg']['commit'], 'missing': missing,
               'configuration': config, 'binarySHA256': before,
+              'MPEGTSMergeDolbyVisionDefaultFalse': join_default_off,
               'stockDoviRpuOptions': sorted(stock_options),
               'inventories': {k: sorted(v) for k, v in inventories.items()}}
     if missing:

@@ -24,6 +24,12 @@ def main():
     parser.add_argument('--target', required=True)
     args = parser.parse_args()
     prefix = args.prefix.resolve(strict=True)
+    source_files = {'portico-disc.c': digest(args.source)}
+    if '#include "mpegts_dovi.h"' in args.source.read_text():
+        header = args.source.parent / 'mpegts_dovi.h'
+        if header.is_symlink() or not header.is_file():
+            raise ValueError('checked disc source requires its exact PSI header beside it')
+        source_files['mpegts_dovi.h'] = digest(header)
     env = dict(os.environ, PKG_CONFIG_PATH='',
                PKG_CONFIG_LIBDIR=os.pathsep.join(str(prefix / p) for p in ('lib/pkgconfig', 'share/pkgconfig')))
     pkg_config = shlex.split(env.get('PKG_CONFIG', 'pkg-config'))
@@ -62,6 +68,7 @@ def main():
     subprocess.run(command, check=True, env=env)
     metadata = {'schema': 1, 'tool': 'portico-disc', 'target': args.target,
                 'sourceCommit': args.source_commit, 'sourceSha256': digest(args.source),
+                'sourceFiles': source_files,
                 'binarySha256': digest(args.output), 'staticLibraries': provenance,
                 'decryption': False}
     args.metadata.parent.mkdir(parents=True, exist_ok=True)

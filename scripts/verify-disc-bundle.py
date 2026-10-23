@@ -93,18 +93,23 @@ def main():
     parser.add_argument('bundle', type=Path)
     parser.add_argument('--fixtures', required=True, type=Path)
     parser.add_argument('--fixture-sha256', required=True)
+    parser.add_argument('--supplemental-fixtures', type=Path)
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     manifest = json.loads((args.bundle / 'toolchain-manifest.json').read_text())
     target = manifest['target']
     tool = args.bundle.resolve() / 'bin' / ('portico-disc.exe' if target.startswith('windows-') else 'portico-disc')
     metadata = json.loads((args.bundle / 'portico-disc-build.json').read_text())
+    source_lock = json.loads((args.bundle / 'sources.lock.json').read_text())['discHelper']
     if (metadata.get('schema') != 1 or metadata.get('tool') != 'portico-disc' or
             metadata.get('target') != target or metadata.get('decryption') is not False or
             metadata.get('binarySha256') != digest(tool) or
             not re.fullmatch(r'[0-9a-f]{40}', metadata.get('sourceCommit', '')) or
             not re.fullmatch(r'[0-9a-f]{64}', metadata.get('sourceSha256', ''))):
         raise ValueError('disc build identity does not match the bundle')
+    if (metadata.get('sourceCommit') != source_lock['sourceCommit'] or
+            metadata.get('sourceFiles') != source_lock['sourceFiles']):
+        raise ValueError('disc source C/header cohort differs from its canonical source lock')
     libraries = metadata.get('staticLibraries', {})
     if set(libraries) != {'libbluray', 'libudfread', 'dvdnav', 'dvdread'}:
         raise ValueError('all four static disc libraries are mandatory')
@@ -115,6 +120,8 @@ def main():
             raise ValueError('invalid static disc library provenance')
     if digest(args.fixtures) != args.fixture_sha256:
         raise ValueError('disc fixture manifest changed from the checked source handoff')
+    if args.fixture_sha256 != source_lock['fixtureManifestSHA256']:
+        raise ValueError('disc fixture manifest differs from canonical source lock')
     contract = json.loads(args.fixtures.read_text())
     fixtures = contract['fixtures']
     if (contract.get('schema') != 1 or len(fixtures) != len(REQUIRED) or
@@ -129,10 +136,24 @@ def main():
         if not isinstance(entry['expected'], dict) or result != entry['expected']:
             raise ValueError('disc structure differs from checked fixture: ' + entry['id'])
         results.append({'id': entry['id'], 'probe': result})
+    supplemental_path = args.supplemental_fixtures or args.fixtures.parent / 'dovi/manifest.json'
+    if digest(supplemental_path) != source_lock['supplementalFixtureManifestSHA256']:
+        raise ValueError('supplemental STN/PMT disc fixture manifest changed')
+    supplemental = json.loads(supplemental_path.read_text())
+    if (supplemental.get('schema') != 1 or len(supplemental['fixtures']) != 2 or
+            {entry['id'] for entry in supplemental['fixtures']} != {'stn-fel-bdmv', 'pmt-fel-bdmv'}):
+        raise ValueError('both genuine STN-only and explicit-PMT disc cases are required')
+    for entry in supplemental['fixtures']:
+        path = fixture_path(supplemental_path.parent, entry)
+        result = probe(tool, path)
+        if result != entry['expected']:
+            raise ValueError('disc STN/PMT structure differs from checked source: ' + entry['id'])
+        results.append({'id': entry['id'], 'probe': result})
     if digest(tool) != metadata['binarySha256']:
         raise ValueError('Disc helper changed during fixture qualification')
     report = {'target': target, 'toolSha256': digest(tool),
-              'fixtureManifestSha256': digest(args.fixtures), 'fixtures': results}
+              'fixtureManifestSha256': digest(args.fixtures),
+              'supplementalFixtureManifestSha256': digest(supplemental_path), 'fixtures': results}
     if args.report:
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
     print('Verified disc fixtures for ' + target)

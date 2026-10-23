@@ -10,7 +10,7 @@ def digest_file(path):
 for required in ['corresponding-source.tar.xz','NOTICE.md','sources.lock.json','requirements.v1.json','portico-dovi-profile.v1.json','portico-disc-build.json','LICENSES/portico-disc.txt']:
  if required not in files:raise SystemExit('Missing provenance: '+required)
 if m['target']=='linux-x64':
- for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json','linux-build-inputs.json','repeat-build.json','libdovi-build.json','dovi-profile-build.json']:
+ for required in ['dependency-inputs.json','compiler.txt','compiler-linked-inputs.json','license-inventory.json','linux-build-inputs.json','repeat-build.json','libdovi-build.json','dovi-profile-build.json','dovi-video-build.json','portico-dovi-join.v1.json','linux-hdr-gate.v1.json']:
   if required not in files:raise SystemExit('Missing Linux build provenance: '+required)
 if not any(x.startswith('LICENSES/') for x in files):raise SystemExit('Missing licenses')
 for name,digest in files.items():
@@ -42,5 +42,28 @@ if m['target']=='linux-x64':
      not all(profile.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) or
      not all(all(r.get('packetTests',{}).get(k)==v for k,v in expected_packet.items()) for r in rounds)):
   raise SystemExit('Canonical Dolby Vision packet proof does not match this bundle')
+ video=json.loads((root/'dovi-video-build.json').read_text())
+ join=json.loads((root/'portico-dovi-join.v1.json').read_text())
+ gate=json.loads((root/'linux-hdr-gate.v1.json').read_text())
+ if (video.get('qualified') is not True or video.get('binarySHA256')!=expected or
+     video.get('sourceArchiveSHA256')!=inputs['sourceArchiveSHA256'] or
+     video.get('fixtureManifestSHA256')!=gate['inputs']['fixtureManifest']['sha256'] or
+     video.get('joinPatchSHA256')!=join['patchSha256'] or
+     video.get('joinFixtureManifestSHA256')!=join['fixtureManifestSha256'] or
+     video.get('join',{}).get('passed') is not True or
+     video['join'].get('joinedCases')!=join['gate']['positive'] or
+     video['join'].get('refusalCases')!=join['gate']['refused'] or
+     len(video['join'].get('fixtures',[]))!=join['fixtures'] or
+     video.get('hdr10plus',{}).get('passed') is not True or
+     video['hdr10plus'].get('frames')!=24 or
+     video.get('video',{}).get('passed') is not True):
+  raise SystemExit('Canonical encoded HDR or corrected dual-PID proof does not match this bundle')
+ disc=json.loads((root/'portico-disc-build.json').read_text())
+ lock=json.loads((root/'sources.lock.json').read_text())
+ if (disc.get('sourceCommit')!=lock['discHelper']['sourceCommit'] or
+     disc.get('sourceFiles')!=lock['discHelper']['sourceFiles'] or
+     disc['sourceFiles'].get('portico-disc.c')!=inputs['files'].get('portico-disc.c') or
+     disc['sourceFiles'].get('mpegts_dovi.h')!=inputs['files'].get('mpegts_dovi.h')):
+  raise SystemExit('Canonical disc C/header source identity differs from this bundle')
 
 print('Verified bundle hashes for '+m['target'])

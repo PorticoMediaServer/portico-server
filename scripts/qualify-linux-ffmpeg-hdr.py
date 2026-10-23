@@ -27,6 +27,8 @@ def main():
     contract = json.loads(contract_file.read_text())
     subprocess.run(['git', 'merge-base', '--is-ancestor', contract['sourceCommit'], 'origin/main'],
                    cwd=root, check=True)
+    subprocess.run(['git', 'merge-base', '--is-ancestor', contract['joinSourceCommit'], 'origin/main'],
+                   cwd=root, check=True)
     prefix = work / 'linux-qualification-prefix'
     seal = json.loads((work / 'qualification-prefix-files.json').read_text())
     if {str(p.relative_to(prefix)): digest(p) for p in sorted(prefix.rglob('*')) if p.is_file()} != seal:
@@ -47,7 +49,9 @@ def main():
         if digest(path) != entry['sha256']:
             raise ValueError('MAIN encoded fixture gate input changed: ' + key)
         inputs[{'roundtrip': 'dovi-video-roundtrip.c', 'qualifier': 'qualify-hdr-video.py',
-                'fixtureManifest': 'fixtures/manifest.json'}[key]] = path
+                'fixtureManifest': 'fixtures/manifest.json', 'joinContract': 'join-contract.json',
+                'joinTest': 'dovi-join-packets.c', 'joinQualifier': 'qualify-dovi-join.py',
+                'joinManifest': 'join-fixtures/manifest.json'}[key]] = path
     fixtures = inputs['fixtures/manifest.json'].parent
     manifest = json.loads(inputs['fixtures/manifest.json'].read_text())
     for entry in manifest['files']:
@@ -58,6 +62,16 @@ def main():
         if path.stat().st_size != entry['bytes'] or digest(path) != entry['sha256']:
             raise ValueError('Encoded fixture bytes changed: ' + name)
         inputs['fixtures/' + name] = path
+    join_manifest = json.loads(inputs['join-fixtures/manifest.json'].read_text())
+    join_directory = inputs['join-fixtures/manifest.json'].parent
+    for entry in join_manifest['fixtures']:
+        name = entry['path']
+        if Path(name).name != name:
+            raise ValueError('Join fixture path escaped its directory')
+        path = join_directory / name
+        if path.stat().st_size != entry['bytes'] or digest(path) != entry['sha256']:
+            raise ValueError('Join fixture bytes changed: ' + name)
+        inputs['join-fixtures/' + name] = path
     hashes = {name: digest(path) for name, path in inputs.items()}
     key = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
     frozen = work / 'linux-build-inputs' / ('hdr-' + key)
@@ -85,6 +99,11 @@ python3 /inputs/qualify-hdr-video.py --fixtures /inputs/fixtures --scratch /gate
  --ffmpeg /opt/ffbuild/bin/ffmpeg --ffprobe /opt/ffbuild/bin/ffprobe \\
  --dovi-tool /oracle/dovi_tool --roundtrip-binary /gate/dovi-video-roundtrip
 python3 /inputs/qualify-linux-ffmpeg-hdr.py --inside
+"$CC" -std=c11 -O2 -Wall -Wextra -Werror /inputs/dovi-join-packets.c \\
+ -o /gate/dovi-join-packets $(pkg-config --cflags --libs --static libavformat libavcodec libavutil dovi)
+python3 /inputs/qualify-dovi-join.py --fixtures /inputs/join-fixtures --hdr-fixtures /inputs/fixtures \\
+ --scratch /gate/join-runtime --ffmpeg /opt/ffbuild/bin/ffmpeg --ffprobe /opt/ffbuild/bin/ffprobe \\
+ --test-binary /gate/dovi-join-packets
 ''')
     subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-hdr-gate',
         '--label', 'portico.lane=hardware-r29', '--cpus', '2', '--memory', '4g', '--memory-swap', '4g',
@@ -93,24 +112,35 @@ python3 /inputs/qualify-linux-ffmpeg-hdr.py --inside
         lock['linuxSourceBuild']['compilerImage'], 'bash', '/gate/run.sh'], check=True)
     video = json.loads((stage / 'runtime/report.json').read_text())
     hdr = json.loads((stage / 'hdr10plus-report.json').read_text())
+    join = json.loads((stage / 'join-runtime/report.json').read_text())
+    join_contract = json.loads(inputs['join-contract.json'].read_text())
     if (video.get('passed') is not True or video['binaries']['ffmpeg'] != pair['ffmpeg'] or
             video['binaries']['ffprobe'] != pair['ffprobe'] or len(video['layers']) != 2 or
             any(layer['packets'] != 24 or not layer['officialMode2RpuIdentical'] or
                 not layer['baseDecodedFramesIdentical'] for layer in video['layers']) or not hdr['passed']):
         raise ValueError('Canonical encoded-video gate did not pass')
+    if (join.get('passed') is not True or join['binarySha256'] != pair['ffmpeg'] or
+            join['probeSha256'] != pair['ffprobe'] or len(join['fixtures']) != join_contract['fixtures'] or
+            join['joinedCases'] != join_contract['gate']['positive'] or
+            join['refusalCases'] != join_contract['gate']['refused']):
+        raise ValueError('Canonical corrected dual-PID fixture gate did not pass')
     if any(digest(prefix / 'bin' / name) != value for name, value in pair.items()):
         raise ValueError('Canonical executable pair changed during encoded-video gate')
     result = {'schema': 1, 'qualified': True, 'target': 'linux-x64', 'binarySHA256': pair,
         'inputs': hashes, 'sourceArchiveSHA256': rounds[0]['sourceArchiveSHA256'],
         'qualificationPrefixSealSHA256': digest(work / 'qualification-prefix-files.json'),
         'fixtureManifestSHA256': contract['inputs']['fixtureManifest']['sha256'],
-        'video': video, 'hdr10plus': hdr, 'scope': contract['scope']}
+        'video': video, 'hdr10plus': hdr, 'join': join,
+        'joinFixtureManifestSHA256': contract['inputs']['joinManifest']['sha256'],
+        'joinPatchSHA256': join_contract['patchSha256'], 'scope': contract['scope']}
     (work / 'linux-output/dovi-video-build.json').write_text(json.dumps(result, indent=2) + '\n')
     # Decoded/encoded test media and the test harness are not bundle payloads.
     # Only source, fixtures and measured reports/hashes enter provenance.
     shutil.rmtree(stage / 'runtime')
     shutil.rmtree(stage / 'hdr-runtime')
+    shutil.rmtree(stage / 'join-runtime')
     (stage / 'dovi-video-roundtrip').unlink()
+    (stage / 'dovi-join-packets').unlink()
     print('Canonical encoded profile conversion and HDR10+ metadata gates passed')
 
 

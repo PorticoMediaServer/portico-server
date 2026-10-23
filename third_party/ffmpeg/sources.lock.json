@@ -419,6 +419,12 @@
       {
         "path": "third_party/ffmpeg/portico-dovi-profile.patch",
         "sha256": "4f7907150fcbd6eb21e1847c0bf2f90d0cddc4999c92f9a0102c5d00aca6b180"
+      },
+      {
+        "path": "third_party/ffmpeg/portico-dovi-join.patch",
+        "sha256": "b15d70a2872174a6c10373c1bff26131513e8995b4b946b20896aec49607c569",
+        "sourceContract": "third_party/ffmpeg/portico-dovi-join.v1.json",
+        "qualification": "actual target option and dual-PID fixtures required; name alone grants nothing"
       }
     ]
   },
@@ -562,5 +568,16 @@
       "upstreamCommit": "4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9",
       "authority": "Existing MAIN asset read-only; no reader/font source edits."
     }
+  },
+  "discHelper": {
+    "sourceCommit": "56401588f1000afee84b15ba9d234711b938da46",
+    "sourceFiles": {
+      "portico-disc.c": "104a3874a3ea83ca8ab12e8d31e36502b29637bc916fc9b71e3a96ae9e279a7c",
+      "mpegts_dovi.h": "82da52d0bcdf2ccb39a0a52e641ecdcb8df9ba2affb7f64249bb84256c93bf89"
+    },
+    "fixtureManifest": "fixtures/discs/manifest.json",
+    "fixtureManifestSHA256": "d531e2332adb16261add1fca78f3670be0b4ec2385453018a45fa96c6add77fa",
+    "supplementalFixtureManifest": "fixtures/discs/dovi/manifest.json",
+    "supplementalFixtureManifestSHA256": "bdb6a6b868439e77e66ac512ac3f7580d311596fb6f64de5d0797c6d1341f51c"
   }
 }
