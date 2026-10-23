@@ -42,6 +42,7 @@ export async function restoreHostedSignIn(store: SignInStore, origin: string, ca
 export async function continueHostedSignIn(account: ServicesAccount, pending: HostedSignIn, expected: AccountIdentity,
   store: SignInStore, signal: AbortSignal, navigate: (location: string) => void) {
   const {handoff} = pending;
+  if (account.api.origin !== handoff.hostedOrigin) throw invalid();
   const current = async () => {
     signal.throwIfAborted();
     const saved = await store.read();
