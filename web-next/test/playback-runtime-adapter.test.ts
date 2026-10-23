@@ -2296,6 +2296,7 @@ test('a complete opaque local queue uses the same media owner and real local rec
   let releases = 0;
   await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {releases++;}}, {signal: new AbortController().signal, isCurrent: () => true});
   const shown = f.runtime.getSnapshot(), first = shown.fence!;
+  assert.equal(f.runtime.canPlayLocalQueue(), true);
   assert.equal(first.kind, 'local');assert.equal(shown.session, undefined);assert.equal(shown.queueView, null);assert.equal(shown.offers, null);assert.equal(shown.options, null);
   assert.equal(shown.presentation!.subject.kind, 'music');assert.equal(shown.presentation!.positionSeconds, 0);
   assert.equal(shown.presentation!.controls.includes('volume'), false, 'the native local port has no browser-video volume capability');
@@ -2326,4 +2327,14 @@ test('local audio bookmarks keep their own verified preparation and restore paus
   assert.equal(port.loads.at(-1)!.preparationId, 'actual_preparation');assert.equal(port.loads.at(-1)!.generation, 1);
   await f.runtime.stop(restored);await settle();assert.equal(audioReleases, 1);
   f.runtime.dispose();await settle();assert.equal(videoReleases, 1);
+});
+
+
+test('an absent local media port refuses before replacing the real current server source and releases only the offered preparation', async t => {
+  const f = setup(t, {}, {}, localScope);await f.runtime.play('movie');await f.arrive();
+  const current = f.runtime.getSnapshot().fence!;let releases = 0;
+  assert.equal(f.runtime.canPlayLocalQueue(), false);
+  await assert.rejects(f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {releases++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /local_playback_unavailable/);
+  assert.equal(releases, 1);assert.deepEqual(f.runtime.getSnapshot().fence, current);
 });

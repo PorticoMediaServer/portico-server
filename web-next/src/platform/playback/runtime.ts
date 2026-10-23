@@ -441,6 +441,11 @@ export class WebShellPlaybackRuntime {
     return this.matches(fence) && !!this.group?.matches(fence) && active?.id === groupId && active.timeline.currentEntryId === entryId;
   }
   private readonly groupServices = new WeakMap<RuntimeGroupBinding, GroupSessionService>();
+  /** Actual installed optional port and captured scope, not a platform/UA inference. */
+  canPlayLocalQueue(): boolean {
+    return this.current() && !!this.source.localScope && this.stack.web.slot.canLoadLocal && !this.group?.active();
+  }
+
   /** Complete receipt-verified native preparation, not a server queue or a first-item alias.
    * The app transfers ownership of its exact preparation through this call, including failure. */
   async playLocalQueue(resource: WebLocalQueueResource, context: WebPlaybackScreenLifetime): Promise<void> {
@@ -449,7 +454,7 @@ export class WebShellPlaybackRuntime {
       this.assertCurrent();
       if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
       const scope = this.source.localScope;
-      if (!scope || !this.stack.web.slot.canLoadLocal) problem('local_playback_unavailable');
+      if (!scope || !this.canPlayLocalQueue()) problem('local_playback_unavailable');
       const preparation = captureLocalQueue(resource.preparation, scope);
       lease = {preparation, release: () => resource.release(), retired: false, released: false};this.localLeases.add(lease);
       serial = ++this.operation;stack = this.replace('local');
