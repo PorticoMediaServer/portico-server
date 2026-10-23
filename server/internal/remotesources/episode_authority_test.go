@@ -14,7 +14,9 @@ type episodeFactsFixture struct {
 	mode, providerState string
 	processGeneration   string
 	still               bool
-	artworkRevision     int64
+	providerResolved    bool
+	generationNeeded    bool
+	artworkRevision     string
 	leaseRevision       int64
 	leaseError          error
 	limits              ReadLimits
@@ -22,7 +24,7 @@ type episodeFactsFixture struct {
 
 func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx, target EpisodeTarget) (EpisodeState, error) {
 	policy, err := catalog.ScanPolicyTx(ctx, tx, target.LibraryID)
-	return EpisodeState{PolicyRevision: policy.Revision, ArtworkRevision: f.artworkRevision, Mode: f.mode, ProviderStillKnown: true, ProviderStill: f.still}, err
+	return EpisodeState{PolicyRevision: policy.Revision, ArtworkRevision: f.artworkRevision, Mode: f.mode, ProviderResolved: f.providerResolved, GenerationNeeded: f.generationNeeded, ProviderStill: f.still}, err
 }
 
 func (f *episodeFactsFixture) ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error) {
@@ -62,7 +64,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
 				t.Fatal(err)
 			}
-			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: 1, leaseRevision: 1, processGeneration: "fixture-process", limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
+			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: "artwork-1", leaseRevision: 1, processGeneration: "fixture-process", limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
 			resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts, Work: facts}
 			request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: "1:a", EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
 			gated, err := dbwork.BeginSnapshot(ctx, f.s.db)
@@ -77,7 +79,8 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if err = authority.Authorize(ctx, "episode_thumbnail", "decode", true); err != nil {
 				t.Fatal("explicit Off/missing-profile refused", err)
 			}
-			facts.still, facts.artworkRevision = true, 2
+			facts.still, facts.artworkRevision = true, "artwork-2"
+			facts.providerResolved, facts.generationNeeded = true, true
 			if err = authority.Authorize(ctx, "episode_thumbnail", "decode", true); err != nil {
 				t.Fatal("provider still affected explicit work", err)
 			}
@@ -159,7 +162,7 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 		profile.Saved = preset != "missing"
 		for _, mode := range []string{"provider_then_made", "provider", "off", "unknown"} {
 			for _, still := range []bool{false, true} {
-				state := EpisodeState{PolicyRevision: 7, ArtworkRevision: 2, Mode: mode, ProviderStillKnown: true, ProviderStill: still}
+				state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "artwork-2", Mode: mode, ProviderResolved: true, GenerationNeeded: true, ProviderStill: still}
 				for _, purpose := range []EpisodePurpose{EpisodeAutomatic, EpisodeExplicitOneEpisode} {
 					want := mode != "unknown"
 					if purpose == EpisodeAutomatic {
@@ -173,7 +176,7 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 			}
 		}
 	}
-	state := EpisodeState{PolicyRevision: 7, ArtworkRevision: 2, Mode: "provider_then_made", ProviderStillKnown: true}
+	state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "artwork-2", Mode: "provider_then_made", ProviderResolved: true, GenerationNeeded: true}
 	profile, _ := SourceReadPreset("everything")
 	profile.Saved, profile.WholeFileReads = true, false
 	if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); err != nil {
@@ -181,6 +184,25 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 	}
 	if err := episodePolicy(EpisodeAutomatic, state, library, false, SourceReadProfile{}); err != nil {
 		t.Fatal("local source required a remote profile", err)
+	}
+	for _, missing := range []string{"provider_resolution", "generation_needed", "artwork_digest"} {
+		t.Run(missing, func(t *testing.T) {
+			changed := state
+			switch missing {
+			case "provider_resolution":
+				changed.ProviderResolved = false
+			case "generation_needed":
+				changed.GenerationNeeded = false
+			case "artwork_digest":
+				changed.ArtworkRevision = ""
+			}
+			if err := episodePolicy(EpisodeAutomatic, changed, library, true, profile); err == nil {
+				t.Fatal("automatic work accepted unresolved or protected artwork", missing)
+			}
+			if err := episodePolicy(EpisodeExplicitOneEpisode, changed, library, true, profile); err != nil {
+				t.Fatal("automatic artwork fact refused explicit work", missing, err)
+			}
+		})
 	}
 	library.Operations = []string{"probe"}
 	if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); err == nil {

@@ -38,9 +38,12 @@ type EpisodeAuthorityRequest struct {
 // episode artwork facts. A cost label, picker policy or default cannot supply
 // these facts. Explicit work does not depend on provider-still presence.
 type EpisodeState struct {
-	PolicyRevision, ArtworkRevision   int64
-	Mode                              string
-	ProviderStillKnown, ProviderStill bool
+	PolicyRevision   int64
+	Mode             string
+	ArtworkRevision  string
+	ProviderResolved bool
+	ProviderStill    bool
+	GenerationNeeded bool
 }
 
 type EpisodeStateReader interface {
@@ -143,7 +146,7 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 	if purpose == EpisodeExplicitOneEpisode {
 		return nil
 	}
-	if purpose != EpisodeAutomatic || state.Mode != "provider_then_made" || !state.ProviderStillKnown || state.ArtworkRevision < 1 || state.ProviderStill || !library.Allows("episode_thumbnail") || remote && (!profile.Saved || profile.ScanDepth != "complete") {
+	if purpose != EpisodeAutomatic || state.Mode != "provider_then_made" || !state.ProviderResolved || !state.GenerationNeeded || state.ArtworkRevision == "" || len(state.ArtworkRevision) > 512 || state.ProviderStill || !library.Allows("episode_thumbnail") || remote && (!profile.Saved || profile.ScanDepth != "complete") {
 		return ErrEpisodeAuthority
 	}
 	// A bounded decode is not a whole-file read, irrespective of the profile's
@@ -299,7 +302,7 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 	if request.Purpose == EpisodeExplicitOneEpisode {
 		// These facts have no permission meaning for the explicit command and
 		// must not accidentally become automatic-tier/still/window fences.
-		out.Episode.ArtworkRevision, out.Episode.ProviderStillKnown, out.Episode.ProviderStill = 0, false, false
+		out.Episode.ArtworkRevision, out.Episode.ProviderResolved, out.Episode.ProviderStill, out.Episode.GenerationNeeded = "", false, false, false
 		out.Work.HeavyWindowRevision, out.Work.AnalysisScheduleRevision = 0, 0
 		out.Work.HeavyWindowOpen, out.Work.AnalysisScheduleOpen = false, false
 	}
