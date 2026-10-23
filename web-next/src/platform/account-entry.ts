@@ -8,6 +8,7 @@ import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-serv
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
+import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
 import {CodedError} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
@@ -18,9 +19,10 @@ import {browserServerDisplay} from './server-display';
 import {BrowserProfileRecovery} from './profile-recovery';
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
+ movePreview?:MoveCodePreview;
  busy?:boolean; error?:unknown;
 }>;
 type EntryPorts = Readonly<{
@@ -43,13 +45,14 @@ export class BrowserAccountEntry {
  private epoch=0;private controller?:AbortController;private api?:HttpLocalApi;private session?:LocalSession;
  private challenge?:Extract<DirectSignIn,{kind:'challenge'}>;private challengeRevision?:number;private disposed=false;
  private invitationCode?:string;private joinedAccountId?:string;private joinedUsername?:string;
+ private moveProof?:Readonly<{code:string;revision:number;preview:MoveCodePreview}>;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(value:AccountEntryState){if(this.disposed)return;this.state=Object.freeze(value);for(const fn of this.listeners)fn();}
  private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
- private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;}
+ private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;}
  cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.invitationCode=undefined;this.joinedAccountId=undefined;this.joinedUsername=undefined;this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
  async inspect(address:string,linkId?:string){
@@ -167,6 +170,39 @@ export class BrowserAccountEntry {
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{const revision=(await this.ports.store.read()).revision;if(!op.current())return;await this.accept(await directSignIn(api,username,password,op.signal),api,revision,op);}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ /** The owner's code is previewed only at the already-proved server. It never
+  * enters public state, browser storage, a URL or a Hosted request. */
+ async previewMoveCode(code:string){
+  const state=this.state,api=this.api;
+  if(!api||!state.server||state.invitation||state.busy||!['password','portico','move-code','move-local','move-portico'].includes(state.phase))return;
+  const op=this.operation();this.moveProof=undefined;this.publish({...state,phase:'move-code',movePreview:undefined,busy:true,error:undefined});
+  const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current())return;
+   const preview=await client.previewCode(code,op.signal);
+   if(!op.current())return;
+   if((await this.ports.store.read()).revision!==revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current())return;
+   if(preview.signIn!==state.server.signIn)throw new CodedError('identity_mismatch','The server sign-in changed.');
+   this.moveProof={code,revision,preview};
+   this.publish({...state,phase:preview.signIn==='local'?'move-local':'move-portico',movePreview:preview,busy:false,error:undefined});
+  }catch(error){if(op.current())this.publish({...state,phase:'move-code',movePreview:undefined,busy:false,error});}
+  finally{client.dispose();}
+ }
+ async redeemLocalMove(username:string,password:string){
+  const state=this.state,api=this.api,proof=this.moveProof;
+  if(state.phase!=='move-local'||state.server?.signIn!=='local'||state.busy||!api||!proof||!passwordStrength(password).acceptable)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  const client=new MemberAccountMoveClient(api,{serverId:state.server.id,isCurrent:op.current,retireLateGrant:session=>this.retire(api,session)});
+  try{
+   if(Date.parse(proof.preview.expiresAt)<=Date.now())throw new CodedError('move_code_invalid','The move code expired.');
+   if((await this.ports.store.read()).revision!==proof.revision)throw new CodedError('cancelled','The server selection changed.');
+   if(!op.current())return;
+   const result=await client.redeemLocal(proof.code,username,password,op.signal);
+   await this.accept(result,api,proof.revision,op);this.moveProof=undefined;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+  finally{client.dispose();}
  }
  /** Auth20: the answer is a public location, never the file's one-use code.
   * This Local path cannot become a Portico recovery-owner continuation. */

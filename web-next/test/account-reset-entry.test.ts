@@ -29,6 +29,8 @@ function fixture(kind: 'local' | 'portico' = 'local') {
     if (path === '/v1/auth/owner-reset/verify' || path === '/v1/direct/password/reset') {if (verifyGate) await verifyGate; return grant(true);}
     if (path === '/v1/direct/sign-in') return twoStep ? {challenge: {token: 'actual-factor-challenge', expiresAt: '2099-01-01T00:00:00Z'}} : grant(false);
     if (path === '/v1/auth/two-factor/challenge') return grant(false);
+    if (path === '/v1/auth/move/code') return {username: 'actual_user', signIn: kind, expiresAt: new Date(Date.now() + 3600000).toISOString()};
+    if (path === '/v1/auth/move/local') {if (verifyGate) await verifyGate; return grant(false);}
     throw new Error('Unexpected public route: ' + path);
   }) as HttpLocalApi['request'];
   const temporary = {request: async (path: string, _method: string, body?: unknown) => {calls.push({path: 'restricted:' + path, body});}} as HttpLocalApi;
@@ -71,4 +73,23 @@ test('factor completion preserves the password step selection revision and refus
   const f = fixture(); f.factor(); await f.entry.inspect(origin); await f.entry.signIn('actual_user', 'ordinary-password');
   assert.equal(f.entry.getSnapshot().phase, 'challenge'); f.revise(); await f.entry.completeChallenge('123456');
   assert.equal(f.calls.some(call => call.path === '/v1/auth/two-factor/challenge'), false); assert.deepEqual(f.admitted, []); f.entry.dispose();
+});
+test('member move previews a code in memory, then ordinarily admits only its captured Local server grant', async () => {
+  const f = fixture(); await f.entry.inspect(origin); await f.entry.previewMoveCode('m'.repeat(43));
+  assert.equal(f.entry.getSnapshot().phase, 'move-local'); assert.equal(f.entry.getSnapshot().movePreview?.username, 'actual_user');
+  assert.doesNotMatch(JSON.stringify(f.entry.getSnapshot()), /mmmmmmmm/); assert.deepEqual(f.admitted, []);
+  await f.entry.redeemLocalMove('chosen_user', 'ordinary-new-password');
+  assert.deepEqual(f.calls.at(-1), {path: '/v1/auth/move/local', body: {code: 'm'.repeat(43), username: 'chosen_user', password: 'ordinary-new-password'}});
+  assert.deepEqual(f.admitted, ['ordinary-family']); assert.equal(f.entry.getSnapshot().phase, 'ready'); f.entry.dispose();
+});
+test('a server selection changed after move preview refuses redemption before any code/password dispatch', async () => {
+  const f = fixture(); await f.entry.inspect(origin); await f.entry.previewMoveCode('m'.repeat(43)); f.revise();
+  await f.entry.redeemLocalMove('chosen_user', 'ordinary-new-password');
+  assert.equal(f.calls.some(call => call.path === '/v1/auth/move/local'), false); assert.deepEqual(f.admitted, []); f.entry.dispose();
+});
+test('a Portico move-code preview cannot enter Local password redemption or expose its code in state', async () => {
+  const f = fixture('portico'); await f.entry.inspect(origin); await f.entry.previewMoveCode('m'.repeat(43));
+  assert.equal(f.entry.getSnapshot().phase, 'move-portico'); assert.doesNotMatch(JSON.stringify(f.entry.getSnapshot()), /mmmmmmmm/);
+  await f.entry.redeemLocalMove('chosen_user', 'ordinary-new-password');
+  assert.deepEqual(f.calls.map(call => call.path), ['/v1/system', '/v1/auth/move/code']); assert.deepEqual(f.admitted, []); f.entry.dispose();
 });
