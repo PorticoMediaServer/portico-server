@@ -1,5 +1,4 @@
 import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
-import {useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {ReadingPreferences, ReadingSession} from '@portico/client-core';
 import {createComicAdapter, createEpubAdapter, createPdfAdapter, createReadingPublication,
@@ -18,7 +17,6 @@ import {readerPdfWorkerUrl} from './pdf-worker';
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
 import {readingDisplayCopy} from './display-copy';
-import {readSearch} from './route-search';
 import type {ReaderMountAuthority} from './mount';
 import styles from './entry.module.css';
 
@@ -75,14 +73,15 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
     metadata={publication.metadata} signal={publication.signal} authority={authority} reportError={engineError} onBack={onBack}
     state={state => state.status === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/> : <Skeleton height="100%"/>}
     presentation={value => ({copy: {back: t('next.reader.back'), previous: t('next.reader.previous'), next: t('next.reader.next'), progress: t('next.reader.position')},
-      direction: value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: width >= 1024,
+      direction: publication.format === 'cbz' && value.preferences.comicDirection !== 'file' ? value.preferences.comicDirection === 'rtl' ? 'rtl' : 'ltr'
+        : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: width >= 1024,
       chapter: value.location?.chapter, pages: value.location?.pageLabel ? t('next.reader.pageLabel', {page: value.location.pageLabel}) : undefined,
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: !!panel && presentation !== 'phone',
       onPanelDismiss: () => setPanel(undefined), actions: [
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
         {id: 'search', label: t('next.reader.search'), icon: 'i-search', expanded: panel === 'search', onPress: () => setPanel(panel === 'search' ? undefined : 'search')},
-        ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <span>A<small>a</small></span>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
+        ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <span className={styles.aa}>{Array.from(t('next.reader.sample'))[0]}<small>{Array.from(t('next.reader.sample')).slice(1).join('')}</small></span>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
         ...(presentation === 'desktop' && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
       ]})}/>;
@@ -91,16 +90,18 @@ function ReaderBook({book, reportError, onBack}: {book: OpenBook; reportError: (
 /** Real publication session; services start only inside the captured route lifetime. */
 export function ReadEntry({captured, itemId, sourceId}: {captured: Captured; itemId: string; sourceId?: string}) {
   const [state, setState] = useState<Readonly<{book?: OpenBook; failed?: boolean}>>({});
+  const [retry, setRetry] = useState(0);
   const reportRef = useRef(captured.binding.home.effects.reportError); reportRef.current = captured.binding.home.effects.reportError;
   const reportError = useRef((error: unknown) => {if (captured.context.isCurrent()) reportRef.current(error);}).current;
   useEffect(() => {
     const life = new AbortController(), bindings = createReadBindings(captured.context);
     let alive = true, fonts: ReadFonts | undefined, publication: ReadingPublication | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
+    const offRetired = bindings.authority.subscribe(() => {if (alive) setState({failed: true});});
     let disposal: Promise<void> | undefined;
     const dispose = () => {
       if (disposal) return disposal;
-      alive = false; life.abort();
+      alive = false; offRetired(); life.abort();
       disposal = (async () => {try {await reader?.dispose(); await progress?.stop();} finally {publication?.dispose(); fonts?.dispose(); await bindings.dispose();}})();
       return disposal;
     };
@@ -126,14 +127,9 @@ export function ReadEntry({captured, itemId, sourceId}: {captured: Captured; ite
       setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location}});
     })().catch(error => {if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});});
     return () => {void dispose().catch(() => {});};
-  }, [captured.context, itemId, sourceId, reportError]);
+  }, [captured.context, itemId, sourceId, reportError, retry]);
   if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} reportError={reportError} onBack={() => router.history.back()}/>;
-  if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/>;
+  if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   return <div className={styles.loading}><Skeleton height="100dvh"/></div>;
-}
-
-export function ReadRouteEntry() {
-  const captured = useProtectedWebScreenContext(), {itemId} = useParams({from: '/read/$itemId'});
-  const {sourceId} = readSearch(useSearch({from: '/read/$itemId'}));
-  return captured ? <ReadEntry captured={captured} itemId={itemId} sourceId={sourceId}/> : null;
 }
