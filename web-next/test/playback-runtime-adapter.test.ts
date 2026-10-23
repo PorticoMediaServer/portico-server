@@ -2048,3 +2048,23 @@ test('the retained Watch body uses only the actual current title and offered lib
   await f.runtime.play('different', 0);await f.arrive();
   assert.notEqual(watchBodyKey(watchBodyTarget(f.runtime.getSnapshot())!), watchBodyKey(target!));
 });
+
+
+test('the player EQ command preserves the injected app device port and refuses a retired fence', async t => {
+  const changes: import('../src/platform/playback/audio/equalizer.ts').EqualizerSettings[] = [];
+  const value = {enabled: true, preampDb: -3, bandsDb: Array(10).fill(1)};
+  const port: import('../src/kit/media/equalizer-port.ts').EqualizerPort = {
+    getSnapshot: () => value, subscribe: () => () => {}, start: () => () => {},
+    change: async settings => {changes.push(settings);}, reset: async () => {},
+  };
+  const f = setup(t, {}, {createRender: null, equalizerPort: port});
+  assert.equal(f.runtime.equalizerPort, port, 'Settings and the shortcut receive the original app singleton');
+  await f.runtime.play('song_device'); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!;
+  await f.runtime.setEqualizer(fence, value);
+  assert.deepEqual(changes, [value], 'the native port commits the change without a browser renderer/store');
+  await f.runtime.play('movie'); await f.arrive();
+  await assert.rejects(f.runtime.setEqualizer(fence, value));
+  await assert.rejects(f.runtime.setEqualizer(f.runtime.getSnapshot().fence!, value), /equalizer_unavailable/);
+  assert.equal(changes.length, 1);
+});
