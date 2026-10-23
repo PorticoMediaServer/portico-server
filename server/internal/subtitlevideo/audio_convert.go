@@ -22,7 +22,15 @@ func (r *Runtime) ConvertAudio(ctx context.Context, item, asset string, spec dec
 	}
 	defer input.Close()
 	return r.AnalysisDecoder(input)(ctx, identity.Token(), spec, func(stream io.Reader) error {
+		r.activeAudioConversions.Add(1)
+		defer r.activeAudioConversions.Add(-1)
 		_, err := io.Copy(out, stream)
 		return err
 	})
+}
+
+// ActiveAudioConversions counts running output producers, excluding planning,
+// input acquisition and queued work. These closed audio recipes use software.
+func (r *Runtime) ActiveAudioConversions() int64 {
+	return r.activeAudioConversions.Load()
 }

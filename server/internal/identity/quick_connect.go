@@ -132,6 +132,9 @@ func (s *Service) SetupLimit(ctx context.Context, subject, kind string, limit in
 	return nil
 }
 func (s *Service) StartQuick(ctx context.Context, q QuickStart, private bool) (QuickAuthorization, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return QuickAuthorization{}, err
+	}
 	// A device that could never be signed in from where it is gets told now,
 	// not after someone has approved its code.
 	if RemoteSignInClosed(ctx) {

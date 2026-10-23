@@ -160,6 +160,7 @@ type LinearProgramme struct {
 
 // LinearSelection is private source-selection evidence.
 type LinearSelection struct {
+	Number         string           `json:"number,omitempty"`
 	Reference      LinearReference  `json:"reference"`
 	Name           string           `json:"name"`
 	ItemID         string           `json:"itemId"`
