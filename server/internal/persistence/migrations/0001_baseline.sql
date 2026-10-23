@@ -3605,6 +3605,12 @@ CREATE TABLE remote_inventory_checks(job_id TEXT NOT NULL,directory TEXT NOT NUL
 CREATE TABLE remote_scan_cursors(job_id TEXT NOT NULL,path TEXT NOT NULL,listing_id TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,path)) STRICT;
 CREATE TABLE remote_scan_generations(job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,PRIMARY KEY(job_id,source_id)) STRICT;
 CREATE TABLE remote_object_refs(path TEXT PRIMARY KEY,revision TEXT NOT NULL) STRICT;
+CREATE TABLE remote_source_read_profiles(
+ source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL CHECK(revision>0),scan_depth TEXT NOT NULL CHECK(scan_depth IN('file_list_only','basic','complete')),
+ whole_file_reads INTEGER NOT NULL CHECK(whole_file_reads IN(0,1)),connections INTEGER NOT NULL CHECK(connections BETWEEN 1 AND 32),
+ requests_per_second INTEGER NOT NULL CHECK(requests_per_second BETWEEN 1 AND 50),
+ bytes_per_second INTEGER NOT NULL CHECK(bytes_per_second=0 OR (bytes_per_second BETWEEN 1000000 AND 1000000000 AND bytes_per_second%1000000=0))) STRICT;
 CREATE TABLE remote_scan_observations(
  source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL,source_generation TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),
