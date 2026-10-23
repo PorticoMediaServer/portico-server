@@ -14,12 +14,15 @@ import (
 const SearchHistoryLimit = 20
 
 type SearchHistoryEntry struct {
-	Query     string `json:"query"`
+	Query     string `json:"q"`
 	UpdatedAt string `json:"updatedAt"`
 }
 type SearchHistoryPage struct {
-	Remembered bool                 `json:"remembered"`
-	Entries    []SearchHistoryEntry `json:"entries"`
+	ServerID    string               `json:"serverId"`
+	ViewerFence string               `json:"viewerFence"`
+	MaxEntries  int                  `json:"maxEntries"`
+	Remembered  bool                 `json:"remembered"`
+	Entries     []SearchHistoryEntry `json:"entries"`
 }
 
 // RemembersSearchHistory reads the viewer's own effective preference. The search
@@ -55,7 +58,7 @@ func (s *Service) RecordSearch(v identity.Viewer, query string) error {
 // SearchHistory returns the retained queries, newest first. With remembering off
 // the list is empty regardless of what an earlier session left behind.
 func (s *Service) SearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
-	out := SearchHistoryPage{Entries: []SearchHistoryEntry{}}
+	out := SearchHistoryPage{Entries: []SearchHistoryEntry{}, MaxEntries: SearchHistoryLimit}
 	remembered, e := s.RemembersSearchHistory(v)
 	if e != nil {
 		return out, e
@@ -82,7 +85,7 @@ func (s *Service) SearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
 // ClearSearchHistory removes every retained query for this viewer.
 func (s *Service) ClearSearchHistory(v identity.Viewer) (SearchHistoryPage, error) {
 	if _, e := dbwork.ExecWrite(s.Context(), s.db, dbwork.ClassFrom(s.Context(), dbwork.ClassInteractive), `DELETE FROM search_history WHERE profile_key=?`, identity.PersonalKey(v)); e != nil {
-		return SearchHistoryPage{Entries: []SearchHistoryEntry{}}, e
+		return SearchHistoryPage{Entries: []SearchHistoryEntry{}, MaxEntries: SearchHistoryLimit}, e
 	}
 	return s.SearchHistory(v)
 }

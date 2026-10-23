@@ -3818,6 +3818,7 @@ CREATE TABLE catalog_terms(
  key TEXT NOT NULL,
  label TEXT NOT NULL,
  UNIQUE(vocab,key)) STRICT;
+CREATE INDEX catalog_terms_search_label ON catalog_terms(vocab,label,id);
 CREATE TABLE catalog_entity_terms(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  term_id INTEGER NOT NULL REFERENCES catalog_terms(id),
@@ -8361,3 +8362,7 @@ CREATE TRIGGER library_metadata_agents_browse_delete AFTER DELETE ON library_met
 END;
 CREATE INDEX screen_metadata_attention_browse ON screen_metadata_attention(library_id,entity_id,generation) WHERE retired=0 AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
 CREATE INDEX listening_metadata_attention_browse ON listening_metadata_attention(library_id,entity_id) WHERE retired=0 AND kind IN('album','song') AND reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
+
+CREATE INDEX live_programmes_search_group ON live_programmes(generation_id,channel_id,lower(title),start_utc,id,end_utc);
+
+CREATE INDEX lc_entries_search_group ON lc_entries(generation_id,channel_id,lower(title),start_ms,occurrence_id,end_ms);

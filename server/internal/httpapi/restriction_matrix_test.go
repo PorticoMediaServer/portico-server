@@ -576,6 +576,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/personal-history":      static("/v1/personal-history"),
 		"GET /v1/topshelf":              {probe: func(*restrictionEnv) []string { return []string{"/v1/topshelf"} }, viewer: "topshelf"},
 		"GET /v1/search/history":        static("/v1/search/history"),
+		"GET /v1/search/discovery":      static("/v1/search/discovery?limit=24"),
 		"GET /v1/items": probe(func(m *restrictionEnv) []string {
 			return []string{"/v1/items?ids=" + strings.Join(m.hiddenItemSamples(), ","), "/v1/items?limit=200"}
 		}),

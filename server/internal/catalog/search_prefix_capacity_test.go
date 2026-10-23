@@ -37,6 +37,8 @@ func TestBroadPrefixesSelectBoundedScopedPages(t *testing.T) {
 			// under test instead of deriving the unrelated Home and recommendation tables.
 			for off := 0; off < n; off += 10000 {
 				c.Exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,year) SELECT i+1000000,randomblob(16),?,1,printf('Title Longprefix %012d',i),'Title','T',2000 FROM ids`, off+1, min(n, off+10000), lib)
+				// Search now hydrates real card facts after the bounded rank.
+				c.Exec(`INSERT INTO catalog_item_details(entity_id) SELECT id FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 				c.Exec(`INSERT INTO catalog_item_attribute_edges(item_id,term_id,source_value,source_rowid) SELECT id,(SELECT t.id FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE f.field='contentRating' AND t.value_key=CASE WHEN e.id%2=0 THEN 'pg' ELSE 'r' END),'fixture',e.id FROM catalog_entities e WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 				c.Exec(`INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,item_id,rating_key,label_key,available,recent,backdrop,random_key) SELECT id,library_id,kind,title,sort_key,sort_head,year,id,CASE WHEN id%2=0 THEN 'pg' ELSE 'r' END,'',0,0,0,id FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 				c.Exec(`INSERT INTO catalog_browse_memberships(entity_id,item_id,source) SELECT id,id,0 FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))

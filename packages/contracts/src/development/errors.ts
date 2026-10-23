@@ -607,6 +607,18 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "search_busy",
+    "status": 429,
+    "message": "Too many searches are already running. Try again in a moment.",
+    "retry": "same_request"
+  },
+  {
+    "code": "search_unavailable",
+    "status": 503,
+    "message": "Search timed out or was canceled. Refine the query and retry.",
+    "retry": "same_request"
+  },
+  {
     "code": "seek_unavailable",
     "status": 409,
     "message": "That position isn't in the channel's buffer.",

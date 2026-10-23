@@ -73,3 +73,48 @@ func TestPlaybackV1QueueQueryShuffleIsSeededAndIncludesEveryMatch(t *testing.T) 
 		prior = got
 	}
 }
+
+func TestSearchSongQueueHTTPRetainsCaptureAndSeededShuffle(t *testing.T) {
+	f := newV1Fixture(t, 0)
+	c := f.catalogTest
+	music := c.Library("search-music", "Music", "music", f.root+"/music")
+	artist := c.Artist(music, "Artist")
+	album := c.Album(artist, "Album", 2025)
+	ids := []string{}
+	records := []int64{}
+	for i := 0; i < 603; i++ {
+		song := c.Song(album, i+1, fmt.Sprintf("%s/music/%04d.flac", f.root, i), fmt.Sprintf("Harbor %04d", i))
+		ids = append(ids, song.Public)
+		records = append(records, song.ID)
+	}
+	c.Drain()
+	source := map[string]any{"search": map[string]any{"q": "Harbor", "group": "songs", "sort": "title", "direction": "asc", "libraryIds": []string{"search-music"}}}
+	f.v1.HoldQueueBuilds()
+	var first playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "search-capture-000001"}, map[string]any{"selector": source}, 201, &first)
+	if first.Queue.Total != 256 || len(first.Queue.Segments) != 1 || first.Queue.Segments[0].SourceRevision == "" {
+		t.Fatalf("bounded capture %+v", first)
+	}
+	c.Fields(records[0], map[string]any{"title": "Changed outside Search"})
+	added := c.Song(album, 604, f.root+"/music/new.flac", "Harbor new")
+	c.Drain()
+	f.v1.ResumeQueueBuilds()
+	done := waitBuilt(t, f, f.owner.AccessToken, first.Queue.ID, 30*time.Second)
+	got := queueItemsInOrder(t, f, f.owner.AccessToken, first.Queue.ID, done.Total)
+	if done.Total != 603 || !reflect.DeepEqual(got, ids) {
+		t.Fatalf("retained Search capture changed: %d", done.Total)
+	}
+	current := append(append([]string{}, ids[1:]...), added.Public)
+	var previous []string
+	for round := 0; round < 2; round++ {
+		var shuffled playbackv1.QueueReply
+		f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": fmt.Sprintf("search-shuffle-%06d", round)}, map[string]any{"selector": source, "shuffle": map[string]any{"seed": "42"}}, 201, &shuffled)
+		built := waitBuilt(t, f, f.owner.AccessToken, shuffled.Queue.ID, 30*time.Second)
+		order := queueItemsInOrder(t, f, f.owner.AccessToken, shuffled.Queue.ID, built.Total)
+		sameSet(t, order, current)
+		if round > 0 && !reflect.DeepEqual(order, previous) {
+			t.Fatal("same Search shuffle seed changed order")
+		}
+		previous = order
+	}
+}

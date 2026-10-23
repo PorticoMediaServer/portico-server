@@ -359,6 +359,33 @@ export const schemas = {
               "id"
             ],
             "type": "object"
+          },
+          "search": {
+            "properties": {
+              "direction": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "libraryIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "q": {
+                "type": "string"
+              },
+              "sort": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "q",
+              "group"
+            ],
+            "type": "object"
           }
         },
         "required": [],
@@ -2261,6 +2288,33 @@ export const schemas = {
               "id"
             ],
             "type": "object"
+          },
+          "search": {
+            "properties": {
+              "direction": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "libraryIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "q": {
+                "type": "string"
+              },
+              "sort": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "q",
+              "group"
+            ],
+            "type": "object"
           }
         },
         "required": [],
@@ -3593,6 +3647,41 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
             "contentRating": {
               "type": "string"
             },
@@ -3830,6 +3919,21 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
             "label": {
               "type": "string"
             },
@@ -3869,6 +3973,21 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
             },
             "media": {
               "properties": {
@@ -4012,6 +4131,41 @@ export const schemas = {
                     "bookId",
                     "itemId",
                     "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
                   ],
                   "type": "object"
                 },
@@ -4248,6 +4402,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -4287,6 +4456,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -4353,6 +4537,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -4380,6 +4604,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -4560,6 +4791,46 @@ export const schemas = {
             "posterUrl": {
               "type": "string"
             },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
             "progressMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -4587,6 +4858,13 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "type": "array"
             },
             "seasonCount": {
               "maximum": 9007199254740991,
@@ -5224,6 +5502,41 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
             "contentRating": {
               "type": "string"
             },
@@ -5461,6 +5774,21 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
             "label": {
               "type": "string"
             },
@@ -5500,6 +5828,21 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
             },
             "media": {
               "properties": {
@@ -5643,6 +5986,41 @@ export const schemas = {
                     "bookId",
                     "itemId",
                     "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
                   ],
                   "type": "object"
                 },
@@ -5879,6 +6257,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -5918,6 +6311,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -5984,6 +6392,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -6011,6 +6459,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -6191,6 +6646,46 @@ export const schemas = {
             "posterUrl": {
               "type": "string"
             },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
             "progressMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -6218,6 +6713,13 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "type": "array"
             },
             "seasonCount": {
               "maximum": 9007199254740991,
@@ -11012,6 +11514,33 @@ export const schemas = {
                     "id"
                   ],
                   "type": "object"
+                },
+                "search": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "libraryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "q": {
+                      "type": "string"
+                    },
+                    "sort": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "q",
+                    "group"
+                  ],
+                  "type": "object"
                 }
               },
               "required": [],
@@ -11144,6 +11673,33 @@ export const schemas = {
             },
             "required": [
               "id"
+            ],
+            "type": "object"
+          },
+          "search": {
+            "properties": {
+              "direction": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "libraryIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "q": {
+                "type": "string"
+              },
+              "sort": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "q",
+              "group"
             ],
             "type": "object"
           }
@@ -14586,7 +15142,7 @@ export const schemas = {
       "entries": {
         "items": {
           "properties": {
-            "query": {
+            "q": {
               "type": "string"
             },
             "updatedAt": {
@@ -14594,18 +15150,32 @@ export const schemas = {
             }
           },
           "required": [
-            "query",
+            "q",
             "updatedAt"
           ],
           "type": "object"
         },
         "type": "array"
       },
+      "maxEntries": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "remembered": {
         "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
       }
     },
     "required": [
+      "serverId",
+      "viewerFence",
+      "maxEntries",
       "remembered",
       "entries"
     ],
@@ -39422,6 +39992,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -39659,6 +40264,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -39698,6 +40318,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -39841,6 +40476,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -40077,6 +40747,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -40116,6 +40801,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -40182,6 +40882,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -40209,6 +40949,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -40389,6 +41135,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -40416,6 +41202,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -40720,6 +41512,41 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "channel": {
+                          "properties": {
+                            "generation": {
+                              "type": "string"
+                            },
+                            "group": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "sourceId",
+                            "generation",
+                            "name",
+                            "number",
+                            "group",
+                            "provenance"
+                          ],
+                          "type": "object"
+                        },
                         "contentRating": {
                           "type": "string"
                         },
@@ -40957,6 +41784,21 @@ export const schemas = {
                         "kind": {
                           "type": "string"
                         },
+                        "knownFor": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name"
+                          ],
+                          "type": "object"
+                        },
                         "label": {
                           "type": "string"
                         },
@@ -40996,6 +41838,21 @@ export const schemas = {
                         },
                         "libraryId": {
                           "type": "string"
+                        },
+                        "matchedOn": {
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "text"
+                          ],
+                          "type": "object"
                         },
                         "media": {
                           "properties": {
@@ -41139,6 +41996,41 @@ export const schemas = {
                                 "bookId",
                                 "itemId",
                                 "partPositionMs"
+                              ],
+                              "type": "object"
+                            },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
                               ],
                               "type": "object"
                             },
@@ -41375,6 +42267,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -41414,6 +42321,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "missing": {
                               "type": "boolean"
@@ -41480,6 +42402,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -41507,6 +42469,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -41687,6 +42655,46 @@ export const schemas = {
                         "posterUrl": {
                           "type": "string"
                         },
+                        "programme": {
+                          "properties": {
+                            "end": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "moreAirings": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "moreAiringsExact": {
+                              "type": "boolean"
+                            },
+                            "start": {
+                              "type": "string"
+                            },
+                            "subtitle": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "start",
+                            "end",
+                            "live",
+                            "moreAirings",
+                            "moreAiringsExact"
+                          ],
+                          "type": "object"
+                        },
                         "progressMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
@@ -41714,6 +42722,12 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "roles": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "seasonCount": {
                           "maximum": 9007199254740991,
@@ -42476,6 +43490,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -42713,6 +43762,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -42752,6 +43816,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -42895,6 +43974,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -43131,6 +44245,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -43170,6 +44299,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -43236,6 +44380,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -43263,6 +44447,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -43443,6 +44633,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -43470,6 +44700,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -44327,6 +45563,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -44564,6 +45835,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -44603,6 +45889,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -44746,6 +46047,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -44982,6 +46318,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -45021,6 +46372,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -45087,6 +46453,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -45114,6 +46520,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -45294,6 +46706,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -45321,6 +46773,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -45622,6 +47080,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -45859,6 +47352,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -45898,6 +47406,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -46041,6 +47564,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -46277,6 +47835,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -46316,6 +47889,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -46382,6 +47970,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -46409,6 +48037,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -46589,6 +48223,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -46616,6 +48290,12 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -47378,6 +49058,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -47615,6 +49330,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -47654,6 +49384,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -47797,6 +49542,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -48033,6 +49813,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -48072,6 +49867,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -48138,6 +49948,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -48165,6 +50015,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -48345,6 +50201,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -48372,6 +50268,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -49028,6 +50930,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -49265,6 +51202,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -49304,6 +51256,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -49447,6 +51414,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -49683,6 +51685,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -49722,6 +51739,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -49788,6 +51820,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -49815,6 +51887,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -49995,6 +52073,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -50022,6 +52140,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -50331,6 +52455,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -50568,6 +52727,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -50607,6 +52781,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -50750,6 +52939,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -50986,6 +53210,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -51025,6 +53264,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -51091,6 +53345,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -51118,6 +53412,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -51298,6 +53598,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -51325,6 +53665,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -51847,6 +54193,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -52084,6 +54465,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -52123,6 +54519,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -52266,6 +54677,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -52502,6 +54948,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -52541,6 +55002,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -52607,6 +55083,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -52634,6 +55150,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -52814,6 +55336,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -52841,6 +55403,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -53145,6 +55713,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -53382,6 +55985,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -53421,6 +56039,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -53564,6 +56197,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -53800,6 +56468,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -53839,6 +56522,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -53905,6 +56603,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -53932,6 +56670,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -54112,6 +56856,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -54139,6 +56923,12 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -54901,6 +57691,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -55138,6 +57963,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -55177,6 +58017,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -55320,6 +58175,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -55556,6 +58446,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -55595,6 +58500,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -55661,6 +58581,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -55688,6 +58648,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -55868,6 +58834,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -55895,6 +58901,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -56752,6 +59764,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -56989,6 +60036,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -57028,6 +60090,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -57171,6 +60248,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -57407,6 +60519,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -57446,6 +60573,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -57512,6 +60654,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -57539,6 +60721,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -57719,6 +60907,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -57746,6 +60974,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -58047,6 +61281,41 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
             "contentRating": {
               "type": "string"
             },
@@ -58284,6 +61553,21 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
             "label": {
               "type": "string"
             },
@@ -58323,6 +61607,21 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
             },
             "media": {
               "properties": {
@@ -58466,6 +61765,41 @@ export const schemas = {
                     "bookId",
                     "itemId",
                     "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
                   ],
                   "type": "object"
                 },
@@ -58702,6 +62036,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -58741,6 +62090,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -58807,6 +62171,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -58834,6 +62238,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -59014,6 +62424,46 @@ export const schemas = {
             "posterUrl": {
               "type": "string"
             },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
             "progressMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -59041,6 +62491,12 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "seasonCount": {
               "maximum": 9007199254740991,
@@ -59803,6 +63259,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -60040,6 +63531,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -60079,6 +63585,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -60222,6 +63743,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -60458,6 +64014,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -60497,6 +64068,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -60563,6 +64149,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -60590,6 +64216,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -60770,6 +64402,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -60797,6 +64469,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -62190,6 +65868,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -62427,6 +66140,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -62466,6 +66194,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -62609,6 +66352,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -62845,6 +66623,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -62884,6 +66677,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -62950,6 +66758,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -62977,6 +66825,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -63157,6 +67012,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -63184,6 +67079,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -64187,6 +68089,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -64424,6 +68361,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -64463,6 +68415,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -64606,6 +68573,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -64842,6 +68844,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -64881,6 +68898,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -64947,6 +68979,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -64974,6 +69046,13 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 16,
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -65154,6 +69233,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -65181,6 +69300,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -69219,6 +73345,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -69456,6 +73617,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -69495,6 +73671,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -69638,6 +73829,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -69874,6 +74100,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -69913,6 +74154,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -69979,6 +74235,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -70006,6 +74302,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -70186,6 +74488,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -70213,6 +74555,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -70517,6 +74865,41 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "channel": {
+                          "properties": {
+                            "generation": {
+                              "type": "string"
+                            },
+                            "group": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "sourceId",
+                            "generation",
+                            "name",
+                            "number",
+                            "group",
+                            "provenance"
+                          ],
+                          "type": "object"
+                        },
                         "contentRating": {
                           "type": "string"
                         },
@@ -70754,6 +75137,21 @@ export const schemas = {
                         "kind": {
                           "type": "string"
                         },
+                        "knownFor": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name"
+                          ],
+                          "type": "object"
+                        },
                         "label": {
                           "type": "string"
                         },
@@ -70793,6 +75191,21 @@ export const schemas = {
                         },
                         "libraryId": {
                           "type": "string"
+                        },
+                        "matchedOn": {
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "text"
+                          ],
+                          "type": "object"
                         },
                         "media": {
                           "properties": {
@@ -70936,6 +75349,41 @@ export const schemas = {
                                 "bookId",
                                 "itemId",
                                 "partPositionMs"
+                              ],
+                              "type": "object"
+                            },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
                               ],
                               "type": "object"
                             },
@@ -71172,6 +75620,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -71211,6 +75674,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "missing": {
                               "type": "boolean"
@@ -71277,6 +75755,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -71304,6 +75822,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -71484,6 +76008,46 @@ export const schemas = {
                         "posterUrl": {
                           "type": "string"
                         },
+                        "programme": {
+                          "properties": {
+                            "end": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "moreAirings": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "moreAiringsExact": {
+                              "type": "boolean"
+                            },
+                            "start": {
+                              "type": "string"
+                            },
+                            "subtitle": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "start",
+                            "end",
+                            "live",
+                            "moreAirings",
+                            "moreAiringsExact"
+                          ],
+                          "type": "object"
+                        },
                         "progressMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
@@ -71511,6 +76075,12 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "roles": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "seasonCount": {
                           "maximum": 9007199254740991,
@@ -72273,6 +76843,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -72510,6 +77115,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -72549,6 +77169,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -72692,6 +77327,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -72928,6 +77598,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -72967,6 +77652,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -73033,6 +77733,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -73060,6 +77800,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -73240,6 +77986,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -73267,6 +78053,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -74124,6 +78916,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -74361,6 +79188,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -74400,6 +79242,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -74543,6 +79400,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -74779,6 +79671,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -74818,6 +79725,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -74884,6 +79806,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -74911,6 +79873,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -75091,6 +80059,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -75118,6 +80126,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -75419,6 +80433,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -75656,6 +80705,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -75695,6 +80759,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -75838,6 +80917,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -76074,6 +81188,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -76113,6 +81242,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -76179,6 +81323,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -76206,6 +81390,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -76386,6 +81576,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -76413,6 +81643,12 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -77175,6 +82411,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -77412,6 +82683,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -77451,6 +82737,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -77594,6 +82895,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -77830,6 +83166,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -77869,6 +83220,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -77935,6 +83301,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -77962,6 +83368,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -78142,6 +83554,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -78169,6 +83621,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -79065,6 +84523,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -79302,6 +84795,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -79341,6 +84849,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -79484,6 +85007,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -79720,6 +85278,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -79759,6 +85332,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -79825,6 +85413,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -79852,6 +85480,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -80032,6 +85666,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -80059,6 +85733,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -80363,6 +86043,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -80600,6 +86315,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -80639,6 +86369,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -80782,6 +86527,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -81018,6 +86798,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -81057,6 +86852,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -81123,6 +86933,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -81150,6 +87000,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -81330,6 +87186,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -81357,6 +87253,12 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -82119,6 +88021,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -82356,6 +88293,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -82395,6 +88347,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -82538,6 +88505,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -82774,6 +88776,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -82813,6 +88830,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -82879,6 +88911,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -82906,6 +88978,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -83086,6 +89164,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -83113,6 +89231,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -83970,6 +90094,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -84207,6 +90366,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -84246,6 +90420,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -84389,6 +90578,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -84625,6 +90849,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -84664,6 +90903,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -84730,6 +90984,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -84757,6 +91051,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -84937,6 +91237,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -84964,6 +91304,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -85265,6 +91611,41 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
             "contentRating": {
               "type": "string"
             },
@@ -85502,6 +91883,21 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
             "label": {
               "type": "string"
             },
@@ -85541,6 +91937,21 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
             },
             "media": {
               "properties": {
@@ -85684,6 +92095,41 @@ export const schemas = {
                     "bookId",
                     "itemId",
                     "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
                   ],
                   "type": "object"
                 },
@@ -85920,6 +92366,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -85959,6 +92420,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -86025,6 +92501,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -86052,6 +92568,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -86232,6 +92754,46 @@ export const schemas = {
             "posterUrl": {
               "type": "string"
             },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
             "progressMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -86259,6 +92821,12 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "seasonCount": {
               "maximum": 9007199254740991,
@@ -87021,6 +93589,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -87258,6 +93861,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -87297,6 +93915,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -87440,6 +94073,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -87676,6 +94344,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -87715,6 +94398,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -87781,6 +94479,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -87808,6 +94546,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -87988,6 +94732,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -88015,6 +94799,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -89040,6 +95830,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -89277,6 +96102,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -89316,6 +96156,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -89459,6 +96314,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -89695,6 +96585,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -89734,6 +96639,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -89800,6 +96720,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -89827,6 +96787,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -90007,6 +96974,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -90034,6 +97041,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -92905,6 +99919,41 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "channel": {
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "generation",
+              "name",
+              "number",
+              "group",
+              "provenance"
+            ],
+            "type": "object"
+          },
           "contentRating": {
             "type": "string"
           },
@@ -93142,6 +100191,21 @@ export const schemas = {
           "kind": {
             "type": "string"
           },
+          "knownFor": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "label": {
             "type": "string"
           },
@@ -93181,6 +100245,21 @@ export const schemas = {
           },
           "libraryId": {
             "type": "string"
+          },
+          "matchedOn": {
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "text"
+            ],
+            "type": "object"
           },
           "media": {
             "properties": {
@@ -93324,6 +100403,41 @@ export const schemas = {
                   "bookId",
                   "itemId",
                   "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
                 ],
                 "type": "object"
               },
@@ -93560,6 +100674,21 @@ export const schemas = {
               "kind": {
                 "type": "string"
               },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
               "label": {
                 "type": "string"
               },
@@ -93599,6 +100728,21 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
               },
               "missing": {
                 "type": "boolean"
@@ -93665,6 +100809,46 @@ export const schemas = {
               "posterUrl": {
                 "type": "string"
               },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
               "progressMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -93692,6 +100876,13 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
               },
               "seasonCount": {
                 "maximum": 9007199254740991,
@@ -93872,6 +101063,46 @@ export const schemas = {
           "posterUrl": {
             "type": "string"
           },
+          "programme": {
+            "properties": {
+              "end": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "live": {
+                "type": "boolean"
+              },
+              "moreAirings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "moreAiringsExact": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "start",
+              "end",
+              "live",
+              "moreAirings",
+              "moreAiringsExact"
+            ],
+            "type": "object"
+          },
           "progressMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -93899,6 +101130,13 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
           },
           "seasonCount": {
             "maximum": 9007199254740991,
@@ -94390,6 +101628,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -94627,6 +101900,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -94666,6 +101954,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -94809,6 +102112,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -95045,6 +102383,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -95084,6 +102437,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -95150,6 +102518,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -95177,6 +102585,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -95357,6 +102772,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -95384,6 +102839,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -95892,6 +103354,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -96129,6 +103626,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -96168,6 +103680,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -96311,6 +103838,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -96547,6 +104109,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -96586,6 +104163,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -96652,6 +104244,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -96679,6 +104311,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -96859,6 +104498,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -96886,6 +104565,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -97775,6 +105461,41 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
+                ],
+                "type": "object"
+              },
               "contentRating": {
                 "type": "string"
               },
@@ -98012,6 +105733,21 @@ export const schemas = {
               "kind": {
                 "type": "string"
               },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
               "label": {
                 "type": "string"
               },
@@ -98051,6 +105787,21 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
               },
               "media": {
                 "properties": {
@@ -98194,6 +105945,41 @@ export const schemas = {
                       "bookId",
                       "itemId",
                       "partPositionMs"
+                    ],
+                    "type": "object"
+                  },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
                     ],
                     "type": "object"
                   },
@@ -98430,6 +106216,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -98469,6 +106270,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "missing": {
                     "type": "boolean"
@@ -98535,6 +106351,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -98562,6 +106418,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -98742,6 +106605,46 @@ export const schemas = {
               "posterUrl": {
                 "type": "string"
               },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
               "progressMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -98769,6 +106672,13 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
               },
               "seasonCount": {
                 "maximum": 9007199254740991,
@@ -99260,6 +107170,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -99497,6 +107442,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -99536,6 +107496,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -99679,6 +107654,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -99915,6 +107925,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -99954,6 +107979,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -100020,6 +108060,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -100047,6 +108127,13 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 16,
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -100227,6 +108314,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -100254,6 +108381,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -100693,6 +108827,41 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "channel": {
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "generation",
+              "name",
+              "number",
+              "group",
+              "provenance"
+            ],
+            "type": "object"
+          },
           "contentRating": {
             "type": "string"
           },
@@ -100930,6 +109099,21 @@ export const schemas = {
           "kind": {
             "type": "string"
           },
+          "knownFor": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "label": {
             "type": "string"
           },
@@ -100969,6 +109153,21 @@ export const schemas = {
           },
           "libraryId": {
             "type": "string"
+          },
+          "matchedOn": {
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "text"
+            ],
+            "type": "object"
           },
           "media": {
             "properties": {
@@ -101112,6 +109311,41 @@ export const schemas = {
                   "bookId",
                   "itemId",
                   "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
                 ],
                 "type": "object"
               },
@@ -101348,6 +109582,21 @@ export const schemas = {
               "kind": {
                 "type": "string"
               },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
               "label": {
                 "type": "string"
               },
@@ -101387,6 +109636,21 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
               },
               "missing": {
                 "type": "boolean"
@@ -101453,6 +109717,46 @@ export const schemas = {
               "posterUrl": {
                 "type": "string"
               },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
               "progressMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -101480,6 +109784,13 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
               },
               "seasonCount": {
                 "maximum": 9007199254740991,
@@ -101660,6 +109971,46 @@ export const schemas = {
           "posterUrl": {
             "type": "string"
           },
+          "programme": {
+            "properties": {
+              "end": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "live": {
+                "type": "boolean"
+              },
+              "moreAirings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "moreAiringsExact": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "start",
+              "end",
+              "live",
+              "moreAirings",
+              "moreAiringsExact"
+            ],
+            "type": "object"
+          },
           "progressMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -101687,6 +110038,13 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
           },
           "seasonCount": {
             "maximum": 9007199254740991,
@@ -105977,6 +114335,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -106214,6 +114607,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -106253,6 +114661,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -106396,6 +114819,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -106632,6 +115090,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -106671,6 +115144,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -106737,6 +115225,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -106764,6 +115292,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -106944,6 +115479,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -106971,6 +115546,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -107327,6 +115909,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -107564,6 +116181,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -107603,6 +116235,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -107746,6 +116393,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -107982,6 +116664,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -108021,6 +116718,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -108087,6 +116799,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -108114,6 +116866,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -108294,6 +117053,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -108321,6 +117120,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -108759,6 +117565,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -108996,6 +117837,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -109035,6 +117891,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -109178,6 +118049,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -109414,6 +118320,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -109453,6 +118374,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -109519,6 +118455,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -109546,6 +118522,12 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -109726,6 +118708,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -109753,6 +118775,12 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -111652,6 +120680,41 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "channel": {
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "generation",
+              "name",
+              "number",
+              "group",
+              "provenance"
+            ],
+            "type": "object"
+          },
           "contentRating": {
             "type": "string"
           },
@@ -111889,6 +120952,21 @@ export const schemas = {
           "kind": {
             "type": "string"
           },
+          "knownFor": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "label": {
             "type": "string"
           },
@@ -111928,6 +121006,21 @@ export const schemas = {
           },
           "libraryId": {
             "type": "string"
+          },
+          "matchedOn": {
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "text"
+            ],
+            "type": "object"
           },
           "media": {
             "properties": {
@@ -112071,6 +121164,41 @@ export const schemas = {
                   "bookId",
                   "itemId",
                   "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
                 ],
                 "type": "object"
               },
@@ -112307,6 +121435,21 @@ export const schemas = {
               "kind": {
                 "type": "string"
               },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
               "label": {
                 "type": "string"
               },
@@ -112346,6 +121489,21 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
               },
               "missing": {
                 "type": "boolean"
@@ -112412,6 +121570,46 @@ export const schemas = {
               "posterUrl": {
                 "type": "string"
               },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
               "progressMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -112439,6 +121637,13 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
               },
               "seasonCount": {
                 "maximum": 9007199254740991,
@@ -112619,6 +121824,46 @@ export const schemas = {
           "posterUrl": {
             "type": "string"
           },
+          "programme": {
+            "properties": {
+              "end": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "live": {
+                "type": "boolean"
+              },
+              "moreAirings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "moreAiringsExact": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "start",
+              "end",
+              "live",
+              "moreAirings",
+              "moreAiringsExact"
+            ],
+            "type": "object"
+          },
           "progressMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -112646,6 +121891,13 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
           },
           "seasonCount": {
             "maximum": 9007199254740991,
@@ -113137,6 +122389,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -113374,6 +122661,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -113413,6 +122715,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -113556,6 +122873,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -113792,6 +123144,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -113831,6 +123198,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -113897,6 +123279,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -113924,6 +123346,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -114104,6 +123533,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -114131,6 +123600,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -115674,6 +125150,41 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "channel": {
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "group": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sourceId",
+              "generation",
+              "name",
+              "number",
+              "group",
+              "provenance"
+            ],
+            "type": "object"
+          },
           "contentRating": {
             "type": "string"
           },
@@ -115911,6 +125422,21 @@ export const schemas = {
           "kind": {
             "type": "string"
           },
+          "knownFor": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "label": {
             "type": "string"
           },
@@ -115950,6 +125476,21 @@ export const schemas = {
           },
           "libraryId": {
             "type": "string"
+          },
+          "matchedOn": {
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "text"
+            ],
+            "type": "object"
           },
           "media": {
             "properties": {
@@ -116093,6 +125634,41 @@ export const schemas = {
                   "bookId",
                   "itemId",
                   "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
                 ],
                 "type": "object"
               },
@@ -116329,6 +125905,21 @@ export const schemas = {
               "kind": {
                 "type": "string"
               },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
               "label": {
                 "type": "string"
               },
@@ -116368,6 +125959,21 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
               },
               "missing": {
                 "type": "boolean"
@@ -116434,6 +126040,46 @@ export const schemas = {
               "posterUrl": {
                 "type": "string"
               },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
               "progressMs": {
                 "maximum": 9007199254740991,
                 "minimum": 0,
@@ -116461,6 +126107,13 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
               },
               "seasonCount": {
                 "maximum": 9007199254740991,
@@ -116641,6 +126294,46 @@ export const schemas = {
           "posterUrl": {
             "type": "string"
           },
+          "programme": {
+            "properties": {
+              "end": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "live": {
+                "type": "boolean"
+              },
+              "moreAirings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "moreAiringsExact": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "start",
+              "end",
+              "live",
+              "moreAirings",
+              "moreAiringsExact"
+            ],
+            "type": "object"
+          },
           "progressMs": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -116668,6 +126361,13 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "type": "array"
           },
           "seasonCount": {
             "maximum": 9007199254740991,
@@ -117159,6 +126859,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -117396,6 +127131,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -117435,6 +127185,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -117578,6 +127343,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -117814,6 +127614,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -117853,6 +127668,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -117919,6 +127749,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -117946,6 +127816,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -118126,6 +128003,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -118153,6 +128070,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -118735,6 +128659,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -118972,6 +128931,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -119011,6 +128985,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -119154,6 +129143,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -119390,6 +129414,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -119429,6 +129468,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -119495,6 +129549,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -119522,6 +129616,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -119702,6 +129803,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -119729,6 +129870,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -120076,6 +130224,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -120313,6 +130496,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -120352,6 +130550,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -120495,6 +130708,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -120731,6 +130979,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -120770,6 +131033,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -120836,6 +131114,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -120863,6 +131181,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -121043,6 +131368,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -121070,6 +131435,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -121965,6 +132337,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -122202,6 +132609,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -122241,6 +132663,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -122384,6 +132821,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -122620,6 +133092,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -122659,6 +133146,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -122725,6 +133227,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -122752,6 +133294,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -122932,6 +133481,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -122959,6 +133548,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -123266,6 +133862,1593 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSearchDiscoveryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSearchDiscoveryResponse": {
+    "properties": {
+      "genres": {
+        "items": {
+          "properties": {
+            "backdropUrl": {
+              "type": "string"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "countIsLowerBound": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "posterUrls": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "posterUrls",
+            "value",
+            "label",
+            "count",
+            "countIsLowerBound"
+          ],
+          "type": "object"
+        },
+        "maxItems": 24,
+        "type": "array"
+      },
+      "genresNextCursor": {
+        "type": "string"
+      },
+      "onNow": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "absoluteNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "activeBeginYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "activeEndYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "airDate": {
+              "type": "string"
+            },
+            "album": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "albumCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "albumType": {
+              "type": "string"
+            },
+            "artist": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "artistType": {
+              "type": "string"
+            },
+            "artworkPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "author": {
+              "type": "string"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "bookProgress": {
+              "properties": {
+                "bookId": {
+                  "type": "string"
+                },
+                "chapter": {
+                  "properties": {
+                    "endMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "index": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "title",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "partPositionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "remainingMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bookId",
+                "itemId",
+                "partPositionMs"
+              ],
+              "type": "object"
+            },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
+            "contentRating": {
+              "type": "string"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "country": {
+              "type": "string"
+            },
+            "dateBased": {
+              "type": "boolean"
+            },
+            "discNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "displayTitle": {
+              "type": "string"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "edition": {
+              "type": "string"
+            },
+            "episodeNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "favorite": {
+              "type": "boolean"
+            },
+            "genres": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "hidden": {
+              "nullable": true,
+              "type": "boolean"
+            },
+            "homeActions": {
+              "properties": {
+                "collection": {
+                  "type": "boolean"
+                },
+                "delete": {
+                  "type": "boolean"
+                },
+                "details": {
+                  "type": "boolean"
+                },
+                "download": {
+                  "type": "boolean"
+                },
+                "editMetadata": {
+                  "type": "boolean"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "myList": {
+                  "type": "boolean"
+                },
+                "play": {
+                  "type": "boolean"
+                },
+                "played": {
+                  "type": "boolean"
+                },
+                "playlist": {
+                  "type": "boolean"
+                },
+                "queue": {
+                  "type": "boolean"
+                },
+                "rating": {
+                  "type": "boolean"
+                },
+                "refreshMetadata": {
+                  "type": "boolean"
+                },
+                "removeFromContinue": {
+                  "type": "boolean"
+                },
+                "selection": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "edit": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "refresh": {
+                      "type": "boolean"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "download",
+                    "edit",
+                    "refresh",
+                    "delete"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "properties": {
+                    "containerRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "personalRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "rating": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "watchlisted",
+                    "favorite",
+                    "watched",
+                    "rating",
+                    "personalRevision",
+                    "containerRevision"
+                  ],
+                  "type": "object"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "play",
+                "queue",
+                "playlist",
+                "collection",
+                "myList",
+                "favorite",
+                "watched",
+                "played",
+                "rating",
+                "editMetadata",
+                "refreshMetadata",
+                "delete",
+                "download",
+                "details",
+                "state",
+                "selection"
+              ],
+              "type": "object"
+            },
+            "homeTitleContext": {
+              "properties": {
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "genres"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "label": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "latestEpisode": {
+              "properties": {
+                "airDate": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "airDate",
+                "episodeNumber",
+                "count"
+              ],
+              "type": "object"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
+            },
+            "media": {
+              "properties": {
+                "absoluteNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeBeginYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeEndYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "addedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "airDate": {
+                  "type": "string"
+                },
+                "album": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "albumCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "albumType": {
+                  "type": "string"
+                },
+                "artist": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "artistType": {
+                  "type": "string"
+                },
+                "artworkPaths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "backdropUrl": {
+                  "type": "string"
+                },
+                "bookProgress": {
+                  "properties": {
+                    "bookId": {
+                      "type": "string"
+                    },
+                    "chapter": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "index": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "title",
+                        "startMs",
+                        "endMs"
+                      ],
+                      "type": "object"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "partPositionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "remainingMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "bookId",
+                    "itemId",
+                    "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
+                "contentRating": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "country": {
+                  "type": "string"
+                },
+                "dateBased": {
+                  "type": "boolean"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "displayTitle": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "edition": {
+                  "type": "string"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "favorite": {
+                  "type": "boolean"
+                },
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "homeActions": {
+                  "properties": {
+                    "collection": {
+                      "type": "boolean"
+                    },
+                    "delete": {
+                      "type": "boolean"
+                    },
+                    "details": {
+                      "type": "boolean"
+                    },
+                    "download": {
+                      "type": "boolean"
+                    },
+                    "editMetadata": {
+                      "type": "boolean"
+                    },
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "myList": {
+                      "type": "boolean"
+                    },
+                    "play": {
+                      "type": "boolean"
+                    },
+                    "played": {
+                      "type": "boolean"
+                    },
+                    "playlist": {
+                      "type": "boolean"
+                    },
+                    "queue": {
+                      "type": "boolean"
+                    },
+                    "rating": {
+                      "type": "boolean"
+                    },
+                    "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
+                      "type": "boolean"
+                    },
+                    "selection": {
+                      "properties": {
+                        "collection": {
+                          "type": "boolean"
+                        },
+                        "delete": {
+                          "type": "boolean"
+                        },
+                        "download": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "myList": {
+                          "type": "boolean"
+                        },
+                        "play": {
+                          "type": "boolean"
+                        },
+                        "playlist": {
+                          "type": "boolean"
+                        },
+                        "queue": {
+                          "type": "boolean"
+                        },
+                        "refresh": {
+                          "type": "boolean"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "play",
+                        "queue",
+                        "playlist",
+                        "collection",
+                        "myList",
+                        "favorite",
+                        "watched",
+                        "download",
+                        "edit",
+                        "refresh",
+                        "delete"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "properties": {
+                        "containerRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "favorite": {
+                          "type": "boolean"
+                        },
+                        "personalRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rating": {
+                          "nullable": true,
+                          "type": "number"
+                        },
+                        "watched": {
+                          "type": "boolean"
+                        },
+                        "watchlisted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "watchlisted",
+                        "favorite",
+                        "watched",
+                        "rating",
+                        "personalRevision",
+                        "containerRevision"
+                      ],
+                      "type": "object"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "play",
+                    "queue",
+                    "playlist",
+                    "collection",
+                    "myList",
+                    "favorite",
+                    "watched",
+                    "played",
+                    "rating",
+                    "editMetadata",
+                    "refreshMetadata",
+                    "delete",
+                    "download",
+                    "details",
+                    "state",
+                    "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "latestEpisode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "airDate",
+                    "episodeNumber",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "missing": {
+                  "type": "boolean"
+                },
+                "narrators": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "navigation": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "entityId": {
+                      "type": "string"
+                    },
+                    "view": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "view"
+                  ],
+                  "type": "object"
+                },
+                "new": {
+                  "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
+                },
+                "overview": {
+                  "type": "string"
+                },
+                "overviewSource": {
+                  "type": "string"
+                },
+                "overviewSourceUrl": {
+                  "type": "string"
+                },
+                "playback": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId"
+                  ],
+                  "type": "object"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
+                "progressMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "publishedYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "publisher": {
+                  "type": "string"
+                },
+                "rating": {
+                  "type": "number"
+                },
+                "releaseDate": {
+                  "type": "string"
+                },
+                "removed": {
+                  "type": "boolean"
+                },
+                "resolution": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "series": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "show": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sortLetter": {
+                  "type": "string"
+                },
+                "special": {
+                  "type": "boolean"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "totalAtLeast": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "trackNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unwatchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "userRating": {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "watched": {
+                  "type": "boolean"
+                },
+                "watchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "watchlisted": {
+                  "type": "boolean"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "missing",
+                "id",
+                "kind",
+                "title",
+                "addedAt"
+              ],
+              "type": "object"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "narrators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "navigation": {
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "view": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "view"
+              ],
+              "type": "object"
+            },
+            "new": {
+              "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "overviewSource": {
+              "type": "string"
+            },
+            "overviewSourceUrl": {
+              "type": "string"
+            },
+            "playback": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "startMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId"
+              ],
+              "type": "object"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "publishedYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "publisher": {
+              "type": "string"
+            },
+            "rating": {
+              "type": "number"
+            },
+            "releaseDate": {
+              "type": "string"
+            },
+            "removed": {
+              "type": "boolean"
+            },
+            "resolution": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "seasonCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "seasonNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "series": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "show": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "sortLetter": {
+              "type": "string"
+            },
+            "special": {
+              "type": "boolean"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "totalAtLeast": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "trackNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "unwatchedCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "userRating": {
+              "maximum": 10,
+              "minimum": 0,
+              "nullable": true,
+              "type": "integer"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "watchedCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "watchlisted": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMax": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "yearMin": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "maxItems": 4,
+        "type": "array"
+      },
+      "revision": {
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "entityId": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "libraryKind": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "view": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "libraryKind",
+          "view",
+          "entityId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "genres",
+      "genresNextCursor",
+      "onNow"
+    ],
+    "type": "object"
+  },
   "GetSearchHistoryRequest": {
     "properties": {},
     "required": [],
@@ -123276,7 +135459,7 @@ export const schemas = {
       "entries": {
         "items": {
           "properties": {
-            "query": {
+            "q": {
               "type": "string"
             },
             "updatedAt": {
@@ -123284,18 +135467,32 @@ export const schemas = {
             }
           },
           "required": [
-            "query",
+            "q",
             "updatedAt"
           ],
           "type": "object"
         },
         "type": "array"
       },
+      "maxEntries": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "remembered": {
         "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
       }
     },
     "required": [
+      "serverId",
+      "viewerFence",
+      "maxEntries",
       "remembered",
       "entries"
     ],
@@ -124857,6 +137054,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -125094,6 +137326,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -125133,6 +137380,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -125276,6 +137538,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -125512,6 +137809,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -125551,6 +137863,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -125617,6 +137944,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -125644,6 +138011,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -125824,6 +138197,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -125851,6 +138264,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -126155,6 +138574,41 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "channel": {
+                          "properties": {
+                            "generation": {
+                              "type": "string"
+                            },
+                            "group": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "sourceId",
+                            "generation",
+                            "name",
+                            "number",
+                            "group",
+                            "provenance"
+                          ],
+                          "type": "object"
+                        },
                         "contentRating": {
                           "type": "string"
                         },
@@ -126392,6 +138846,21 @@ export const schemas = {
                         "kind": {
                           "type": "string"
                         },
+                        "knownFor": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name"
+                          ],
+                          "type": "object"
+                        },
                         "label": {
                           "type": "string"
                         },
@@ -126431,6 +138900,21 @@ export const schemas = {
                         },
                         "libraryId": {
                           "type": "string"
+                        },
+                        "matchedOn": {
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "text"
+                          ],
+                          "type": "object"
                         },
                         "media": {
                           "properties": {
@@ -126574,6 +139058,41 @@ export const schemas = {
                                 "bookId",
                                 "itemId",
                                 "partPositionMs"
+                              ],
+                              "type": "object"
+                            },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
                               ],
                               "type": "object"
                             },
@@ -126810,6 +139329,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -126849,6 +139383,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "missing": {
                               "type": "boolean"
@@ -126915,6 +139464,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -126942,6 +139531,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -127122,6 +139717,46 @@ export const schemas = {
                         "posterUrl": {
                           "type": "string"
                         },
+                        "programme": {
+                          "properties": {
+                            "end": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "live": {
+                              "type": "boolean"
+                            },
+                            "moreAirings": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "moreAiringsExact": {
+                              "type": "boolean"
+                            },
+                            "start": {
+                              "type": "string"
+                            },
+                            "subtitle": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "start",
+                            "end",
+                            "live",
+                            "moreAirings",
+                            "moreAiringsExact"
+                          ],
+                          "type": "object"
+                        },
                         "progressMs": {
                           "maximum": 9007199254740991,
                           "minimum": 0,
@@ -127149,6 +139784,12 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "roles": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "seasonCount": {
                           "maximum": 9007199254740991,
@@ -127911,6 +140552,41 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "channel": {
+                              "properties": {
+                                "generation": {
+                                  "type": "string"
+                                },
+                                "group": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "sourceId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "sourceId",
+                                "generation",
+                                "name",
+                                "number",
+                                "group",
+                                "provenance"
+                              ],
+                              "type": "object"
+                            },
                             "contentRating": {
                               "type": "string"
                             },
@@ -128148,6 +140824,21 @@ export const schemas = {
                             "kind": {
                               "type": "string"
                             },
+                            "knownFor": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
                             "label": {
                               "type": "string"
                             },
@@ -128187,6 +140878,21 @@ export const schemas = {
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "matchedOn": {
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "text"
+                              ],
+                              "type": "object"
                             },
                             "media": {
                               "properties": {
@@ -128330,6 +141036,41 @@ export const schemas = {
                                     "bookId",
                                     "itemId",
                                     "partPositionMs"
+                                  ],
+                                  "type": "object"
+                                },
+                                "channel": {
+                                  "properties": {
+                                    "generation": {
+                                      "type": "string"
+                                    },
+                                    "group": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "number": {
+                                      "type": "string"
+                                    },
+                                    "provenance": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "sourceId",
+                                    "generation",
+                                    "name",
+                                    "number",
+                                    "group",
+                                    "provenance"
                                   ],
                                   "type": "object"
                                 },
@@ -128566,6 +141307,21 @@ export const schemas = {
                                 "kind": {
                                   "type": "string"
                                 },
+                                "knownFor": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
                                 "label": {
                                   "type": "string"
                                 },
@@ -128605,6 +141361,21 @@ export const schemas = {
                                 },
                                 "libraryId": {
                                   "type": "string"
+                                },
+                                "matchedOn": {
+                                  "properties": {
+                                    "field": {
+                                      "type": "string"
+                                    },
+                                    "text": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "text"
+                                  ],
+                                  "type": "object"
                                 },
                                 "missing": {
                                   "type": "boolean"
@@ -128671,6 +141442,46 @@ export const schemas = {
                                 "posterUrl": {
                                   "type": "string"
                                 },
+                                "programme": {
+                                  "properties": {
+                                    "end": {
+                                      "type": "string"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "live": {
+                                      "type": "boolean"
+                                    },
+                                    "moreAirings": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "moreAiringsExact": {
+                                      "type": "boolean"
+                                    },
+                                    "start": {
+                                      "type": "string"
+                                    },
+                                    "subtitle": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "title",
+                                    "start",
+                                    "end",
+                                    "live",
+                                    "moreAirings",
+                                    "moreAiringsExact"
+                                  ],
+                                  "type": "object"
+                                },
                                 "progressMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": 0,
@@ -128698,6 +141509,12 @@ export const schemas = {
                                 },
                                 "role": {
                                   "type": "string"
+                                },
+                                "roles": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "seasonCount": {
                                   "maximum": 9007199254740991,
@@ -128878,6 +141695,46 @@ export const schemas = {
                             "posterUrl": {
                               "type": "string"
                             },
+                            "programme": {
+                              "properties": {
+                                "end": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "live": {
+                                  "type": "boolean"
+                                },
+                                "moreAirings": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "moreAiringsExact": {
+                                  "type": "boolean"
+                                },
+                                "start": {
+                                  "type": "string"
+                                },
+                                "subtitle": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "start",
+                                "end",
+                                "live",
+                                "moreAirings",
+                                "moreAiringsExact"
+                              ],
+                              "type": "object"
+                            },
                             "progressMs": {
                               "maximum": 9007199254740991,
                               "minimum": 0,
@@ -128905,6 +141762,12 @@ export const schemas = {
                             },
                             "role": {
                               "type": "string"
+                            },
+                            "roles": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
                             },
                             "seasonCount": {
                               "maximum": 9007199254740991,
@@ -129762,6 +142625,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -129999,6 +142897,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -130038,6 +142951,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -130181,6 +143109,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -130417,6 +143380,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -130456,6 +143434,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -130522,6 +143515,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -130549,6 +143582,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -130729,6 +143768,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -130756,6 +143835,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -131057,6 +144142,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -131294,6 +144414,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -131333,6 +144468,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -131476,6 +144626,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -131712,6 +144897,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -131751,6 +144951,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -131817,6 +145032,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -131844,6 +145099,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -132024,6 +145285,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -132051,6 +145352,12 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -132813,6 +146120,41 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
+                        ],
+                        "type": "object"
+                      },
                       "contentRating": {
                         "type": "string"
                       },
@@ -133050,6 +146392,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -133089,6 +146446,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "media": {
                         "properties": {
@@ -133232,6 +146604,41 @@ export const schemas = {
                               "bookId",
                               "itemId",
                               "partPositionMs"
+                            ],
+                            "type": "object"
+                          },
+                          "channel": {
+                            "properties": {
+                              "generation": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "string"
+                              },
+                              "provenance": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "sourceId",
+                              "generation",
+                              "name",
+                              "number",
+                              "group",
+                              "provenance"
                             ],
                             "type": "object"
                           },
@@ -133468,6 +146875,21 @@ export const schemas = {
                           "kind": {
                             "type": "string"
                           },
+                          "knownFor": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
                           "label": {
                             "type": "string"
                           },
@@ -133507,6 +146929,21 @@ export const schemas = {
                           },
                           "libraryId": {
                             "type": "string"
+                          },
+                          "matchedOn": {
+                            "properties": {
+                              "field": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "text"
+                            ],
+                            "type": "object"
                           },
                           "missing": {
                             "type": "boolean"
@@ -133573,6 +147010,46 @@ export const schemas = {
                           "posterUrl": {
                             "type": "string"
                           },
+                          "programme": {
+                            "properties": {
+                              "end": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "live": {
+                                "type": "boolean"
+                              },
+                              "moreAirings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "moreAiringsExact": {
+                                "type": "boolean"
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "start",
+                              "end",
+                              "live",
+                              "moreAirings",
+                              "moreAiringsExact"
+                            ],
+                            "type": "object"
+                          },
                           "progressMs": {
                             "maximum": 9007199254740991,
                             "minimum": 0,
@@ -133600,6 +147077,12 @@ export const schemas = {
                           },
                           "role": {
                             "type": "string"
+                          },
+                          "roles": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "seasonCount": {
                             "maximum": 9007199254740991,
@@ -133780,6 +147263,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -133807,6 +147330,12 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -135813,6 +149342,41 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
+                  ],
+                  "type": "object"
+                },
                 "contentRating": {
                   "type": "string"
                 },
@@ -136050,6 +149614,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -136089,6 +149668,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "media": {
                   "properties": {
@@ -136232,6 +149826,41 @@ export const schemas = {
                         "bookId",
                         "itemId",
                         "partPositionMs"
+                      ],
+                      "type": "object"
+                    },
+                    "channel": {
+                      "properties": {
+                        "generation": {
+                          "type": "string"
+                        },
+                        "group": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string"
+                        },
+                        "provenance": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "sourceId",
+                        "generation",
+                        "name",
+                        "number",
+                        "group",
+                        "provenance"
                       ],
                       "type": "object"
                     },
@@ -136468,6 +150097,21 @@ export const schemas = {
                     "kind": {
                       "type": "string"
                     },
+                    "knownFor": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
                     "label": {
                       "type": "string"
                     },
@@ -136507,6 +150151,21 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "matchedOn": {
+                      "properties": {
+                        "field": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "text"
+                      ],
+                      "type": "object"
                     },
                     "missing": {
                       "type": "boolean"
@@ -136573,6 +150232,46 @@ export const schemas = {
                     "posterUrl": {
                       "type": "string"
                     },
+                    "programme": {
+                      "properties": {
+                        "end": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "live": {
+                          "type": "boolean"
+                        },
+                        "moreAirings": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "moreAiringsExact": {
+                          "type": "boolean"
+                        },
+                        "start": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "start",
+                        "end",
+                        "live",
+                        "moreAirings",
+                        "moreAiringsExact"
+                      ],
+                      "type": "object"
+                    },
                     "progressMs": {
                       "maximum": 9007199254740991,
                       "minimum": 0,
@@ -136600,6 +150299,13 @@ export const schemas = {
                     },
                     "role": {
                       "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 16,
+                      "type": "array"
                     },
                     "seasonCount": {
                       "maximum": 9007199254740991,
@@ -136780,6 +150486,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -136807,6 +150553,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -154584,6 +168337,41 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
                   "contentRating": {
                     "type": "string"
                   },
@@ -154821,6 +168609,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -154860,6 +168663,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -155003,6 +168821,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -155239,6 +169092,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -155278,6 +169146,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -155344,6 +169227,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -155371,6 +169294,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -155551,6 +169481,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -155578,6 +169548,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -155938,6 +169915,41 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "channel": {
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                },
+                "provenance": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sourceId",
+                "generation",
+                "name",
+                "number",
+                "group",
+                "provenance"
+              ],
+              "type": "object"
+            },
             "contentRating": {
               "type": "string"
             },
@@ -156175,6 +170187,21 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "knownFor": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
             "label": {
               "type": "string"
             },
@@ -156214,6 +170241,21 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "matchedOn": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "text"
+              ],
+              "type": "object"
             },
             "media": {
               "properties": {
@@ -156357,6 +170399,41 @@ export const schemas = {
                     "bookId",
                     "itemId",
                     "partPositionMs"
+                  ],
+                  "type": "object"
+                },
+                "channel": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "group": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    },
+                    "provenance": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "sourceId",
+                    "generation",
+                    "name",
+                    "number",
+                    "group",
+                    "provenance"
                   ],
                   "type": "object"
                 },
@@ -156593,6 +170670,21 @@ export const schemas = {
                 "kind": {
                   "type": "string"
                 },
+                "knownFor": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "label": {
                   "type": "string"
                 },
@@ -156632,6 +170724,21 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "matchedOn": {
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "text"
+                  ],
+                  "type": "object"
                 },
                 "missing": {
                   "type": "boolean"
@@ -156698,6 +170805,46 @@ export const schemas = {
                 "posterUrl": {
                   "type": "string"
                 },
+                "programme": {
+                  "properties": {
+                    "end": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "moreAirings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "moreAiringsExact": {
+                      "type": "boolean"
+                    },
+                    "start": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "start",
+                    "end",
+                    "live",
+                    "moreAirings",
+                    "moreAiringsExact"
+                  ],
+                  "type": "object"
+                },
                 "progressMs": {
                   "maximum": 9007199254740991,
                   "minimum": 0,
@@ -156725,6 +170872,13 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16,
+                  "type": "array"
                 },
                 "seasonCount": {
                   "maximum": 9007199254740991,
@@ -156905,6 +171059,46 @@ export const schemas = {
             "posterUrl": {
               "type": "string"
             },
+            "programme": {
+              "properties": {
+                "end": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "live": {
+                  "type": "boolean"
+                },
+                "moreAirings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "moreAiringsExact": {
+                  "type": "boolean"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "start",
+                "end",
+                "live",
+                "moreAirings",
+                "moreAiringsExact"
+              ],
+              "type": "object"
+            },
             "progressMs": {
               "maximum": 9007199254740991,
               "minimum": 0,
@@ -156932,6 +171126,13 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "roles": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16,
+              "type": "array"
             },
             "seasonCount": {
               "maximum": 9007199254740991,
@@ -177560,6 +191761,12 @@ export const schemas = {
                 "available": {
                   "type": "boolean"
                 },
+                "directions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "entityKind": {
                   "type": "string"
                 },
@@ -177583,6 +191790,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "directions",
                 "id",
                 "labelKey",
                 "title",
@@ -177639,6 +191847,9 @@ export const schemas = {
       "groups": {
         "items": {
           "properties": {
+            "direction": {
+              "type": "string"
+            },
             "entityKind": {
               "type": "string"
             },
@@ -177795,6 +192006,41 @@ export const schemas = {
                       "bookId",
                       "itemId",
                       "partPositionMs"
+                    ],
+                    "type": "object"
+                  },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
                     ],
                     "type": "object"
                   },
@@ -178035,6 +192281,21 @@ export const schemas = {
                   "kind": {
                     "type": "string"
                   },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
                   "label": {
                     "type": "string"
                   },
@@ -178074,6 +192335,21 @@ export const schemas = {
                   },
                   "libraryId": {
                     "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
                   },
                   "media": {
                     "properties": {
@@ -178217,6 +192493,41 @@ export const schemas = {
                           "bookId",
                           "itemId",
                           "partPositionMs"
+                        ],
+                        "type": "object"
+                      },
+                      "channel": {
+                        "properties": {
+                          "generation": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "generation",
+                          "name",
+                          "number",
+                          "group",
+                          "provenance"
                         ],
                         "type": "object"
                       },
@@ -178453,6 +192764,21 @@ export const schemas = {
                       "kind": {
                         "type": "string"
                       },
+                      "knownFor": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
                       "label": {
                         "type": "string"
                       },
@@ -178492,6 +192818,21 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "matchedOn": {
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "text"
+                        ],
+                        "type": "object"
                       },
                       "missing": {
                         "type": "boolean"
@@ -178558,6 +192899,46 @@ export const schemas = {
                       "posterUrl": {
                         "type": "string"
                       },
+                      "programme": {
+                        "properties": {
+                          "end": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "live": {
+                            "type": "boolean"
+                          },
+                          "moreAirings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "moreAiringsExact": {
+                            "type": "boolean"
+                          },
+                          "start": {
+                            "type": "string"
+                          },
+                          "subtitle": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "start",
+                          "end",
+                          "live",
+                          "moreAirings",
+                          "moreAiringsExact"
+                        ],
+                        "type": "object"
+                      },
                       "progressMs": {
                         "maximum": 9007199254740991,
                         "minimum": 0,
@@ -178585,6 +192966,13 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "roles": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 16,
+                        "type": "array"
                       },
                       "seasonCount": {
                         "maximum": 9007199254740991,
@@ -178765,6 +193153,46 @@ export const schemas = {
                   "posterUrl": {
                     "type": "string"
                   },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
                   "progressMs": {
                     "maximum": 9007199254740991,
                     "minimum": 0,
@@ -178792,6 +193220,13 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
                   },
                   "seasonCount": {
                     "maximum": 9007199254740991,
@@ -178912,6 +193347,12 @@ export const schemas = {
             "nextCursor": {
               "type": "string"
             },
+            "sort": {
+              "type": "string"
+            },
+            "sourceRevision": {
+              "type": "string"
+            },
             "status": {
               "type": "string"
             },
@@ -178925,9 +193366,17 @@ export const schemas = {
             },
             "totalCountExact": {
               "type": "boolean"
+            },
+            "windowEnd": {
+              "type": "string"
+            },
+            "windowStart": {
+              "type": "string"
             }
           },
           "required": [
+            "sort",
+            "direction",
             "id",
             "labelKey",
             "title",
@@ -179063,6 +193512,2970 @@ export const schemas = {
           "view",
           "entityId",
           "viewerFence"
+        ],
+        "type": "object"
+      },
+      "top": {
+        "properties": {
+          "entry": {
+            "additionalProperties": false,
+            "properties": {
+              "absoluteNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeBeginYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeEndYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "addedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "airDate": {
+                "type": "string"
+              },
+              "album": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "albumType": {
+                "type": "string"
+              },
+              "artist": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "artistType": {
+                "type": "string"
+              },
+              "artworkPaths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "author": {
+                "type": "string"
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "backdropUrl": {
+                "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
+                ],
+                "type": "object"
+              },
+              "contentRating": {
+                "type": "string"
+              },
+              "count": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "country": {
+                "type": "string"
+              },
+              "dateBased": {
+                "type": "boolean"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "displayTitle": {
+                "type": "string"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "edition": {
+                "type": "string"
+              },
+              "episodeNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "hidden": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
+                ],
+                "type": "object"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "label": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              },
+              "latestEpisode": {
+                "properties": {
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "airDate",
+                  "episodeNumber",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "media": {
+                "properties": {
+                  "absoluteNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeBeginYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeEndYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "addedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "albumType": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "artistType": {
+                    "type": "string"
+                  },
+                  "artworkPaths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "backdropUrl": {
+                    "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
+                  },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
+                  "contentRating": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "country": {
+                    "type": "string"
+                  },
+                  "dateBased": {
+                    "type": "boolean"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "displayTitle": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "edition": {
+                    "type": "string"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "latestEpisode": {
+                    "properties": {
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "airDate",
+                      "episodeNumber",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "libraryId": {
+                    "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
+                  },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "navigation": {
+                    "properties": {
+                      "category": {
+                        "type": "string"
+                      },
+                      "entityId": {
+                        "type": "string"
+                      },
+                      "view": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "view"
+                    ],
+                    "type": "object"
+                  },
+                  "new": {
+                    "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "overview": {
+                    "type": "string"
+                  },
+                  "overviewSource": {
+                    "type": "string"
+                  },
+                  "overviewSourceUrl": {
+                    "type": "string"
+                  },
+                  "playback": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId"
+                    ],
+                    "type": "object"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "posterUrl": {
+                    "type": "string"
+                  },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
+                  "progressMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
+                  },
+                  "removed": {
+                    "type": "boolean"
+                  },
+                  "resolution": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "show": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "sortLetter": {
+                    "type": "string"
+                  },
+                  "special": {
+                    "type": "boolean"
+                  },
+                  "stillUrl": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "totalAtLeast": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "trackNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "unwatchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "userRating": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "missing",
+                  "id",
+                  "kind",
+                  "title",
+                  "addedAt"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "navigation": {
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  },
+                  "view": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "view"
+                ],
+                "type": "object"
+              },
+              "new": {
+                "type": "boolean"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "overview": {
+                "type": "string"
+              },
+              "overviewSource": {
+                "type": "string"
+              },
+              "overviewSourceUrl": {
+                "type": "string"
+              },
+              "playback": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId"
+                ],
+                "type": "object"
+              },
+              "plays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "posterUrl": {
+                "type": "string"
+              },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
+              "progressMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "boolean"
+              },
+              "resolution": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "show": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "sortLetter": {
+                "type": "string"
+              },
+              "special": {
+                "type": "boolean"
+              },
+              "stillUrl": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "totalAtLeast": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trackNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "unwatchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "userRating": {
+                "maximum": 10,
+                "minimum": 0,
+                "nullable": true,
+                "type": "integer"
+              },
+              "watched": {
+                "type": "boolean"
+              },
+              "watchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "watchlisted": {
+                "type": "boolean"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "group": {
+            "type": "string"
+          },
+          "primary": {
+            "additionalProperties": false,
+            "properties": {
+              "absoluteNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeBeginYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeEndYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "addedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "airDate": {
+                "type": "string"
+              },
+              "album": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "albumCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "albumType": {
+                "type": "string"
+              },
+              "artist": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "artistType": {
+                "type": "string"
+              },
+              "artworkPaths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "author": {
+                "type": "string"
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "backdropUrl": {
+                "type": "string"
+              },
+              "bookProgress": {
+                "properties": {
+                  "bookId": {
+                    "type": "string"
+                  },
+                  "chapter": {
+                    "properties": {
+                      "endMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "index": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "index",
+                      "title",
+                      "startMs",
+                      "endMs"
+                    ],
+                    "type": "object"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "partPositionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "remainingMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bookId",
+                  "itemId",
+                  "partPositionMs"
+                ],
+                "type": "object"
+              },
+              "channel": {
+                "properties": {
+                  "generation": {
+                    "type": "string"
+                  },
+                  "group": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "sourceId",
+                  "generation",
+                  "name",
+                  "number",
+                  "group",
+                  "provenance"
+                ],
+                "type": "object"
+              },
+              "contentRating": {
+                "type": "string"
+              },
+              "count": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "country": {
+                "type": "string"
+              },
+              "dateBased": {
+                "type": "boolean"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "displayTitle": {
+                "type": "string"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "edition": {
+                "type": "string"
+              },
+              "episodeNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "favorite": {
+                "type": "boolean"
+              },
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "hidden": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "homeActions": {
+                "properties": {
+                  "collection": {
+                    "type": "boolean"
+                  },
+                  "delete": {
+                    "type": "boolean"
+                  },
+                  "details": {
+                    "type": "boolean"
+                  },
+                  "download": {
+                    "type": "boolean"
+                  },
+                  "editMetadata": {
+                    "type": "boolean"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "myList": {
+                    "type": "boolean"
+                  },
+                  "play": {
+                    "type": "boolean"
+                  },
+                  "played": {
+                    "type": "boolean"
+                  },
+                  "playlist": {
+                    "type": "boolean"
+                  },
+                  "queue": {
+                    "type": "boolean"
+                  },
+                  "rating": {
+                    "type": "boolean"
+                  },
+                  "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "removeFromContinue": {
+                    "type": "boolean"
+                  },
+                  "selection": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "edit": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "refresh": {
+                        "type": "boolean"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "download",
+                      "edit",
+                      "refresh",
+                      "delete"
+                    ],
+                    "type": "object"
+                  },
+                  "state": {
+                    "properties": {
+                      "containerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "personalRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "watchlisted",
+                      "favorite",
+                      "watched",
+                      "rating",
+                      "personalRevision",
+                      "containerRevision"
+                    ],
+                    "type": "object"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "play",
+                  "queue",
+                  "playlist",
+                  "collection",
+                  "myList",
+                  "favorite",
+                  "watched",
+                  "played",
+                  "rating",
+                  "editMetadata",
+                  "refreshMetadata",
+                  "delete",
+                  "download",
+                  "details",
+                  "state",
+                  "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
+                ],
+                "type": "object"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "knownFor": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "label": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              },
+              "latestEpisode": {
+                "properties": {
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "airDate",
+                  "episodeNumber",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "matchedOn": {
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "field",
+                  "text"
+                ],
+                "type": "object"
+              },
+              "media": {
+                "properties": {
+                  "absoluteNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeBeginYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeEndYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "addedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "albumCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "albumType": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "artistType": {
+                    "type": "string"
+                  },
+                  "artworkPaths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "backdropUrl": {
+                    "type": "string"
+                  },
+                  "bookProgress": {
+                    "properties": {
+                      "bookId": {
+                        "type": "string"
+                      },
+                      "chapter": {
+                        "properties": {
+                          "endMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startMs",
+                          "endMs"
+                        ],
+                        "type": "object"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "partPositionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "positionMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "remainingMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bookId",
+                      "itemId",
+                      "partPositionMs"
+                    ],
+                    "type": "object"
+                  },
+                  "channel": {
+                    "properties": {
+                      "generation": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "string"
+                      },
+                      "provenance": {
+                        "type": "string"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "sourceId",
+                      "generation",
+                      "name",
+                      "number",
+                      "group",
+                      "provenance"
+                    ],
+                    "type": "object"
+                  },
+                  "contentRating": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "country": {
+                    "type": "string"
+                  },
+                  "dateBased": {
+                    "type": "boolean"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "displayTitle": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "edition": {
+                    "type": "string"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "homeActions": {
+                    "properties": {
+                      "collection": {
+                        "type": "boolean"
+                      },
+                      "delete": {
+                        "type": "boolean"
+                      },
+                      "details": {
+                        "type": "boolean"
+                      },
+                      "download": {
+                        "type": "boolean"
+                      },
+                      "editMetadata": {
+                        "type": "boolean"
+                      },
+                      "favorite": {
+                        "type": "boolean"
+                      },
+                      "myList": {
+                        "type": "boolean"
+                      },
+                      "play": {
+                        "type": "boolean"
+                      },
+                      "played": {
+                        "type": "boolean"
+                      },
+                      "playlist": {
+                        "type": "boolean"
+                      },
+                      "queue": {
+                        "type": "boolean"
+                      },
+                      "rating": {
+                        "type": "boolean"
+                      },
+                      "refreshMetadata": {
+                        "type": "boolean"
+                      },
+                      "removeFromContinue": {
+                        "type": "boolean"
+                      },
+                      "selection": {
+                        "properties": {
+                          "collection": {
+                            "type": "boolean"
+                          },
+                          "delete": {
+                            "type": "boolean"
+                          },
+                          "download": {
+                            "type": "boolean"
+                          },
+                          "edit": {
+                            "type": "boolean"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "myList": {
+                            "type": "boolean"
+                          },
+                          "play": {
+                            "type": "boolean"
+                          },
+                          "playlist": {
+                            "type": "boolean"
+                          },
+                          "queue": {
+                            "type": "boolean"
+                          },
+                          "refresh": {
+                            "type": "boolean"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "play",
+                          "queue",
+                          "playlist",
+                          "collection",
+                          "myList",
+                          "favorite",
+                          "watched",
+                          "download",
+                          "edit",
+                          "refresh",
+                          "delete"
+                        ],
+                        "type": "object"
+                      },
+                      "state": {
+                        "properties": {
+                          "containerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "favorite": {
+                            "type": "boolean"
+                          },
+                          "personalRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rating": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          },
+                          "watchlisted": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "watchlisted",
+                          "favorite",
+                          "watched",
+                          "rating",
+                          "personalRevision",
+                          "containerRevision"
+                        ],
+                        "type": "object"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "play",
+                      "queue",
+                      "playlist",
+                      "collection",
+                      "myList",
+                      "favorite",
+                      "watched",
+                      "played",
+                      "rating",
+                      "editMetadata",
+                      "refreshMetadata",
+                      "delete",
+                      "download",
+                      "details",
+                      "state",
+                      "selection"
+                    ],
+                    "type": "object"
+                  },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "knownFor": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "latestEpisode": {
+                    "properties": {
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "airDate",
+                      "episodeNumber",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "libraryId": {
+                    "type": "string"
+                  },
+                  "matchedOn": {
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
+                  },
+                  "narrators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "navigation": {
+                    "properties": {
+                      "category": {
+                        "type": "string"
+                      },
+                      "entityId": {
+                        "type": "string"
+                      },
+                      "view": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "view"
+                    ],
+                    "type": "object"
+                  },
+                  "new": {
+                    "type": "boolean"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "overview": {
+                    "type": "string"
+                  },
+                  "overviewSource": {
+                    "type": "string"
+                  },
+                  "overviewSourceUrl": {
+                    "type": "string"
+                  },
+                  "playback": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId"
+                    ],
+                    "type": "object"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "posterUrl": {
+                    "type": "string"
+                  },
+                  "programme": {
+                    "properties": {
+                      "end": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "moreAirings": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "moreAiringsExact": {
+                        "type": "boolean"
+                      },
+                      "start": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "start",
+                      "end",
+                      "live",
+                      "moreAirings",
+                      "moreAiringsExact"
+                    ],
+                    "type": "object"
+                  },
+                  "progressMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "publishedYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "publisher": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "releaseDate": {
+                    "type": "string"
+                  },
+                  "removed": {
+                    "type": "boolean"
+                  },
+                  "resolution": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "roles": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "series": {
+                    "items": {
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "show": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "sortLetter": {
+                    "type": "string"
+                  },
+                  "special": {
+                    "type": "boolean"
+                  },
+                  "stillUrl": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "totalAtLeast": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "trackNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "unwatchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "userRating": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMax": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "yearMin": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "missing",
+                  "id",
+                  "kind",
+                  "title",
+                  "addedAt"
+                ],
+                "type": "object"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "narrators": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "navigation": {
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  },
+                  "view": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "view"
+                ],
+                "type": "object"
+              },
+              "new": {
+                "type": "boolean"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "overview": {
+                "type": "string"
+              },
+              "overviewSource": {
+                "type": "string"
+              },
+              "overviewSourceUrl": {
+                "type": "string"
+              },
+              "playback": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId"
+                ],
+                "type": "object"
+              },
+              "plays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "posterUrl": {
+                "type": "string"
+              },
+              "programme": {
+                "properties": {
+                  "end": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "live": {
+                    "type": "boolean"
+                  },
+                  "moreAirings": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "moreAiringsExact": {
+                    "type": "boolean"
+                  },
+                  "start": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "start",
+                  "end",
+                  "live",
+                  "moreAirings",
+                  "moreAiringsExact"
+                ],
+                "type": "object"
+              },
+              "progressMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "publishedYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "publisher": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "number"
+              },
+              "releaseDate": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "boolean"
+              },
+              "resolution": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "series": {
+                "items": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "show": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "sortLetter": {
+                "type": "string"
+              },
+              "special": {
+                "type": "boolean"
+              },
+              "stillUrl": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "totalAtLeast": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trackNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "unwatchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "userRating": {
+                "maximum": 10,
+                "minimum": 0,
+                "nullable": true,
+                "type": "integer"
+              },
+              "watched": {
+                "type": "boolean"
+              },
+              "watchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "watchlisted": {
+                "type": "boolean"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMax": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "yearMin": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "group",
+          "entry"
         ],
         "type": "object"
       }

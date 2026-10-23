@@ -23,6 +23,11 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 		"Capture":              reflect.TypeFor[operations.Capture](),
 		"FeedbackSubmission":   reflect.TypeFor[operations.FeedbackSubmission](),
 		"ContentEntry":         reflect.TypeFor[catalog.ContentEntry](),
+		"SearchMatch":          reflect.TypeFor[catalog.SearchMatch](),
+		"SearchChannel":        reflect.TypeFor[catalog.SearchChannel](),
+		"SearchProgramme":      reflect.TypeFor[catalog.SearchProgramme](),
+		"SearchGenre":          reflect.TypeFor[catalog.SearchGenre](),
+		"SearchDiscovery":      reflect.TypeFor[catalog.SearchDiscovery](),
 		"Category":             reflect.TypeFor[catalog.Category](),
 		"FilesystemPage":       reflect.TypeFor[administration.FilesystemPage](),
 	}
@@ -33,6 +38,32 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 			return nil, nil, err
 		}
 		props, _ := shape["properties"].(map[string]any)
+		if name == "ContentEntry" {
+			if roles, ok := props["roles"].(map[string]any); ok {
+				roles["maxItems"] = 16
+			}
+		}
+		if name == "SearchMatch" {
+			props["field"].(map[string]any)["enum"] = []string{"credit", "artist", "album", "author", "narrator", "series", "show"}
+			props["text"].(map[string]any)["maxLength"] = 2048
+		}
+		if name == "SearchChannel" {
+			props["provenance"].(map[string]any)["enum"] = []string{"live-source", "library-channel"}
+			for _, f := range []string{"id", "sourceId", "generation", "number"} {
+				props[f].(map[string]any)["maxLength"] = 256
+			}
+		}
+		if name == "SearchGenre" {
+			props["posterUrls"].(map[string]any)["maxItems"] = 2
+		}
+		if name == "SearchDiscovery" {
+			props["genres"].(map[string]any)["maxItems"] = 24
+			props["onNow"].(map[string]any)["maxItems"] = 4
+		}
+		if name == "SearchProgramme" {
+			props["moreAirings"].(map[string]any)["minimum"] = 0
+		}
+
 		field := func(key string) map[string]any { v, _ := props[key].(map[string]any); return v }
 		switch name {
 		case "HomeDocument":

@@ -18,16 +18,17 @@ import (
 // Selector is the style guide's tagged union (amendment 9): exactly one of a
 // container, a browse query, or an explicit list of at most 500 items.
 type Selector struct {
-	Container *ContainerRef       `json:"container,omitempty"`
-	Query     *catalog.QueueQuery `json:"query,omitempty"`
-	Saved     *SavedRef           `json:"saved,omitempty"`
-	Items     *ItemList           `json:"items,omitempty"`
+	Search    *catalog.SearchQueueQuery `json:"search,omitempty"`
+	Container *ContainerRef             `json:"container,omitempty"`
+	Query     *catalog.QueueQuery       `json:"query,omitempty"`
+	Saved     *SavedRef                 `json:"saved,omitempty"`
+	Items     *ItemList                 `json:"items,omitempty"`
 }
 type SavedRef struct {
 	ID string `json:"id"`
 }
 
-func (s Selector) isQuery() bool { return s.Query != nil || s.Saved != nil }
+func (s Selector) isQuery() bool { return s.Query != nil || s.Saved != nil || s.Search != nil }
 
 type ContainerRef struct {
 	Kind string `json:"kind"`
@@ -119,6 +120,12 @@ var itemIDPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 
 func (s Selector) validate(path string) error {
 	n := 0
+	if s.Search != nil {
+		n++
+		if err := s.Search.Validate(); err != nil {
+			return &FieldError{Path: path + ".search"}
+		}
+	}
 	if s.Container != nil {
 		n++
 		if !itemIDPattern.MatchString(s.Container.ID) || s.Container.Kind == "" || len(s.Container.Kind) > 32 {

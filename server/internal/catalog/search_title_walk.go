@@ -91,7 +91,7 @@ func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int
 	}
 	bound, boundArgs := "", []any{}
 	if r.Cursor != "" {
-		c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, sortID), rev)
+		c, err := s.decodeSearchCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, sortID), rev)
 		if err != nil {
 			return "", false, nil // the ranked path reports the cursor
 		}
@@ -191,7 +191,7 @@ func (s *Service) searchPostingsWalk(ctx context.Context, r SearchRequest, kind 
 	args = append(args, filterArgs...)
 	bound := ""
 	if r.Cursor != "" {
-		c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, sortID), rev)
+		c, err := s.decodeSearchCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, sortID), rev)
 		if err != nil {
 			return "", false, nil // the ranked path reports the cursor
 		}

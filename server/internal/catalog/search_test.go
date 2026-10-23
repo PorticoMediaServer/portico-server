@@ -91,7 +91,7 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A request without Live TV permission publishes only nonlive groups.
-	if len(out.Groups) != len(searchGroups)-1 || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
+	if len(out.Groups) != len(searchGroups)-2 || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
 		t.Fatalf("groups %+v", out)
 	}
 	for _, group := range out.Groups {
@@ -139,8 +139,8 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 		return err
 	})
 	c.Drain()
-	if _, err = s.Search(context.Background(), r); err != nil {
-		t.Fatal("continuation failed after publication", err)
+	if _, err = s.Search(context.Background(), r); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatal("Search must explicitly restart after publication", err)
 	}
 	r.Cursor, r.Q = "", "renam"
 	out, err = s.Search(context.Background(), r)
@@ -379,9 +379,9 @@ func TestSearchSameTitleEpisodeHierarchyContext(t *testing.T) {
 	if len(out.Groups) != 1 || len(out.Groups[0].Items) != 3 {
 		t.Fatal(out)
 	}
-	expected := map[string]string{s0.Public: "Test Harbor · Specials · Episode 1", s1.Public: "Test Harbor · Season 1 · Episode 1", absolute.Public: "Test Harbor · Absolute episode 1 (unassigned season)"}
+	expected := map[string]int{s0.Public: 0, s1.Public: 1, absolute.Public: -1}
 	for _, entry := range out.Groups[0].Items {
-		if entry.Subtitle != expected[entry.ID] || entry.Navigation == nil || entry.Navigation.View != "item" || entry.Navigation.EntityID != entry.ID || entry.LibraryID != "tv" {
+		if entry.Subtitle != "" || entry.Show == nil || entry.Show.ID != show.Public || entry.Show.Name != "Test Harbor" || entry.EpisodeNumber == nil || *entry.EpisodeNumber != 1 || (expected[entry.ID] >= 0 && (entry.SeasonNumber == nil || *entry.SeasonNumber != expected[entry.ID])) || (expected[entry.ID] < 0 && (entry.SeasonNumber != nil || entry.AbsoluteNumber == nil || *entry.AbsoluteNumber != 1)) || entry.Navigation == nil || entry.Navigation.View != "item" || entry.Navigation.EntityID != entry.ID || entry.LibraryID != "tv" {
 			t.Fatal("context/link", entry)
 		}
 	}
@@ -397,15 +397,15 @@ func TestSearchSameTitleEpisodeHierarchyContext(t *testing.T) {
 		return err
 	})
 	c.Drain()
-	if _, err = s.Search(context.Background(), paged); err != nil {
-		t.Fatal("parent rename prevented continuation", err)
+	if _, err = s.Search(context.Background(), paged); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatal("parent publication must explicitly restart Search", err)
 	}
 	out, err = s.Search(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, entry := range out.Groups[0].Items {
-		if !strings.HasPrefix(entry.Subtitle, "Renamed Harbor · ") {
+		if entry.Subtitle != "" || entry.Show == nil || entry.Show.ID != show.Public || entry.Show.Name != "Renamed Harbor" {
 			t.Fatal("stale parent title", entry)
 		}
 	}
@@ -427,11 +427,11 @@ func TestSearchDuplicateAlbumsCarryActualAlbumArtist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := map[string]string{firstAlbum.Public: "First Artist", secondAlbum.Public: "Second Artist", song.Public: "Shared Title · Second Artist"}
+	expected := map[string]string{firstAlbum.Public: firstArtist.Public, secondAlbum.Public: secondArtist.Public, song.Public: secondArtist.Public}
 	seen := 0
 	for _, section := range out.Groups {
 		for _, entry := range section.Items {
-			if entry.Subtitle != expected[entry.ID] || entry.Navigation.EntityID != entry.ID {
+			if entry.Subtitle != "" || entry.Artist == nil || entry.Artist.ID != expected[entry.ID] || (entry.Kind == "song" && (entry.Album == nil || entry.Album.ID != secondAlbum.Public)) || entry.Navigation.EntityID != entry.ID {
 				t.Fatal(entry)
 			}
 			seen++

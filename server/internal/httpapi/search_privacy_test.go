@@ -173,6 +173,9 @@ func TestSearchLiveTVPrivacyHTTPAllMixedAndExplicit(t *testing.T) {
 
 func TestSearchLiveTVPrivacyHTTPRevocationExpiresCursors(t *testing.T) {
 	f := newSearchPrivacyFixture(t)
+	if _, err := f.db.Exec(`INSERT INTO live_source_settings(source_id,viewer_access) VALUES(?,'server-members')`, strings.Repeat("ab", 24)); err != nil {
+		t.Fatal(err)
+	}
 	f.restrictLiveTV(true)
 	paths := []string{"/v1/search?q=Northwind&group=live-tv&limit=1", "/v1/search?q=Northwind&group=movies&limit=1"}
 	cursors := make([]string, len(paths))
@@ -200,6 +203,9 @@ func TestSearchLiveTVPrivacyHTTPRevocationExpiresCursors(t *testing.T) {
 
 func TestSearchLiveTVPrivacyHTTPCurrentPolicyAndFailure(t *testing.T) {
 	f := newSearchPrivacyFixture(t)
+	if _, err := f.db.Exec(`INSERT INTO live_source_settings(source_id,viewer_access) VALUES(?,'server-members')`, strings.Repeat("ab", 24)); err != nil {
+		t.Fatal(err)
+	}
 	f.restrictLiveTV(true)
 	before := readSearchPrivacyResponse(t, f.h, "/v1/search?q=Northwind", f.kids.AccessToken)
 	// Deliberately bypass publication/cache invalidation to prove the feature

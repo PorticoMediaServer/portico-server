@@ -22,6 +22,7 @@ export const SEARCH_CHIPS: readonly SearchChip[] = [
 ];
 
 const ORDER = new Map<string, number>(SEARCH_CHIPS.map((chip, index) => [chip.id, index]));
+ORDER.set('programmes',10);
 
 /** A group's name, the chip's. */
 export function searchGroupLabel(id: SearchGroup): MessageId {
