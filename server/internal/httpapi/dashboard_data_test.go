@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/telemetry"
 	"testing"
 )
@@ -35,17 +36,18 @@ func TestDashboardAnalyticsDoNotGrantAdministratorPeopleAuthority(t *testing.T) 
 
 func TestDashboardManagementRequiresTheAccountsMainProfile(t *testing.T) {
 	f := administrationFixtureNew(t)
-	for _, account := range []string{"owner", "admin"} {
-		profile := account + "-secondary"
-		if _, e := f.deps.DB.Exec(`INSERT INTO direct_profiles(id,account_id,name,position) VALUES(?,?, 'Secondary',1)`, profile, account); e != nil {
+	for account, bearer := range map[string]string{"owner": f.owner, "admin": f.admin} {
+		snapshot, e := f.deps.Identity.CreateDirectProfile(context.Background(), bearer, "Secondary", "blue")
+		if e != nil {
 			t.Fatal(e)
 		}
-		token, e := f.deps.Identity.Issue(account, profile, "local", account, 1)
+		profile := snapshot.Profiles[len(snapshot.Profiles)-1].ID
+		selected, e := f.deps.Identity.SelectDirectProfile(context.Background(), bearer, profile, identity.DirectSelection{})
 		if e != nil {
 			t.Fatal(e)
 		}
 		for _, path := range []string{"/v1/admin/sessions", "/v1/admin/access/members", "/v1/admin/play-history/people", "/v1/admin/play-history/dashboard", "/v1/admin/dashboard/status"} {
-			w := f.call("GET", path, token.AccessToken, "")
+			w := f.call("GET", path, selected.Session.AccessToken, "")
 			if w.Code != 403 {
 				t.Fatal(account, path, w.Code, w.Body.String())
 			}
