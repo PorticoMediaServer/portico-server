@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -53,6 +54,12 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			modified := time.Unix(1700000000, 0).UTC()
 			var active, peak, gets atomic.Int32
 			var badAuth, providerBackoff atomic.Bool
+			var sharedReadBlocked atomic.Bool
+			sharedReadStarted := make(chan struct{}, 1)
+			sharedReadRelease := make(chan struct{})
+			var releaseShared sync.Once
+			unblockShared := func() { releaseShared.Do(func() { close(sharedReadRelease) }) }
+			defer unblockShared()
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := active.Add(1)
 				defer active.Add(-1)
@@ -93,6 +100,17 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				}
 				if r.Method == http.MethodGet {
 					gets.Add(1)
+					if sharedReadBlocked.Load() {
+						select {
+						case sharedReadStarted <- struct{}{}:
+						default:
+						}
+						select {
+						case <-sharedReadRelease:
+						case <-r.Context().Done():
+							return
+						}
+					}
 				}
 				w.Header().Set("ETag", `"origin-one"`)
 				if sequential {
@@ -325,6 +343,32 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if first.Binding().Sequential != sequential || second.Binding().Profile.Limits.Connections != 1 {
 				t.Fatal(first.Binding(), second.Binding())
 			}
+			childContext, cancelChild := context.WithCancel(ctx)
+			if sequential {
+				child, err := first.OpenSequential(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.Read(make([]byte, 16)); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled progressive child exposed bytes", n, err)
+				}
+				child.Close()
+			} else {
+				child, err := first.OpenRange(childContext)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cancelChild()
+				if n, err := child.ReadAt(childContext, make([]byte, 16), 0); n != 0 || !errors.Is(err, context.Canceled) {
+					t.Fatal("canceled range child exposed bytes", n, err)
+				}
+				child.Close()
+			}
+			if err := first.Check(ctx); err != nil {
+				t.Fatal("child cancellation killed its Reading session", err)
+			}
+			beforeReadGets := gets.Load()
 			if sequential {
 				if _, err = first.OpenRange(ctx); !errors.Is(err, storage.ErrRemoteRange) {
 					t.Fatal("sequential became ReadAt", err)
@@ -338,8 +382,8 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 				if err != nil || !bytes.Equal(got, payload) {
 					t.Fatal("progressive bytes", len(got), err)
 				}
-				if gets.Load() != 1 {
-					t.Fatal("from-start body replayed", gets.Load())
+				if gets.Load() != beforeReadGets+1 {
+					t.Fatal("from-start body replayed", gets.Load(), beforeReadGets)
 				}
 			} else {
 				rangeReader, err := first.OpenRange(ctx)
@@ -369,6 +413,88 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if counts := process.OperationCounts(); counts.Capacity != 1 || counts.Peak != 1 || counts.Active != 0 {
 				t.Fatal("actual source pools did not share cap1", counts)
+			}
+			if !sequential {
+				endpoint, err := process.Endpoint(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				entry, err := endpoint.Stat(ctx, "film.mkv", process.Check)
+				if err != nil {
+					t.Fatal(err)
+				}
+				beforeBaseline := gets.Load()
+				baseline, err := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+				if err != nil || !bytes.Equal(baseline, payload[456:584]) {
+					t.Fatal("single-viewer origin baseline", baseline, err)
+				}
+				baselineGETs := gets.Load() - beforeBaseline
+				if baselineGETs < 1 {
+					t.Fatal("single-viewer baseline contacted no origin")
+				}
+				beforeShared, beforeGET := endpoint.CoalescedRanges(), gets.Load()
+				sharedReadBlocked.Store(true)
+				read := func() <-chan error {
+					done := make(chan error, 1)
+					go func() {
+						data, e := endpoint.ReadRange(ctx, "film.mkv", entry.ETag, int64(len(payload)), 456, 128, process.Check)
+						if e == nil && !bytes.Equal(data, payload[456:584]) {
+							e = errors.New("shared source extent differs")
+						}
+						done <- e
+					}()
+					return done
+				}
+				leader := read()
+				select {
+				case <-sharedReadStarted:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				joiner := read()
+				deadline := time.NewTimer(2 * time.Second)
+				tick := time.NewTicker(time.Millisecond)
+				for endpoint.CoalescedRanges() == beforeShared {
+					select {
+					case <-deadline.C:
+						t.Fatal("same-file viewer did not join admitted transfer")
+					case <-tick.C:
+					}
+				}
+				tick.Stop()
+				deadline.Stop()
+				sharedReadBlocked.Store(false)
+				unblockShared()
+				if a, b := <-leader, <-joiner; a != nil || b != nil || gets.Load()-beforeGET != baselineGETs {
+					t.Fatal("same-file viewers duplicated the admitted origin workload", a, b, gets.Load()-beforeGET, baselineGETs)
+				}
+				t.Logf("shared_range_joiners=%d single_reader_origin_gets=%d shared_reader_origin_gets=%d admitted_peak=%d", endpoint.CoalescedRanges()-beforeShared, baselineGETs, gets.Load()-beforeGET, process.OperationCounts().Peak)
+			}
+			for _, closedBeforeError := range []bool{false, true} {
+				failedReader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
+				var child io.Closer
+				if sequential {
+					child, err = failedReader.OpenSequential(ctx)
+				} else {
+					child, err = failedReader.OpenRange(ctx)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if closedBeforeError {
+					child.Close()
+				}
+				beforeErrorGets := gets.Load()
+				if err = failedReader.StopAndRecheck(ctx); err != nil {
+					t.Fatal("decode-error metadata recheck", closedBeforeError, err)
+				}
+				if gets.Load() != beforeErrorGets || failedReader.Check(ctx) == nil {
+					t.Fatal("terminal recheck reopened media or retained authority", gets.Load(), beforeErrorGets)
+				}
+				child.Close()
+				if err = second.Check(ctx); err != nil {
+					t.Fatal("decode-error reader killed another session", err)
+				}
 			}
 			if !sequential {
 				metadata, err := process.Metadata(ctx)
