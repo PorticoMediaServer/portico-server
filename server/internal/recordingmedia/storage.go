@@ -49,7 +49,7 @@ func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
 		return out, e
 	}
 	var used int64
-	objects := map[string][]os.FileInfo{}
+	objects := map[string]bool{}
 	e = filepath.WalkDir(d.root, func(path string, entry fs.DirEntry, e error) error {
 		if e != nil {
 			if os.IsNotExist(e) {
@@ -74,19 +74,14 @@ func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
 			if !info.Mode().IsRegular() {
 				return mediaartifact.ErrPrivate
 			}
-			if filepath.Base(filepath.Dir(path)) == "objects" {
-				key := filepath.Base(path)
-				same := false
-				for _, prior := range objects[key] {
-					if os.SameFile(prior, info) {
-						same = true
-						break
-					}
-				}
-				if same {
+			// Captures, shared occurrences and configured layout names may all
+			// hard-link the same closed payload. Account for physical bytes once,
+			// independent of the filename or which link the walk encounters first.
+			if key := layoutPhysicalIdentity(info); key != "" {
+				if objects[key] {
 					return nil
 				}
-				objects[key] = append(objects[key], info)
+				objects[key] = true
 			}
 			used += info.Size()
 		}
