@@ -2,6 +2,7 @@
  * Bounded disc structure reader. It does not decrypt or assemble loose clips.
  * Source-only WIP: public header/build and fixture qualification is outstanding.
  */
+#define _POSIX_C_SOURCE 200809L
 #include <errno.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -11,6 +12,17 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#define dup _dup
+#define dup2 _dup2
+#define close _close
+#define fileno _fileno
+#define fdopen _fdopen
+#else
+#include <unistd.h>
+#endif
 #include <libbluray/bluray.h>
 #include <dvdread/dvd_reader.h>
 #include <dvdread/ifo_read.h>
@@ -20,6 +32,7 @@
 #define OUTPUT_MAX (1024 * 1024)
 #define TITLE_MAX 4096
 static char output[OUTPUT_MAX + 1];
+static FILE *result_output;
 static size_t used;
 static int output_error;
 static void emit(const char *fmt, ...) {
@@ -34,7 +47,7 @@ static void emit(const char *fmt, ...) {
 }
 static int publish(void) {
     if (output_error) return 4;
-    if (fwrite(output, 1, used, stdout) != used || fflush(stdout)) return 5;
+    if (fwrite(output, 1, used, result_output) != used || fflush(result_output)) return 5;
     return 0;
 }
 static void language(const uint8_t *lang, size_t len) {
@@ -214,7 +227,7 @@ static int number(const char *s, uint64_t *out) {
     for (const char *p = s; *p; p++) if (*p < '0' || *p > '9') return 0;
     errno = 0; *out = strtoull(s, &end, 10); return !errno && !*end;
 }
-int main(int argc, char **argv) {
+static int run(int argc, char **argv) {
     struct stat st;
     BLURAY *bd;
     int result;
@@ -234,4 +247,22 @@ int main(int argc, char **argv) {
         result = seek_bd(bd, (unsigned)playlist, ms); bd_close(bd); return result;
     }
     return 2;
+}
+
+int main(int argc, char **argv) {
+    /* Some library builds print diagnostics directly to stdout, bypassing
+     * their logger callbacks. Keep the bounded JSON channel on its own fd
+     * before any library is opened; all library stdout becomes stderr. */
+    int fd = dup(fileno(stdout));
+    int status;
+    if (fd < 0) return 5;
+#ifdef _WIN32
+    if (_setmode(fd, _O_BINARY) < 0) { close(fd); return 5; }
+#endif
+    if (dup2(fileno(stderr), fileno(stdout)) < 0) { close(fd); return 5; }
+    result_output = fdopen(fd, "wb");
+    if (!result_output) { close(fd); return 5; }
+    status = run(argc, argv);
+    if (fclose(result_output) && status == 0) status = 5;
+    return status;
 }
