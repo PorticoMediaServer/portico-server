@@ -261,6 +261,13 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 }
 
 var preferenceRuntimeSources = map[string][2]string{
+	"music.qualityHome":       {"server/internal/httpapi/playback_v1_routes.go", "function:SavedMusicQualityPreference"},
+	"music.qualityAway":       {"server/internal/httpapi/playback_v1_routes.go", "function:SavedMusicQualityPreference"},
+	"music.qualityMobile":     {"server/internal/httpapi/playback_v1_routes.go", "function:SavedMusicQualityPreference"},
+	"music.qualityDownloads":  {"server/internal/downloads/music.go", "music.qualityDownloads"},
+	"music.neverBoost":        {"packages/client-core/src/music-preferences.ts", "music.neverBoost"},
+	"music.smoothTransitions": {"packages/client-core/src/music-preferences.ts", "music.smoothTransitions"},
+	"music.dsdGainDb":         {"server/internal/playback/audio_plan_v2.go", "music.dsdGainDb"},
 	// The network lane builds the key dynamically. Witness the actual runtime
 	// invocation that feeds QualityMode, not the key prefix in a local assignment.
 	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},

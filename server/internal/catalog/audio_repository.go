@@ -300,6 +300,44 @@ func (s *Service) artist(ctx context.Context, tx *sql.Tx, library int64, name st
 }
 
 func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, root, asset, path string, f assets.Facts) error {
+	if kind == "music" && len(f.MusicCueTracks) > 0 {
+		c := f.MusicCueTracks[0]
+		if _, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO music_virtual_tracks(asset_id,ordinal,entity_id,start_seconds,end_seconds) SELECT ?,1,e.id,?,? FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE a.token=? AND cl.library_id=? AND e.kind=7 AND NOT EXISTS(SELECT 1 FROM music_virtual_tracks v WHERE v.asset_id=a.token) ORDER BY e.id LIMIT 1`, asset, c.Start, c.End, asset, library); e != nil {
+			return e
+		}
+		for n := range f.MusicCueTracks {
+			if e := s.commitAudioTrack(ctx, tx, library, kind, root, asset, path, f, n+1); e != nil {
+				return e
+			}
+		}
+		// Removed cue entries lose only this source link; retained personal/owner
+		// state and entity identity remain available if the cue returns later.
+		if _, e := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal>?)`, asset, asset, len(f.MusicCueTracks)); e != nil {
+			return e
+		}
+		if e := retireRemovedMusicCueTx(ctx, tx, asset, len(f.MusicCueTracks)); e != nil {
+			return e
+		}
+		_, e := tx.ExecContext(ctx, `DELETE FROM music_virtual_tracks WHERE asset_id=? AND ordinal>?`, asset, len(f.MusicCueTracks))
+		return e
+	}
+	if kind == "music" {
+		if _, e := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal>1)`, asset, asset); e != nil {
+			return e
+		}
+		if e := retireRemovedMusicCueTx(ctx, tx, asset, 1); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `UPDATE catalog_asset_links SET start_seconds=0,end_seconds=NULL WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal=1)`, asset, asset); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `DELETE FROM music_virtual_tracks WHERE asset_id=?`, asset); e != nil {
+			return e
+		}
+	}
+	return s.commitAudioTrack(ctx, tx, library, kind, root, asset, path, f, 0)
+}
+func (s *Service) commitAudioTrack(ctx context.Context, tx *sql.Tx, library, kind, root, asset, path string, f assets.Facts, cueOrdinal int) error {
 	if f.AudioCodec == "" && !f.InventoryOnly {
 		return errors.New("audio library source has no audio stream")
 	}
@@ -323,6 +361,19 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		return errProjection
 	}
 	f = projected
+	if cueOrdinal > 0 {
+		c := f.MusicCueTracks[cueOrdinal-1]
+		tags := map[string]string{}
+		for k, v := range f.Tags {
+			tags[k] = v
+		}
+		tags["title"] = c.Title
+		if tags["title"] == "" {
+			tags["title"] = "Track " + strconv.Itoa(cueOrdinal)
+		}
+		tags["track"] = strconv.Itoa(cueOrdinal)
+		f.Tags = tags
+	}
 	title := firstTag(f.Tags, "title")
 	if title == "" {
 		title, _ = FilenameTitle(path)
@@ -375,19 +426,34 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		itemKind = compactcatalog.Part
 	}
 	var item int64
-	err = tx.QueryRow(`SELECT l.entity_id FROM catalog_asset_links l INDEXED BY catalog_asset_links_asset JOIN catalog_entities i ON i.id=l.entity_id WHERE l.asset_id=? AND i.library_id=? AND i.kind=? LIMIT 1`, assetID, handle, itemKind).Scan(&item)
+	err = tx.QueryRow(`SELECT l.entity_id FROM catalog_asset_links l INDEXED BY catalog_asset_links_asset JOIN catalog_entities i ON i.id=l.entity_id WHERE l.asset_id=? AND i.library_id=? AND i.kind=? AND (?=0 OR EXISTS(SELECT 1 FROM music_virtual_tracks v WHERE v.entity_id=i.id AND v.asset_id=? AND v.ordinal=?)) LIMIT 1`, assetID, handle, itemKind, cueOrdinal, asset, cueOrdinal).Scan(&item)
 	// The attach point (attach.go). Before tags are read the file is known by
 	// its place; once they are, by what it is, so a second file with the same
 	// tags is another version of the same track rather than a second track.
 	tagKey := audioTagKey(f, kind, disc, track)
+	if cueOrdinal > 0 {
+		tagKey += ":cue:" + strconv.Itoa(cueOrdinal)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
-		if item, err = AttachTrackTx(ctx, tx, TrackFile{Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}); err != nil {
+		if item, err = AttachTrackTx(ctx, tx, TrackFile{CueOrdinal: cueOrdinal, Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
-	} else if item, err = identifyAudioFileTx(ctx, tx, item, tagKey, kind, TrackFile{Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}, f.Tags); err != nil {
+	} else if item, err = identifyAudioFileTx(ctx, tx, item, tagKey, kind, TrackFile{CueOrdinal: cueOrdinal, Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}, f.Tags); err != nil {
 		return err
+	}
+	if cueOrdinal > 0 {
+		c := f.MusicCueTracks[cueOrdinal-1]
+		if c.End <= c.Start {
+			return errors.New("invalid virtual music range")
+		}
+		if _, e := tx.ExecContext(ctx, `INSERT INTO music_virtual_tracks(asset_id,ordinal,entity_id,start_seconds,end_seconds) VALUES(?,?,?,?,?) ON CONFLICT(asset_id,ordinal) DO UPDATE SET entity_id=excluded.entity_id,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds`, asset, cueOrdinal, item, c.Start, c.End); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `UPDATE catalog_asset_links SET start_seconds=?,end_seconds=? WHERE entity_id=? AND asset_id=?`, c.Start, c.End, item, assetID); e != nil {
+			return e
+		}
 	}
 	// An observed physical asset keeps its existing logical parent when local
 	// tags still describe that parent. A folder rename is not a regrouping hint.
@@ -852,6 +918,35 @@ func joinBookByIdentifierTx(ctx context.Context, tx *sql.Tx, book int64, tags ma
 		}
 		if _, err = tx.ExecContext(ctx, `RELEASE book_join`); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// Retain the removed cue identity and personal state, but hide an obsolete
+// virtual track from browse/search when no other source still supplies it.
+func retireRemovedMusicCueTx(ctx context.Context, tx *sql.Tx, asset string, keep int) error {
+	rows, e := tx.QueryContext(ctx, `SELECT v.entity_id FROM music_virtual_tracks v WHERE v.asset_id=? AND v.ordinal>? AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.entity_id=v.entity_id) ORDER BY v.ordinal`, asset, keep)
+	if e != nil {
+		return e
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			return e
+		}
+		ids = append(ids, id)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	for _, id := range ids {
+		if e = compactcatalog.RetireEntityTx(ctx, tx, id); e != nil {
+			return e
 		}
 	}
 	return nil

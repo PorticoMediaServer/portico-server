@@ -20,6 +20,9 @@ import (
 
 // enrichPage fills the per-kind detail for the items on one page.
 func (s *Service) enrichPage(items map[string]*Item) error {
+	if e := s.musicFactsPage(items); e != nil {
+		return e
+	}
 	episodes, songs, books := []string{}, []string{}, []string{}
 	for id, item := range items {
 		switch item.Kind {

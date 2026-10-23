@@ -27,6 +27,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	MusicCueTracks      []Chapter            `json:"-"`
 	VideoName           naming.Embedded      `json:"-"`
 	VideoNameSkipped    bool                 `json:"-"`
 	ArtworkObserved     bool                 `json:"-"`
@@ -209,6 +210,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	knownStreams := true
 	seenStreams := map[int]bool{}
 	for position, s := range raw.Streams {
+		s.Codec = canonicalMusicCodec(s.Codec)
 		if s.Disposition.AttachedPic != 0 {
 			f.AttachedPicture = true
 			continue
@@ -235,6 +237,9 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 			f.AudioCodec = s.Codec
 
 		}
+	}
+	if err := p.completeMusepackTimeline(ctx, path, &f); err != nil {
+		return Facts{}, err
 	}
 	if !knownStreams {
 		f.Streams = nil

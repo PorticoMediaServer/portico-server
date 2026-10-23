@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"sort"
 
 	"portico.local/server/internal/decoder"
@@ -26,6 +27,26 @@ type MediaBridge struct {
 }
 
 func NewMediaBridge(input subtitles.RenderInput) *MediaBridge { return &MediaBridge{input: input} }
+
+// HeaderPrefix observes the same first extent as the decoder bridge. Header
+// completion cannot introduce a second, unfenced view of a remote acquisition.
+func (m *MediaBridge) HeaderPrefix(ctx context.Context) ([]byte, error) {
+	n := min(m.input.Size(), int64(1<<20))
+	if n <= 0 {
+		return nil, io.ErrUnexpectedEOF
+	}
+	b, err := m.input.ReadExtent(ctx, 0, n)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) != n {
+		return nil, io.ErrUnexpectedEOF
+	}
+	if err = m.ledger.check(0, b); err != nil {
+		return nil, err
+	}
+	return b, m.input.Validate(ctx)
+}
 func (m *MediaBridge) With(ctx context.Context, run func(string, *decoder.EndpointReservation) error) error {
 	b, e := openBridge(ctx, m.input, &m.ledger)
 	if e != nil {
