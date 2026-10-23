@@ -1,3 +1,4 @@
+import {formatAudioSource, formatDeliveryTarget, formatSubtitleSource, formatVideoSource, formatCodec} from './format';
 import type {DashboardSession as AdminSession} from './bindings';
 import type {DashboardHistory} from '@core/admin/dashboard.ts';
 import type {TelemetryPoint} from '@core/telemetry.ts';
@@ -8,18 +9,26 @@ export function orderedSessions(sessions: readonly AdminSession[]): readonly Adm
   const converts = (s: AdminSession) => Object.values(s.decision).some(d => d?.action === 'transcode' || d?.action === 'burn');
   return [...sessions].sort((a, b) => Number(!!b.problem) - Number(!!a.problem) || Number(converts(b)) - Number(converts(a)) || Date.parse(b.startedAt ?? '') - Date.parse(a.startedAt ?? '') || a.id.localeCompare(b.id));
 }
-export type Track = Readonly<{kind: 'video' | 'audio' | 'subtitles'; source: string; action: string; output?: string; hardware: boolean}>;
+export type DashboardRoute = 'original' | 'repackaged' | 'converted';
+/** VS-10 per-track display classification only. Never rewrites a raw action or establishes an overall session route. */
+export function trackRoute(action?: string): DashboardRoute | undefined {
+  if (action === 'original' || action === 'direct') return 'original';
+  if (action === 'copy') return 'repackaged';
+  if (action === 'convert' || action === 'transcode' || action === 'burn_in' || action === 'burn') return 'converted';
+  return undefined;
+}
+export type Track = Readonly<{reportedAction?: string; route?: DashboardRoute; kind: 'video' | 'audio' | 'subtitles'; source: string; action: string; output?: string; hardware: boolean}>;
 export function sessionTracks(s: AdminSession): readonly Track[] {
   const tracks: Track[] = [], v = s.media?.video, a = s.media?.audio, sub = s.media?.subtitles;
   for (const kind of ['video', 'audio', 'subtitles'] as const) {
-    const source = kind === 'video' && v ? [v.height && `${v.height}p`, v.codec, v.profile, v.hdr].filter(Boolean).join(' ')
-      : kind === 'audio' && a ? [a.language, a.codec, a.channels && String(a.channels)].filter(Boolean).join(' ')
-      : kind === 'subtitles' && sub ? [sub.language, sub.format].filter(Boolean).join(' ') : '';
+    const source = kind === 'video' && v ? formatVideoSource(v)
+      : kind === 'audio' && a ? formatAudioSource(a, s.item?.kind === 'song')
+      : kind === 'subtitles' && sub ? formatSubtitleSource(sub) : '';
     const delivery = s.delivery?.streams.find(t => t.kind === kind || kind === 'subtitles' && t.kind === 'subtitle');
     const decision = s.decision[kind], reported = delivery?.action ?? decision?.action;
     const action = reported === 'original' ? 'direct' : reported === 'convert' ? 'transcode' : reported === 'burn_in' ? 'burn' : reported === 'drop' ? 'off' : reported;
     if (!source && !action) continue;
-    tracks.push({kind, source: source || delivery?.inputCodec || '', action: action ?? 'unknown', output: delivery?.outputCodec || decision?.to, hardware: kind === 'video' && s.media?.videoHardware === true && (action === 'transcode' || action === 'burn')});
+    tracks.push({reportedAction: reported, route: trackRoute(reported), kind, source: source || (delivery?.inputCodec ? formatCodec(delivery.inputCodec) : ''), action: action ?? 'unknown', output: formatDeliveryTarget(s, kind, delivery?.outputCodec || decision?.to), hardware: kind === 'video' && s.media?.videoHardware === true && (action === 'transcode' || action === 'burn')});
   }
   return tracks;
 }
@@ -53,5 +62,5 @@ export function bucketSeries(history: DashboardHistory, kind: string): readonly 
 }
 export const hours = (milliseconds: number) => milliseconds / 3_600_000;
 export function clock(milliseconds: number): string {
-  const s = Math.floor(Math.max(0, milliseconds) / 1000); return `${Math.floor(s / 3600) ? `${Math.floor(s / 3600)}:` : ''}${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  const s = Math.floor(Math.max(0, milliseconds) / 1000); return `${Math.floor(s / 3600) ? `${Math.floor(s / 3600)}:` : ''}${Math.floor(s / 3600) ? String(Math.floor(s / 60) % 60).padStart(2, '0') : Math.floor(s / 60) % 60}:${String(s % 60).padStart(2, '0')}`;
 }

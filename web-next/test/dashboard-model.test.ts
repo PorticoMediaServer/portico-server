@@ -5,7 +5,7 @@ import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const base: DashboardSession = {id: 'session', user: 'account', profile: 'Kids', device: 'TV', title: 'Actual title', kind: 'vod', state: 'playing', positionMs: 1, location: 'local', startedAt: '2026-10-23T01:00:00Z', decision: {}};
 test('source/delivery actions use committed modes and unknown hardware remains absent', () => {
   const session = {...base, media: {video: {id: 'v', codec: 'hevc', height: 2160}}, delivery: {streams: [{kind: 'video', inputCodec: 'hevc', outputCodec: 'h264', action: 'convert'}]}};
-  assert.deepEqual(sessionTracks(session), [{kind: 'video', source: '2160p hevc', action: 'transcode', output: 'h264', hardware: false}]);
+  assert.deepEqual(sessionTracks(session), [{reportedAction: 'convert', route: 'converted', kind: 'video', source: '4K HEVC', action: 'transcode', output: 'H.264', hardware: false}]);
   assert.equal(sessionTracks({...session, media: {...session.media, videoHardware: true}})[0].hardware, true);
   assert.equal(sessionTracks({...session, delivery: {streams: [{kind: 'video', inputCodec: 'hevc', outputCodec: 'hevc', action: 'original'}]}})[0].action, 'direct');
 });

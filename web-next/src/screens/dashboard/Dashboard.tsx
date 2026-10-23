@@ -7,6 +7,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import type {DashboardAlert, DashboardBindings} from './bindings';
+import {fmtMbps, fmtPct} from './format';
 import {orderedSessions} from './model';
 import {useDashboardAuthority, useDashboardRead, type ReadState} from './use-read';
 import {Range, ReadFeedback, Section, t} from './shared';
@@ -56,10 +57,7 @@ function Load({bindings: b}: {bindings: DashboardBindings}) {
   const live = useDashboardRead(b, liveLoad, true, 2000), historical = useDashboardRead(b, historicalLoad, range !== 'live', 60000);
   useEffect(() => {if (live.value && !loadSeries(live.value, kind).length) {const available = loadKinds.find(k => loadSeries(live.value, k).length); if (available) setKind(available);}}, [live.value, kind]);
   const detail = range === 'live' ? live : historical, series = loadSeries(detail.value, kind);
-  const format = (value: number, selected = kind) => {
-    const number = value.toLocaleString(defaultI18n.locale, {maximumFractionDigits: 1});
-    return t(selected === 'bandwidth' ? 'next.dashboard.mbps' : selected === 'conversions' ? range === 'live' ? 'next.dashboard.running' : 'next.dashboard.averageCount' : 'next.dashboard.percent', {value: number});
-  };
+  const format = (value: number, selected = kind) => selected === 'bandwidth' ? fmtMbps(value) : selected === 'conversions' ? t(range === 'live' ? 'next.dashboard.running' : 'next.dashboard.averageCount', {value: range === 'live' ? String(Math.round(value)) : value.toFixed(1)}) : fmtPct(value);
   return <Section title={t('next.dashboard.load')}>
     <ReadFeedback state={live} /><div className={styles.tiles} role="tablist" aria-label={t('next.dashboard.load')}>{loadKinds.map(k => {
       const available = loadSeries(live.value, k); if (!available.length) return null;
@@ -67,10 +65,10 @@ function Load({bindings: b}: {bindings: DashboardBindings}) {
       return <button type="button" className={styles.tile} key={k} id={`${id}-${k}`} role="tab" aria-selected={kind === k} aria-controls={`${id}-panel`} tabIndex={kind === k ? 0 : -1} onClick={() => setKind(k)} onKeyDown={event => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return; event.preventDefault();
         const keys = loadKinds.filter(key => loadSeries(live.value, key).length), next = keys[(keys.indexOf(k) + (event.key === 'ArrowLeft' ? keys.length - 1 : 1)) % keys.length]; setKind(next); document.getElementById(`${id}-${next}`)?.focus();
-      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{format(current, k)}</strong><small>{available.map(s => <span key={s.key}>{s.label} {s.points.at(-1)!.v.toLocaleString(defaultI18n.locale, {maximumFractionDigits: 1})}</span>)}</small><Chart title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} compact /></button>;
+      }}><span>{t(`next.dashboard.${k}`)}</span><strong>{format(current, k)}</strong><small>{available.map(s => <span key={s.key}>{s.label} {s.points.at(-1)!.v.toLocaleString(defaultI18n.locale, {maximumFractionDigits: 1})}</span>)}</small><Chart kind={k} title={t(`next.dashboard.${k}`)} series={available} format={n => format(n, k)} compact /></button>;
     })}</div>
     <div className={styles.card} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${kind}`}><div className={styles.heading}><h4>{t(`next.dashboard.${kind}`)}</h4><div className={styles.filters}><Range value={range} values={DASHBOARD_LOAD_RANGES} onChange={value => setRange(value as TelemetryWindow)} /></div></div>
-      <ReadFeedback state={detail} /><Chart title={t(`next.dashboard.${kind}`)} series={series} format={format} step={kind === 'conversions' && range === 'live'} />
+      <ReadFeedback state={detail} /><Chart kind={kind} title={t(`next.dashboard.${kind}`)} series={series} format={format} formatAverage={value => kind === 'conversions' ? value.toFixed(1) : format(value)} step={kind === 'conversions' && range === 'live'} />
     </div>
   </Section>;
 }
