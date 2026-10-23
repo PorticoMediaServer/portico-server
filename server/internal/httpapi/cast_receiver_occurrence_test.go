@@ -12,6 +12,17 @@ import (
 // The target may describe and complete its current occurrence; it may not
 // browse or control a different same-profile device's queue.
 func TestCastReceiverCurrentOccurrenceRoutes(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		reportedEnded bool
+	}{{"before_final_timeline", false}, {"after_ended_timeline", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			castReceiverCurrentOccurrenceRoutes(t, tc.reportedEnded)
+		})
+	}
+}
+
+func castReceiverCurrentOccurrenceRoutes(t *testing.T, reportedEnded bool) {
 	f := socialHTTP(t)
 	screen := pairCastTarget(t, f, f.token, "receiver-occurrence")
 	bearer := screen.Session.AccessToken
@@ -44,6 +55,14 @@ func TestCastReceiverCurrentOccurrenceRoutes(t *testing.T) {
 		if item.ID != current.ItemID || item.Title == "" {
 			t.Fatalf("current item identity: %+v", item)
 		}
+	}
+	if reportedEnded {
+		// A scheduled report may reach the server before the engine's
+		// serialized natural-completion request. The ended occurrence must
+		// retain only the authority needed to complete that same queue entry.
+		f.callAs(bearer, "POST", "/v1/playback/sessions/"+current.ID+"/timeline", nil, playbackv1.Report{
+			Seq: 1, Generation: current.Presentation.Generation, State: "ended", PositionMs: current.Presentation.StartPositionMs, Rate: 1,
+		}, 204, nil)
 	}
 	base := "/v1/queues/" + q.Queue.ID
 	if w := f.as(bearer, "GET", base, nil); w.Code != 200 {
