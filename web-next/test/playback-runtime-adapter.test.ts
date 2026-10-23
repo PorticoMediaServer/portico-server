@@ -2174,21 +2174,22 @@ test('the drawn automatic Up next progress uses the real policy clock and reject
 
 // Controlled room wire contracts exercise the actual canonical service, follower and media
 // runtime together. This is source qualification, never a real cohort/frame/receiver claim.
-async function runtimeRoom(t: TestContext, playing = false, canControl = true) {
-  const f = setup(t), at = '2026-10-23T20:00:00Z';let roomId = 'room_first', revision = 1, state = playing ? 'playing' : 'paused';
+async function runtimeRoom(t: TestContext, playing = false, canControl = true, markers = false) {
+  const f = setup(t, markers ? {skipModes: () => ({intro: 'auto'})} : {}), at = '2026-10-23T20:00:00Z';let roomId = 'room_first', revision = 1, state = playing ? 'playing' : 'paused', positionUs = '10000000';
   const group = () => ({id: roomId, name: 'Actual room', state, hostAuthority: 'host-only', hostMemberId: 'member', revision: String(revision), playbackRevision: String(revision),
     settingsRevision: '1', governanceRevision: '1', queueRevision: '1', reconnectGeneration: '1', lastCommand: state === 'playing' ? 'play' : 'pause', lastCommandId: 'command', endedReason: '',
     eventOrdinal: String(revision), createdAt: at, updatedAt: at, permissions: {isHost: canControl, canControl, canManageQueue: canControl},
     authority: {deviceId: 'device', playbackId: null, state: 'fresh'}, host: {presence: 'connected', lastSeenAt: at, pauseAt: null, endAt: null},
-    timeline: {itemId: 'movie', currentEntryId: 'group_entry', state, anchorPositionUs: '10000000', anchorAt: at, rate: {numerator: '1', denominator: '1'}, queuePosition: 0, waitUntil: null},
+    timeline: {itemId: 'movie', currentEntryId: 'group_entry', state, anchorPositionUs: positionUs, anchorAt: at, rate: {numerator: '1', denominator: '1'}, queuePosition: 0, waitUntil: null},
     settings: {shuffleEnabled: false, repeatMode: 'none'}, sync: {noCorrectionUnderMs: 750, rateCorrectionMinimum: '0.90', rateCorrectionMaximum: '1.10', rateCorrectionMaxMs: 4000, seekAtOrOverMs: 3000},
     readiness: {aggregate: 'ready', ready: 1, buffering: 0, lagging: 0, stale: 0, memberCount: 1},
     members: [{id: 'member', displayName: 'Actual member', private: false, role: canControl ? 'host' : 'member', state: 'joined', readiness: 'ready', positionUs: '10000000', reportedAt: at, presence: 'connected', joinedAt: at}], queue: null, viewerMemberId: 'member'});
   f.intercept(async (request, response) => {
+    if (markers && request.path.includes('/playback-offers?')) {const body = response.body as {current: {sourceId: string}};return {...response, body: {...body, markers: {sourceId: body.current.sourceId, revision: 'group_markers', markers: [introMarker]}}};}
     if (!request.path.startsWith('/v1/groups/')) return response;
     const ok = (body: unknown) => ({status: 200, headers: {}, body});
     if (request.path.endsWith('/transport')) {
-      const command = (request.body as {command: string}).command;state = command === 'play' ? 'playing' : 'paused';revision++;
+      const command = (request.body as {command: string}).command;if (command === 'play') state = 'playing';else if (command === 'pause') state = 'paused';else if (command === 'seek') positionUs = (request.body as {positionUs: string}).positionUs;revision++;
       return ok({protocolVersion: SOCIAL_PROTOCOL, groupId: roomId, idempotencyKey: (request.body as {idempotencyKey: string}).idempotencyKey,
         disposition: 'accepted', groupState: state, command, revision: String(revision), playbackRevision: String(revision), queueRevision: '1', serverTime: at, recordedAt: at, timeline: group().timeline, settings: group().settings, override: null});
     }
@@ -2229,4 +2230,18 @@ test('Together read-only members cannot issue local transport, and the same titl
   assert.notEqual(second.sessionId, first.sessionId, 'room occurrence cannot inherit a same-item old engine fence');
   await assert.rejects(f.runtime.pause(first), /stale_playback_command/);
   assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 2);
+});
+
+
+test('Together never executes an unattended member skip locally; a permitted manual skip uses the real room transport', async t => {
+  const f = await runtimeRoom(t, true, true, true), fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('actual queue fence');
+  f.video.advance(40);await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek, undefined, 'device autoplay preferences cannot change the group clock');
+  await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});await settle();
+  const command = f.log.find(request => request.path.endsWith('/transport') && (request.body as {command: string}).command === 'seek')!;
+  assert.ok(command);assert.equal((command.body as {positionUs: string}).positionUs, '79000000');
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79, 'the canonical follower applies the accepted room clock');
+  assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
 });

@@ -410,10 +410,11 @@ export class WebShellPlaybackRuntime {
   }
   private async groupTransport(command: GroupTransportCommand, fence: PlaybackFence, seconds?: number): Promise<boolean> {
     if (!this.group?.matches(fence)) return false;
+    this.require(fence);
     const group = this.group.active();if (!group?.permissions.canControl) problem('group_control_forbidden');
     // The screen's service owns its actual expected revision and refusal/readback path.
     const service = this.groupServices.get(this.group);if (!service) problem('group_playback_unavailable');
-    await service.transport(command, seconds === undefined ? {} : {positionUs: String(Math.round(seconds * 1e6))});return true;
+    if (!await service.transport(command, seconds === undefined ? {} : {positionUs: String(Math.round(seconds * 1e6))})) problem('group_transport_refused');return true;
   }
   private readonly groupServices = new WeakMap<RuntimeGroupBinding, GroupSessionService>();
 
@@ -693,7 +694,12 @@ export class WebShellPlaybackRuntime {
           (!queue.next.available || listening.stopped);
         // Start the end countdown only after the actual controller has published its hold.
         // With a zero countdown, consuming an earlier raw media end loses the advance.
-        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes: this.source.settings.skipModes(), postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
+        const savedModes = this.source.settings.skipModes();
+        // A member's unattended device preference cannot independently move the room clock.
+        // Manual offered skips use the genuine room transport and its permission/revision.
+        const modes: Record<string, SkipMode> = {...savedModes};
+        if (this.group?.matches(fence)) for (const kind of Object.keys(modes)) if (modes[kind] === 'auto') modes[kind] = 'ask';
+        const result = fence.kind === 'queue' ? this.policy.update({fence, nowMs: (this.env.timers?.now ?? Date.now)(), positionSeconds: Math.min(playback.duration || Infinity, playback.positionSeconds), durationSeconds: playback.duration, rate: speed, playing: local.playing, expanded: stack.expanded, ended: !!completion, kind: stack.subject.kind === 'video' ? stack.subject.item.kind : stack.subject.kind, modes, postPlay: queue?.postPlay ?? null, ...(playback.phase === 'error' ? {attention: playback.ended?.reason === 'terminated' ? 'owner-stopped' as const : 'playback-error' as const} : {})}) : null;
         this.policyView = result?.view ?? null;
         for (const command of result?.commands ?? []) {
           if (command.kind === 'expand') { stack.expanded = true; this.dock.expand(fence); }
@@ -837,6 +843,7 @@ export class WebShellPlaybackRuntime {
   /** Execute only the prompt the caller actually rendered, through the existing policy and
    * queue controllers. No UI-supplied position, synthetic completion or queue ordering. */
   async policyAction(expected: QueuePlaybackFence, action: WebPlaybackPolicyAction): Promise<void> {
+    if (this.group?.matches(expected) && !this.group.active()?.permissions.canControl) problem('group_control_forbidden');
     if (expected.kind !== 'queue') problem('playback_policy_unavailable');
     const fence = playbackFence(expected);
     this.require(fence); this.sync();
@@ -885,7 +892,7 @@ export class WebShellPlaybackRuntime {
       if (!command) problem('playback_policy_unavailable');
       if (command.kind === 'seek') {
         const from = stack.service.getSnapshot().positionSeconds;
-        stack.service.seek(command.positionSeconds);
+        if (!await this.groupTransport('seek', fence, command.positionSeconds)) stack.service.seek(command.positionSeconds);
         if (command.reason === 'manual-skip') stack.service.markerSkipped(command.markerId, 'manual', from);
       } else if (command.kind === 'advance') { this.policyAdvanceFence = fence; await this.advancePolicy(stack, command); }
     }
@@ -1015,6 +1022,7 @@ export class WebShellPlaybackRuntime {
   /** Drawn temporary choices for this actual subject; music and live have no speed picker. */
   speedChoices(fence: PlaybackFence): readonly number[] {
     const stack = this.require(fence);
+    if (this.group?.matches(fence)) return Object.freeze([]);
     return Object.freeze([...(fence.kind === 'channel' || stack.subject?.kind === 'music' ? [] : stack.subject?.kind === 'audiobook' ? audiobookRates : stack.subject?.kind === 'video' ? listeningRates : [])]);
   }
   setSpeed(fence: PlaybackFence, speed: number): void {
@@ -1036,6 +1044,7 @@ export class WebShellPlaybackRuntime {
    * its actual decoder/entry readiness and may refuse without publishing a guessed clock. */
   canStepFrame(fence: PlaybackFence): boolean {
     if (!this.matches(fence)) return false;
+    if (this.group?.matches(fence)) return false;
     const presentation = this.snapshot.presentation, playback = this.stack.service.getSnapshot();
     return fence.kind === 'queue' && presentation?.kind === 'video' && presentation.expanded && !presentation.playing && !presentation.finished && !playback.pendingSeek && this.snapshot.dock.remote?.phase !== 'playing' && this.stack.web.slot.loaded === fence.generation && this.stack.web.slot.canStepFrame;
   }
