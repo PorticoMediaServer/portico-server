@@ -22,7 +22,7 @@ class OriginalModelPreparationTests(unittest.TestCase):
             archive.writestr("metadata", "Name: musicnn\nVersion: 0.1.0\nLicense: " + licence + "\n")
             archive.writestr("licence", legal)
             archive.writestr(path, weights)
-        lock = {"modelId": "fixture", "modelVersion": "fixture", "license": "ISC",
+        lock = {"modelId": "fixture", "modelVersion": "fixture", "sourceModel": "MTT_musicnn", "license": "ISC",
                 "licenseSHA256": hashlib.sha256(legal).hexdigest(),
                 "distribution": {"bytes": wheel.stat().st_size, "sha256": model.digest(wheel),
                                  "metadata": "metadata", "licenseFile": "licence"},

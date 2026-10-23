@@ -8,3 +8,5 @@ export {savedPresentation} from './presentation.ts';
 export type {SavedPresentationInput} from './presentation.ts';
 export {LocalDownloads, ServerDownloads} from './Downloads';
 export type {SavedDownloadEffects} from './Downloads';
+export {installSavedDownloadsBinder} from './native-binding';
+export type {SavedDownloadsBinder, SavedDownloadsBinderInput, SavedDownloadsBinding} from './native-binding';

@@ -75,6 +75,11 @@ func (s *Service) analyzeDeep(parent context.Context, job, object, revision stri
 					cancel()
 					return
 				}
+				allowed, e := s.DeepAnalysis.ContinueAdmission(ctx, job, object)
+				if e != nil || !allowed {
+					cancel()
+					return
+				}
 
 			}
 		}
