@@ -289,6 +289,16 @@ cat /ffbuild/dovi-profile-packets.json
         'scope': 'Profile7 to8.1 packet metadata. No separatePID join or FEL reconstruction.'}, indent=2) + '\n')
     shutil.copyfile(work / 'repeat-build.json', work / 'linux-output/repeat-build.json')
     shutil.copyfile(work / 'linux-build-inputs.json', work / 'linux-output/linux-build-inputs.json')
+    # Keep the exact second-round archives/headers only until the additional
+    # encoded-video gates finish. This is owned qualification scratch, never a
+    # distributed native library SDK or a replacement for target builds.
+    qualification_prefix = work / 'linux-qualification-prefix'
+    if qualification_prefix.exists():
+        raise ValueError('An earlier qualification prefix exists; preserve its provenance before rebuilding')
+    (work / 'linux-compile/prefix').rename(qualification_prefix)
+    (work / 'qualification-prefix-files.json').write_text(json.dumps({
+        str(p.relative_to(qualification_prefix)): digest(p)
+        for p in sorted(qualification_prefix.rglob('*')) if p.is_file()}, indent=2) + '\n')
     shutil.rmtree(work / 'linux-compile')
     print('Two source builds produced identical ffmpeg, ffprobe and portico-disc executable hashes')
 

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "sourceCommit": "737e666e0c00cc454883283b730296e69bcd9c81",
+  "mainLanding": "4a12a4cfb16d07a389980f4212b0ee69154d917b",
+  "inputs": {
+    "roundtrip": {
+      "path": "third_party/ffmpeg/tests/dovi-video-roundtrip.c",
+      "sha256": "e75a23f8b56886f826f6cee40a4b7bfab57f0eadf034ccc127ce86e5b52ab160"
+    },
+    "qualifier": {
+      "path": "scripts/qualify-hdr-video.py",
+      "sha256": "fd08e59206e27bec290a3abca3dafb964dc1b32ea815148b80fb3521a77dd088"
+    },
+    "fixtureManifest": {
+      "path": "fixtures/video/hdr-generated/manifest.json",
+      "sha256": "3a750950d94101e0b8460314da28f3b5babb372b55a3ecbe33ab02304aaeb6ee"
+    }
+  },
+  "scope": "Canonical same-prefix encoded profile7-to8.1 repackage and HDR10+ source/copy/CPU-encoder metadata carry; no separate-PID join, physical HDR, FEL reconstruction or other target claim"
+}
