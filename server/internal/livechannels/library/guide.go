@@ -449,6 +449,7 @@ func windowAccess(ctx context.Context, tx *sql.Tx, scope Scope, entries []Entry)
 // Tune is private server selection evidence. It is not a media grant and exposes
 // neither a path nor a provider URL. The shared playback runtime consumes it.
 type Tune struct {
+	Number     string
 	Name       string
 	Overlay    Overlay
 	ChannelID  string
@@ -524,7 +525,7 @@ func (s *Store) ResolveTuneTx(ctx context.Context, tx *sql.Tx, scope Scope, id, 
 		}
 		upcoming = &safe
 	}
-	out = Tune{Name: c.Config.Name, Overlay: c.Config.Overlay, ChannelID: id, Generation: gen, Entry: v, Candidate: candidate, OffsetMS: v.SourceOffsetMS + now.UnixMilli() - v.StartMS, ClipEndMS: v.SourceOffsetMS + v.EndMS - v.StartMS, Next: upcoming, Quality: c.Config.Quality, LogoItemID: c.Config.LogoItemID}
+	out = Tune{Number: fmt.Sprint(c.Config.Position + 1), Name: c.Config.Name, Overlay: c.Config.Overlay, ChannelID: id, Generation: gen, Entry: v, Candidate: candidate, OffsetMS: v.SourceOffsetMS + now.UnixMilli() - v.StartMS, ClipEndMS: v.SourceOffsetMS + v.EndMS - v.StartMS, Next: upcoming, Quality: c.Config.Quality, LogoItemID: c.Config.LogoItemID}
 	return out, nil
 }
 func BindPlaybackTx(ctx context.Context, tx *sql.Tx, playback string, t Tune, expiry time.Time) error {

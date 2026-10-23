@@ -60,18 +60,8 @@ func (s *Service) PINRecovery(ctx context.Context, bearer string) (PINRecoveryMe
 // for direct sign-in and never claimed answers false and is never shown the
 // Portico Account hand-off.
 func (s *Service) Hosted() bool {
-	if s.SetupClaimReadyTx == nil {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	gated, err := dbwork.BeginSnapshot(ctx, s.db)
-	if err != nil {
-		return false
-	}
-	defer gated.Rollback()
-	attached, err := s.SetupClaimReadyTx(ctx, gated.Tx())
-	return err == nil && attached
+	kind, err := s.SignInKind(context.Background())
+	return err == nil && kind == SignInPortico
 }
 
 // PINReset clears or replaces a profile PIN for an account manager's current
@@ -156,27 +146,29 @@ func (s *Service) Capabilities(ctx context.Context) (AuthCapabilities, error) {
 		return out, e
 	}
 	defer read.Rollback()
-	var mode string
-	var ready, accounts, passwords, linked bool
-	e = read.Tx().QueryRowContext(ctx, `SELECT COALESCE((SELECT auth_mode FROM onboarding_state_v1 WHERE singleton=1),''),COALESCE((SELECT ready FROM onboarding_state_v1 WHERE singleton=1),0),EXISTS(SELECT 1 FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.disabled=0),EXISTS(SELECT 1 FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE m.disabled=0 AND length(a.password_hash)>0 AND NOT EXISTS(SELECT 1 FROM account_portico_links l WHERE l.account_id=a.id)),EXISTS(SELECT 1 FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE m.disabled=0)`).Scan(&mode, &ready, &accounts, &passwords, &linked)
+	kind, e := SignInKindTx(ctx, read.Tx())
 	if e != nil {
 		return out, e
 	}
-	if mode == "local" && passwords {
+	var ready bool
+	if e = read.Tx().QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts)`).Scan(&ready); e != nil {
+		return out, e
+	}
+	out.TwoFactor = kind == SignInLocal
+	out.QuickConnect = ready && kind == SignInLocal
+	if kind == SignInLocal {
 		out.Methods = append(out.Methods, "password")
-	}
-	out.QuickConnect = ready && accounts
-	if out.QuickConnect {
-		out.Methods = append(out.Methods, "quick-connect")
-	}
-	if out.HostedAttach && accounts && (mode == "hosted" || linked) {
-		out.Methods = append(out.Methods, "hosted")
-	}
-	if mode == "local" && ready {
-		out.SelfRegistration = policyRegistration
-		if out.SelfRegistration != SelfRegistrationOff {
-			out.Methods = append(out.Methods, "self-registration")
+		if out.QuickConnect {
+			out.Methods = append(out.Methods, "quick-connect")
 		}
+		if ready {
+			out.SelfRegistration = policyRegistration
+			if policyRegistration != SelfRegistrationOff {
+				out.Methods = append(out.Methods, "self-registration")
+			}
+		}
+	} else if ready {
+		out.Methods = append(out.Methods, "hosted")
 	}
 
 	return out, nil
