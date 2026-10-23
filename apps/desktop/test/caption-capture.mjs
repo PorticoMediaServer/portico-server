@@ -61,6 +61,7 @@ try{
   results.push({state:name,reference:frame,index,componentOnly:true,referenceLeft:true,dimensionsEach:[138,32],geometry,difference});
  }
  await evaluate(`(async()=>{document.body.replaceChildren();const canvas=document.createElement('canvas');canvas.width=276;canvas.height=128;document.body.append(canvas);const ctx=canvas.getContext('2d');const rows=${JSON.stringify(pairs)};for(let row=0;row<rows.length;row++){for(let side=0;side<2;side++){const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src='data:image/png;base64,'+rows[row][side];});ctx.drawImage(image,side*138,row*32);}}})()`);
+ await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
  const pair=(await send('Page.captureScreenshot',{format:'jpeg',quality:100,clip:{x:0,y:0,width:276,height:128,scale:1},captureBeyondViewport:true})).data;
  await writeFile(path.join(out,'caption-side-by-side.jpg'),Buffer.from(pair,'base64'));
  const report={reference,revision,scope:'COMPONENT ONLY; surrounding Home is immutable reference scaffold, not product UI. No Windows/native/Snap/full-screen acceptance.',fullScreensAccepted:0,results};
