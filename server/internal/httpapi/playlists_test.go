@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -26,7 +27,16 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','private-login',x'00','owner-p',1);INSERT INTO libraries(id,name,kind,root) VALUES('a','A','movie','/a'),('b','B','movie','/b')`)
+	secret, e := ident.BrowserSetupToken(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	setup, e := ident.SetupWithOptions(context.Background(), identity.SetupOptions{SetupToken: secret, AuthMode: "local", Username: "private-login", Password: "Local-password1!", Name: "Fixture"}, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	owner := setup.Envelope
+	_, e = db.Exec(`INSERT INTO libraries(id,name,kind,root) VALUES('a','A','movie','/a'),('b','B','movie','/b')`)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -39,10 +49,6 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "member-p", Role: "member", AllowedLibraries: []string{"a"}}}}
 	raw, _ := json.Marshal(policy)
 	if e = storeHTTPFixturePolicy(db, raw); e != nil {
-		t.Fatal(e)
-	}
-	owner, e := ident.Issue("owner", "owner-p", "local", "owner", 1)
-	if e != nil {
 		t.Fatal(e)
 	}
 	member, e := issuePorticoFixture(t, db, ident, "member", "member-p", "member")
@@ -172,7 +178,7 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if w = request("GET", "/v1/content?view=watchlist", member.AccessToken, nil); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if _, e = db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE account_id='owner'`); e != nil {
+	if _, e = db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE account_id=?`, owner.Viewer.AccountID); e != nil {
 		t.Fatal(e)
 	}
 	if w = request("POST", "/v1/playlists", owner.AccessToken, map[string]any{"operationId": "create", "name": "Mixed", "summary": "A list"}); w.Code != 401 {
