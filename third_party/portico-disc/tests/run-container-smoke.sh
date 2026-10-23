@@ -24,13 +24,14 @@ container="$(docker create --label portico=video-server-r29 --label portico.purp
   --cpus=1 --memory=1g --pids-limit=256 --network=host \
   --mount "type=bind,source=$repo,target=/source,readonly" \
   --mount "type=bind,source=$job_tmp/container-tmp,target=/job" \
-  --env TMPDIR=/job --env DEBIAN_FRONTEND=noninteractive \
+  --env TMPDIR=/job --env DEBIAN_FRONTEND=noninteractive --env JOB_UID="$(id -u)" --env JOB_GID="$(id -g)" \
   "$image_id" bash -c '
     set -euo pipefail
+    trap 'chown -R "$JOB_UID:$JOB_GID" /job' EXIT
     apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
     apt-get install --no-install-recommends -y build-essential ca-certificates git meson ninja-build pkg-config python3
     dpkg-query -W gcc meson ninja-build pkg-config git python3
-    exec python3 /source/third_party/portico-disc/tests/qualify-pinned-host.py --work /job/disc-host --static
+    python3 /source/third_party/portico-disc/tests/qualify-pinned-host.py --work /job/disc-host --static
   ')"
 set +e
 docker start -a "$container"

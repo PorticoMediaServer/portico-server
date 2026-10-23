@@ -46,9 +46,10 @@ def main():
                 "PKG_CONFIG_PATH": str(prefix / "lib/pkgconfig"), "PKG_CONFIG_LIBDIR": str(prefix / "lib/pkgconfig"),
                 "SOURCE_DATE_EPOCH": "1761177600", "LC_ALL": "C"})
 
-    def run(argv, capture=False, timeout=180):
+    def run(argv, capture=False, timeout=180, git_source=None):
         print(json.dumps({"command": [str(a) for a in argv]}), flush=True)
-        result = subprocess.run([str(a) for a in argv], env=env, cwd=work, check=True,
+        command_env = env if git_source is None else {**env, "GIT_DIR": str(git_source / ".git"), "GIT_WORK_TREE": str(git_source)}
+        result = subprocess.run([str(a) for a in argv], env=command_env, cwd=work, check=True,
                                 stdout=subprocess.PIPE if capture else None, timeout=timeout)
         return result.stdout.decode() if capture else ""
 
@@ -63,9 +64,9 @@ def main():
         if run(["git", "-C", source, "rev-parse", "HEAD"], True).strip() != commit or sha(source / "COPYING") != license_hash:
             raise ValueError("public source/license pin mismatch: " + name)
         run(["meson", "setup", build, source, "--prefix=" + str(prefix), "--libdir=lib",
-             "--default-library=static", "--buildtype=release", "--wrap-mode=nodownload", "-Db_staticpic=true", *options])
-        run(["meson", "compile", "-C", build, "-j1"])
-        run(["meson", "install", "-C", build])
+             "--default-library=static", "--buildtype=release", "--wrap-mode=nodownload", "-Db_staticpic=true", *options], git_source=source)
+        run(["meson", "compile", "-C", build, "-j1"], git_source=source)
+        run(["meson", "install", "-C", build], git_source=source)
         report["dependencies"].append({"name": name, "origin": origin, "commit": commit, "licenseSha256": license_hash})
     flags = shlex.split(run(["pkg-config", "--cflags", "--libs", "--static", "libbluray", "dvdread", "dvdnav"], True))
     binary = work / "portico-disc"
