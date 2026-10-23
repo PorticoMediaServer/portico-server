@@ -81,3 +81,36 @@ test('every run validates genuine Swift/plist/language inputs before any selecte
  put('ios/Portico.xcodeproj/project.pbxproj','knownRegions = (en, Base, );');
  assert.throws(()=>generateNativeStrings({nativeRoot:root}),/knownRegions is missing/);
 });
+
+// Native MAIN e63ed84 PorticoTitleEntity.displayRepresentation uses these
+// content-title calls. They are catalogue data, not App Intents system copy.
+const contentEntity=String.raw`
+struct PorticoTitleEntity: AppEntity {
+  var title: String
+  var subtitle: String?
+  var displayRepresentation: DisplayRepresentation {
+    if let subtitle, !subtitle.isEmpty { return DisplayRepresentation(title: "\(title)", subtitle: "\(subtitle)") }
+    return DisplayRepresentation(title: "\(title)")
+  }
+}
+`;
+test('actual AppEntity content title interpolation is not an uncatalogued system literal',t=>{
+ const {root,put}=fixture(t);put('ios/Portico/PorticoIntents.swift',swift+contentEntity);
+ assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple'}).outputs.length,5);
+ assert.equal(generateNativeStrings({nativeRoot:root,platform:'apple',check:true}).outputs.length,5);
+});
+for(const extra of [
+ String.raw`@Parameter(title: "\(title)") var other: String`,
+ String.raw`static var title: LocalizedStringResource = "\(title)"`,
+ String.raw`static var description = IntentDescription("\(title)")`,
+ String.raw`let prompt = IntentDialog("\(title)")`,
+ String.raw`let display = DisplayRepresentation(title: "Now playing \(title)")`,
+ String.raw`let display = DisplayRepresentation(title: "Uncatalogued title")`,
+ String.raw`let display = OtherDisplayRepresentation(title: "\(title)")`,
+ String.raw`let display = DisplayRepresentation(title: "\\(title)")`,
+ String.raw`let display = DisplayRepresentation(title: "\(title)", subtitle: "Episode")`,
+ String.raw`let display = DisplayRepresentation(title: "\(title)", subtitle: "\(title)")`,
+])test('content-title handling does not exempt other copy context '+extra.split('=')[0],t=>{
+ const {root,put}=fixture(t);put('ios/Portico/PorticoIntents.swift',swift+contentEntity+extra);
+ assert.throws(()=>generateNativeStrings({nativeRoot:root,platform:'apple'}),/uncatalogued literal/);
+});
