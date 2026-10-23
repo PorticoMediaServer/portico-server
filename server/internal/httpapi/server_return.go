@@ -49,8 +49,7 @@ func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
 		u, e := url.Parse(q.Origin)
 		nonce, nerr := base64.RawURLEncoding.Strict().DecodeString(q.Nonce)
 		installation := r.Header.Get("X-Portico-Installation-Id")
-		inst, ierr := base64.RawURLEncoding.Strict().DecodeString(installation)
-		if e != nil || !networking.RouteOrigin(q.Origin) || u.Scheme != "https" || !networkpolicy.HostsMatch(u.Host, r.Host) || nerr != nil || len(nonce) != 32 || base64.RawURLEncoding.EncodeToString(nonce) != q.Nonce || ierr != nil || len(inst) != 32 || base64.RawURLEncoding.EncodeToString(inst) != installation {
+		if e != nil || !networking.RouteOrigin(q.Origin) || u.Scheme != "https" || !networkpolicy.HostsMatch(u.Host, r.Host) || nerr != nil || len(nonce) != 32 || base64.RawURLEncoding.EncodeToString(nonce) != q.Nonce || !identity.ValidInstallationID(installation) {
 			failure(w, identity.ErrDirectInput)
 			return
 		}
