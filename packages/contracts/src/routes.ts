@@ -7138,6 +7138,36 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_reading_continue",
+    "method": "GET",
+    "path": "/v1/reading/continue",
+    "summary": "List the viewer's unfinished reading publications",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_reading_items",
     "method": "GET",
     "path": "/v1/reading/items",
@@ -18256,6 +18286,7 @@ export const routePaths = {
   "get_queue_window": "/v1/queues/{id}/window",
   "get_rating_systems": "/v1/rating-systems",
   "get_readiness": "/v1/readiness",
+  "get_reading_continue": "/v1/reading/continue",
   "get_reading_items": "/v1/reading/items",
   "get_reading_sessions_sessionId_assets": "/v1/reading/sessions/{sessionId}/assets",
   "get_reading_sessions_sessionId_pages_pageIndex": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",
