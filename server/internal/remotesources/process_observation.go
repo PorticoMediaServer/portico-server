@@ -16,6 +16,7 @@ import (
 // Neither a generated served ETag nor equal upstream metadata is an immutable
 // provider version. Hashes are requested only when rclone reports them cheap.
 func observeProcessFile(ctx context.Context, process *rcloneprogram.ServeProcess, object string, check func(context.Context) error) (remotemedia.FileObservation, error) {
+	report := process.PacerObservation()
 	metadata, err := process.Metadata(ctx)
 	if err != nil {
 		return remotemedia.FileObservation{}, err
@@ -40,7 +41,11 @@ func observeProcessFile(ctx context.Context, process *rcloneprogram.ServeProcess
 	if !fresh.Modified.IsZero() && time.Unix(0, fresh.Modified.UnixNano()).Equal(fresh.Modified) {
 		facts.ModifiedKnown, facts.ModifiedNS = true, fresh.Modified.UnixNano()
 	}
-	return facts.Canonical()
+	facts, err = facts.Canonical()
+	if err == nil {
+		process.BackendObserved(report.Sequence)
+	}
+	return facts, err
 }
 
 // observationSnapshot is transport scan evidence. Catalog.ObservationRevision

@@ -52,7 +52,7 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			payload := bytes.Repeat([]byte("source-range-"), 6000)
 			modified := time.Unix(1700000000, 0).UTC()
 			var active, peak, gets atomic.Int32
-			var badAuth atomic.Bool
+			var badAuth, providerBackoff atomic.Bool
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := active.Add(1)
 				defer active.Add(-1)
@@ -69,6 +69,12 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 					return
 				}
 				if r.Method == "PROPFIND" {
+					if r.URL.Path == "/media/film.mkv" && providerBackoff.Load() {
+						w.Header().Set("Retry-After", "17")
+						w.WriteHeader(http.StatusTooManyRequests)
+						fmt.Fprint(w, "fixture-private-provider-detail")
+						return
+					}
 					w.Header().Set("Content-Type", "application/xml")
 					w.WriteHeader(207)
 					fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:">`)
@@ -352,6 +358,41 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if peak.Load() != 1 || badAuth.Load() {
 				t.Fatal("upstream source cap/auth", peak.Load(), badAuth.Load())
+			}
+			if !sequential {
+				metadata, err := process.Metadata(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				providerBackoff.Store(true)
+				_, err = metadata.Stat(ctx, "film.mkv", process.Check)
+				if err == nil || strings.Contains(err.Error(), "fixture-private") || strings.Contains(err.Error(), origin.URL) {
+					t.Fatal("provider failure lost or private upstream detail escaped", err)
+				}
+				deadline := time.Now().Add(3 * time.Second)
+				for !process.PacerObservation().Backoff && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				if report := process.PacerObservation(); !report.Backoff || report.Sequence < 1 || report.ObservedAt.IsZero() {
+					t.Fatal("actual upstream pacer report unavailable", report)
+				}
+				if !f.s.sourcePacerBackoff("remote", "1") || f.s.sourcePacerBackoff("remote", "2") {
+					t.Fatal("live report ignored or attributed to replacement generation")
+				}
+				rows, err := f.s.List(ctx)
+				if err != nil || len(rows) != 1 || rows[0].State != "rate_limited" || rows[0].ErrorCode != "rate_limited" {
+					t.Fatal("owner status did not project actual asynchronous report", rows, err)
+				}
+				if state, err := f.s.ViewerStatus(ctx, f.file); err != nil || state != "unavailable" {
+					t.Fatal("viewer status exposed a false ready state", state, err)
+				}
+				providerBackoff.Store(false)
+				if _, err = observeProcessFile(ctx, process, "film.mkv", process.Check); err != nil {
+					t.Fatal("actual fresh backend recovery", err)
+				}
+				if f.s.sourcePacerBackoff("remote", "1") {
+					t.Fatal("fresh success retained older backoff report")
+				}
 			}
 			writer, err = dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
 			if err != nil {

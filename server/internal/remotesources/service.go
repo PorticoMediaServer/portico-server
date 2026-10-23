@@ -182,6 +182,9 @@ func (s *Service) List(ctx context.Context) ([]Source, error) {
 		if err = rows.Scan(&x.ID, &x.Kind, &x.Name, &x.RootPath, &x.Generation, &x.State, &x.ErrorCode, &x.RangeSupport, &x.Origin, &x.InsecureLocal, &x.CredentialPresent, &x.MountID); err != nil {
 			return nil, err
 		}
+		if x.ErrorCode == "" && s.sourcePacerBackoff(x.ID, strconv.FormatInt(x.Generation, 10)) {
+			x.State, x.ErrorCode = "rate_limited", "rate_limited"
+		}
 		out = append(out, x)
 	}
 	return out, rows.Err()

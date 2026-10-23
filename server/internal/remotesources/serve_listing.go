@@ -298,6 +298,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		metaBatch = metaBatch[:0]
 		return nil
 	}
+	report := process.PacerObservation()
 	err = metadata.VisitDirectory(ctx, relative, check, func(fresh remotemedia.RcloneFileMetadata) error {
 		metaBatch = append(metaBatch, fresh)
 		if len(metaBatch) == cap(metaBatch) {
@@ -317,5 +318,6 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	if err = check(ctx); err != nil {
 		return err
 	}
+	process.BackendObserved(report.Sequence)
 	return flush(true)
 }

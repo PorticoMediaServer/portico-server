@@ -58,6 +58,7 @@ type PreparedServe struct {
 	Command *exec.Cmd
 	mu      sync.Mutex
 	private string
+	reports *serveReports
 }
 
 var serveRemote = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*:[^\x00\r\n\\]*$`)
@@ -97,7 +98,7 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err != nil {
 		return nil, err
 	}
-	p := &PreparedServe{private: private}
+	p := &PreparedServe{private: private, reports: &serveReports{}}
 	good := false
 	defer func() {
 		if !good {
@@ -108,7 +109,7 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err = os.WriteFile(file, spec.Configuration, 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--log-level=ERROR", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
+	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--use-json-log", "--log-level=DEBUG", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
 	if spec.SequentialReads {
 		for i, arg := range args {
 			if arg == "--vfs-read-chunk-size=1M" {
@@ -134,7 +135,7 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if spec.MetadataPort != 0 {
 		p.Command.Env = append(p.Command.Env, "RCLONE_RC_USER="+spec.Username, "RCLONE_RC_PASS="+spec.Password)
 	}
-	p.Command.Stdout, p.Command.Stderr = io.Discard, io.Discard
+	p.Command.Stdout, p.Command.Stderr = io.Discard, p.reports
 	childprocess.Configure(p.Command)
 	if err = spec.Enforce(p.Command); err != nil {
 		return nil, err
@@ -189,6 +190,7 @@ type ServeProcess struct {
 	endpoint         *remotemedia.ServeEndpoint
 	observer         *remotemedia.ServeEndpoint
 	metadata         *remotemedia.RcloneMetadata
+	reports          *serveReports
 	lease            ServeProcessLease
 	life             context.Context
 	cancel           context.CancelFunc
@@ -236,7 +238,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		cancel()
 		return nil, err
 	}
-	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
+	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, reports: prepared.reports, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
 	if spec.MetadataPort != 0 {
 		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, spec.Connections, spec.Remote)
 		if err != nil {
@@ -281,6 +283,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 			defer s.metadata.Close()
 		}
 		err := prepared.Command.Wait()
+		prepared.reports.discardPartial()
 		// A wrapper exiting must not leave its process group listening.
 		childprocess.Kill(prepared.Command)
 		cleanup := prepared.Loaded()
