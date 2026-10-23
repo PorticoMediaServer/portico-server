@@ -11,7 +11,6 @@ import (
 )
 
 const dashboardKind = `CASE h.kind WHEN 1 THEN 'movies' WHEN 4 THEN 'tv' WHEN 7 THEN 'music' WHEN 9 THEN 'audiobooks' WHEN 0 THEN 'live' ELSE 'other' END`
-const dashboardPeopleKind = `CASE h.kind WHEN 1 THEN 'movies' WHEN 4 THEN 'tv' WHEN 7 THEN 'music' ELSE 'other' END`
 
 // This filter is shared with the full history table. Person is always the
 // server account id, never a name or a profile id.
@@ -149,7 +148,7 @@ func (s *Service) DashboardPeople(ctx context.Context, q PlayHistoryQuery) (Dash
 	// Bounded account page. Kinds/profiles are read only for those accounts.
 	for i := range out.Items {
 		p := &out.Items[i]
-		rows, e = tx.QueryContext(ctx, `SELECT `+dashboardPeopleKind+`,count(*),sum(watched_ms) FROM play_history h`+filter+` AND account_id=? GROUP BY `+dashboardPeopleKind, append(append([]any{}, args...), p.AccountID)...)
+		rows, e = tx.QueryContext(ctx, `SELECT `+dashboardKind+`,count(*),sum(watched_ms) FROM play_history h`+filter+` AND account_id=? GROUP BY `+dashboardKind, append(append([]any{}, args...), p.AccountID)...)
 		if e != nil {
 			return out, e
 		}

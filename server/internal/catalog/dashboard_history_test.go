@@ -192,7 +192,7 @@ func TestHistoryFiltersUseIndexedPersonRangeAndRejectSQLControls(t *testing.T) {
 	}
 }
 
-func TestDashboardPeopleOtherAndHistoryKindsRemainDistinct(t *testing.T) {
+func TestDashboardPeopleAndHistoryRetainAudiobooksAndLiveKinds(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
 	now := time.Date(2026, 10, 22, 17, 0, 0, 0, time.FixedZone("host", -7*3600))
@@ -215,16 +215,11 @@ func TestDashboardPeopleOtherAndHistoryKindsRemainDistinct(t *testing.T) {
 	if e != nil || len(people.Items) != 1 {
 		t.Fatal(people, e)
 	}
-	other := false
+	peopleKinds := map[string]bool{}
 	for _, k := range people.Items[0].Kinds {
-		if k.Kind == "audiobooks" || k.Kind == "live" {
-			t.Fatal("history kinds leaked into Top people", k)
-		}
-		if k.Kind == "other" {
-			other = k.Plays == 2 && k.WatchedMs == 2000
-		}
+		peopleKinds[k.Kind] = k.Plays > 0 && k.WatchedMs > 0
 	}
-	if !other {
+	if !peopleKinds["audiobooks"] || !peopleKinds["live"] {
 		t.Fatal(people)
 	}
 	for _, top := range []struct{ kind, target, unit string }{{"music", "album", "track_plays"}, {"tv", "show", "episode_plays"}} {

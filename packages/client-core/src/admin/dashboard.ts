@@ -29,7 +29,6 @@ export function parseDashboardPeople(value:unknown):DashboardPeople {
  for(const p of out.items) {
   if(!p.accountId || p.accountId.length>128 || p.username.length>256 || p.profiles.length>8 || p.profiles.some(v=>v.length>256) || !whole(p.plays)||!whole(p.watchedMs))invalid();
   times(p.kinds);
-  if(p.kinds.length>4 || p.kinds.some(k=>!['movies','tv','music','other'].includes(k.kind)))invalid();
   if(p.kinds.reduce((s,k)=>s+k.plays,0)!==p.plays || p.kinds.reduce((s,k)=>s+k.watchedMs,0)!==p.watchedMs)invalid();
   if(previous && (previous.watchedMs<p.watchedMs || previous.watchedMs===p.watchedMs && previous.accountId>=p.accountId))invalid();
   previous=p;
