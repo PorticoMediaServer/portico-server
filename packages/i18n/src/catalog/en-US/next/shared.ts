@@ -1,5 +1,9 @@
 /** Wording shared by the new renderer-free kit models. */
 export const shared = {
+  // Drawn playback clocks: desktop-player f1 and phone-player r4 (812dacac).
+  'next.watch.remaining': '−{time}',
+  'next.watch.clockDivider': '/ {time}',
+  'next.watch.ends': 'Ends {time}',
   'next.kit.episode': 'Episode {number, number, ::group-off}',
   'next.kit.episodeCode': 'S{season, number, ::group-off} E{episode, number, ::group-off}',
   'next.kit.special': 'Special',
