@@ -24,6 +24,16 @@ def main():
     suffix = '.exe' if manifest['target'].startswith('windows-') else ''
     ffmpeg = (args.bundle / 'bin' / ('ffmpeg' + suffix)).resolve()
     ffprobe = ffmpeg.with_name('ffprobe' + suffix)
+    def identities():
+        values = {}
+        for executable in (ffmpeg, ffprobe):
+            with executable.open('rb') as stream:
+                values[executable.name] = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if values[executable.name] != manifest['files'].get('bin/' + executable.name):
+                raise ValueError('Recipe executable changed from manifest: ' + executable.name)
+        return values
+
+    before = identities()
     args.scratch.mkdir(parents=True, exist_ok=True)
     results = []
     font_contract = json.loads((args.bundle / 'sources.lock.json').read_text())['testFixtures']['subtitleFont']
@@ -165,7 +175,10 @@ Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,Portico
                 raise ValueError('DSD decode duration/rate failed: ' + str(bit_rate))
             results.append({'id': 'dsd' + str(64 * multiplier), 'bitRatePerChannel': bit_rate,
                             'decodedOutputFrames': expected_frames, 'fixtureSHA256': hashlib.sha256(dsf).hexdigest()})
+    if identities() != before:
+        raise ValueError('Recipe executable pair changed during qualification')
     args.report.write_text(json.dumps({'target': manifest['target'], 'recipes': results,
+                                      'binarySHA256': before,
                                       'boundary': 'Generated CPU fixtures only; no physical GPU, Atmos/JOC, Dolby Vision or playback acceptance.'}, indent=2) + '\n')
     print('Verified generated CPU codec/music recipes for ' + manifest['target'])
 

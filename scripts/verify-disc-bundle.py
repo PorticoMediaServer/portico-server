@@ -129,6 +129,8 @@ def main():
         if not isinstance(entry['expected'], dict) or result != entry['expected']:
             raise ValueError('disc structure differs from checked fixture: ' + entry['id'])
         results.append({'id': entry['id'], 'probe': result})
+    if digest(tool) != metadata['binarySha256']:
+        raise ValueError('Disc helper changed during fixture qualification')
     report = {'target': target, 'toolSha256': digest(tool),
               'fixtureManifestSha256': digest(args.fixtures), 'fixtures': results}
     if args.report:

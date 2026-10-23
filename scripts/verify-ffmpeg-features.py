@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Qualify actual executable inventories against the bundled target contract."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -48,6 +49,18 @@ def main():
         parser.error('unknown target')
     tool = args.root / 'bin' / ('ffmpeg.exe' if target.startswith('windows') else 'ffmpeg')
     tool = tool.resolve()
+    probe = tool.with_name('ffprobe.exe' if tool.suffix == '.exe' else 'ffprobe')
+
+    def identities():
+        values = {}
+        for executable in (tool, probe):
+            with executable.open('rb') as stream:
+                values[executable.name] = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if values[executable.name] != manifest['files'].get('bin/' + executable.name):
+                raise ValueError('Qualification executable changed from manifest: ' + executable.name)
+        return values
+
+    before = identities()
     def run(*flags):
         proc = subprocess.run([str(tool), '-hide_banner', *flags], text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30, check=True)
@@ -85,14 +98,18 @@ def main():
         missing.append('metadata.dovi-profile:mode-exactly-2')
     report = {'target': target, 'contractId': contract['contractId'], 'version': run('-version').splitlines()[0],
               'sourceCommit': lock['ffmpeg']['commit'], 'missing': missing,
+              'configuration': config, 'binarySHA256': before,
               'stockDoviRpuOptions': sorted(stock_options),
               'inventories': {k: sorted(v) for k, v in inventories.items()}}
+    if missing:
+        if args.report:
+            args.report.write_text(json.dumps(report, indent=2) + '\n')
+        raise ValueError('missing target features: ' + ', '.join(missing))
+    subprocess.run([str(probe), '-hide_banner', '-version'], check=True, stdout=subprocess.DEVNULL, timeout=10)
+    if identities() != before:
+        raise ValueError('Qualification executable pair changed during inventory')
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n')
-    if missing:
-        raise ValueError('missing target features: ' + ', '.join(missing))
-    probe = tool.with_name('ffprobe.exe' if tool.suffix == '.exe' else 'ffprobe')
-    subprocess.run([str(probe), '-hide_banner', '-version'], check=True, stdout=subprocess.DEVNULL, timeout=10)
     print('Verified required features for ' + target)
 
 
