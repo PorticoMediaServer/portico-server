@@ -2,12 +2,16 @@ import {formatAudioSource, formatDeliveryTarget, formatSubtitleSource, formatVid
 import type {DashboardSession as AdminSession} from './bindings';
 import type {DashboardHistory} from '@core/admin/dashboard.ts';
 import type {ReportInterval} from '@core/report-context.ts';
+import type {PlayHistoryEntry} from '@core/play-history.ts';
 import {DASHBOARD_LOAD_SERIES} from '@core/admin/dashboard.ts';
 import type {TelemetryReading, TelemetryPoint} from '@core/telemetry.ts';
 import {defaultI18n} from '@i18n';
 
 export const mediaKinds = ['movies', 'tv', 'music', 'audiobooks', 'live'] as const;
 export type MediaKind = typeof mediaKinds[number];
+export function historyItemTitle(entry: Pick<PlayHistoryEntry, 'kind' | 'title' | 'parentTitle'>): string {
+  return (entry.kind === 'episode' || entry.kind === 'audiobook_file') && entry.parentTitle ? entry.parentTitle : entry.title;
+}
 /** The drawing's main title is the show, book or current live programme.
  * Channel and episode names remain their separate facts below it. */
 export function sessionTitle(session: AdminSession): string {

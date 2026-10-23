@@ -3,7 +3,7 @@ import type {PlayHistoryEntry, PlayHistoryPeriod} from '@core/play-history.ts';
 import {SettingsGroup, SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
 import type {DashboardBindings, DashboardFilters} from './bindings';
 import {useDashboardAccounts, useDashboardAuthority, useDashboardRead} from './use-read';
-import {mediaKinds} from './model';
+import {historyItemTitle, mediaKinds} from './model';
 import {formatHistoryDuration, formatHistoryStarted} from './format';
 import {mediaLabel, ReadFeedback, t} from './shared';
 import styles from './dashboard.module.css';
@@ -38,8 +38,8 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b, setCursor]);
   const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
-    return {id: entry.id, label: entry.title, cells: {
-      title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
+    return {id: entry.id, label: historyItemTitle(entry), cells: {
+      title: {title: historyItemTitle(entry), meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.kind === 'audiobook_file' ? undefined : entry.parentTitle, image: artwork},
       person: {title: entry.user, avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
       // The platform wire identifier is not an app display name. Actual app waits for the checked producer.
       player: {title: '', meta: entry.device},

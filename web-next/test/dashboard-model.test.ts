@@ -1,8 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {chartPaths, loadTileValue, orderedSessions, quietestHours, sessionTitle, sessionStopTitle, sessionTracks} from '../src/screens/dashboard/model.ts';
+import {chartPaths, historyItemTitle, loadTileValue, orderedSessions, quietestHours, sessionTitle, sessionStopTitle, sessionTracks} from '../src/screens/dashboard/model.ts';
 import type {DashboardSession} from '../src/screens/dashboard/bindings.ts';
 const base: DashboardSession = {id: 'session', user: 'account', profile: 'Kids', device: 'TV', title: 'Actual title', kind: 'vod', state: 'playing', positionMs: 1, location: 'local', startedAt: '2026-10-23T01:00:00Z', decision: {}};
+test('history uses the actual show or book and never substitutes an artist or strips a title suffix', () => {
+  assert.equal(historyItemTitle({kind: 'audiobook_file', title: 'Chapter 1', parentTitle: 'The Hunger Games: Special Edition'}), 'The Hunger Games: Special Edition');
+  assert.equal(historyItemTitle({kind: 'audiobook_file', title: 'Chapter 1'}), 'Chapter 1');
+  assert.equal(historyItemTitle({kind: 'episode', title: 'Long, Long Time', parentTitle: 'The Last of Us'}), 'The Last of Us');
+  assert.equal(historyItemTitle({kind: 'song', title: 'Give Life Back to Music', parentTitle: 'Daft Punk'}), 'Give Life Back to Music');
+});
 test('current programme, show and book titles retain their actual meaning in the card and Stop', () => {
   const live = {...base, live: true, title: 'Actual channel', channel: {name: 'Actual channel', number: '101'}, programme: {title: 'Actual programme', endsAt: '2026-10-23T02:00:00Z'}};
   assert.equal(sessionTitle(live), 'Actual programme'); assert.equal(sessionStopTitle(live), 'Actual programme');
