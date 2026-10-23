@@ -33,6 +33,7 @@ export const accountMessages = {
   'accounts.session.portico': 'Signed in with your Portico Account',
   'accounts.session.local': 'Signed in with a local account',
   'accounts.signOut.server': 'Sign out',
+  'accounts.signOut.namedServer': 'Sign out of {server}',
   'accounts.signOut.serverOnDevice': 'Sign out of {server} on this {device}?',
   'accounts.signOut.serverConfirmation': "Sign out of {server} on this device? You'll need to sign in again.",
   'accounts.signOut.portico': 'Sign out of Portico Account',
