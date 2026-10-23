@@ -414,3 +414,74 @@ func TestRecordingLayoutDriverPreparesBeforeIOAndRecoversExactLink(t *testing.T)
 		t.Fatal("accepted unretired writer")
 	}
 }
+
+func TestLayoutConcurrentOwnersNeverReplaceOrAdoptEachOther(t *testing.T) {
+	root, first := layoutFixture(t)
+	owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "second"}
+	id := strings.Repeat("b", 64)
+	store, err := mediaartifact.New(filepath.Join(root, owner.Key(), "captures", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	writer, err := store.Begin(1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writer.Write([]byte("a different owner's sealed bytes")); err != nil {
+		t.Fatal(err)
+	}
+	object, err := writer.Seal(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := owner.Key() + "/captures/" + id + "/objects/" + object.Digest
+	file, err := os.Open(filepath.Join(root, source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := storage.FileObjectIdentity(file)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := layoutBinding{OwnerKey: owner.Key(), RecordingID: id, ArtifactKey: id + ".1", RootIdentity: first.RootIdentity, SourceIdentity: identity, Source: source, Target: first.Target, Object: object}
+	type outcome struct {
+		binding layoutBinding
+		err     error
+	}
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+	for _, binding := range []layoutBinding{first, second} {
+		go func(b layoutBinding) {
+			<-start
+			out, e := linkLayout(context.Background(), root, b)
+			results <- outcome{out, e}
+		}(binding)
+	}
+	close(start)
+	successes, collisions := 0, 0
+	var winner layoutBinding
+	for i := 0; i < 2; i++ {
+		out := <-results
+		if out.err == nil {
+			successes++
+			winner = out.binding
+		} else if errors.Is(out.err, dvr.ErrRecordingLayoutCollision) {
+			collisions++
+		} else {
+			t.Fatal(out.err)
+		}
+	}
+	if successes != 1 || collisions != 1 {
+		t.Fatal("concurrent custody crossed owners", successes, collisions)
+	}
+	if err = removeLayout(context.Background(), root, winner); err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range []layoutBinding{first, second} {
+		if _, err = os.Stat(filepath.Join(root, binding.Source)); err != nil {
+			t.Fatal("other occurrence source lost", err)
+		}
+	}
+}
