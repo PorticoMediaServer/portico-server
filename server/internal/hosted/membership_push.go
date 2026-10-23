@@ -486,6 +486,9 @@ func (s *Service) linkClaimOwnerTx(ctx context.Context, tx *sql.Tx, v networking
 	if tx == nil || v.ServerID != s.identity.ID() || v.Stage != networking.Installed {
 		return networking.ErrStale
 	}
+	if v.Purpose != "setup" {
+		return nil
+	}
 	if v.AccountID == "" || v.AccountID == networking.UnboundAccount {
 		return nil
 	}

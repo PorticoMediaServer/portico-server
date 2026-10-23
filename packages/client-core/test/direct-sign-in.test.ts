@@ -5,7 +5,7 @@ import {completeDirectSignInChallenge, directSignIn, parseDirectSignIn} from '..
 // The exact documented direct sign-in shapes (`DirectSignIn` and `Envelope`). No accountToken/accountExpiresAt; one device-bound
 // session that names its device and installation.
 const profile = (id: string, over: Record<string, unknown> = {}) => ({id, name: id, primary: id === 'p1', position: id === 'p1' ? 0 : 1, art: 'blue', revision: 1, pinRevision: 1, pinRequired: false, allowedLibraries: [], ...over});
-const snapshot = (profiles: unknown[]) => ({authority: 'local', serverId: 'srv', account: {id: 'acct', username: 'owner', primaryProfileId: 'p1', role: 'owner', revision: 1, disabled: false, allowedLibraries: []}, profiles, canManage: true, deviceId: 'dev', installationId: 'inst'});
+const snapshot = (profiles: unknown[]) => ({authority: 'local', serverId: 'srv', account: {id: 'acct', username: 'owner', primaryProfileId: 'p1', role: 'owner', revision: 1, disabled: false, allowedLibraries: []}, profiles, canManage: true, capabilities: {manageAccount:true,managePeople:true,manageServer:true,manageSignIn:true}, deviceId: 'dev', installationId: 'inst'});
 const session = (role: string) => ({accessToken: 'a'.repeat(43), refreshToken: 'r'.repeat(43), deviceId: 'dev', installationId: 'inst', expiresAt: '2099-01-01T00:00:00Z', viewer: {accountId: 'acct', profileId: 'p1', serverId: 'srv', authority: 'local', role}, sessionFamilyId: 'fam', tokenGeneration: '1', authorizationHorizon: '2099-03-01T00:00:00Z'});
 
 test('several profiles: an account-scoped session, and a profile is chosen next', () => {
@@ -39,7 +39,7 @@ test('the old account-token shape is no longer accepted (a session is required)'
 
 test('CD-34: direct admin profile management keeps owner/admin/member', () => {
   for (const role of ['owner', 'admin', 'member']) {
-    const r = parseDirectSignIn({...snapshot([profile('p1')]), account: {...(snapshot([profile('p1')] as any) as any).account, role}, session: session('owner')});
+    const r = parseDirectSignIn({...snapshot([profile('p1')]), account: {...(snapshot([profile('p1')] as any) as any).account, role}, capabilities: {manageAccount:true,managePeople:role!=='member',manageServer:role!=='member',manageSignIn:role==='owner'}, session: session('owner')});
     assert.equal(r.kind, 'signed-in');
     if (r.kind !== 'signed-in') continue;
     assert.equal(r.snapshot.account.role, role);
@@ -58,9 +58,6 @@ test('two-step sign-in returns a challenge, finished with a code', async () => {
   await assert.rejects(completeDirectSignInChallenge(api, 'c'.repeat(43), ''));
 });
 
-test('a device waiting for approval gets no session', async () => {
-  assert.deepEqual(parseDirectSignIn({deviceApprovalPending: true, deviceId: 'dev', installationId: 'inst'}), {kind: 'device-pending', deviceId: 'dev', installationId: 'inst'});
-  assert.throws(() => parseDirectSignIn({deviceApprovalPending: true, deviceId: 'dev', installationId: 'inst', session: session('account')}));
-  const api = {request: async <T,>(): Promise<T> => ({deviceApprovalPending: true, deviceId: 'dev', installationId: 'inst'}) as T};
-  assert.equal((await directSignIn(api, 'sam', 'pw')).kind, 'device-pending');
+test('retired device approval response is rejected without creating a holding state', () => {
+  assert.throws(() => parseDirectSignIn({deviceApprovalPending: true, deviceId: 'dev', installationId: 'inst'}), {code: 'invalid_response'});
 });

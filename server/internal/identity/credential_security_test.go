@@ -319,43 +319,12 @@ func TestArtworkCapabilityCannotBecomeAFeedCredential(t *testing.T) {
 	}
 }
 
-func TestMemberCannotApproveOwnDevice(t *testing.T) {
-	ctx := context.Background()
-	s, _, owner := directFixture(t)
-	_, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberCreate{Username: "member", Name: "Member", Password: "Member-password1!", AllowedLibraries: []string{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	member, err := s.DirectLogin(ctx, "member", "Member-password1!")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
-	device, err := s.RegisterDevice(ctx, member.AccountToken, registration(Token()), "")
-	if !errors.Is(err, ErrDevicePending) {
-		t.Fatal(err)
-	}
-	if _, err = s.ApproveDevice(ctx, member.AccountToken, device.ID, true); !errors.Is(err, ErrUnauthorized) {
-		t.Fatal("member self-approved", err)
-	}
-	approved, err := s.ApproveDevice(ctx, owner.AccountToken, device.ID, true)
-	if err != nil || approved.ApprovalState != "approved" {
-		t.Fatal("owner could not approve member device", err)
-	}
-}
-
-// C66: a correct password always gets in after a bounded per-source cool-off.
-// Wrong guesses from the owner's (shared) network never delay a device that
-// has signed in to the account before, and refused requests, which evaluate
-// nothing, never extend a cool-off.
 func TestSharedNetworkGuessesCannotHoldTheOwnerOut(t *testing.T) {
 	s, db, _ := directFixture(t)
 	const peer = "198.51.100.20:443"
 	phone := Token()
 	now := time.Now().UTC().Format(time.RFC3339)
-	if _, err := db.Exec(`INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen,approval_state) VALUES('device-phone','local','account',?,'Phone','ios','portico','1.0',?,?,'approved')`, phone, now, now); err != nil {
+	if _, err := db.Exec(`INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen) VALUES('device-phone','local','account',?,'Phone','ios','portico','1.0',?,?)`, phone, now, now); err != nil {
 		t.Fatal(err)
 	}
 	network := WithSignInSource(context.Background(), peer)

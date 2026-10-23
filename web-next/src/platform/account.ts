@@ -1,6 +1,7 @@
 import {apiRoot, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {parseBrowserCredentialRecord} from '@core/credential-format.ts';
 import {browserAccountOrigin} from './account-origin.ts';
+import {parseAccountSession} from '@core/hosted-security.ts';
 import {
   ApiError,
   retryAfterSecondsFrom,
@@ -116,7 +117,7 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
     return {familyId:session.familyId};
   }
   refresh(authority:BrowserAuthority,requestId:string,signal?:AbortSignal) {
-    return this.request<HostedSession>(routePath('session_refresh'),{familyId:authority.familyId,requestId},signal);
+    return this.request<unknown>(routePath('session_refresh'),{familyId:authority.familyId,requestId},signal).then(value=>parseAccountSession(value,'browser'));
   }
   revoke(authority:BrowserAuthority,signal?:AbortSignal) {
     return this.request<void>(routePath('session_revoke'),{familyId:authority.familyId},signal);
