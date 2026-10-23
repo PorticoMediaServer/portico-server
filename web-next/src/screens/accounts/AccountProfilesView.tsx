@@ -51,7 +51,10 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
     return () => clearInterval(timer);
   }, [lock]);
   const snapshot = state.snapshot, server = state.server;
-  const selected = snapshot?.profiles.find(profile => profile.id === selectedId);
+  // DirectSnapshot is this proved account's profile list. Library access is
+  // evaluated inside each profile, never used to disable its picker tile.
+  const profiles = snapshot?.profiles.map(profile => ({...profile, eligible: true}));
+  const selected = profiles?.find(profile => profile.id === selectedId);
   const closeRecovery = () => {activeRecovery.current?.dispose(); activeRecovery.current = undefined; setRecovery(undefined);};
   if (!snapshot || !server) return <AuthStage legal={false}><AuthError error={state.error} />{Boolean(state.error) && <Button onClick={() => void binding.loadProfiles()}>{defaultI18n.t('action.tryAgain')}</Button>}</AuthStage>;
   // Required password/two-step pages are a different account-only continuation.
@@ -66,7 +69,7 @@ export function AccountProfilesView({binding, onSwitchServer}: {binding: Profile
       failure={!pinError && !seconds ? state.error : undefined} onComplete={pin => void binding.chooseProfile(selected.id, pin, remember)}
       onOtherProfiles={otherProfiles} onSwitchServer={onSwitchServer} onForgotPIN={() => {
         closeRecovery(); const flow = binding.profileRecovery(selected.id); activeRecovery.current = flow; setRecovery(flow);
-      }} /> : <ServerProfiles serverName={server.name} profiles={snapshot.profiles} error={state.error} onSwitchServer={onSwitchServer}
+      }} /> : <ServerProfiles serverName={server.name} profiles={profiles!} error={state.error} onSwitchServer={onSwitchServer}
         onSelect={profile => {setRemember(false); if (profile.pinRequired) setSelectedId(profile.id); else void binding.chooseProfile(profile.id, '', false);}} />}
     {selected && recovery && <Recovery binding={binding} flow={recovery} profileName={selected.name} username={snapshot.account.username}
       onClose={closeRecovery} onOpen={pin => {closeRecovery(); void binding.loadProfiles().then(() => binding.chooseProfile(selected.id, pin, false));}} />}
