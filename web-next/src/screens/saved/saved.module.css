@@ -3,6 +3,8 @@
 .wash > * { width: 100%; height: 100%; }
 .toolbar { position: relative; z-index: var(--layer-content); display: flex; align-items: center; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .toolbarEnd { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 14 / 13); }
+.directoryCount { color: var(--color-text-secondary); font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-caption-strong-weight); }
+.directoryHelp { color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 29 / 26); }
 .savedSection { position: relative; z-index: var(--layer-content); margin: 26px var(--shell-gutter, var(--gutter-desktop)) 0; min-width: 0; }
 .savedSection > h2 { margin: 18px 0 14px; font-size: var(--type-heading-size); font-weight: var(--type-row-heading-weight); }
 .resources { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 30px 16px; padding: 26px var(--shell-gutter, var(--gutter-desktop)) 0; }

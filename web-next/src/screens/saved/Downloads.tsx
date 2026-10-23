@@ -98,6 +98,7 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
   const snapshot = useSyncExternalStore(port.subscribe, port.getSnapshot, port.getSnapshot);
   const reportError = effects.reportError;
   const [busy, setBusy] = useState<string>(), [confirmation, setConfirmation] = useState<LocalConfirmation>(), [error, setError] = useState(false);
+  const pendingAction = useRef(false);
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -105,10 +106,10 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
     return () => controller.abort();
   }, [port, operations, reportError]);
   const perform = <T,>(key: string, action: (signal: AbortSignal) => Promise<T>, settled?: (value: T) => void) => {
-    if (busy || !operations.current) return;
-    setBusy(key); setError(false);
-    void operations.run(action, value => { setBusy(undefined); settled?.(value); }).catch(error => {
-      setBusy(undefined); setError(true); effects.reportError(error);
+    if (pendingAction.current || !operations.current) return;
+    pendingAction.current = true; setBusy(key); setError(false);
+    void operations.run(action, value => { pendingAction.current = false; setBusy(undefined); settled?.(value); }).catch(error => {
+      pendingAction.current = false; setBusy(undefined); setError(true); effects.reportError(error);
     });
   };
   if (!operations.current || !snapshot.available) return null;
@@ -138,6 +139,8 @@ export function LocalDownloads({port, operations, effects, server}: {port: Saved
                   <span className={styles.actions}>
                     {album.state === 'ready' && album.held === false && album.offlineAccess === 'valid' && port.playGroup && <Button className={styles.rowButton} variant="primary" size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.playGroup!(selector, album.revision, signal))}>{t('action.play')}</Button>}
                     {album.state === 'downloading' && <Button className={styles.rowButton} size="small" icon="i-pause" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'pause', signal))}>{t('action.pause')}</Button>}
+                    {album.state === 'paused' && album.held === false && <Button className={styles.rowButton} size="small" icon="i-play" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'resume', signal))}>{t('entry.resume')}</Button>}
+                    {album.state === 'failed' && album.held === false && <Button className={styles.rowButton} size="small" icon="i-retry" loading={busy === album.revision} onClick={() => perform(album.revision, signal => port.actionGroup(selector, album.revision, 'retry', signal))}>{t('action.tryAgain')}</Button>}
                     <DownloadMenu><MenuRow onClick={() => effects.openItem(album.parentId)}>{t('web.downloads.goToTitle')}</MenuRow><MenuRow destructive onClick={() => setConfirmation({kind: 'group', group: album, title: albumTitle})}>{t('downloads.removeFromDevice')}</MenuRow></DownloadMenu>
                   </span>
                 </div>;

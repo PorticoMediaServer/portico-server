@@ -81,7 +81,7 @@ export function SavedScreen(bindings: SavedBindings) {
   }, [runtime, route, effects.reportError]);
   const refresh = useCallback(async (context?: {signal?: AbortSignal; settle?: () => Promise<void>}) => {
     if (!runtime.operations.current || route.view === 'downloads') return;
-    if (['collections', 'views', 'history', 'resource'].includes(route.view)) await runtime.personal.revalidate(context);
+    if (['collections', 'views', 'history', 'resource'].includes(route.view)) await Promise.all([runtime.personal.revalidate(context), route.view === 'collections' || route.view === 'views' ? runtime.summary.refresh(context?.signal) : Promise.resolve()]);
     else if (route.view === 'watchlist' || route.view === 'favorites') await Promise.all([runtime.posters.revalidate(context), runtime.squares.revalidate(context)]);
     else await runtime.saved.revalidate(context);
   }, [runtime, route.view]);
@@ -190,9 +190,12 @@ function mediaEntry(entry: SavedEntry): ContentEntry | undefined {
 
 function PersonalResources(bindings: SavedViewBindings & {onCreate: () => void}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), kind = bindings.route.view === 'views' ? 'views' : 'collections';
+  const summary = useSyncExternalStore(bindings.runtime.summary.subscribe, bindings.runtime.summary.getSnapshot, bindings.runtime.summary.getSnapshot);
+  const count = kind === 'views' ? summary.value?.savedViews : summary.value?.collections;
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   return <>
-    <div className={styles.toolbar}><div className={styles.toolbarEnd}>{kind === 'collections' && <Button size="small" icon="i-plus" onClick={bindings.onCreate}>{t('web.saved.newCollection')}</Button>}</div></div>
+    <div className={styles.toolbar}>{kind === 'collections' ? <><Button size="small" icon="i-plus" onClick={bindings.onCreate}>{t('web.saved.newCollection')}</Button><div className={styles.toolbarEnd}>{count !== undefined && t('lib.count', {count, pivot: 'collections'})}</div></>
+      : <>{count !== undefined && <span className={styles.directoryCount}>{s('next.saved.savedViewsCount', {count})}</span>}<span className={styles.directoryHelp}>{s('next.saved.viewsHelp')}</span></>}</div>
     {snapshot.error && !snapshot.resources.length && <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
     {!snapshot.loading && !snapshot.error && !snapshot.resources.length && <StateView title={t(`web.saved.empty.${kind}`)} body={t(`web.saved.empty.${kind}Body`)} />}
     <div className={styles.resources}>{snapshot.resources.map(resource => <PersonalResourceTile key={resource.id} resource={resource} bindings={bindings} />)}</div>

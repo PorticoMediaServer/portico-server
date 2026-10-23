@@ -2,6 +2,8 @@
 export const savedMessages = {
   'next.saved.sections': 'Saved sections',
   'next.saved.removedPlaylist': 'Removed “{title}” from the playlist.',
+  'next.saved.savedViewsCount': '{count, plural, one {# saved view} other {# saved views}}',
+  'next.saved.viewsHelp': 'Each one is re-run on the server, so it stays current as libraries change.',
   'next.saved.prepared': 'Prepared for you',
   'next.saved.browserNote': 'The server prepares each title, then Save file hands it to this browser. To watch offline inside Portico, with your place remembered, use the phone app.',
   'next.saved.downloaded': 'Downloaded',
