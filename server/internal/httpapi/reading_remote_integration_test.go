@@ -6,12 +6,17 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,7 +29,8 @@ import (
 // This is an actual rclone LOCAL backend with real scanned publications. It
 // proves Reading's actor/book/lease composition, not all-provider behavior or
 // immutable origin identity. No permissive source/actor callback is installed.
-func TestReadingRemoteRegistered(t *testing.T) {
+func readingRemoteProgram(t *testing.T) string {
+	t.Helper()
 	program := os.Getenv("PORTICO_RCLONE_TEST_PROGRAM")
 	if program == "" {
 		t.Fatal("locked rclone fixture executable is required")
@@ -49,6 +55,12 @@ func TestReadingRemoteRegistered(t *testing.T) {
 		t.Fatal("fixture executable differs from repository lock")
 	}
 	t.Setenv("PORTICO_RCLONE", program)
+	return program
+}
+
+func TestReadingRemoteRegistered(t *testing.T) {
+	program := readingRemoteProgram(t)
+	var err error
 	f := newV1Fixture(t, 0)
 	managed, err := mounts.New(f.db, f.root, "", f.deps.Storage.Binary, f.deps.Storage)
 	if err != nil {
@@ -201,5 +213,165 @@ func TestReadingRemoteRegistered(t *testing.T) {
 			}
 			t.Log(fmt.Sprintf("real remote %s scan/member/source/location/close qualified", kind))
 		})
+	}
+}
+
+func TestReadingRemoteSequentialPDF(t *testing.T) {
+	program := readingRemoteProgram(t)
+	f := newV1Fixture(t, 0)
+	managed, err := mounts.New(f.db, f.root, "", f.deps.Storage.Binary, f.deps.Storage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := remotesources.New(f.db, f.root, managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.deps.Storage.Remote = remote
+	f.cat.SetStorage(f.deps.Storage)
+	raw := append(readingtest.PDF(), bytes.Repeat([]byte("\n% progressive original PDF comment"), 70000)...)
+	modified := time.Unix(1700000000, 0).UTC()
+	password := identity.Token()
+	var gets, active, peak atomic.Int32
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := active.Add(1)
+		defer active.Add(-1)
+		for previous := peak.Load(); n > previous && !peak.CompareAndSwap(previous, n); previous = peak.Load() {
+		}
+		u, p, ok := r.BasicAuth()
+		if !ok || u != "reading-fixture" || p != password {
+			w.WriteHeader(401)
+			return
+		}
+		if r.URL.Path != "/publications/" && r.URL.Path != "/publications/Original.pdf" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case "OPTIONS":
+			w.Header().Set("DAV", "1")
+			return
+		case "REPORT":
+			w.WriteHeader(501)
+			return
+		case "PROPFIND":
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(207)
+			fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:">`)
+			if r.URL.Path == "/publications/" {
+				fmt.Fprint(w, `<d:response><d:href>/publications/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`)
+			}
+			if r.URL.Path != "/publications/" || r.Header.Get("Depth") == "1" {
+				fmt.Fprintf(w, `<d:response><d:href>/publications/Original.pdf</d:href><d:propstat><d:prop><d:resourcetype/><d:getcontentlength>%d</d:getcontentlength><d:getlastmodified>%s</d:getlastmodified><d:getetag>"original-one"</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>`, len(raw), modified.Format(http.TimeFormat))
+			}
+			fmt.Fprint(w, `</d:multistatus>`)
+			return
+		case "GET", "HEAD":
+			w.Header().Set("Content-Length", fmt.Sprint(len(raw)))
+			w.Header().Set("ETag", `"original-one"`)
+			w.Header().Set("Last-Modified", modified.Format(http.TimeFormat))
+			if r.Method == "GET" {
+				gets.Add(1)
+				_, _ = w.Write(raw)
+			}
+			return
+		default:
+			w.WriteHeader(405)
+		}
+	}))
+	defer origin.Close()
+	principal, err := f.id.Authenticate(f.owner.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := remote.AddDAV(context.Background(), "", remotesources.DAVInput{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000001", time.Now().UnixMilli()), Name: "Actual sequential origin", Root: origin.URL + "/publications/", Username: "reading-fixture", Password: password, InsecureLocal: true}, func(tx *sql.Tx) error {
+		_, err := f.id.PrincipalByDigestTx(context.Background(), tx, principal.Hash)
+		return err
+	})
+	if err != nil || source.Source.RangeSupport != "unsupported" {
+		t.Fatal("factual range probe", source.Source.RangeSupport, err)
+	}
+	profile, _ := remotesources.SourceReadPreset("list")
+	profile.Limits = remotesources.ReadLimits{Connections: 1, RequestsPerSecond: 50}
+	err = dbwork.WithWriteTx(context.Background(), f.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := remote.ApplySourceReadProfileTx(context.Background(), tx, f.id, principal, remotesources.SourceReadProfileChange{SourceID: source.Source.ID, Generation: "1", Profile: profile})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	life, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); remote.Run(life) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("remote sequential controller did not stop")
+		}
+	})
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err = remote.InspectRoot(life, source.Source.RootPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	library, err := f.cat.Create("Actual stream books", "book", source.Source.RootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readingScan(t, f, library.ID)
+	d := f.deps
+	d.Hosted = nil
+	d.Mounts = managed
+	d.RemoteSources = remote
+	d.Reading = NewReadingService(d)
+	t.Cleanup(func() { _ = d.Reading.Close() })
+	h := New(d)
+	w := readingHTTP(t, h, "GET", "/v1/reading/items?libraryId="+library.ID, f.owner.AccessToken, "", nil)
+	var items ReadingItemsResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &items) != nil || len(items.Items) != 1 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	item := items.Items[0]
+	w = readingHTTP(t, h, "POST", "/v1/reading/sessions", f.owner.AccessToken, "", ReadingSessionRequest{item.ID, item.SourceID})
+	var manifest ReadingSessionResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &manifest) != nil || !manifest.Sequential {
+		t.Fatal("real fromstart manifest", w.Code, w.Body.String())
+	}
+	base := "/v1/reading/sessions/" + manifest.SessionID
+	w = readingHTTP(t, h, "HEAD", base+"/source", f.owner.AccessToken, manifest.Revision, nil)
+	if w.Code != 200 || w.Header().Get("Accept-Ranges") != "none" || w.Header().Get("Content-Length") != fmt.Sprint(len(raw)) {
+		t.Fatal(w.Code, w.Header())
+	}
+	before := gets.Load()
+	w = readingHTTP(t, h, "GET", base+"/source", f.owner.AccessToken, manifest.Revision, nil)
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), raw) || gets.Load() != before+1 || w.Header().Get("Content-Range") != "" {
+		t.Fatal("progressive200 replay/length", w.Code, w.Body.Len(), gets.Load()-before)
+	}
+	req := httptest.NewRequest("GET", base+"/source", nil)
+	req.Header.Set("Authorization", "Bearer "+f.owner.AccessToken)
+	req.Header.Set("If-Match", `"`+manifest.Revision+`"`)
+	req.Header.Set("Range", "bytes=0-4")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 416 {
+		t.Fatal("sequential stream manufactured ranged response", w.Code)
+	}
+	if peak.Load() > 1 {
+		t.Fatal("source connection1 exceeded", peak.Load())
+	}
+	if w = readingHTTP(t, h, "DELETE", base, f.owner.AccessToken, "", nil); w.Code != 204 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, forbidden := range []string{password, origin.URL, "reading-fixture"} {
+		if strings.Contains(w.Body.String(), forbidden) {
+			t.Fatal("origin credential escaped")
+		}
 	}
 }
