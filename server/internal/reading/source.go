@@ -297,9 +297,11 @@ func (f *Source) Close() error {
 		if f.roots != nil {
 			f.roots.Close()
 		}
+		f.mu.Lock()
 		if f.remoteRange != nil {
 			f.remoteRange.Close()
 		}
+		f.mu.Unlock()
 		if f.remoteSession != nil && !f.remoteRetained {
 			f.remoteSession.close()
 		}
@@ -326,8 +328,11 @@ func (f *Source) Validate() (failure error) {
 		return err
 	}
 	if f.remoteSession != nil {
-		if f.remoteRange != nil {
-			return f.remoteRange.Check(f.ctx)
+		f.mu.Lock()
+		reader := f.remoteRange
+		f.mu.Unlock()
+		if reader != nil {
+			return reader.Check(f.ctx)
 		}
 		return f.remoteSession.remote.Check(f.ctx)
 	}

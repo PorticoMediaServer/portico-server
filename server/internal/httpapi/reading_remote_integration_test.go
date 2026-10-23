@@ -233,7 +233,13 @@ func TestReadingRemoteRegistered(t *testing.T) {
 				t.Fatal("revoked remote lease returned extent", n, err)
 			}
 			page := int64(0)
-			w = readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+current.SessionID+"/progress", token, current.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: item.Format, PageIndex: &page, Progression: .9}})
+			location := ReadingLocation{Format: item.Format, PageIndex: &page, Progression: .9}
+			if item.Format == "epub" {
+				location.PageIndex = nil
+				location.CFI = "epubcfi(/6/4!/4/2:0)"
+				location.Section = current.Spine[0]
+			}
+			w = readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+current.SessionID+"/progress", token, current.Revision, ReadingProgressRequest{Location: location})
 			if w.Code < 400 {
 				t.Fatal("revoked remote actor saved progress", w.Code)
 			}

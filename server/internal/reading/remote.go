@@ -69,6 +69,11 @@ func (s *Service) openRemote(ctx context.Context, p identity.Principal, v Select
 			return nil, err
 		}
 		session.mu.Lock()
+		if session.closed || session.life.Err() != nil {
+			session.mu.Unlock()
+			_ = lease.Close()
+			return nil, ErrChanged
+		}
 		session.remote = lease
 		session.mu.Unlock()
 		g.Rollback()
