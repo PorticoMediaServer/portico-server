@@ -15,6 +15,9 @@ type HardwareReprobe struct {
 // StartReprobe deduplicates an owner's explicit test. A POST returns immediately
 // while all media work remains in bounded confined background processes.
 func (d *HardwareDetector) StartReprobe(executable string) HardwareReprobe {
+	if _, err := ffmpegIdentity(executable); err != nil {
+		return HardwareReprobe{Status: "unavailable"}
+	}
 	d.mu.Lock()
 	if d.reprobe.Status == "running" {
 		result := d.reprobe
@@ -22,6 +25,7 @@ func (d *HardwareDetector) StartReprobe(executable string) HardwareReprobe {
 		return result
 	}
 	d.reprobe = HardwareReprobe{Status: "running", StartedAt: time.Now().UnixMilli()}
+	d.revision++
 	result := d.reprobe
 	d.mu.Unlock()
 	supervise.Go("decoder.hardware.reprobe", func() {
@@ -34,9 +38,25 @@ func (d *HardwareDetector) StartReprobe(executable string) HardwareReprobe {
 			d.reprobe.Status = "timed_out"
 		}
 		d.reprobe.CompletedAt = time.Now().UnixMilli()
+		d.revision++
 		d.mu.Unlock()
 	})
 	return result
+}
+
+// ReprobeState is the owner's current test lifecycle, not a success verdict.
+func (d *HardwareDetector) ReprobeState() HardwareReprobe {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.reprobe
+}
+
+// ProbeRevision changes when a cached observation or explicit test changes.
+// Capacity polling reads this counter without launching a media process.
+func (d *HardwareDetector) ProbeRevision() uint64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.revision
 }
 
 func (d *HardwareDetector) CachedReport(executable, device string) []HardwareProbe {
@@ -62,7 +82,7 @@ func (d *HardwareDetector) CachedReport(executable, device string) []HardwarePro
 		probe.ActiveSessions = HardwareSessionsInUse(probe.Backend, probe.Device)
 		out = append(out, probe)
 	}
-	if cold {
+	if cold && d.ReprobeState().Status != "running" {
 		d.warm(executable, "auto", device)
 	}
 	return out

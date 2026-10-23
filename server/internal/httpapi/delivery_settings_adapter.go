@@ -48,6 +48,20 @@ func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
 // capacity report, so the admin page shows what this host can really do.
 type playbackProbes struct{ playback *playback.Service }
 
+func (p playbackProbes) HardwareReprobeState() decoder.HardwareReprobe {
+	if p.playback == nil {
+		return decoder.HardwareReprobe{Status: "unavailable"}
+	}
+	return p.playback.HardwareReprobeState()
+}
+
+func (p playbackProbes) HardwareProbeRevision() uint64 {
+	if p.playback == nil {
+		return 0
+	}
+	return p.playback.HardwareProbeRevision()
+}
+
 func (p playbackProbes) Probe(ctx context.Context, device string) []telemetry.HardwareProbe {
 	if p.playback == nil {
 		return telemetry.SoftwareOnlyProbes{}.Probe(ctx, device)
@@ -59,13 +73,17 @@ func (p playbackProbes) Probe(ctx context.Context, device string) []telemetry.Ha
 			detail = strings.TrimSpace(detail + " (" + probe.Encoder + ")")
 		}
 		item := telemetry.HardwareProbe{Backend: string(probe.Backend), Supported: probe.Available, Detail: detail, Device: probe.Device, DecodeCodecs: probe.DecodeCodecs, OutputEncoders: probe.OutputEncoders, ToneMapping: probe.ToneMapFilters, Deinterlacing: probe.DeinterlaceFilters, SubtitleOverlay: probe.SubtitleFilters, DolbyVisionReshaping: probe.DolbyVisionFilters, ActiveSessions: probe.ActiveSessions, LastError: probe.LastError, Remedy: probe.Remedy}
+		item.ProbedAt = probe.ProbedAt
 		if probe.DeviceInfo != nil {
 			info := probe.DeviceInfo
+			item.ID = info.ID
 			item.Name = info.Name
 			item.Driver = info.Driver
 			item.DriverVersion = info.DriverVersion
-			item.SessionLimit = info.SessionLimit
-			item.LimitSource = info.LimitSource
+			if info.SessionLimit > 0 && (info.LimitSource == "driver" || info.LimitSource == "concurrent_probe") {
+				item.SessionLimit = info.SessionLimit
+				item.LimitSource = info.LimitSource
+			}
 		}
 		out = append(out, item)
 	}

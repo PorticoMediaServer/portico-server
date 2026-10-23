@@ -5,6 +5,7 @@
   <Support>https://github.com/PorticoMediaServer/portico-server/issues</Support><Project>https://getportico.tv</Project>
   <Overview>Portico media server. Install the Intel GPU TOP plugin for Intel graphics. Store the database on a local cache pool. /mnt/user/appdata is the conventional mapping; prefer /mnt/cache/appdata/portico to avoid the FUSE pool.</Overview>
   <WebUI>http://[IP]:[PORT:32500]/</WebUI><Category>MediaServer:Video</Category>
+  <ExtraParams>--env PORTICO_PLATFORM=unraid</ExtraParams>
   <Config Name="Data" Target="/config" Default="/mnt/user/appdata/portico" Mode="rw" Description="Persistent data. Prefer a local cache-pool path such as /mnt/cache/appdata/portico." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/portico</Config>
   <Config Name="Transcode" Target="/transcode" Default="/mnt/cache/appdata/portico-transcode" Mode="rw" Description="Dedicated fast local disk directory. RAM playback is not available yet; do not use /tmp or tmpfs." Type="Path" Display="always" Required="false" Mask="false">/mnt/cache/appdata/portico-transcode</Config>
   <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Your media library" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>

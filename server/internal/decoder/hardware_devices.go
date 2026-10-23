@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"portico.local/server/internal/childprocess"
 )
 
 // HardwareDevice is discovery evidence, not a capability claim. Only a real
@@ -24,9 +26,12 @@ type HardwareDevice struct {
 	Vendor        string          `json:"vendor,omitempty"`
 	Driver        string          `json:"driver,omitempty"`
 	DriverVersion string          `json:"driverVersion,omitempty"`
-	Discrete      bool            `json:"discrete"`
-	SessionLimit  int             `json:"sessionLimit"`
-	LimitSource   string          `json:"limitSource"`
+	// Discrete is an internal scheduling hint, not a measured device fact.
+	Discrete     bool   `json:"-"`
+	SessionLimit int    `json:"sessionLimit,omitempty"`
+	LimitSource  string `json:"limitSource,omitempty"`
+	// ConcurrencyLimit is Portico's scheduling policy, not a driver limit.
+	ConcurrencyLimit int `json:"concurrencyLimit"`
 }
 
 func readDeviceFile(path string) string {
@@ -42,6 +47,10 @@ func discoverDRM(root, devices string) []HardwareDevice {
 		vendor := readDeviceFile(filepath.Join(sys, "vendor"))
 		pci := readDeviceFile(filepath.Join(sys, "device"))
 		driver, _ := filepath.EvalSymlinks(filepath.Join(sys, "driver"))
+		driverName := ""
+		if driver != "" {
+			driverName = filepath.Base(driver)
+		}
 		name := map[string]string{"0x8086": "Intel", "0x1002": "AMD", "0x10de": "NVIDIA"}[vendor]
 		if name == "" {
 			name = "Graphics device"
@@ -61,7 +70,7 @@ func discoverDRM(root, devices string) []HardwareDevice {
 			if backend == BackendQSV && vendor != "0x8086" {
 				continue
 			}
-			out = append(out, HardwareDevice{ID: string(backend) + ":" + node, Name: product, Path: node, Backend: backend, Vendor: vendor, Driver: filepath.Base(driver), Discrete: discrete, SessionLimit: 4, LimitSource: "conservative_default"})
+			out = append(out, HardwareDevice{ID: string(backend) + ":" + node, Name: product, Path: node, Backend: backend, Vendor: vendor, Driver: driverName, Discrete: discrete, ConcurrencyLimit: 4})
 		}
 	}
 	return out
@@ -71,6 +80,8 @@ func boundedDeviceOutput(ctx context.Context, executable string, args ...string)
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(bounded, executable, args...)
+	childprocess.Configure(cmd)
+	defer childprocess.Kill(cmd)
 	cmd.WaitDelay = time.Second
 	out := &toolOutput{}
 	cmd.Stdout = out
@@ -98,10 +109,9 @@ func discoverCUDA(ctx context.Context) []HardwareDevice {
 		if _, err := strconv.Atoi(index); err != nil {
 			continue
 		}
-		// A driver version does not reliably identify qualified cards or virtual
-		// GPU licensing. Three is the conservative unknown-driver aggregate cap;
-		// a bounded concurrent-session qualification may raise it explicitly.
-		out = append(out, HardwareDevice{ID: "nvenc:" + index, Name: strings.TrimSpace(parts[1]), Path: index, Backend: BackendNVENC, Vendor: "NVIDIA", Driver: "nvidia", DriverVersion: strings.TrimSpace(parts[2]), Discrete: true, SessionLimit: 3, LimitSource: "unqualified_driver_conservative_system_cap"})
+		// This query reports no session capacity. Keep the driver limit unknown;
+		// the conservative scheduler policy must never become an NVIDIA fact.
+		out = append(out, HardwareDevice{ID: "nvenc:" + index, Name: strings.TrimSpace(parts[1]), Path: index, Backend: BackendNVENC, Vendor: "NVIDIA", Driver: "nvidia", DriverVersion: strings.TrimSpace(parts[2]), Discrete: true, ConcurrencyLimit: 3})
 	}
 	return out
 }
@@ -130,7 +140,7 @@ func discoverWindows(ctx context.Context) []HardwareDevice {
 			backends = append(backends, BackendAMF)
 		}
 		for _, b := range backends {
-			out = append(out, HardwareDevice{ID: fmt.Sprintf("%s:%d", b, i), Name: a.Name, Path: strconv.Itoa(i), Backend: b, DriverVersion: a.DriverVersion, Discrete: b == BackendAMF, SessionLimit: 4, LimitSource: "conservative_default"})
+			out = append(out, HardwareDevice{ID: fmt.Sprintf("%s:%d", b, i), Name: a.Name, Path: strconv.Itoa(i), Backend: b, DriverVersion: a.DriverVersion, Discrete: b == BackendAMF, ConcurrencyLimit: 4})
 		}
 	}
 	return out
@@ -144,7 +154,8 @@ func DiscoverHardwareDevices(ctx context.Context) []HardwareDevice {
 	case "windows":
 		out = append(out, discoverWindows(ctx)...)
 	case "darwin":
-		out = append(out, HardwareDevice{ID: "videotoolbox:default", Name: "Apple VideoToolbox", Backend: BackendVideoToolbox, SessionLimit: 4, LimitSource: "conservative_default"})
+		// This is a framework selector, not a measured Metal adapter/name.
+		out = append(out, HardwareDevice{ID: "videotoolbox:default", Backend: BackendVideoToolbox, ConcurrencyLimit: 4})
 	}
 	out = append(out, discoverCUDA(ctx)...)
 	sort.SliceStable(out, func(i, j int) bool {
@@ -191,7 +202,7 @@ func (d *HardwareDetector) candidates(ctx context.Context, configured, device st
 			if configured != "auto" && configured != string(backend) {
 				continue
 			}
-			out = append(out, HardwareDevice{ID: string(backend) + ":" + device, Path: device, Backend: backend, SessionLimit: 4, LimitSource: "conservative_default"})
+			out = append(out, HardwareDevice{ID: string(backend) + ":" + device, Path: device, Backend: backend, ConcurrencyLimit: 4})
 		}
 	}
 	return out
@@ -207,7 +218,7 @@ func HardwareRemedy(platform string, backend HardwareBackend) string {
 		return "Turn on NVIDIA drivers in Apps settings, then choose the GPU in Portico's app settings."
 	case "synology":
 		return "Map /dev/dri in Container Manager. Only Intel models have a usable GPU."
-	case "proxmox":
+	case "proxmox", "lxc":
 		return "Pass the render device through to this container."
 	case "windows":
 		return "Install the latest graphics driver from Intel, NVIDIA or AMD."
@@ -215,7 +226,7 @@ func HardwareRemedy(platform string, backend HardwareBackend) string {
 		return "This board has no video encoder, so the processor converts video."
 	case "rockchip":
 		return "Needs a Rockchip kernel. See the guide."
-	case "darwin":
+	case "macos":
 		return ""
 	case "docker":
 		if backend == BackendNVENC {
@@ -223,7 +234,7 @@ func HardwareRemedy(platform string, backend HardwareBackend) string {
 		}
 		return "Give Portico your graphics card: add the device /dev/dri to this container."
 	default:
-		return "Install the graphics driver and allow Portico to use the render device."
+		return ""
 	}
 }
 

@@ -3,9 +3,19 @@ set -euo pipefail
 # Native macOS builds, or BtbN's container cross builds. Never publishes.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:?usage: build-ffmpeg.sh TARGET [WORK_DIRECTORY]}"
-WORK="${2:-$ROOT/runtime/ffmpeg-build/$TARGET}"
+LANE_SCRATCH="${PORTICO_LANE_SCRATCH:?Set PORTICO_LANE_SCRATCH to the workspace .scratch/hardware-r29 directory}"
+[[ "$LANE_SCRATCH" == /*/.scratch/hardware-r29 ]] || { echo 'Use the lane scratch directory on disk' >&2; exit 1; }
+mkdir -p "$LANE_SCRATCH"
+LANE_SCRATCH="$(cd "$LANE_SCRATCH" && pwd -P)"
+case "$LANE_SCRATCH" in /tmp/*|/dev/shm/*) echo 'Lane scratch must be on disk' >&2; exit 1;; esac
+WORK="${2:-$LANE_SCRATCH/ffmpeg-build/$TARGET}"
+[[ "$WORK" == "$LANE_SCRATCH/"* ]] || { echo 'Build output must stay under the lane scratch directory' >&2; exit 1; }
 mkdir -p "$WORK"
-WORK="$(cd "$WORK" && pwd)"
+WORK="$(cd "$WORK" && pwd -P)"
+[[ "$WORK" == "$LANE_SCRATCH/"* ]] || { echo 'Build output must stay under the lane scratch directory' >&2; exit 1; }
+export TMPDIR="$LANE_SCRATCH/tmp" GOTMPDIR="$LANE_SCRATCH/go-tmp" XDG_CACHE_HOME="$LANE_SCRATCH/cache" PIP_CACHE_DIR="$LANE_SCRATCH/cache/pip"
+export GOCACHE="$HOME/.cache/go-build"
+mkdir -p "$TMPDIR" "$GOTMPDIR" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR"
 readlock() { python3 -c 'import json,sys;v=json.load(open(sys.argv[1]));print(v[sys.argv[2]][sys.argv[3]])' "$ROOT/third_party/ffmpeg/sources.lock.json" "$1" "$2"; }
 VERSION="$(readlock ffmpeg version)"
 ARCHIVE="$WORK/jellyfin-ffmpeg-source.tar.gz"

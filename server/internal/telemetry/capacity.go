@@ -38,6 +38,8 @@ type TranscodeSettings struct {
 // package never guesses: an unprobed backend is reported unsupported with the
 // reason named.
 type HardwareProbe struct {
+	ID                   string          `json:"id,omitempty"`
+	ProbedAt             int64           `json:"probedAt"`
 	Device               string          `json:"device,omitempty"`
 	Name                 string          `json:"name,omitempty"`
 	Driver               string          `json:"driver,omitempty"`
@@ -49,7 +51,7 @@ type HardwareProbe struct {
 	SubtitleOverlay      bool            `json:"subtitleOverlay"`
 	DolbyVisionReshaping bool            `json:"dolbyVisionReshaping"`
 	ActiveSessions       int             `json:"activeSessions"`
-	SessionLimit         int             `json:"sessionLimit"`
+	SessionLimit         int             `json:"sessionLimit,omitempty"`
 	LimitSource          string          `json:"limitSource,omitempty"`
 	LastError            string          `json:"lastError,omitempty"`
 	Remedy               string          `json:"remedy,omitempty"`
@@ -126,10 +128,15 @@ type SessionCounts struct {
 }
 
 type HardwareStatus struct {
-	Configured string          `json:"configured"`
-	Effective  string          `json:"effective"`
-	Device     string          `json:"device"`
-	Probes     []HardwareProbe `json:"probes"`
+	Available   bool                        `json:"available"`
+	LastProbeAt int64                       `json:"lastProbeAt"`
+	Environment decoder.HardwareEnvironment `json:"environment"`
+	Reprobe     decoder.HardwareReprobe     `json:"reprobe"`
+	Formats     []HardwareFormat            `json:"formats"`
+	Configured  string                      `json:"configured"`
+	Effective   string                      `json:"effective"`
+	Device      string                      `json:"device"`
+	Probes      []HardwareProbe             `json:"probes"`
 }
 
 type ToneMappingStatus struct {
@@ -179,10 +186,11 @@ type Capacity struct {
 	// Run is the reporter seam, so tests compose a report without executables.
 	Run func(ctx context.Context, name string, args ...string) (string, error)
 
-	mu           sync.Mutex
-	cachedAt     int64
-	cachedProbes []HardwareProbe
-	cachedDeps   map[string]Dependency
+	mu             sync.Mutex
+	cachedAt       int64
+	cachedProbes   []HardwareProbe
+	cachedRevision uint64
+	cachedDeps     map[string]Dependency
 }
 
 const probeCache = 60 * time.Second
@@ -215,9 +223,9 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 	out := Report{
 		Toolchain:          decoder.CurrentToolchain(),
 		Enabled:            s.Enabled,
-		Hardware:           HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes},
+		Hardware:           hardwareStatus(s, effective, probes, c.Probes),
 		Sessions:           sessions,
-		HDRToneMapping:     toneMapping(s, effective, dependencies["ffmpeg"].OK),
+		HDRToneMapping:     toneMapping(s, effective, dependencies["ffmpeg"].OK, probes),
 		DirectStreamRemux:  s.DirectStreamRemux,
 		X264Preset:         s.X264Preset,
 		PlanningPolicy:     s.PlanningPolicy,
@@ -259,12 +267,21 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 func (c *Capacity) observe(ctx context.Context, device string, now int64) ([]HardwareProbe, map[string]Dependency) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cachedProbes != nil && now-c.cachedAt < probeCache.Milliseconds() {
-		return c.cachedProbes, c.cachedDeps
-	}
 	source := c.Probes
 	if source == nil {
 		source = SoftwareOnlyProbes{}
+	}
+	var revision uint64
+	if live, ok := source.(interface{ HardwareProbeRevision() uint64 }); ok {
+		revision = live.HardwareProbeRevision()
+	}
+	if c.cachedProbes != nil && now-c.cachedAt < probeCache.Milliseconds() {
+		if revision != c.cachedRevision {
+			// Read the detector's cache after a test, without restarting version reporters.
+			c.cachedProbes = source.Probe(ctx, device)
+			c.cachedRevision = revision
+		}
+		return c.cachedProbes, c.cachedDeps
 	}
 	probes := source.Probe(ctx, device)
 	if probes == nil {
@@ -275,6 +292,7 @@ func (c *Capacity) observe(ctx context.Context, device string, now int64) ([]Har
 		"ffprobe": c.dependency(ctx, c.FFprobe, "ffprobe"),
 	}
 	c.cachedAt, c.cachedProbes, c.cachedDeps = now, probes, dependencies
+	c.cachedRevision = revision
 	return probes, dependencies
 }
 
@@ -301,7 +319,7 @@ func (c *Capacity) dependency(ctx context.Context, configured, fallback string) 
 func resolveBackend(configured string, probes []HardwareProbe) (string, string) {
 	supported := map[string]bool{}
 	for _, probe := range probes {
-		supported[probe.Backend] = probe.Supported
+		supported[probe.Backend] = supported[probe.Backend] || probe.Supported
 	}
 	switch configured {
 	case "", "software":
@@ -345,7 +363,7 @@ func exactTemporaryDirectory(path string) TemporaryDirectory {
 	return out
 }
 
-func toneMapping(s TranscodeSettings, effective string, ffmpegOK bool) ToneMappingStatus {
+func toneMapping(s TranscodeSettings, effective string, ffmpegOK bool, probes []HardwareProbe) ToneMappingStatus {
 	if !s.HDRToneMapping {
 		return ToneMappingStatus{Status: "disabled", Detail: "HDR sources are delivered without tone mapping. A device that cannot display HDR may show washed-out colour."}
 	}
@@ -355,5 +373,10 @@ func toneMapping(s TranscodeSettings, effective string, ffmpegOK bool) ToneMappi
 	if effective == "software" {
 		return ToneMappingStatus{Status: "limited", Detail: "Tone mapping with the " + s.HDRToneMappingAlgorithm + " curve runs in software and costs noticeably more CPU for each converted stream."}
 	}
-	return ToneMappingStatus{Status: "available", Detail: "Tone mapping with the " + s.HDRToneMappingAlgorithm + " curve runs on the " + effective + " backend."}
+	for _, probe := range probes {
+		if probe.Backend == effective && probe.Supported && probe.ToneMapping {
+			return ToneMappingStatus{Status: "available", Detail: "A hardware tone-mapping probe passed on the " + effective + " backend."}
+		}
+	}
+	return ToneMappingStatus{Status: "limited", Detail: "No tone-mapping probe passed for the selected hardware backend. Conversion uses the processor for tone mapping."}
 }

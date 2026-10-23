@@ -54,6 +54,7 @@ var processSpawns = map[string]string{
 	"internal/rcloneprogram/command_windows.go:versionCommand":   "fixed rclone version probe, including a selected .cmd/.bat wrapper; same Check bounds and childprocess cleanup; no media input",
 	"internal/networking/topology.go:defaultGateway":             "/sbin/route on macOS",
 	"internal/telemetry/command.go:runCommand":                   "fixed read-only platform reporters",
+	"internal/decoder/hardware_devices.go:boundedDeviceOutput":   "fixed read-only nvidia-smi/PowerShell adapter reports; five-second context, bounded output and childprocess cleanup; no media input",
 	"internal/httpapi/fixture/fixture.go:cloneFile":              "test fixture copy (cp), not built into the server",
 	"internal/catalog/scalebench/scratch_budget.go:scratchUsage": "du over the capacity benchmark's own scratch folder; a development tool, not built into the server",
 	"internal/supervise/process.go:Process":                      "the server starting itself as its own worker, so a restart stays inside the service",

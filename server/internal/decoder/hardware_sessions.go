@@ -23,8 +23,11 @@ func TryHardwareSession(probe HardwareProbe) (func(), error) {
 		return func() {}, nil
 	}
 	limit := 4
+	if probe.DeviceInfo != nil && probe.DeviceInfo.ConcurrencyLimit > 0 {
+		limit = probe.DeviceInfo.ConcurrencyLimit
+	}
 	if probe.DeviceInfo != nil && probe.DeviceInfo.SessionLimit > 0 {
-		limit = probe.DeviceInfo.SessionLimit
+		limit = min(limit, probe.DeviceInfo.SessionLimit)
 	}
 	key := string(probe.Backend) + ":" + probe.Device
 	hardwareSessions.Lock()

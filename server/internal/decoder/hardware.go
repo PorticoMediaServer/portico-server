@@ -90,6 +90,7 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
+	ProbedAt           int64           `json:"probedAt"`
 	ActiveSessions     int             `json:"activeSessions"`
 	DeviceInfo         *HardwareDevice `json:"deviceInfo,omitempty"`
 	DecodeCodecs       map[string]bool `json:"decodeCodecs,omitempty"`
@@ -250,6 +251,7 @@ type HardwareDetector struct {
 	Run func(ctx context.Context, cmd *exec.Cmd) error
 
 	reprobe    HardwareReprobe
+	revision   uint64
 	discovered []HardwareDevice
 	mu         sync.Mutex
 	cache      map[string]HardwareProbe
@@ -436,11 +438,7 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 			out.LastError = out.LastError[:4096]
 		}
 	}
-	platform := runtime.GOOS
-	if os.Getenv("PORTICO_CONTAINER") == "1" {
-		platform = "docker"
-	}
-	out.Remedy = HardwareRemedy(platform, backend)
+	out.Remedy = DetectHardwareEnvironment().Remedy(backend)
 	switch {
 	case err == nil:
 		out.Available, out.Reason = true, ProbeAvailable
@@ -515,9 +513,9 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		out.DecodeCodecs = d.probeDecodeCodecs(ctx, executable, backend, device, timeout)
 		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
 		out.SubtitleFilters = d.probeOverlay(ctx, executable, spec, backend, device, timeout)
-		facts := CurrentToolchain()
-		filter := map[HardwareBackend]string{BackendVAAPI: "tonemap_opencl", BackendQSV: "tonemap_opencl", BackendNVENC: "tonemap_cuda", BackendVideoToolbox: "tonemap_videotoolbox"}[backend]
-		out.DolbyVisionFilters = out.NativeFilters && facts != nil && facts.FilterOptions[filter]["apply_dovi"]
+		// An option named apply_dovi is not a profile-5 colour/reshaping proof.
+		// Advertise this only after the checked IPT-PQc2 fixture probe lands.
+		out.DolbyVisionFilters = false
 	}
 	if ctx.Err() != nil {
 		out.Available = false
@@ -528,7 +526,9 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if d.cache == nil {
 		d.cache = map[string]HardwareProbe{}
 	}
+	out.ProbedAt = time.Now().UnixMilli()
 	d.cache[key] = out
+	d.revision++
 	publishHardwareProbe(identity, out)
 	if out.Available {
 		clearDeviceCircuit(backend, device)
@@ -599,7 +599,7 @@ func (d *HardwareDetector) warm(executable, configured, device string) {
 	if d.warming == nil {
 		d.warming = map[string]bool{}
 	}
-	if d.warming[key] {
+	if d.reprobe.Status == "running" || d.warming[key] {
 		d.mu.Unlock()
 		return
 	}

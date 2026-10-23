@@ -13,7 +13,7 @@
   <Config Name="PGID" Target="PGID" Default="100" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="UMASK" Target="UMASK" Default="0002" Type="Variable" Display="advanced" Required="true" Mask="false">0002</Config>
   <Config Name="TZ" Target="TZ" Default="Etc/UTC" Type="Variable" Display="advanced" Required="true" Mask="false">Etc/UTC</Config>
-  <ExtraParams>--runtime=nvidia --gpus=all</ExtraParams>
+  <ExtraParams>--runtime=nvidia --gpus=all --env PORTICO_PLATFORM=unraid</ExtraParams>
   <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Type="Variable" Display="always" Required="true" Mask="false">all</Config>
   <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,video,utility" Type="Variable" Display="advanced" Required="true" Mask="false">compute,video,utility</Config>
 </Container>

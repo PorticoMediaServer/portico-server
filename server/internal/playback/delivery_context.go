@@ -71,11 +71,12 @@ func (s *Service) DeliveryConfiguration() DeliveryConfiguration {
 // HardwareReport probes every backend for the owner capacity read. A server
 // without a detector reports software only, which is the truth for it.
 func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
-	cfg := s.DeliveryConfiguration()
 	if s.hardware == nil || s.hardwareFFmpeg == "" {
 		return []decoder.HardwareProbe{{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeAvailable, Encoder: "libx264"}}
 	}
-	return s.hardware.CachedReport(s.hardwareFFmpeg, cfg.HardwareDevice)
+	// The owner sees every discovered device and the server-wide format union,
+	// including ready devices outside an explicit playback selection.
+	return s.hardware.CachedReport(s.hardwareFFmpeg, "")
 }
 
 // selectHardware resolves the backend for one session. Selection is cached by
