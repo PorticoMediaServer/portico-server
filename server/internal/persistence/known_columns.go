@@ -1821,6 +1821,7 @@ download_requests.operation_id
 download_requests.principal
 download_requests.profile_key
 download_requests.quality
+download_requests.music_quality
 download_requests.request_hash
 download_requests.restarts
 download_requests.selection_fence

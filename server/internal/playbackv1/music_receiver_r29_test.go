@@ -34,7 +34,7 @@ func TestReceiverMusicBakedGainAndPrivateNextR29(t *testing.T) {
 	q := f.queue()
 	first := q.Session.Presentation
 	plan := first.AudioRender
-	if plan == nil || plan.Mode != "converted" || plan.Codec != "flac" || plan.LoudnessAppliedDB == nil || *plan.LoudnessAppliedDB != -12 || plan.Gain != nil || first.URL != plan.URL {
+	if plan == nil || plan.Mode != "converted" || plan.Codec != "flac" || plan.LoudnessAppliedDB == nil || *plan.LoudnessAppliedDB != -12 || plan.Gain != nil || first.URL != plan.URL || first.Container != plan.Container {
 		t.Fatalf("unbaked receiver presentation %+v %+v", first, plan)
 	}
 	next, e := f.service.PrepareNext(ctx, f.caller, q.Queue.ID, q.Queue.Revision, "receiver-private-next-r29", PrepareNextRequest{SessionID: q.Session.ID, SessionGeneration: q.Session.Presentation.Generation})

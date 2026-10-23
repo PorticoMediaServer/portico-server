@@ -16,6 +16,9 @@ import (
 // PreparedRecipe is intentionally not an arbitrary ffmpeg argument surface.
 // Profile identity/versioning is owned by preparedmedia, not by a client.
 type PreparedRecipe struct {
+	// Music fields are used only by the separate audio-only recipe builder.
+	MusicQuality, MusicCodec                  string
+	MusicStart, MusicEnd                      float64
 	AudioOnly, DropChapters, BoundedFragments bool
 	Width, Height, VideoKbps, AudioKbps       int
 	// VideoCodec is "h264" (empty) or "hevc". An HEVC recipe keeps the
@@ -31,12 +34,14 @@ type PreparedRecipe struct {
 // the recipe: the picture's range and depth (and the Dolby Vision layers to
 // leave behind) and each audio track's channel count, in source order.
 type PreparedSource struct {
-	DynamicRange  string
-	BitDepth      int
-	DolbyVision   bool
-	MasterDisplay string
-	MaxCLL        string
-	AudioChannels []int
+	AudioSampleRate, AudioBitDepth, AudioBitrateBPS int
+	AudioCodec                                      string
+	DynamicRange                                    string
+	BitDepth                                        int
+	DolbyVision                                     bool
+	MasterDisplay                                   string
+	MaxCLL                                          string
+	AudioChannels                                   []int
 }
 
 // PreparedChannels is the channel count a prepared recipe writes for a source
@@ -70,10 +75,19 @@ func preparedHDR(r PreparedRecipe) bool {
 	return r.Source.DynamicRange == "hdr10" || r.Source.DynamicRange == "hlg"
 }
 
+// PreparedArgs exposes the same closed, versioned builder to producer tests.
+// Execution still requires a reserved bridge or confined descriptor.
+func PreparedArgs(input string, r PreparedRecipe) ([]string, error) {
+	return preparedArgs(input, r, false)
+}
+
 func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, error) {
-	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input}
+	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input}
 	if validate {
 		return append(args, "-map", "0:v?", "-map", "0:a?", "-sn", "-dn", "-f", "null", "-"), nil
+	}
+	if r.MusicQuality != "" {
+		return preparedMusicArgs(args, r)
 	}
 	hevc := r.VideoCodec == "hevc"
 	if r.VideoCodec != "" && r.VideoCodec != "h264" && !hevc || hevc && r.AudioOnly {

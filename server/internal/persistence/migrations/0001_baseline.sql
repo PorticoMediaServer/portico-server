@@ -4158,7 +4158,7 @@ CREATE TABLE personal_job_details(
 CREATE TABLE download_requests(
  id TEXT PRIMARY KEY,profile_key TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,
  principal TEXT NOT NULL,device_id TEXT NOT NULL,target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,
- quality TEXT NOT NULL,episodes TEXT NOT NULL,keep_next INTEGER NOT NULL,
+ quality TEXT NOT NULL,music_quality TEXT NOT NULL DEFAULT '320' CHECK(music_quality IN('original','cd-quality','320','96')),episodes TEXT NOT NULL,keep_next INTEGER NOT NULL,
  state TEXT NOT NULL DEFAULT 'capturing',error_code TEXT NOT NULL DEFAULT '',
  selection_fence TEXT NOT NULL,cursor_key TEXT NOT NULL DEFAULT '',cursor_id TEXT NOT NULL DEFAULT '',
  total INTEGER NOT NULL DEFAULT 0,admitted INTEGER NOT NULL DEFAULT 0,

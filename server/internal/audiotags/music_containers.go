@@ -67,18 +67,35 @@ func asfText(b []byte) string {
 var asfContent = []byte{0x33, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11, 0xa6, 0xd9, 0, 0xaa, 0, 0x62, 0xce, 0x6c}
 var asfExtended = []byte{0x40, 0xa4, 0xd0, 0xd2, 0x07, 0xe3, 0xd2, 0x11, 0x97, 0xf0, 0, 0xa0, 0xc9, 0x5e, 0xa8, 0x50}
 
-func (p *reader) asf() {
-	for off := int64(30); off+24 <= p.size; {
+func (p *reader) asf() { p.asfObjects(30, p.size, 0) }
+func (p *reader) asfObjects(start, end int64, depth int) {
+	if depth > 4 {
+		return
+	}
+	for off := start; off+24 <= end && p.nodes < 10000; {
+		p.nodes++
 		h := p.at(off, 24)
 		if len(h) != 24 {
 			return
 		}
 		n := binary.LittleEndian.Uint64(h[16:])
-		if n < 24 || n > uint64(p.size-off) {
+		if n < 24 || n > uint64(end-off) {
 			p.warn()
 			return
 		}
 		key := string(h[:16])
+		if key == "\x5f\xbf\x03\xb5\xa9\x2e\xcf\x11\x8e\xe3\x00\xc0\x0c\x20\x53\x65" && n >= 46 {
+			header := p.at(off+24, 22)
+			if len(header) == 22 {
+				size := int64(binary.LittleEndian.Uint32(header[18:]))
+				if size <= int64(n)-46 {
+					p.asfObjects(off+46, off+46+size, depth+1)
+				}
+			}
+		}
+		if key == "\xea\xcb\xf8\xc5\xaf\x5b\x77\x48\x84\x67\xaa\x8c\x44\xfa\x4c\xca" || key == "\x94\x1c\x23\x44\x98\x94\xd1\x49\xa1\x41\x1d\x13\x4e\x45\x70\x54" {
+			p.asfMetadata(p.at(off+24, int64(n)-24))
+		}
 		if key == string(asfContent) || key == string(asfExtended) {
 			b := p.at(off+24, int64(n)-24)
 			if key == string(asfContent) && len(b) >= 10 {
@@ -137,7 +154,9 @@ func (p *reader) asf() {
 					case "Composer":
 						name = "composer"
 					}
-					if typ == 0 {
+					if typ == 1 && name == "Picture" {
+						p.asfPicture(v)
+					} else if typ == 0 {
 						p.add(name, asfText(v))
 					} else if typ == 3 && len(v) == 4 {
 						p.add(name, strconv.FormatUint(uint64(binary.LittleEndian.Uint32(v)), 10))
@@ -314,5 +333,70 @@ func (p *reader) flacCue(b []byte, rate int) {
 			continue
 		}
 		p.out.CueTracks = append(p.out.CueTracks, Chapter{Title: "Track " + strconv.Itoa(int(number)), Start: float64(offset+start) / float64(rate)})
+	}
+}
+
+// WM/Picture is the packed binary attribute: type and byte length, two UTF-16
+// strings, then the unchanged image bytes. No native pointer layout is used.
+// https://learn.microsoft.com/windows/win32/api/mfidl/ns-mfidl-asf_flat_picture
+func (p *reader) asfPicture(b []byte) {
+	if len(b) < 5 {
+		p.warn()
+		return
+	}
+	kind, n := int(b[0]), uint64(binary.LittleEndian.Uint32(b[1:5]))
+	b = b[5:]
+	takeText := func() (string, bool) {
+		for i := 0; i+2 <= len(b); i += 2 {
+			if b[i] == 0 && b[i+1] == 0 {
+				s := asfText(b[:i])
+				b = b[i+2:]
+				return s, true
+			}
+		}
+		return "", false
+	}
+	mime, ok := takeText()
+	if !ok {
+		p.warn()
+		return
+	}
+	if _, ok = takeText(); !ok {
+		p.warn()
+		return
+	}
+	if n > uint64(len(b)) || n > 4<<20 {
+		p.warn()
+		return
+	}
+	p.picture(kind, mime, b[:int(n)])
+}
+func (p *reader) asfMetadata(b []byte) {
+	if len(b) < 2 {
+		return
+	}
+	count := int(binary.LittleEndian.Uint16(b))
+	b = b[2:]
+	for i := 0; i < count && i < maxValues; i++ {
+		if len(b) < 12 {
+			p.warn()
+			return
+		}
+		nameLen := int(binary.LittleEndian.Uint16(b[4:6]))
+		typ := binary.LittleEndian.Uint16(b[6:8])
+		n := uint64(binary.LittleEndian.Uint32(b[8:12]))
+		b = b[12:]
+		if nameLen > len(b) || n > uint64(len(b)-nameLen) {
+			p.warn()
+			return
+		}
+		name := strings.TrimPrefix(asfText(b[:nameLen]), "WM/")
+		v := b[nameLen : nameLen+int(n)]
+		b = b[nameLen+int(n):]
+		if typ == 1 && name == "Picture" {
+			p.asfPicture(v)
+		} else if typ == 0 {
+			p.add(name, asfText(v))
+		}
 	}
 }

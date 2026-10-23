@@ -2,7 +2,6 @@ package playback
 
 import (
 	"portico.local/server/internal/decoder"
-	"portico.local/server/internal/qualityladder"
 )
 
 // DeliveryConfiguration is the owner-administered half of delivery planning.
@@ -88,7 +87,9 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
-	if _, ok := qualityladder.FindMusic(c.MaxMusicQuality); !ok {
+	switch c.MaxMusicQuality {
+	case "original", "cd-quality", "320", "96":
+	default:
 		c.MaxMusicQuality = "original"
 	}
 	if c.SessionStorageMiB < 64 || c.SessionStorageMiB > 1048576 {

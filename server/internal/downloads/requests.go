@@ -88,8 +88,10 @@ func (s *Service) requestAccess(ctx context.Context, tx *sql.Tx, p identity.Prin
 	return access(ctx, tx, p, device, "i.id")
 }
 func normalizeContainerRequest(r *ContainerRequest) error {
-	r.Quality = r.Quality.withDefault()
-	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || preparationQuality(string(r.Quality)) != nil {
+	if r.Quality == "" && r.Target.Kind != "album" && r.Target.Kind != "playlist" {
+		r.Quality = QualityOriginal
+	}
+	if !validID.MatchString(r.OperationID) || !validID.MatchString(r.DeviceID) || !validID.MatchString(r.Target.ID) || r.Quality != "" && preparationQuality(string(r.Quality)) != nil {
 		return ErrInput
 	}
 	switch r.Target.Kind {
@@ -152,6 +154,10 @@ func (s *Service) SubmitContainer(ctx context.Context, p identity.Principal, r C
 		if !anyVisible {
 			return ErrNotFound
 		}
+		musicQuality, e := musicDownloadQuality(tx, p)
+		if e != nil {
+			return e
+		}
 		principal, _ := json.Marshal(p)
 		var active int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM download_requests WHERE profile_key=? AND state IN('capturing','admitting')`, operations.ViewerKey(p)).Scan(&active); e != nil {
@@ -164,7 +170,7 @@ func (s *Service) SubmitContainer(ctx context.Context, p identity.Principal, r C
 		if e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, `INSERT INTO download_requests(id,profile_key,operation_id,request_hash,principal,device_id,target_kind,target_id,quality,episodes,keep_next,selection_fence,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, operations.ViewerKey(p), r.OperationID, hash, string(principal), r.DeviceID, r.Target.Kind, target, r.Quality, r.Policy.Episodes, r.Policy.KeepNext, fence, s.millis(), s.millis())
+		_, e = tx.ExecContext(ctx, `INSERT INTO download_requests(id,profile_key,operation_id,request_hash,principal,device_id,target_kind,target_id,quality,music_quality,episodes,keep_next,selection_fence,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, operations.ViewerKey(p), r.OperationID, hash, string(principal), r.DeviceID, r.Target.Kind, target, r.Quality, musicQuality, r.Policy.Episodes, r.Policy.KeepNext, fence, s.millis(), s.millis())
 		return e
 	})
 	if e != nil {
@@ -323,11 +329,11 @@ func (s *Service) advanceRequests(ctx context.Context) error {
 }
 func (s *Service) advanceRequest(ctx context.Context, id string) error {
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-		var raw, device, quality, state, fence, key, after, policy string
+		var raw, device, quality, musicQuality, state, fence, key, after, policy string
 		var target ContainerTarget
 		var targetEntity int64
 		var total, admitted, keep, restarts int
-		e := tx.QueryRowContext(ctx, `SELECT principal,device_id,target_kind,target_id,quality,episodes,keep_next,state,selection_fence,cursor_key,cursor_id,total,admitted,restarts FROM download_requests WHERE id=?`, id).Scan(&raw, &device, &target.Kind, &targetEntity, &quality, &policy, &keep, &state, &fence, &key, &after, &total, &admitted, &restarts)
+		e := tx.QueryRowContext(ctx, `SELECT principal,device_id,target_kind,target_id,quality,music_quality,episodes,keep_next,state,selection_fence,cursor_key,cursor_id,total,admitted,restarts FROM download_requests WHERE id=?`, id).Scan(&raw, &device, &target.Kind, &targetEntity, &quality, &musicQuality, &policy, &keep, &state, &fence, &key, &after, &total, &admitted, &restarts)
 		if e != nil {
 			return e
 		}
@@ -474,7 +480,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 			if !allowed {
 				reason = ReasonItemDeleted
 			} else {
-				preparation, reason, e = s.admitRequestItem(ctx, tx, p, device, id, m.id, quality)
+				preparation, reason, e = s.admitRequestItem(ctx, tx, p, device, id, m.id, quality, musicQuality)
 				if e != nil {
 					return e
 				}
@@ -491,7 +497,7 @@ func (s *Service) advanceRequest(ctx context.Context, id string) error {
 		return e
 	})
 }
-func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.Principal, device, batch, item, quality string) (string, string, error) {
+func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.Principal, device, batch, item, quality string, musicDefault ...string) (string, string, error) {
 	entity, e := entityid.Resolve(ctx, tx, item)
 	if errors.Is(e, entityid.ErrNotFound) {
 		return "", ReasonItemDeleted, nil
@@ -510,6 +516,15 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 			return "", "", e
 		}
 		return "", reason, nil
+	}
+	if quality == "" {
+		quality = QualityOriginal
+		if source.Kind == "song" {
+			quality = "320"
+			if len(musicDefault) > 0 && canonicalMusicQuality(musicDefault[0]) {
+				quality = musicDefault[0]
+			}
+		}
 	}
 	quality = resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
 	existing, e := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, quality))
@@ -533,7 +548,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		return "", reason, nil
 	}
 	estimate, estimated := estimateBytes(quality, recipe, source)
-	if e = storageRoom(tx, quality, estimate); errors.Is(e, ErrStorageFull) {
+	if e = storageRoom(tx, storedQualityBudget(quality, recipe), estimate); errors.Is(e, ErrStorageFull) {
 		return "", ReasonStorageFull, nil
 	}
 	if e != nil {

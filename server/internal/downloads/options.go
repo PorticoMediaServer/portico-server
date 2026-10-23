@@ -71,12 +71,13 @@ type DownloadStorage struct {
 // source, every rung with its estimate, the policy and the storage headroom. A
 // client needs no second request to render the sheet.
 type DownloadOptionsView struct {
-	ItemID  string            `json:"itemId"`
-	Kind    string            `json:"kind"`
-	Source  SourceDescription `json:"source"`
-	Options []QualityOption   `json:"options"`
-	Policy  DownloadPolicy    `json:"policy"`
-	Storage DownloadStorage   `json:"storage"`
+	DefaultQuality string            `json:"defaultQuality"`
+	ItemID         string            `json:"itemId"`
+	Kind           string            `json:"kind"`
+	Source         SourceDescription `json:"source"`
+	Options        []QualityOption   `json:"options"`
+	Policy         DownloadPolicy    `json:"policy"`
+	Storage        DownloadStorage   `json:"storage"`
 }
 
 // Options publishes the complete canonical menu for one item. Source-equivalent
@@ -179,7 +180,15 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	} else if !allowed {
 		original.Reason = ReasonNotAllowed
 	}
+	out.DefaultQuality, e = requestedDownloadQuality(tx, p, "", found)
+	if e != nil {
+		return out, e
+	}
 	original.EffectiveQuality = "original"
+	if found.Kind == "song" {
+		out.Options = s.musicOptions(ctx, tx, p, found, original, versions, live, owner, transcoding)
+		return out, nil
+	}
 	out.Options = append(out.Options, decorate(original, live))
 	automatic := original
 	automatic.Quality = "automatic"

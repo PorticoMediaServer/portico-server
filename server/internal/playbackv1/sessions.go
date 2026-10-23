@@ -808,6 +808,12 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
+	if choice.AudioServerRender && view.AudioRender.playable() {
+		// This URL names the separately pinned audio bytes. The general delivery
+		// plan may still describe the original file or another conversion.
+		view.Container = view.AudioRender.Container
+		view.BitrateKbps = 0 // source bitrate is not a measurement of converted output
+	}
 	view.VideoHeight = playback.ActivityVideoHeight(plan)
 	if plan.AudioStream >= 0 {
 		view.AudioTrackID = streamID("a", plan.AudioStream)
