@@ -176,14 +176,17 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
 async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:ReaderMount<P>,options:EpubAdapterOptions,tocBySection:Map<number,string>,parent:AbortSignal):Promise<ReaderView<P>> {
   const abort=new AbortController(),signal=AbortSignal.any([parent,mount.signal,abort.signal]);
   const renderer=document.createElement('foliate-paginator') as Paginator;
-  renderer.style.cssText='display:block;position:relative;width:100%;height:100%;';
+  const surface=document.createElement('div');surface.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;';
+  renderer.style.cssText='display:block;position:absolute;left:0;right:0;width:100%;';
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
   let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false,loaded=false;
   let cleanupDoc:()=>void=()=>{};
   function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');}
   function apply() {
-    const display=epubDisplay(preferences,viewport,urls);renderer.style.background=display.background;
-    renderer.setAttribute('flow',display.flow);renderer.setAttribute('margin',`${display.top}px`);
+    const display=epubDisplay(preferences,viewport,urls);surface.style.background=display.background;
+    renderer.style.top=`${display.top}px`;renderer.style.height=`${Math.max(1,viewport.height-display.top-display.bottom)}px`;
+    renderer.setAttribute('flow',display.flow);renderer.setAttribute('margin','0px');
+    renderer.setAttribute('max-block-size',`${Math.max(1,viewport.height-display.top-display.bottom)}px`);
     renderer.setAttribute('gap',`${display.gap}%`);renderer.setAttribute('max-column-count',String(display.columns));
     renderer.setAttribute('max-inline-size',`${Math.max(100,display.maxInlineSize)}px`);
     renderer.setStyles(display.css);renderer.render();
@@ -227,9 +230,9 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     },opts);
   };
   renderer.addEventListener('relocate',relocate);renderer.addEventListener('load',load);
-  renderer.open(book);mount.container.append(renderer);apply();
+  renderer.open(book);surface.append(renderer);mount.container.append(surface);apply();
   const dispose=()=>{if(dead)return;dead=true;abort.abort();cleanupDoc();renderer.removeEventListener('relocate',relocate);renderer.removeEventListener('load',load);
-    try{if(loaded)renderer.destroy();}finally{renderer.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
+    try{if(loaded)renderer.destroy();}finally{surface.remove();URL.revokeObjectURL(urls.literata);URL.revokeObjectURL(urls.manrope);}};
   signal.addEventListener('abort',dispose,{once:true});
   const view:ReaderView<P>={
     async navigate(target:ReaderNavigation,callerSignal) {

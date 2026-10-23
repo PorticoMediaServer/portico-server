@@ -18,12 +18,21 @@ export function epubDisplay(preferences: EpubDisplayPreferences, viewport: Reade
     || !['tight','normal','loose'].includes(p.lineSpacing) || !['narrow','normal','wide'].includes(p.margins)
     || !['left','justified'].includes(p.alignment) || !['pages','scroll'].includes(p.layout) || !colours[p.highlightColour]
     || [p.twoPages,p.hyphenation,p.tapToTurn].some(v => typeof v !== 'boolean')) throw new ReaderError('invalid_preferences');
-  const [background, ink] = palettes[p.theme], size = [14,16,17,18,20,23,26][p.textSize-1];
-  const lineHeight = {tight: 1.4, normal: 1.6, loose: 1.85}[p.lineSpacing];
-  const normalMargin = viewport.width < 600 ? 28 : viewport.width < 1024 ? 84 : viewport.width >= 1400 ? 150 : 76;
+  const phoneLandscape = compactLandscape(viewport), compact = viewport.width < 600 || phoneLandscape;
+  const [background, ink] = palettes[p.theme];
+  const sizes = phoneLandscape ? [11,12,13,14,16,19,22] : compact ? [12,13,14,15,17,20,23] : [14,16,17,18,20,23,26];
+  const size = sizes[p.textSize-1];
+  const normalLineHeight = phoneLandscape ? 26/16 : compact ? 28/17 : 1.6;
+  const lineHeight = normalLineHeight * {tight: 0.875, normal: 1, loose: 1.15625}[p.lineSpacing];
+  const normalMargin = phoneLandscape ? 56 : compact ? 24 : viewport.width < 1024 ? 84 : viewport.width >= 1400 ? 150 : 76;
   const margin = normalMargin * {narrow:0.65,normal:1,wide:1.35}[p.margins];
   const columns = p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || compactLandscape(viewport)) ? 2 : 1;
-  const top = viewport.width < 600 ? 100 : 100;
+  const top = phoneLandscape ? 40 : compact ? 86 : 100;
+  const bottom = phoneLandscape ? 38 : compact ? 86 : viewport.width < 1024 ? 120 : viewport.width >= 1400 ? 96 : 112;
+  const columnGap = columns === 2 ? phoneLandscape ? 44 : viewport.width >= 1400 ? 104 : 100 : 0;
+  const contentWidth = viewport.width - 2*margin + columnGap;
+  // Foliate adds half a column gap to each outer edge. Compensate in its
+  // container width, then invert g/(1-g) to obtain the exact drawn gap.
   // Trusted font URLs are created from app-supplied font Blobs, never book text.
   const fontFaces = `@font-face{font-family:Literata;src:url("${fonts.literata}")}@font-face{font-family:Manrope;src:url("${fonts.manrope}")}`;
   const family = p.font === 'publisher' ? '' : `font-family:${p.font === 'literata' ? 'Literata,serif' : 'Manrope,sans-serif'}!important;`;
@@ -32,6 +41,6 @@ body{${family}font-size:${size}px!important;line-height:${lineHeight}!important;
 p{margin:0;text-indent:1.6em;}p:first-of-type{ text-indent:0; }
 ::selection{background:${colours[p.highlightColour]}88;}
 a{color:inherit;}img,svg{max-width:100%;max-height:100%;}*{animation:none!important;transition:none!important;}`;
-  return Object.freeze({background, ink, columns, margin, top, css, flow:p.layout==='pages'?'paginated':'scrolled',
-    maxInlineSize: (viewport.width - 2*margin) / columns, gap: 100 * (2*margin) / viewport.width});
+  return Object.freeze({background, ink, columns, margin, top, bottom, css, flow:p.layout==='pages'?'paginated':'scrolled',
+    maxInlineSize: contentWidth / columns, gap: columnGap ? 100 * columnGap / (contentWidth + columnGap) : 0});
 }
