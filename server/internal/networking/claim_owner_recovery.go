@@ -230,7 +230,32 @@ func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(strin
 	}
 	for {
 		h.ResumeWebClaims(ctx, guard)
-		rows, err := h.store.db.QueryContext(ctx, `SELECT i.operation_id FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent'`)
+		// A crash or failed pending POST can leave a complete typed capture with
+		// no watch/resume note. Expiry itself authorizes only its exact denial;
+		// it never reconstructs a positive owner guard or sends a fresh claim.
+		rows, err := h.store.db.QueryContext(ctx, `SELECT c.operation_id FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id WHERE c.phase='prepared' AND c.expires_ms<=? AND i.purpose='switch' AND i.current_owner_account_id='' AND i.stage IN('prepared','approved','finalizing','retrieving')`, time.Now().UnixMilli())
+		if err == nil {
+			var expired []string
+			for rows.Next() {
+				var operation string
+				if err = rows.Scan(&operation); err != nil {
+					break
+				}
+				expired = append(expired, operation)
+			}
+			if err == nil {
+				err = rows.Err()
+			}
+			rows.Close()
+			if err == nil {
+				for _, operation := range expired {
+					if err = h.reconcileWebClaim(ctx, operation, nil, true); err != nil && ctx.Err() == nil {
+						log.Printf("Expired owner claim could not be reconciled: %v", err)
+					}
+				}
+			}
+		}
+		rows, err = h.store.db.QueryContext(ctx, `SELECT i.operation_id FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent'`)
 		if err == nil {
 			var operations []string
 			for rows.Next() {
@@ -254,7 +279,7 @@ func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(strin
 		// work. Stay asleep until an actual claim action/watcher wakes it;
 		// permanently polling empty tables would consume the idle SQL budget.
 		var pending bool
-		err = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent')`).Scan(&pending)
+		err = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent') OR EXISTS(SELECT 1 FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id WHERE c.phase='prepared' AND i.stage IN('prepared','approved','finalizing','retrieving'))`).Scan(&pending)
 		if err == nil && !pending {
 			select {
 			case <-ctx.Done():

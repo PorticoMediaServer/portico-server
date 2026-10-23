@@ -192,4 +192,42 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	if err = db.QueryRow(`SELECT count(*) FROM account_portico_links`).Scan(&links); err != nil || links != 0 {
 		t.Fatal("pending invented owner linkage", err)
 	}
+	// A crash/failed pending response need not leave any watch/request row.
+	// The typed capture still expires through the real deny-only recovery path.
+	if _, err = db.Exec(`DELETE FROM networking_web_claims; UPDATE identity_owner_completions SET expires_ms=created_ms+1`); err != nil {
+		t.Fatal(err)
+	}
+	retired := make(chan struct{})
+	if err = store.SetTerminalRevoker(func(ctx context.Context, tx *sql.Tx, intent Intent, _ string) error {
+		if err := id.RetireOwnerCompletionForClaimTx(ctx, tx, intent.OperationID); err != nil {
+			return err
+		}
+		close(retired)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recovery, cancel := context.WithCancel(ctx)
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		h.RunWebClaimRecovery(recovery, func(string) ClaimRequestGuard { return nil })
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-stopped:
+		case <-time.After(2 * time.Second):
+			t.Error("owned recovery did not stop")
+		}
+	}()
+	select {
+	case <-retired:
+	case <-time.After(3 * time.Second):
+		t.Fatal("typed expired capture without watch was stranded")
+	}
+	var phase, move string
+	if err = db.QueryRow(`SELECT c.phase,m.stage FROM identity_owner_completions c JOIN identity_moves m ON m.id=c.move_id`).Scan(&phase, &move); err != nil || phase != "cancelled" || move != "cancelled" || calls != 3 {
+		t.Fatal("no-watch expiry retained move or contacted Hosted", err, phase, move, calls)
+	}
 }

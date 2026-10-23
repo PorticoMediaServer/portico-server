@@ -114,6 +114,9 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 	if err != nil {
 		return localWebClaim{}, err
 	}
+	// A failed pending POST may never create networking_web_claims/watch. The
+	// typed capture must still wake expiry reconciliation and survive restart.
+	h.wakeClaimRecovery()
 	var pending claimweb.Pending
 	if err = transport.call(ctx, "pending", claimweb.PendingRequest{Payload: out.Signed.Payload, Signature: out.Signed.Signature, OwnerStart: out.OwnerStart}, &pending, nil); err != nil {
 		return localWebClaim{}, err

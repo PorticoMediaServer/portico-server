@@ -3,9 +3,12 @@ package identity_test
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 )
@@ -116,5 +119,47 @@ func TestCapturedOwnerPreinstallCancellationRetiresOnlyItsFamilyAndPermitsFreshR
 				t.Fatal("old denial touched successor", err)
 			}
 		})
+	}
+}
+
+func TestCapturedOwnerWithdrawalRetirementFailureRollsBack(t *testing.T) {
+	f := newOwnerCaptureFixture(t)
+	ctx := context.Background()
+	if err := dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error { return f.capture(ctx, tx) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.SetTerminalRevoker(func(ctx context.Context, tx *sql.Tx, v networking.Intent, _ string) error {
+		return f.s.RetireOwnerCompletionForClaimTx(ctx, tx, v.OperationID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	callbackErr := errors.New("retirement refused")
+	f.s.OnFamilyRevokedTx = func(context.Context, *sql.Tx, identity.FamilyState) error { return callbackErr }
+	withdraw := func() error {
+		return f.runner.Do(ctx, func(ctx context.Context) error {
+			_, handled, err := f.store.WithdrawReplacement(ctx, f.intent)
+			if err == nil && !handled {
+				t.Fatal("pending capture not recognized")
+			}
+			return err
+		})
+	}
+	if err := withdraw(); !errors.Is(err, callbackErr) {
+		t.Fatal("retirement refusal not propagated", err)
+	}
+	var phase, stage string
+	var challenge int
+	if err := f.db.QueryRow(`SELECT c.phase,i.stage,(SELECT count(*) FROM hosted_identity_challenges) FROM identity_owner_completions c JOIN networking_claim_intents i ON i.operation_id=c.operation_id`).Scan(&phase, &stage, &challenge); err != nil || phase != "prepared" || stage != "prepared" || challenge != 1 {
+		t.Fatal("failed withdrawal partially retired", err, phase, stage, challenge)
+	}
+	if _, err := f.s.Authenticate(f.bearer); err != nil {
+		t.Fatal("failed withdrawal revoked owner", err)
+	}
+	f.s.OnFamilyRevokedTx = nil
+	if err := withdraw(); err != nil {
+		t.Fatal("same pending withdrawal cannot retry", err)
+	}
+	if _, err := f.s.Authenticate(f.bearer); err == nil {
+		t.Fatal("withdrawn family remained live")
 	}
 }
