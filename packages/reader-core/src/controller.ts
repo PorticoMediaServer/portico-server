@@ -95,8 +95,10 @@ export class ReaderController<P extends object> {
       if (!this.current(session)) { await view.dispose(); return; }
       session.view = view;
       // Defaults may have changed while the adapter was opening/mounting.
-      await view.applyPreferences(this.snapshot.preferences, session.abort.signal);
-      if (options.location) await view.navigate({kind: 'location', location: options.location}, session.abort.signal);
+      await this.enqueue(async (mounted, active) => {
+        await mounted.applyPreferences(this.snapshot.preferences, active);
+        if (options.location) await mounted.navigate({kind: 'location', location: options.location}, active);
+      });
       if (!this.current(session)) return;
       const location = view.getLocation();
       if (location) validateLocation(location, options.format);
