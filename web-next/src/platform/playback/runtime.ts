@@ -30,6 +30,7 @@ import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
+import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart} from './types.ts';
 
@@ -70,6 +71,7 @@ export class WebShellPlaybackRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly bookmarks = new Map<string, Bookmark>();
   private readonly retiredFences = new Set<string>();
+  private readonly versionChoices = new WeakMap<WebPlaybackVersionChoices, Readonly<{isCurrent(): boolean; failedVersionId?: string}>>();
   private stack: Stack;
   private video?: VideoLike;
   private surface?: SubtitleSurface;
@@ -301,18 +303,49 @@ export class WebShellPlaybackRuntime {
     this.sync();
   }
 
-  /** Entry-menu version choice. The server groups available files into versions; an opaque
-   * source link or a menu label can never stand in for this current canonical version id. */
-  async playVersion(request: WebPlaybackVersionStart, isCurrent: (context: SelectionContext) => boolean): Promise<void> {
-    const {itemId, versionId, startSeconds, context, signal} = request;
-    this.selectionCurrent(context, signal, isCurrent);
-    if (![itemId, versionId].every(id => /^[A-Za-z0-9_.-]{1,128}$/.test(id)) || startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_target');
+  /** A chooser reads real current options without stopping the playing source. Its owner keeps
+   * this read alive until the chosen start settles, then closes/disposes the chooser. */
+  async readVersions(expected: QueuePlaybackFence, signal: AbortSignal, {excludeFailed = false}: Readonly<{excludeFailed?: boolean}> = {}): Promise<WebPlaybackVersionChoices | null> {
+    if (expected.kind !== 'queue') return null;
+    const fence = playbackFence(expected), stack = this.require(fence), selectedVersionId = this.snapshot.session?.versionId;
+    if (stack.subject?.kind !== 'video' || !selectedVersionId || signal.aborted) return null;
+    const playback = stack.service.getSnapshot(), failed = playback.phase === 'error' && !playback.ended;
+    if (excludeFailed && !failed) return null;
+    const failedVersionId = failed ? selectedVersionId : undefined;
+    const isCurrent = () => !signal.aborted && this.current(stack) && this.matches(fence)
+      && this.snapshot.session?.versionId === selectedVersionId
+      && (stack.service.getSnapshot().phase === 'error' && !stack.service.getSnapshot().ended) === failed;
+    const options = await stack.optionsClient.options(fence.itemId, {}, AbortSignal.any([signal, stack.life.signal]));
+    if (!isCurrent()) return null;
+    if (options.itemId !== fence.itemId) problem('playback_version_unavailable');
+    const versions = Object.freeze(options.versions.filter(version => !excludeFailed || version.id !== failedVersionId));
+    const choices = Object.freeze({fence, options, versions, selectedVersionId, ...(failedVersionId ? {failedVersionId} : {}), isCurrent});
+    this.versionChoices.set(choices, {isCurrent, ...(excludeFailed ? {failedVersionId} : {})});
+    return choices;
+  }
+
+  /** Both entry menus and the in-player chooser use this same actual fresh start. Section21
+   * always resumes from the new options read; no caller position or version preference survives. */
+  async playVersion(request: WebPlaybackVersionChoice): Promise<void>;
+  async playVersion(request: WebPlaybackVersionStart, isCurrent: (context: SelectionContext) => boolean): Promise<void>;
+  async playVersion(request: WebPlaybackVersionStart | WebPlaybackVersionChoice, isCurrent?: (context: SelectionContext) => boolean): Promise<void> {
+    const {versionId, signal} = request;
+    const selection = 'choices' in request ? this.versionChoices.get(request.choices) : undefined;
+    const itemId = 'choices' in request ? request.choices.fence.itemId : request.itemId;
+    const check = () => {
+      if ('choices' in request) { if (!selection?.isCurrent() || signal.aborted) problem('stale_playback_command'); }
+      else { if (!isCurrent) problem('stale_selection_context'); this.selectionCurrent(request.context, signal, isCurrent); }
+    };
+    check();
+    if (![itemId, versionId].every(id => /^[A-Za-z0-9_.-]{1,128}$/.test(id))) problem('invalid_playback_target');
     const serial = ++this.operation, previous = this.stack;
     const options = await previous.optionsClient.options(itemId, {}, AbortSignal.any([signal, previous.life.signal]));
-    this.selectionCurrent(context, signal, isCurrent);
+    check();
     if (serial !== this.operation || !this.current(previous)) problem('stale_selection_context');
     // options.versions is readAssets(available=1) grouped by versionsOf on the server.
-    if (options.itemId !== itemId || !options.versions.some(version => version.id === versionId)) problem('playback_version_unavailable');
+    if (options.itemId !== itemId || !options.versions.some(version => version.id === versionId) || versionId === selection?.failedVersionId) problem('playback_version_unavailable');
+    const startSeconds = options.resume ? options.resume.positionMs / 1000 : 0;
+    if (!validSeconds(startSeconds)) problem('invalid_playback_position');
     const stack = this.replace(); stack.expanded = true;
     const cancel = () => { if (this.current(stack) && serial === this.operation) {
       this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
@@ -320,8 +353,12 @@ export class WebShellPlaybackRuntime {
     signal.addEventListener('abort', cancel, {once: true});
     try {
       await stack.service.play(itemId, startSeconds, undefined, undefined, undefined, {versionId});
-      this.selectionCurrent(context, signal, isCurrent);
+      if ('choices' in request) { if (signal.aborted) problem('stale_playback_command'); }
+      else this.selectionCurrent(request.context, signal, isCurrent!);
       if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
+      const started = stack.service.getSnapshot(), session = stack.queue.currentSession();
+      if (started.phase === 'error' || !session || session.itemId !== itemId || session.versionId !== versionId
+        || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_version_failed');
       this.sync();
     } catch (error) { cancel(); throw error; }
     finally { signal.removeEventListener('abort', cancel); }

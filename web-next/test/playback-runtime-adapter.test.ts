@@ -592,7 +592,7 @@ test('Cast stopped continuation uses retained receiver time, expires at fifteen 
   assert.equal(controller.getSnapshot().remote, undefined); assert.equal(f.runtime.getSnapshot().session!.itemId, 'movie');
 });
 
-test('entry version choice reaches the real canonical start and mounted engine using grouped version id', async t => {
+test('entry version choice uses the real grouped version id and fresh title resume under section21', async t => {
   const f = setup(t);
   f.intercept(async (request, response) => {
     if (request.path === '/v1/items/movie/playback-options') {
@@ -601,14 +601,145 @@ test('entry version choice reaches the real canonical start and mounted engine u
     }
     return response;
   });
-  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', startSeconds: 25, context: selectionContext, signal: new AbortController().signal}, context => context === selectionContext);
+  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', context: selectionContext, signal: new AbortController().signal}, context => context === selectionContext);
   await f.arrive();
   const starts = f.log.filter(request => request.method === 'POST' && request.path.includes('/playback/sessions'));
   assert.ok(starts.some(request => (request.body as {versionId?: string}).versionId === 'v2'));
   assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
   assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
   assert.equal(f.hls.instances.length, 1);
-  assert.equal(f.hls.instances[0]!.config.startPosition, 25);
+  assert.equal(f.hls.instances[0]!.config.startPosition, 120, 'binding21 supersedes the former caller-supplied25s fixture; fresh actual Options.resume is120s');
+});
+
+function versionFixture(f: ReturnType<typeof setup>, resume = 120) {
+  let positionMs: number | undefined = resume * 1000, offered = ['v2', 'v1'];
+  const handle = async (request: V1Request, response: V1Response) => {
+    if (!request.path.includes('/playback-options')) return response;
+    const body = response.body as {versions: {id: string}[]; preferred: object};
+    return {...response, body: {...body, resume: positionMs === undefined ? undefined : {positionMs, partIndex: 0},
+      versions: offered.map(id => ({...body.versions[0], id})), preferred: {...body.preferred, versionId: 'v2'}}};
+  };
+  f.intercept(handle);
+  return {handle, resume: (seconds: number | undefined) => { positionMs = seconds === undefined ? undefined : seconds * 1000; }, versions: (ids: string[]) => { offered = ids; }};
+}
+
+test('the owned chooser reads fresh File-info order and actual selected ID, then re-reads resume at the real chosen start', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), abort = new AbortController(), before = f.log.length, loads = f.video.loads;
+  const choices = await f.runtime.readVersions(fence, abort.signal); assert.ok(choices);
+  assert.equal(choices.selectedVersionId, 'v1'); assert.equal(choices.options.preferred!.versionId, 'v2');
+  assert.deepEqual(choices.versions.map(version => version.id), ['v2', 'v1']);
+  assert.equal(choices.failedVersionId, undefined); assert.equal(choices.isCurrent(), true);
+  assert.equal(f.video.loads, loads); assert.equal(f.log.slice(before).filter(request => request.method === 'POST').length, 0);
+  assert.equal(f.log.at(-1)!.path, '/v1/items/movie/playback-options', 'chooser freshness is a real options read, without a preview substituting for the selected ID');
+  fixture.resume(85);
+  await f.runtime.playVersion({choices, versionId: 'v2', signal: abort.signal}); await f.arrive();
+  assert.equal(choices.isCurrent(), false, 'accepted replacement invalidates old row facts before the promise settles');
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 85);
+  assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 85);
+  const chosen = f.log.findLast(request => request.method === 'POST' && request.path === '/v1/playback/sessions')!;
+  assert.equal((chosen.body as {versionId: string}).versionId, 'v2');
+  assert.equal((chosen.body as {startPositionMs: number}).startPositionMs, 85000);
+  const nextPlay = f.log.length; await f.runtime.play('movie'); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v1', 'the next ordinary Play returns to the actual server automatic choice');
+  assert.ok(f.log.slice(nextPlay).every(request => !(request.body as {versionId?: string} | undefined)?.versionId));
+});
+
+test('a chosen version removed by the fresh click read cannot stop the still playing source', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  fixture.versions(['v1']); const before = f.log.length, session = f.runtime.getSnapshot().session!.id;
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session); assert.equal(f.video.paused, false);
+  assert.equal(f.log.slice(before).filter(request => request.method === 'POST' || request.method === 'DELETE').length, 0);
+});
+
+test('failure chooser excludes the actual failed grouped version, including when the planner prefers another version', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const signal = new AbortController().signal;
+  assert.equal(await f.runtime.readVersions(fence, signal, {excludeFailed: true}), null, 'a healthy source cannot be called the failed version');
+  // A recoverable engine event is not a failed title: exhaust the real controller's three
+  // in-place recovery plans before offering the failure destination.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    f.hls.instances.at(-1)!.error({fatal: true, type: 'otherError', details: 'internalException'});
+    await f.arrive();
+  }
+  const failedFence = f.runtime.getSnapshot().fence!;
+  if (failedFence.kind !== 'queue') assert.fail('queue fence required');
+  f.hls.instances.at(-1)!.error({fatal: true, type: 'otherError', details: 'internalException'});
+  await settle(); assert.equal(f.runtime.getSnapshot().playback.phase, 'error');
+  const choices = await f.runtime.readVersions(failedFence, signal, {excludeFailed: true}); assert.ok(choices);
+  assert.equal(choices.selectedVersionId, 'v1'); assert.equal(choices.failedVersionId, 'v1');
+  assert.equal(choices.options.preferred!.versionId, 'v2'); assert.deepEqual(choices.versions.map(version => version.id), ['v2']);
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v1', signal}), /playback_version_unavailable/);
+  await f.runtime.playVersion({choices, versionId: 'v2', signal}); await f.arrive();
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+});
+
+test('copied or foreign chooser facts cannot become a version command authority', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  versionFixture(f); const signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  const before = f.log.length;
+  await assert.rejects(f.runtime.playVersion({choices: {...choices}, versionId: 'v2', signal}), /stale_playback_command/);
+  assert.equal(f.log.length, before, 'a forged structural object cannot even issue the freshness read');
+  const other = setup(t); await other.runtime.play('movie'); await other.arrive();
+  await assert.rejects(other.runtime.playVersion({choices, versionId: 'v2', signal}), /stale_playback_command/);
+});
+
+test('a new media generation retires chooser facts, and a fresh title without a resume starts at zero', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  await f.runtime.setQuality(fence, '720p-high'); await f.arrive();
+  assert.equal(choices.isCurrent(), false); await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /stale_playback_command/);
+  fixture.resume(undefined);
+  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', context: selectionContext, signal}, () => true); await f.arrive();
+  assert.equal(f.hls.instances.at(-1)!.config.startPosition, 0);
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+});
+
+test('a refused actual version start rejects rather than reporting an accepted chooser selection', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), signal = new AbortController().signal, choices = await f.runtime.readVersions(fence, signal); assert.ok(choices);
+  f.intercept(async (request, response) => request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {versionId?: string})?.versionId === 'v2'
+    ? {status: 422, headers: {}, body: {error: {code: 'unsupported_media', retry: 'never', requestId: 'request'}}} : fixture.handle(request, response));
+  await assert.rejects(f.runtime.playVersion({choices, versionId: 'v2', signal}), /playback_version_failed/);
+  assert.equal(choices.isCurrent(), false);
+  assert.notEqual(f.runtime.getSnapshot().session?.versionId, 'v2');
+});
+
+test('late chooser reads and click reads cannot cross abort, source replacement or authority retirement', async t => {
+  for (const stage of ['read', 'click'] as const) for (const change of ['abort', 'new-play', 'authority'] as const) {
+    const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+    if (fence.kind !== 'queue') assert.fail('queue fence required');
+    versionFixture(f); const abort = new AbortController(), choices = stage === 'click' ? await f.runtime.readVersions(fence, abort.signal) : undefined;
+    const gate = deferred(); f.intercept(async (request, response) => { if (request.path === '/v1/items/movie/playback-options') await gate.hold(); return response; });
+    const pending = stage === 'click' ? f.runtime.playVersion({choices: choices!, versionId: 'v1', signal: abort.signal}) : f.runtime.readVersions(fence, abort.signal);
+    const done = pending.then(value => { assert.equal(stage, 'read'); assert.equal(value, null); }, () => {});
+    await gate.started; const before = f.log.length;
+    if (change === 'abort') abort.abort(); else if (change === 'authority') f.invalidate(); else { await f.runtime.play('newer', 20); await f.arrive(); }
+    gate.resolve(); await done; await settle();
+    assert.equal(f.log.slice(before).some(request => request.method === 'POST' && (request.body as {versionId?: string})?.versionId), false);
+    if (change === 'new-play') assert.equal(f.runtime.getSnapshot().playback.itemId, 'newer');
+  }
+});
+
+test('accepted chooser replacement drops old facts while its actual start remains in flight; abort cannot stop a newer Play', async t => {
+  const f = setup(t); await f.runtime.play('movie', 25); await f.arrive(); const fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('queue fence required');
+  const fixture = versionFixture(f), abort = new AbortController(), choices = await f.runtime.readVersions(fence, abort.signal); assert.ok(choices);
+  const gate = deferred(); f.intercept(async (request, response) => { if (request.method === 'POST' && request.path === '/v1/playback/sessions' && (request.body as {versionId?: string})?.versionId === 'v2') await gate.hold(); return fixture.handle(request, response); });
+  const pending = f.runtime.playVersion({choices, versionId: 'v2', signal: abort.signal}), done = assert.rejects(pending);
+  await gate.started; assert.equal(choices.isCurrent(), false);
+  await f.runtime.play('newer', 20); await f.arrive(); const newer = f.runtime.getSnapshot().session!.id;
+  abort.abort(); gate.resolve(); await done; await settle();
+  assert.equal(f.runtime.getSnapshot().session!.id, newer); assert.equal(f.video.paused, false);
 });
 
 test('unavailable or mismatched version offer never stops the existing playback or starts a source link', async t => {

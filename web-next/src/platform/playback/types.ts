@@ -20,7 +20,7 @@ import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts'
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
-export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; startSeconds?: number; context: SelectionContext; signal: AbortSignal}>;
+export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; context: SelectionContext; signal: AbortSignal}>;
 export type WebPlaybackSettings = Readonly<{
   subtitlePreferences?: () => SubtitlePreferences;
   videoSpeed: () => number;
