@@ -62,6 +62,7 @@ export interface ReaderView<Preferences extends object> {
   getLocation(): ReaderLocation | null;
   setZoom?(zoom: ReaderZoom, signal: AbortSignal): Promise<void>;
   getZoom?(): ReaderZoomState;
+  canTurnAtFit?(): boolean;
   pan?(offset: Readonly<{x: number; y: number}>, signal: AbortSignal): Promise<void>;
   dispose(): void | Promise<void>;
 }
@@ -69,6 +70,7 @@ export type ReaderMount<Preferences extends object> = Readonly<{
   container: HTMLElement; preferences: Readonly<Preferences>; viewport: ReaderViewport;
   signal: AbortSignal; onLocation(location: ReaderLocation): void;
   onSelection(selection: ReaderSelection | null): void;
+  onSurfaceInput?(input: ReaderSurfaceInput): void;
 }>;
 export interface ReaderDocument<Preferences extends object> {
   readonly id: string;
@@ -86,8 +88,13 @@ export interface ReaderAdapter<Preferences extends object> {
   readonly format: ReaderFormat;
   open(options: Readonly<{source: ReaderSource; signal: AbortSignal}>): Promise<ReaderDocument<Preferences>>;
 }
+export type ReaderSurfaceInput =
+  | Readonly<{kind: 'tap'; fraction: number}>
+  | Readonly<{kind: 'activity'}>
+  | Readonly<{kind: 'key'; key: string; shift: boolean; alt: boolean; ctrl: boolean; meta: boolean; editable: boolean; preventDefault(): void}>;
 export type ReaderSnapshot<Preferences extends object> = Readonly<{
   status: 'closed' | 'opening' | 'ready' | 'error';
+  zoom: ReaderZoomState | null; canTurnAtFit: boolean;
   format?: ReaderFormat; sourceId?: string; sourceRevision?: string; metadata?: ReaderMetadata;
   toc: readonly ReaderTocItem[]; location: ReaderLocation | null;
   selection: ReaderSelection | null; preferences: Readonly<Preferences>;

@@ -1,6 +1,6 @@
 import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation,
   ReaderSearchOptions, ReaderSearchResult, ReaderSnapshot, ReaderSource, ReaderView, ReaderViewport,
-  ReaderZoom} from './ports.ts';
+  ReaderZoom, ReaderSurfaceInput} from './ports.ts';
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
 import {validateSource} from './source.ts';
 import {validateViewport} from './layout.ts';
@@ -19,6 +19,7 @@ export function validateLocation(location: ReaderLocation, format: ReaderFormat)
  * The controller never receives a persistence port or a credential. */
 export class ReaderController<P extends object> {
   private readonly adapters = new Map<ReaderFormat, ReaderAdapter<P>>();
+  private readonly surfaceListeners = new Set<(event: ReaderSurfaceInput) => void>();
   private readonly listeners = new Set<() => void>();
   private base: Readonly<P>;
   private overrides: Partial<P> = {};
@@ -31,12 +32,19 @@ export class ReaderController<P extends object> {
       this.adapters.set(adapter.format, adapter);
     }
     this.base = copy(options.preferences);
-    this.snapshot = Object.freeze({status: 'closed', toc: empty, location: null, selection: null,
+    this.snapshot = Object.freeze({status: 'closed', zoom: null, canTurnAtFit: true, toc: empty, location: null, selection: null,
       preferences: this.base, overriddenKeys: empty});
   }
   /** Stable until an actual publication; safe for useSyncExternalStore. */
   getSnapshot = (): ReaderSnapshot<P> => this.snapshot;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+  subscribeSurfaceInput = (listener: (event: ReaderSurfaceInput) => void): (() => void) => {
+    this.surfaceListeners.add(listener); return () => this.surfaceListeners.delete(listener);
+  };
+  refreshViewState() {
+    const view = this.session?.view;
+    this.publish({zoom: view?.getZoom?.() ?? null, canTurnAtFit: view?.canTurnAtFit?.() ?? true});
+  }
   private publish(patch: Partial<ReaderSnapshot<P>>) {
     this.snapshot = Object.freeze({...this.snapshot, ...patch});
     for (const listener of this.listeners) listener();
@@ -55,7 +63,7 @@ export class ReaderController<P extends object> {
     const session: Session<P> = {abort: new AbortController(), tail: Promise.resolve()};
     this.session = session;
     this.overrides = {};
-    this.publish({status: 'opening', format: options.format, sourceId: options.source.id, sourceRevision: options.source.revision, metadata: undefined,
+    this.publish({status: 'opening', zoom: null, canTurnAtFit: true, format: options.format, sourceId: options.source.id, sourceRevision: options.source.revision, metadata: undefined,
       toc: empty, location: null, selection: null, error: undefined, preferences: this.base, overriddenKeys: empty});
     try {
       await this.disposeSession(previous);
@@ -77,6 +85,9 @@ export class ReaderController<P extends object> {
           validateLocation(location, options.format);
           this.publish({location: copy(location)});
         },
+        onSurfaceInput: event => {
+          if (this.current(session)) for (const listener of this.surfaceListeners) listener(event);
+        },
         onSelection: selection => {
           if (!this.current(session)) return;
           this.publish({selection: selection ? Object.freeze({...selection, rects: Object.freeze(selection.rects.map(copy))}) : null});
@@ -89,6 +100,7 @@ export class ReaderController<P extends object> {
       if (!this.current(session)) return;
       const location = view.getLocation();
       if (location) validateLocation(location, options.format);
+      this.refreshViewState();
       this.publish({status: 'ready', metadata: copy(document.metadata), toc: freezeToc(document.toc),
         location: location ? copy(location) : this.snapshot.location});
     } catch (error) {
@@ -110,7 +122,7 @@ export class ReaderController<P extends object> {
     const session = this.session;
     this.session = undefined;
     session?.abort.abort(); this.overrides = {};
-    this.snapshot = Object.freeze({status: 'closed', toc: empty, location: null, selection: null,
+    this.snapshot = Object.freeze({status: 'closed', zoom: null, canTurnAtFit: true, toc: empty, location: null, selection: null,
       preferences: this.base, overriddenKeys: empty});
     for (const listener of this.listeners) listener();
     await this.disposeSession(session);
@@ -121,6 +133,7 @@ export class ReaderController<P extends object> {
     const next = session.tail.then(async () => {
       throwIfAborted(session.abort.signal);
       await operation(session.view!, session.abort.signal);
+      if (this.current(session)) this.refreshViewState();
       throwIfAborted(session.abort.signal);
     });
     session.tail = next.catch(error => { if (this.current(session)) this.publish({error: readerErrorCode(error)}); });
