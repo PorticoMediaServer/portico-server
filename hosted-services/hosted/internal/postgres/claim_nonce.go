@@ -72,6 +72,13 @@ func lockClaim(ctx context.Context, tx *sql.Tx, v claims.Verified) (lockedClaim,
 	if state == "installed" {
 		return empty, claims.ErrStale
 	}
+	owner, e := readOwnerStart(ctx, tx, v.Wire.OperationID, true, false)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return empty, e
+	}
+	if e == nil && (owner.phase != "approved" || !sameOwnerFamily(owner.a, current.expected) || owner.username != targetUsername || current.expiry.After(owner.expiry)) {
+		return empty, claims.ErrStale
+	}
 	out := lockedClaim{current, facts, state}
 	if _, e = claimDecisionTime(ctx, tx, out, v.ExpiresAt); e != nil {
 		return empty, e

@@ -49,6 +49,7 @@ type Pending struct {
 	RequestedAt          time.Time                  `json:"requestedAt"`
 	ExpiresAt            time.Time                  `json:"expiresAt"`
 	Status               string                     `json:"status"`
+	OwnerTransactionID   string                     `json:"ownerTransactionId,omitempty"`
 }
 
 var ErrInvalid = errors.New("invalid pending claim")

@@ -114,17 +114,45 @@ func (h *Handler) serverReturnRoutes(mux *http.ServeMux) {
 		if _, ok := prepare(w, r); !ok {
 			return
 		}
-		if len(r.Header.Values("Authorization")) != 0 || len(r.Cookies()) != 0 {
+		if len(r.Cookies()) != 0 {
 			returnFailure(w)
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
-		var q serverreturn.Exchange
+		var q serverreturn.ExchangeRequest
 		if !decode(w, r, &q) {
 			return
 		}
-		out, e := h.ServerReturns.Store.ExchangeServerReturn(ctx, q, h.ServerReturns.Directory.SignServerReturn)
+		var out serverreturn.Grant
+		var e error
+		if q.Owner != nil {
+			if !h.allowCredentialLookup(w, r, "server") {
+				return
+			}
+			token, ok := claimBearer(r)
+			if !ok {
+				returnFailure(w)
+				return
+			}
+			a, err := h.ServerReturns.Directory.CaptureServerAuthority(ctx, token)
+			if err != nil {
+				returnFailure(w)
+				return
+			}
+			if !h.allowAttempt("server:"+a.ServerID, 120) {
+				w.Header().Set("Retry-After", "60")
+				fail(w, 429, "rate_limited", "Try again shortly.", true)
+				return
+			}
+			out, e = h.ServerReturns.Store.ExchangeOwnerReturn(ctx, a, *q.Owner, h.ServerReturns.Directory.SignServerReturn)
+		} else {
+			if len(r.Header.Values("Authorization")) != 0 || q.Registered == nil {
+				returnFailure(w)
+				return
+			}
+			out, e = h.ServerReturns.Store.ExchangeServerReturn(ctx, *q.Registered, h.ServerReturns.Directory.SignServerReturn)
+		}
 		if e != nil {
 			returnFailure(w)
 			return

@@ -73,16 +73,29 @@ func claimCodeKey(seal []byte) []byte {
 const liveWebClaimsPerServer = 3
 
 func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []byte) (claimweb.Pending, error) {
-	raw, _ := json.Marshal(q)
-	mac := hmac.New(sha256.New, claimCodeKey(key))
-	mac.Write([]byte("portico.claim-code.v1:" + q.OperationID))
-	code := "claim_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	hash := security.Hash(string(raw))
+	// An unresolved Local switch must bind its full signed owner start atomically.
+	if q.Purpose == "switch" && q.ReturnRegistrationID == "" {
+		return claimweb.Pending{}, claims.ErrInvalid
+	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return claimweb.Pending{}, e
 	}
 	defer tx.Rollback()
+	out, e := registerWebClaimTx(ctx, tx, q, key)
+	if e != nil {
+		return claimweb.Pending{}, e
+	}
+	return out, tx.Commit()
+}
+
+func registerWebClaimTx(ctx context.Context, tx *sql.Tx, q claimweb.Request, key []byte) (claimweb.Pending, error) {
+	raw, _ := json.Marshal(q)
+	mac := hmac.New(sha256.New, claimCodeKey(key))
+	mac.Write([]byte("portico.claim-code.v1:" + q.OperationID))
+	code := "claim_" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	hash := security.Hash(string(raw))
+	var e error
 	// Serialize count-then-insert per server key.
 	if _, e = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('claim-web:'||$1,0))`, q.ServerID); e != nil {
 		return claimweb.Pending{}, e
@@ -104,6 +117,13 @@ func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []
 		return claimweb.Pending{}, claims.ErrStale
 	}
 	if !equalSecret(saved, hash) {
+		var frozen bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM owner_claim_starts WHERE operation_id=$1)`, q.OperationID).Scan(&frozen); e != nil {
+			return claimweb.Pending{}, e
+		}
+		if frozen {
+			return claimweb.Pending{}, claims.ErrStale
+		}
 		// Refresh may extend only time bounds. A stable approval code must never
 		// change the server/name/address/account or the purpose/ownership intent
 		// the authenticated approver has just reviewed.
@@ -129,9 +149,6 @@ func (s *Store) RegisterWebClaim(ctx context.Context, q claimweb.Request, key []
 			return claimweb.Pending{}, claims.ErrStale
 		}
 	}
-	if e = tx.Commit(); e != nil {
-		return claimweb.Pending{}, e
-	}
 	return claimweb.Pending{Purpose: q.Purpose, PreviousOwnerRole: q.PreviousOwnerRole, Code: code, ServerID: q.ServerID, Name: q.Name, Address: q.Address, RequestedAt: at, ExpiresAt: q.ExpiresAt, Status: status}, nil
 }
 func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpectation, code string) (claimweb.Pending, error) {
@@ -140,7 +157,8 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		return claimweb.Pending{}, e
 	}
 	defer tx.Rollback()
-	if _, e = AuthorizeCurrentFamilyTx(ctx, tx, a); e != nil {
+	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
+	if e != nil {
 		return claimweb.Pending{}, e
 	}
 	var raw []byte
@@ -159,6 +177,34 @@ func (s *Store) LookupWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 	p.Address = q.Address
 	p.Purpose = q.Purpose
 	p.PreviousOwnerRole = q.PreviousOwnerRole
+	owner, e := readOwnerStart(ctx, tx, q.OperationID, true, false)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return p, e
+	}
+	if e == nil {
+		if !owner.liveAt(time.Now()) || (owner.a.AccountID != "" && !sameOwnerFamily(owner.a, a)) {
+			return p, claims.ErrStale
+		}
+		p.OwnerTransactionID, p.ExpiresAt = owner.id, owner.expiry
+		if owner.registration != "" {
+			t, e := ownerTupleTx(ctx, tx, owner)
+			if e != nil || !sameReturnTuple(t, owner.t) {
+				return p, claims.ErrStale
+			}
+			p.ReturnRegistration = &serverreturn.Registration{ID: owner.registration, Origin: owner.t.origin}
+		}
+		var live bool
+		if e = tx.QueryRowContext(ctx, `SELECT expires_at>clock_timestamp() AND phase IN('prepared','approved','installed','completed') FROM owner_claim_starts WHERE transaction_id=$1`, owner.id).Scan(&live); e != nil {
+			return p, e
+		}
+		if !live {
+			return p, claims.ErrStale
+		}
+		if e = returnFresh(ctx, tx, facts); e != nil {
+			return p, e
+		}
+		return p, tx.Commit()
+	}
 	if q.CurrentOwnerAccountID != "" {
 		var owner string
 		if e = tx.QueryRowContext(ctx, `SELECT owner_account_id FROM servers WHERE id=$1 AND revoked_at IS NULL AND NOT custody_released`, q.ServerID).Scan(&owner); e != nil {
@@ -242,12 +288,20 @@ func (s *Store) DecideWebClaim(ctx context.Context, a identity.CurrentFamilyExpe
 		if e != nil {
 			return e
 		}
+		if e = bindOwnerApprovalTx(ctx, tx, a, q, &approval); e != nil {
+			return e
+		}
 		signed, e := service.SignWebApproval(approval)
 		if e != nil {
 			return e
 		}
 		envelope, e = json.Marshal(signed)
 		if e != nil {
+			return e
+		}
+	}
+	if !approve {
+		if _, e = tx.ExecContext(ctx, `UPDATE owner_claim_starts SET phase='cancelled' WHERE operation_id=$1 AND phase<>'consumed'`, op); e != nil {
 			return e
 		}
 	}
