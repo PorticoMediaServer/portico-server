@@ -2,8 +2,13 @@ package identity_test
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -221,5 +226,78 @@ func TestOwnerReturnRejectsAlteredCallbackAndProofBeforeConsumption(t *testing.T
 	var phase string
 	if err := f.db.QueryRow(`SELECT phase FROM identity_owner_completions`).Scan(&phase); err != nil || phase != "installed" {
 		t.Fatal("invalid proof spent attempt", err, phase)
+	}
+}
+
+func TestOwnerReturnComputerResetRetiresAttemptAndUsesExplicitSignedLocalLeave(t *testing.T) {
+	f, p, q, route := ownerReturnFixture(t)
+	bindOwnerReturn(t, f, p, route)
+	ctx, err := identity.WithIssuingDevice(context.Background(), identity.DeviceRegistration{InstallationID: f.start.InstallationID, Name: "Owner browser", Platform: "web", App: "portico"}, "127.0.0.1:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var operation, attempt string
+	err = dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		var err error
+		operation, attempt, err = f.s.BeginOwnerReturnTx(ctx, tx, p, q, route)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	location, err := f.s.RequestOwnerReset(ctx, identity.OwnerResetRequest{Username: "unknown"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.ReadFile(filepath.Join(location.FileDirectory, location.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(file), "\n")
+	clear(file)
+	if len(lines) < 4 || len(lines[2]) != 43 {
+		t.Fatal("private reset file format")
+	}
+	reset, err := f.s.VerifyOwnerReset(ctx, identity.OwnerResetVerify{Code: lines[2]})
+	lines = nil
+	if err != nil || reset.Session == nil || !reset.ResetFileOwnerSession || reset.Session.RefreshToken != "" {
+		t.Fatal("actual computer reset did not issue bounded owner session", err)
+	}
+	if _, err = f.s.OwnerClaimAuthority(ctx, f.bearer); err == nil {
+		t.Fatal("reset did not end original owner capability")
+	}
+	err = dbwork.WithWriteTx(ctx, f.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		_, err := f.s.CompleteOwnerReturnTx(ctx, tx, p, operation, attempt, q, route, ownerReturnIdentity(f, q), identity.Token())
+		return err
+	})
+	if err == nil {
+		t.Fatal("reset-revoked attempt admitted owner")
+	}
+	var kind, linked string
+	if err = f.db.QueryRow(`SELECT s.sign_in_kind,l.hosted_account_id FROM identity_state s JOIN account_portico_links l ON l.account_id=?`, p.AccountID).Scan(&kind, &linked); err != nil || kind != "portico" || linked != "account-approved" {
+		t.Fatal("reset silently undid installed claim", err, kind)
+	}
+	// The exact local fixture server key signs the deny-only leave contract.
+	// Actual ProtectedKeys signing/delivery is covered by the networking/Hosted
+	// boundary tests; this case checks reset -> explicit move -> durable outbox.
+	f.s.PrepareIdentityDeparture = func(ctx context.Context, reason string) (*identity.DepartureNotice, error) {
+		wire := identity.DepartureWire{Kind: "portico.server.leave", Version: "1", Audience: "https://hosted.example", OperationID: f.intent.OperationID, ServerID: f.s.ID(), PublicKey: base64.RawURLEncoding.EncodeToString(f.key.Public().(ed25519.PublicKey)), ClaimGeneration: "1", CredentialGeneration: "1", NoticeID: identity.Token(), Reason: reason}
+		raw, err := json.Marshal(wire)
+		if err != nil {
+			return nil, err
+		}
+		return &identity.DepartureNotice{Wire: wire, Payload: raw, Signature: ed25519.Sign(f.key, raw)}, nil
+	}
+	move, err := f.s.PreviewAccountMove(ctx, reset.Session.AccessToken, identity.MovePreviewRequest{To: identity.SignInLocal})
+	if err != nil {
+		t.Fatal("reset owner cannot preview explicit Local recovery", err)
+	}
+	in, err := f.s.ConfirmLocalMove(ctx, reset.Session.AccessToken, identity.MoveConfirmRequest{MoveID: move.ID, ExpectedRevision: move.Revision, Username: "restored_owner", Password: "Fresh-password1!"})
+	if err != nil || in.Session == nil {
+		t.Fatal("explicit local recovery failed", err)
+	}
+	var notices, credentials int
+	if err = f.db.QueryRow(`SELECT s.sign_in_kind,(SELECT count(*) FROM identity_service_outbox WHERE delivered_ms=0),(SELECT count(*) FROM networking_claim_credentials) FROM identity_state s`).Scan(&kind, &notices, &credentials); err != nil || kind != "local" || notices != 1 || credentials != 0 {
+		t.Fatal("explicit leave/outbox not atomic", err, kind, notices, credentials)
 	}
 }

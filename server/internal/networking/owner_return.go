@@ -201,6 +201,13 @@ func (h *ClaimHandler) RunOwnerReturn(parent context.Context, q serverreturn.Own
 		if e = a.CompleteTx(attemptCtx, g.Tx()); e != nil {
 			return e
 		}
+		current, currentGeneration, e := h.ownerReturnRouteTx(attemptCtx, g.Tx(), v)
+		if e != nil {
+			return e
+		}
+		if current != registration || currentGeneration != generation {
+			return ErrStale
+		}
 		// Complete checked all captured/current rows in this writer and retired
 		// the initiating family. Requiring its positive guard now would roll
 		// back the intended retirement. The root lifecycle lease still fences
