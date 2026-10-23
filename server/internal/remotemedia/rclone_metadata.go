@@ -133,7 +133,7 @@ func (m *RcloneMetadata) Stat(ctx context.Context, relative string, check func(c
 		Item *struct {
 			Path, ID string
 			Size     int64
-			ModTime  time.Time
+			ModTime  string
 			IsDir    bool
 			Hashes   map[string]string
 		}
@@ -151,7 +151,13 @@ func (m *RcloneMetadata) Stat(ctx context.Context, relative string, check func(c
 	if i.Path != relative || i.Size < 0 || len(i.ID) > 4096 || strings.ContainsAny(i.ID, "\x00\r\n") || len(i.Hashes) > 16 {
 		return RcloneFileMetadata{}, ErrDAVResponse
 	}
-	out := RcloneFileMetadata{Path: i.Path, ID: i.ID, Size: i.Size, Modified: i.ModTime, Directory: i.IsDir}
+	out := RcloneFileMetadata{Path: i.Path, ID: i.ID, Size: i.Size, Directory: i.IsDir}
+	if i.ModTime != "" {
+		out.Modified, err = time.Parse(time.RFC3339Nano, i.ModTime)
+		if err != nil {
+			return RcloneFileMetadata{}, ErrDAVResponse
+		}
+	}
 	for kind, value := range i.Hashes {
 		if value != "" {
 			out.Hashes = append(out.Hashes, ProviderHash{Kind: strings.ToLower(kind), Value: value})

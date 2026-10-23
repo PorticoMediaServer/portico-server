@@ -56,7 +56,10 @@ func (o FileObservation) ValidateForRange() error {
 	if err := o.Validate(); err != nil {
 		return err
 	}
-	if !o.ModifiedKnown || !serveETag(o.ServeETag) {
+	// Section15 permits origins with weak or unavailable identity signals.
+	// Missing time remains missing evidence, not a permission or byte guarantee.
+	// The served ETag is still required for the HTTP precondition itself.
+	if !serveETag(o.ServeETag) {
 		return ErrObservation
 	}
 	return nil

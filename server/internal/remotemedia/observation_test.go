@@ -53,13 +53,17 @@ func TestObservationCopiesAndComparesEveryProviderHash(t *testing.T) {
 	}
 }
 
-func TestScanCanRecordUnknownMetadataWithoutAdmittingRanges(t *testing.T) {
+func TestRangePreconditionDoesNotInventMissingOriginMetadata(t *testing.T) {
 	o := FileObservation{SourceID: "source", Incarnation: "1", Object: "file", Size: 10}
 	if err := o.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	if o.ValidateForRange() == nil {
 		t.Fatal("unknown metadata admitted ranges")
+	}
+	o.ServeETag = `"served-precondition"`
+	if o.ValidateForRange() != nil || o.ModifiedKnown || o.ProviderETag != "" || len(o.ProviderHashes) != 0 {
+		t.Fatal("missing origin time became a provider cut or fabricated identity")
 	}
 	o.ModifiedKnown = true
 	o.ServeETag = `W/"weak"`

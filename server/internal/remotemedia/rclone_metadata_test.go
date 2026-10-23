@@ -11,7 +11,7 @@ import (
 )
 
 func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
-	for _, cost := range []string{"fast", "slow", "unknown"} {
+	for _, cost := range []string{"fast", "slow", "unknown", "no_time"} {
 		t.Run(cost, func(t *testing.T) {
 			metadata, err := NewRcloneMetadata(12345, "private", "secret", 2, "media:root")
 			if err != nil {
@@ -31,7 +31,7 @@ func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
 				body := `{"Name":"media","Hashes":["MD5"],"Features":{}}`
 				if r.URL.Path == "/operations/fsinfo" {
 					if cost != "unknown" {
-						body = strings.Replace(body, `"Features":{}`, `"Features":{"SlowHash":`+map[bool]string{true: "true", false: "false"}[cost == "slow"]+`}`, 1)
+						body = strings.Replace(body, `"Features":{}`, `"Features":{"SlowHash":`+map[bool]string{true: "true", false: "false"}[cost == "slow" || cost == "no_time"]+`}`, 1)
 					}
 				} else if r.URL.Path == "/operations/stat" {
 					opt := request["opt"].(map[string]any)
@@ -42,13 +42,16 @@ func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
 					if cost == "fast" {
 						body = strings.Replace(body, `"ID":"provider-object"`, `"ID":"provider-object","Hashes":{"MD5":"opaque-provider-value"}`, 1)
 					}
+					if cost == "no_time" {
+						body = strings.Replace(body, "2026-10-23T10:00:00.123456789Z", "", 1)
+					}
 				} else {
 					t.Fatal("arbitrary RC command", r.URL.Path)
 				}
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
 			facts, err := metadata.Stat(context.Background(), "episode.mkv", func(context.Context) error { checks++; return nil })
-			if err != nil || facts.Size != 123 || facts.Modified.Nanosecond() != 123456789 || facts.ID != "provider-object" || len(facts.Hashes) != map[bool]int{true: 1, false: 0}[cost == "fast"] {
+			if err != nil || facts.Size != 123 || cost != "no_time" && facts.Modified.Nanosecond() != 123456789 || cost == "no_time" && !facts.Modified.IsZero() || facts.ID != "provider-object" || len(facts.Hashes) != map[bool]int{true: 1, false: 0}[cost == "fast"] {
 				t.Fatal(facts, err)
 			}
 			if calls != 2 || checks != 4 {

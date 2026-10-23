@@ -91,7 +91,7 @@ func serveProcessFixture(t *testing.T, mode string) (ServeCommandSpec, *processL
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := ServeCommandSpec{PrivateDirectory: t.TempDir(), Configuration: []byte("[media]\ntype=local\n"), Remote: "media:", Port: port, Username: "private", Password: "test-only", Connections: 2, RequestsPerSecond: 2,
+	spec := ServeCommandSpec{SourceID: "fixture", SourceGeneration: "1", PrivateDirectory: t.TempDir(), Configuration: []byte("[media]\ntype=local\n"), Remote: "media:", Port: port, Username: "private", Password: "test-only", Connections: 2, RequestsPerSecond: 2,
 		Enforce: func(cmd *exec.Cmd) error {
 			// Test-only executable substitution. Production still requires a real
 			// enforcing outbound boundary; this callback provides no such proof.

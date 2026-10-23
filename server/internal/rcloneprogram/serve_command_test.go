@@ -10,7 +10,7 @@ import (
 )
 
 func TestPrepareServeRequiresOutboundEnforcementAndRemovesTransientConfig(t *testing.T) {
-	spec := ServeCommandSpec{PrivateDirectory: t.TempDir(), Configuration: []byte("[media]\ntype = local\n"), Remote: "media:", Port: 12345, Username: "private", Password: "secret", Connections: 2, RequestsPerSecond: 2}
+	spec := ServeCommandSpec{SourceID: "fixture", SourceGeneration: "1", PrivateDirectory: t.TempDir(), Configuration: []byte("[media]\ntype = local\n"), Remote: "media:", Port: 12345, Username: "private", Password: "secret", Connections: 2, RequestsPerSecond: 2}
 	if _, err := PrepareServe(context.Background(), Program{Path: "/unused/rclone", Included: true}, spec); err == nil {
 		t.Fatal("missing enforcing boundary accepted")
 	}

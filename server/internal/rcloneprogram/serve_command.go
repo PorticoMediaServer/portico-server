@@ -27,6 +27,8 @@ var ErrServeConfiguration = errors.New("remote serve configuration is invalid")
 // or set proxy environment variables (SFTP/SMB connect directly).
 // There is deliberately no default enforcement or inherited environment.
 type ServeCommandSpec struct {
+	SourceID          string
+	SourceGeneration  string
 	PrivateDirectory  string
 	Configuration     []byte
 	Remote            string
@@ -57,6 +59,12 @@ type PreparedServe struct {
 var serveRemote = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*:[^\x00\r\n\\]*$`)
 
 func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (*PreparedServe, error) {
+	if spec.SourceID == "" || len(spec.SourceID) > 128 || strings.ContainsAny(spec.SourceID, ":/\\\x00\r\n") {
+		return nil, ErrServeConfiguration
+	}
+	if generation, err := strconv.ParseInt(spec.SourceGeneration, 10, 64); err != nil || generation < 1 || strconv.FormatInt(generation, 10) != spec.SourceGeneration {
+		return nil, ErrServeConfiguration
+	}
 	if spec.Enforce == nil || !filepath.IsAbs(spec.PrivateDirectory) || len(spec.Configuration) == 0 || len(spec.Configuration) > 64<<10 || !serveRemote.MatchString(spec.Remote) || spec.Port < 1 || spec.Port > 65535 || spec.Username == "" || spec.Password == "" || strings.ContainsAny(spec.Username, ":\r\n\x00") || strings.ContainsAny(spec.Password, "\r\n\x00") || spec.Connections < 1 || spec.Connections > 256 || spec.RequestsPerSecond < 1 || spec.RequestsPerSecond > 1000000 || spec.BytesPerSecond < 0 {
 		return nil, ErrServeConfiguration
 	}
@@ -93,7 +101,7 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err = os.WriteFile(file, spec.Configuration, 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--log-level=ERROR", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
+	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--log-level=ERROR", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
 	if spec.CacheBytes > 0 {
 		// The source owner supplies its incarnation-scoped cache directory and
 		// invalidates it on changed observations; a cache is never byte identity.
@@ -153,15 +161,18 @@ var ErrServeStopped = errors.New("remote serve process stopped")
 // endpoint. A new start always has a new generation; it never revives existing
 // range sessions. Provider egress enforcement remains mandatory in the spec.
 type ServeProcess struct {
-	generation string
-	endpoint   *remotemedia.ServeEndpoint
-	metadata   *remotemedia.RcloneMetadata
-	lease      ServeProcessLease
-	life       context.Context
-	cancel     context.CancelFunc
-	done       chan struct{}
-	mu         sync.Mutex
-	err        error
+	generation       string
+	sourceID         string
+	sourceGeneration string
+	endpoint         *remotemedia.ServeEndpoint
+	observer         *remotemedia.ServeEndpoint
+	metadata         *remotemedia.RcloneMetadata
+	lease            ServeProcessLease
+	life             context.Context
+	cancel           context.CancelFunc
+	done             chan struct{}
+	mu               sync.Mutex
+	err              error
 }
 
 func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lease ServeProcessLease) (*ServeProcess, error) {
@@ -195,10 +206,19 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		cancel()
 		return nil, err
 	}
-	s := &ServeProcess{generation: identity.Token(), endpoint: endpoint, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
+	observer, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, spec.Connections)
+	if err != nil {
+		endpoint.Close()
+		_ = prepared.Loaded()
+		stop()
+		cancel()
+		return nil, err
+	}
+	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
 	if spec.MetadataPort != 0 {
 		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, spec.Connections, spec.Remote)
 		if err != nil {
+			observer.Close()
 			endpoint.Close()
 			_ = prepared.Loaded()
 			stop()
@@ -212,6 +232,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		err = prepared.Command.Start()
 	}
 	if err != nil {
+		observer.Close()
 		if s.metadata != nil {
 			s.metadata.Close()
 		}
@@ -228,6 +249,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		defer stop()
 		defer cancel()
 		defer endpoint.Close()
+		defer observer.Close()
 		if s.metadata != nil {
 			defer s.metadata.Close()
 		}
@@ -322,6 +344,8 @@ func (s *ServeProcess) Check(ctx context.Context) error {
 
 func (s *ServeProcess) Generation() string { return s.generation }
 
+func (s *ServeProcess) Source() (id, generation string) { return s.sourceID, s.sourceGeneration }
+
 func (s *ServeProcess) Endpoint(ctx context.Context) (*remotemedia.ServeEndpoint, error) {
 	if err := s.Check(ctx); err != nil {
 		return nil, err
@@ -337,6 +361,17 @@ func (s *ServeProcess) Metadata(ctx context.Context) (*remotemedia.RcloneMetadat
 		return nil, ErrServeConfiguration
 	}
 	return s.metadata, nil
+}
+
+// ObservationEndpoint uses a separate private transport to the SAME server.
+// A range transport can call its reconnect fence while holding its only dial
+// slot, so fresh Stat must not recursively wait for that range transport slot.
+// These loopback connection pools are not provider connection reservations.
+func (s *ServeProcess) ObservationEndpoint(ctx context.Context) (*remotemedia.ServeEndpoint, error) {
+	if err := s.Check(ctx); err != nil {
+		return nil, err
+	}
+	return s.observer, nil
 }
 
 // Stop starts shutdown immediately. Wait remains the physical retirement fence;
