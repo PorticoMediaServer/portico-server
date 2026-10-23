@@ -487,7 +487,12 @@
     function publish() {
       if(!current())return;
       if(pictureReady)playingView();
-      else if(meta&&meta.title){viewLoading=true;viewCall('loading',[Object.assign({},meta)]);}
+      else if(meta&&meta.title){
+        viewLoading=true;viewCall('loading',[Object.assign({},meta)]);
+        // A catalogue enrichment is still this occurrence: loading clears the
+        // view, so restore its genuine current cover even if no new URL arrived.
+        if(currentArtwork)showArtwork(currentArtwork,meta.kind==='song'||meta.kind==='album');
+      }
       try {
         var media=typeof manager.getMediaInformation==='function'?manager.getMediaInformation():null;
         if(media&&media.contentId===contentId&&typeof manager.setMediaInformation==='function')manager.setMediaInformation(Object.assign({},media,{metadata:castMetadata(meta,currentArtwork)}),false);
@@ -514,7 +519,7 @@
           currentArtwork=image;
           // loading(meta) resets the view's art. Publish that identity before
           // its artwork, while CAF metadata receives the same genuine image.
-          publish();showArtwork(image,identity.kind==='song'||identity.kind==='album');
+          publish();
         }
       }
     } catch(e) { /* Missing/refused metadata remains absent; no notice or old-title fallback. */ }

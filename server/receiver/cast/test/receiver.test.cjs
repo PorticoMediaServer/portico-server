@@ -341,6 +341,15 @@ test('catalogue loading identity precedes cover and CAF receives that same genui
  h.events.LOADED_DATA();assert.equal(h.metadataUpdates.at(-1).media.metadata.images[0].url,metadata.images[0].url);
 });
 
+test('catalogue identity without a new poster restores the current occurrence cover after loading',async()=>{
+ const methods=[],h=await harness({direct:true,audioOnly:true,container:'mp3',artwork:true,catalog:{song:{id:'song',title:'Read song',kind:'song',song:{artist:'Read artist'}}},view:{loading:()=>methods.push('loading'),artwork:()=>methods.push('artwork')}});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song',0,{title:'Sender song',kind:'song',artworkPath:'/v1/artwork/fixture'});await settle();
+ assert.deepEqual(methods.slice(-2),['loading','artwork']);
+ const original=h.loads[0].media.metadata.images[0].url;assert.match(original,/^data:image\/svg\+xml;base64,/);
+ assert.equal(h.metadataUpdates.at(-1).media.metadata.images[0].url,original,'same occurrence retains only its actually resolved cover');
+ assert.equal(h.metadataUpdates.at(-1).media.metadata.artist,'Read artist');
+});
+
 test('refused and mismatched catalogue reads keep next identity absent without a notice',async()=>{
  for(const fixture of [{catalogStatus:403},{catalog:{'song-2':{id:'other',title:'Wrong title',kind:'song'}}}]){
   const views=[],notices=[],h=await harness({...fixture,queue:true,direct:true,audioOnly:true,container:'mp3',view:{playing:s=>views.push(s),notice:s=>notices.push(s)}});
