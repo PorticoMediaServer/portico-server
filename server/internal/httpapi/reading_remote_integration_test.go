@@ -204,10 +204,42 @@ func TestReadingRemoteRegistered(t *testing.T) {
 					t.Fatal("closed remote reader delivered bytes", w.Code)
 				}
 			}
+			// Keep an acquired extent reader alive across actual member policy
+			// narrowing; a previously validated source/cached range is no grant.
+			item := items.Items[0]
+			w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID})
+			var current ReadingSessionResponse
+			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &current) != nil {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			principal, err := f.id.Authenticate(token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retained, err := d.Reading.OpenSession(context.Background(), principal, current.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer retained.Close()
+			var extent [5]byte
+			if n, err := retained.ReadAt(extent[:], 0); err != nil || n != len(extent) {
+				t.Fatal("positive retained remote extent", n, err)
+			}
+			before := readingRestrictionProgress(t, &readingFixture{f: f})
 			if err = f.id.UpdateDirectMember(context.Background(), owner.AccountToken, member.ID, identity.DirectMemberInput{Username: member.Username, Name: "Reader", ExpectedRevision: member.Revision, AllowedLibraries: []string{}}); err != nil {
 				t.Fatal(err)
 			}
-			item := items.Items[0]
+			if n, err := retained.ReadAt(extent[:], 0); n != 0 || err == nil {
+				t.Fatal("revoked remote lease returned extent", n, err)
+			}
+			page := int64(0)
+			w = readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+current.SessionID+"/progress", token, current.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: item.Format, PageIndex: &page, Progression: .9}})
+			if w.Code < 400 {
+				t.Fatal("revoked remote actor saved progress", w.Code)
+			}
+			if after := readingRestrictionProgress(t, &readingFixture{f: f}); after != before {
+				t.Fatal("revoked remote actor changed progress")
+			}
 			if w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID}); w.Code != 404 {
 				t.Fatal("revoked remote library still readable", w.Code, w.Body.String())
 			}
