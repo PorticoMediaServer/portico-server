@@ -260,7 +260,7 @@ test('music formats and fMP4 transport declarations follow device probes',async(
  const all=await harness({supports:()=>true}),a=all.receiver.buildProfile(all.castContext);
  assert(a.engines.native.transports.find(t=>t.transport==='hls_fmp4').audio.includes('flac'));
  const speaker=await harness({caps:{display_supported:false},supports:()=>true}),s=speaker.receiver.buildProfile(speaker.castContext);
- assert.equal(s.audioOutput.route,'speaker');assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
+ assert.equal(s.audioOutput.route,undefined);assert.deepEqual(j(s.engines.native.audioPassthrough),[]);
 });
 
 test('receiver queue preloads privately and only the CAF current-item boundary commits authority',async()=>{
@@ -336,5 +336,6 @@ test('a CAF load rejection ends its owned server session and leaves an honest er
 test('device identity comes only from the SDK and decoder limits do not invent display geometry',async()=>{
  const known=await harness({info:{'model-name':'Google TV Streamer'},supports:()=>true}),p=known.receiver.buildProfile(known.castContext);
  assert.equal(p.client.model,'Google TV Streamer');assert.equal(p.display.width,undefined);assert.equal(p.display.height,undefined);
+ assert.equal(p.audioOutput.route,undefined);
  const unknown=await harness({info:{'model-name':'unknown'},supports:()=>true}),u=unknown.receiver.buildProfile(unknown.castContext);assert.equal(u.client.model,undefined);
 });
