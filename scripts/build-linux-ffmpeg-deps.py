@@ -59,6 +59,9 @@ def prepare(recipe, config, jobs):
 def container(recipe, work, config, stages, jobs):
     import shutil
     image = config['compilerImage']
+    source_network = os.environ.get('PORTICO_BUILD_SOURCE_NETWORK', 'bridge')
+    if source_network not in ('bridge', 'host'):
+        raise ValueError('Unsupported public source-intake container network')
     if not re.fullmatch(r'ghcr\.io/btbn/ffmpeg-builds/base-linux64@sha256:[0-9a-f]{64}', image):
         raise ValueError('An immutable Linux compiler image is required')
     for directory in ['sources', 'build', 'prefix', 'dest', 'tmp', 'licenses', 'receipts', 'extra']:
@@ -86,13 +89,14 @@ meson --version >> /portico/compiler.txt
 python3 /build-linux-ffmpeg-deps.py --inside
 ''')
     atomic_json(work / 'stage-plan.json', {
-        'stages': stages, 'compilerImage': image, 'jobs': jobs,
+        'stages': stages, 'compilerImage': image, 'jobs': jobs, 'sourceFetchNetwork': source_network,
         'recipeSHA256': {str(p.relative_to(recipe)): digest(p) for p in sorted(recipe.rglob('*.sh')) if '.git' not in p.parts},
     })
     # Writable paths are ordinary on-disk bind mounts. Docker's /tmp is never
     # used for source/build scratch. A single container holds small native build
     # tools (e.g. glslc) between dependency stages; exported before it exits.
     run('docker', 'run', '--rm', '--name', 'portico-hardware-r29-linux-deps',
+        '--network', source_network,
         '--cpus', str(jobs), '--memory', '4g', '--memory-swap', '4g',
         '--label', 'portico.lane=hardware-r29',
         '-v', str(recipe) + ':/recipe:ro', '-v', str(work) + ':/portico',
@@ -123,6 +127,7 @@ def inside():
         stage = work / 'build' / name
         expected = {'script': source, 'scriptSHA256': digest(recipe / source),
                     'downloadRecipeSHA256': contract, 'compilerImage': plan['compilerImage'],
+                    'sourceFetchNetwork': plan['sourceFetchNetwork'],
                     'runnerSHA256': digest(Path(__file__))}
         if receipt.exists():
             saved = json.loads(receipt.read_text())

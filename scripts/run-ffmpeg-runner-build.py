@@ -32,7 +32,7 @@ def main():
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=10)
         ids = found.stdout.split()
         if ids:
-            subprocess.run(['docker', 'stop', '--timeout', '15', *ids], timeout=35)
+            subprocess.run(['docker', 'stop', '-t', '15', *ids], timeout=35)
         raise SystemExit(128 + signum)
 
     for received in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -54,6 +54,7 @@ def main():
         PORTICO_DISC_SOURCE_COMMIT=lock['discHelper']['sourceCommit'],
         PORTICO_DISC_FIXTURES=str(root / lock['discHelper']['fixtureManifest']),
         PORTICO_DISC_FIXTURES_SHA256=lock['discHelper']['fixtureManifestSHA256'],
+        PORTICO_BUILD_SOURCE_NETWORK='host',
         TMPDIR=str(scratch / 'tmp'), GOTMPDIR=str(scratch / 'go-tmp'))
     for directory in ('tmp', 'go-tmp'):
         (scratch / directory).mkdir()
@@ -83,6 +84,11 @@ def main():
     if active.strip():
         print('REFUSED: an owned hardware compiler is already active; no duplicate job', flush=True)
         return 75
+    subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-source-network',
+        '--label', 'portico.lane=hardware-r29', '--network', env['PORTICO_BUILD_SOURCE_NETWORK'],
+        '--cpus', '0.25', '--memory', '128m', '--memory-swap', '128m',
+        lock['linuxSourceBuild']['compilerImage'], 'bash', '-c',
+        'timeout 10 getent ahostsv4 github.com gitlab.freedesktop.org index.crates.io'], check=True)
     subprocess.run(['bash', str(root / 'scripts/build-ffmpeg.sh'), 'linux-x64'],
                    cwd=root, env=env, check=True)
     work = scratch / 'ffmpeg-build/linux-x64'

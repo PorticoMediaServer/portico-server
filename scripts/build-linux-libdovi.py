@@ -38,6 +38,9 @@ def main():
         raise ValueError('libdovi must stay in the lane scratch directory')
     lock = json.loads((root / 'third_party/ffmpeg/sources.lock.json').read_text())
     source = lock['libdovi']
+    source_network = os.environ.get('PORTICO_BUILD_SOURCE_NETWORK', 'bridge')
+    if source_network not in ('bridge', 'host'):
+        raise ValueError('Unsupported public source-intake container network')
     supplement_file = root / source['licenseSupplements']['path']
     if digest(supplement_file) != source['licenseSupplements']['sha256']:
         raise ValueError('Cargo license supplement manifest changed')
@@ -62,6 +65,7 @@ def main():
                 'contractSHA256': source['contractSHA256'], 'cargoLocks': source['cargoLocks'],
                 'licenseSupplementsSHA256': source['licenseSupplements']['sha256'],
                 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
+                'sourceFetchNetwork': source_network,
                 'builderSHA256': digest(Path(__file__))}
     record_file = prefix / 'libdovi-build.json'
     if record_file.exists():
@@ -162,6 +166,7 @@ cargo vendor --locked --sync dolby_vision/Cargo.toml --versioned-dirs /dovi/vend
             '[source.vendored-sources]\ndirectory = "/dovi/vendor"\n')
     else:
         subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi-fetch',
+            '--network', source_network,
             '--label', 'portico.lane=hardware-r29', '--cpus', '1', '--memory', '512m', '--memory-swap', '512m',
             '-v', str(stage) + ':/dovi', lock['linuxSourceBuild']['compilerImage'], 'bash', '/dovi/fetch.sh'], check=True)
     subprocess.run(['docker', 'run', '--rm', '--name', 'portico-hardware-r29-libdovi',
