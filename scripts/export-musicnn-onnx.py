@@ -118,6 +118,94 @@ def inference_graph(directory):
     return public
 
 
+def canonical_graph(model):
+    """Alpha-rename and topologically order the pure inference DAG.
+
+    Converter-generated identifiers/order are not model semantics. Preserve
+    every operator, attribute, input order and numeric value; coalesce only
+    byte-identical pure nodes/constants. Parity is checked after this step.
+    """
+    import onnx
+    graph = model.graph
+    known = {value.name: value.name for value in graph.input}
+    constants = {}
+    for original in graph.initializer:
+        value = onnx.TensorProto()
+        value.CopyFrom(original)
+        value.name = ""
+        value.doc_string = ""
+        if value.external_data:
+            raise ValueError("external model data is forbidden")
+        name = "w_" + hashlib.sha256(value.SerializeToString(deterministic=True)).hexdigest()
+        known[original.name] = name
+        value.name = name
+        constants[name] = value
+    pending = list(graph.node)
+    nodes = {}
+    ordered = []
+    while pending:
+        ready = []
+        later = []
+        for original in pending:
+            if any(name and name not in known for name in original.input):
+                later.append(original)
+                continue
+            if original.domain or original.op_type in ("RandomUniform", "RandomNormal", "Multinomial", "Bernoulli", "Dropout"):
+                raise ValueError("stateful or custom inference operation is forbidden")
+            node = onnx.NodeProto()
+            node.CopyFrom(original)
+            node.name = node.doc_string = ""
+            attributes = sorted(node.attribute, key=lambda a: a.name)
+            del node.attribute[:]
+            for attribute in attributes:
+                if attribute.type in (onnx.AttributeProto.GRAPH, onnx.AttributeProto.GRAPHS):
+                    raise ValueError("unresolved training/control-flow subgraph")
+                if attribute.type == onnx.AttributeProto.TENSOR:
+                    attribute.t.name = attribute.t.doc_string = ""
+                for value in attribute.tensors:
+                    value.name = value.doc_string = ""
+                node.attribute.append(attribute)
+            node.input[:] = [known.get(name, "") for name in original.input]
+            del node.output[:]
+            key = hashlib.sha256(node.SerializeToString(deterministic=True) + str(len(original.output)).encode()).hexdigest()
+            name = "n_" + key
+            node.name = name
+            node.output[:] = [name + "_" + str(i) if output else "" for i, output in enumerate(original.output)]
+            ready.append((key, node, original))
+        if not ready:
+            raise ValueError("inference graph is cyclic or has unbound inputs")
+        for key, node, original in sorted(ready, key=lambda item: item[0]):
+            if key not in nodes:
+                nodes[key] = node
+                ordered.append(node)
+            for old, new in zip(original.output, node.output):
+                if old:
+                    known[old] = new
+        pending = later
+    for output in graph.output:
+        ordered.append(onnx.helper.make_node("Identity", [known[output.name]], [output.name], name="export_" + output.name))
+    del graph.node[:]
+    graph.node.extend(ordered)
+    del graph.initializer[:]
+    graph.initializer.extend(constants[name] for name in sorted(constants))
+    del graph.value_info[:]
+    graph.name = "musicnn_mtt"
+    graph.doc_string = ""
+    for value in [*graph.input, *graph.output]:
+        value.doc_string = ""
+        for dimension in value.type.tensor_type.shape.dim:
+            if dimension.dim_param:
+                dimension.dim_param = "batch"
+    model.producer_name = "Portico musicnn conversion"
+    model.producer_version = "1"
+    model.doc_string = "Original ISC musicnn MTT weights; no retraining."
+    model.model_version = 1
+    imports = sorted(model.opset_import, key=lambda op: op.domain)
+    del model.opset_import[:]
+    model.opset_import.extend(imports)
+    return model
+
+
 def export(directory, output, check_only=False):
     lock = verify_checkpoint(directory)
     if output is not None and output.exists():
@@ -146,6 +234,7 @@ def export(directory, output, check_only=False):
     onnx.helper.set_model_props(converted, {"portico.model.id": lock["modelId"],
         "portico.model.version": version, "portico.model.licence": "ISC",
         "portico.model.source": lock["sourceCommit"], "portico.preprocessing": "musicnn-logmel-1"})
+    converted = canonical_graph(converted)
     onnx.checker.check_model(converted, full_check=True)
     data = converted.SerializeToString(deterministic=True)
     if not 0 < len(data) <= 32 << 20:

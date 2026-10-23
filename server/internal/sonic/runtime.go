@@ -53,6 +53,7 @@ type Runtime struct {
 	helperDigest string
 	mu           sync.RWMutex
 	ready        bool
+	failed       bool
 }
 
 type Analysis struct {
@@ -147,13 +148,26 @@ func (r *Runtime) Availability() Availability {
 		return Availability{State: "unavailable", Reason: "runtime_or_model_missing"}
 	}
 	r.mu.RLock()
-	ready := r.ready
+	ready, failed := r.ready, r.failed
 	r.mu.RUnlock()
 	model := r.identity
+	if failed {
+		return Availability{State: "unavailable", Reason: "inference_failed", Model: &model}
+	}
 	if !ready {
 		return Availability{State: "unavailable", Reason: "inference_not_verified", Model: &model}
 	}
 	return Availability{State: "ready", Model: &model}
+}
+
+// CanAttempt is installation/admission state, not an inference success claim.
+func (r *Runtime) CanAttempt() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return !r.failed
 }
 
 func (r *Runtime) openModel() (*os.File, error) {
@@ -185,7 +199,7 @@ func (r *Runtime) openModel() (*os.File, error) {
 // cannot release physical ownership before actual process retirement. It does
 // not claim a second background slot while its decoder holds the first one.
 func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produce func(func([]float32) error) error) (result Analysis, err error) {
-	if r == nil || produce == nil || key == "" {
+	if !r.CanAttempt() || produce == nil || key == "" {
 		return result, ErrUnavailable
 	}
 	defer func() {
@@ -194,6 +208,7 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 		if errors.Is(err, ErrUnavailable) {
 			r.mu.Lock()
 			r.ready = false
+			r.failed = true
 			r.mu.Unlock()
 		}
 	}()
@@ -205,6 +220,7 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 		return result, err
 	}
 	defer model.Close()
+	parent := ctx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	job := mediaexec.Job{Executable: r.options.Helper, Background: true, MaxFileBytes: mediaexec.NoOutputFiles, MaxCPUSeconds: 24 * 60 * 60, Libraries: r.options.Libraries}
@@ -286,11 +302,17 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 	writer.Close()
 	producerErr := <-producerDone
 	<-retired
-	if producerErr != nil {
+	if parent.Err() != nil {
+		return Analysis{}, parent.Err()
+	}
+	if producerErr != nil && !errors.Is(producerErr, io.ErrClosedPipe) && !errors.Is(producerErr, context.Canceled) {
 		return Analysis{}, producerErr
 	}
 	if err != nil || produced == 0 || result.Patches != produced {
 		return Analysis{}, errors.Join(ErrUnavailable, err)
+	}
+	if producerErr != nil {
+		return Analysis{}, producerErr
 	}
 	if digest, err := helperDigest(r.options.Helper); err != nil || digest != r.helperDigest {
 		return Analysis{}, ErrUnavailable
