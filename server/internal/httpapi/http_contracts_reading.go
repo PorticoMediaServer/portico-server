@@ -1,0 +1,65 @@
+package httpapi
+
+import "portico.local/apikit"
+
+func registerReadingHTTPContracts(registry *apikit.Registry) error {
+	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
+	metadata := func(id, method, path, summary string, scope apikit.Scope) apikit.Metadata {
+		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Device, Requires: scope, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors}
+	}
+	m := metadata("get_reading_items", "GET", "/v1/reading/items", "List visible reading publications", apikit.ScopeRead)
+	m.Query = []string{"libraryId", "cursor", "limit"}
+	if err := apikit.RegisterHTTP[struct{}, ReadingItemsResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("get_items_itemId_reading_versions", "GET", "/v1/items/{itemId}/reading/versions", "List a reading publication's actual versions", apikit.ScopeRead)
+	if err := apikit.RegisterHTTP[struct{}, ReadingVersionsResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("post_reading_sessions", "POST", "/v1/reading/sessions", "Open an authorized reading publication", apikit.ScopePlayback)
+	m.BodyLimit = 4096
+	if err := apikit.RegisterHTTP[ReadingSessionRequest, ReadingSessionResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("get_reading_sessions_sessionId_progress", "GET", "/v1/reading/sessions/{sessionId}/progress", "Read the selected publication's saved location", apikit.ScopeRead)
+	m.Headers = []string{"If-Match"}
+	if err := apikit.RegisterHTTP[struct{}, ReadingProgressResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("put_reading_sessions_sessionId_progress", "PUT", "/v1/reading/sessions/{sessionId}/progress", "Save the selected publication's location with compare and swap", apikit.ScopePlayback)
+	m.Headers = []string{"If-Match"}
+	m.BodyLimit = 8192
+	if err := apikit.RegisterHTTP[ReadingProgressRequest, ReadingProgressSavedResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("delete_reading_sessions_sessionId", "DELETE", "/v1/reading/sessions/{sessionId}", "Close this caller's reading session", apikit.ScopePlayback)
+	m.Status, m.NoResponseBody = 204, true
+	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, m); err != nil {
+		return err
+	}
+	for _, method := range []string{"GET", "HEAD"} {
+		id, status := "get_reading_sessions_sessionId_source", 206
+		if method == "HEAD" {
+			id, status = "head_reading_sessions_sessionId_source", 200
+		}
+		m = metadata(id, method, "/v1/reading/sessions/{sessionId}/source", "Read the selected PDF's exact byte range", apikit.ScopePlayback)
+		m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+		m.Headers, m.Status, m.ResponseContentType = []string{"If-Match", "Range"}, status, "application/pdf"
+		m.ResponseStatuses = []int{416}
+		if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m); err != nil {
+			return err
+		}
+	}
+	m = metadata("get_reading_sessions_sessionId_assets", "GET", "/v1/reading/sessions/{sessionId}/assets", "Read one enumerated original EPUB asset", apikit.ScopePlayback)
+	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+	m.Query, m.Headers, m.ResponseContentType = []string{"path"}, []string{"If-Match", "If-None-Match"}, "application/octet-stream"
+	m.ResponseStatuses = []int{304}
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m); err != nil {
+		return err
+	}
+	m = metadata("get_reading_sessions_sessionId_pages_pageIndex", "GET", "/v1/reading/sessions/{sessionId}/pages/{pageIndex}", "Read one bounded comic page image", apikit.ScopePlayback)
+	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+	m.Query, m.Headers, m.ResponseContentType = []string{"width"}, []string{"If-Match", "If-None-Match"}, "application/octet-stream"
+	m.ResponseStatuses = []int{304}
+	return apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m)
+}

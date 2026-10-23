@@ -1,3 +1,4 @@
+import {useOverlayPortalTarget} from './portal-target';
 import {Fragment, createContext, forwardRef, useContext, useId, useEffect, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode} from 'react';
 import {Popover as RadixPopover} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
@@ -9,6 +10,7 @@ import styles from './overlays.module.css';
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void};
 
 export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', sideOffset = 8, alignOffset = 0, width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
+  const portalTarget = useOverlayPortalTarget();
   const triggerElement = useRef<HTMLButtonElement | null>(null);
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef ?? triggerElement);
   const withinDialog = useInDialog(open, anchorRef ?? triggerElement);
@@ -28,7 +30,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   return <RadixPopover.Root open={open} onOpenChange={value => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
     {trigger ? <RadixPopover.Trigger asChild ref={triggerElement} aria-haspopup={role} aria-controls={open ? `${id}-content` : undefined}>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
     {/* Exit presence must not leave the positioning wrapper as a pointer target. */}
-    {present && !superseded && <RadixPopover.Portal forceMount><div style={{pointerEvents: 'none'}}><RadixPopover.Content forceMount ref={motionRef}
+    {present && !superseded && <RadixPopover.Portal forceMount container={portalTarget}><div style={{pointerEvents: 'none'}}><RadixPopover.Content forceMount ref={motionRef}
       side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={8}
       id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${width}px`, pointerEvents: open ? 'auto' : 'none'} as OverlayStyle} role={role} aria-modal={modal && role === 'dialog' && open || undefined}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
@@ -39,7 +41,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       onKeyDown={event => { onContentKeyDown?.(event); if (event.key === 'Tab' && role === 'menu' && !event.defaultPrevented) {
         event.preventDefault(); focus.suppressRestore.current = true;
         const origin = returnFocusRef?.current ?? anchorRef?.current ?? triggerElement.current;
-        const candidates = focusable(document.body).filter(item => !event.currentTarget.contains(item));
+        const candidates = focusable(portalTarget ?? document.body).filter(item => !event.currentTarget.contains(item));
         const position = origin ? candidates.indexOf(origin) : -1;
         const next = position < 0 ? candidates[0] : candidates[(position + (event.shiftKey ? -1 : 1) + candidates.length) % candidates.length];
         onOpenChange(false, 'action'); focusElement(next);
