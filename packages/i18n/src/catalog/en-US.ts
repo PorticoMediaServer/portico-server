@@ -1219,6 +1219,7 @@ export const enUS = {
   'auth.direct.leadTV': 'Enter your server’s address. Then approve this TV from a phone or computer that’s already signed in. There’s no password to type.',
   'auth.serverAddress': 'Server address',
   'auth.usernameOrEmail': 'Username or email',
+  'auth.usernameOrEmailPlaceholder': 'name@example.com',
   'auth.email': 'Email',
   'auth.username': 'Username',
   'auth.usernameHelp': 'Letters, numbers, dots and dashes. People use it to share a server with you.',
