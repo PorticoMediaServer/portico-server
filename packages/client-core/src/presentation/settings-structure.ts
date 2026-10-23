@@ -303,7 +303,6 @@ const accountPages: readonly AuthoredPage[] = [
         // Every app draws cards at this size and backdrops behind titles (the shell applies both).
         {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', needs: c => !c.preferenceKeys || c.preferenceKeys.has('appearance.cardSizePercent'), control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
         toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops'}),
-        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'deviceClass', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},

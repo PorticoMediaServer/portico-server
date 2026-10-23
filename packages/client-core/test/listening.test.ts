@@ -35,10 +35,10 @@ test('preferences strictly validate rates, revision and bounded inactivity choic
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song'},{profileId:'other'}),scope,'song'));
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song',bookId:''}),scope,'song'));
 });
-test('profile music/book rate is applied to current and replacement engines; a speed chosen in the player lasts this playback and is never saved',async t=>{
+test('songs stay at recorded speed; audiobook session speed survives parts without changing defaults',async t=>{
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:id==='song'||id==='song2'?'song':'audiobook_file'})});t.after(()=>f.service.dispose());await settle();
  f.engine.update({playbackRun:1});
- await f.service.setRate(1.25);assert.equal(f.engine.rates.at(-1),1.25);assert.equal(f.writes.length,0,'the Settings are not changed');
+ await assert.rejects(f.service.setRate(1.25));assert.equal(f.engine.rates.at(-1),1);assert.equal(f.writes.length,0,'songs have no speed setting');
  assert.equal(f.service.getSnapshot().preferences?.musicRate,1);
  f.engine.update({itemId:'part',session:{id:'book-session',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),1.5,'another kind starts at its own default');
  f.engine.update({session:{id:'book-session',generation:2}});assert.equal(f.engine.rates.at(-1),1.5);
@@ -60,9 +60,10 @@ test('inactivity preference is enforced and deliberate foreground interactions r
  f.setNow(29*60000);f.service.interact();f.setNow(58*60000);f.service.tick();assert.equal(f.engine.pauses,0);
  f.setNow(59*60000);f.service.tick();assert.equal(f.engine.pauses,1);assert.match(f.service.getSnapshot().message!,/without interaction/);
 });
-test('autoplay false blocks only automatic advancement, not explicit preferences or manual controls',async t=>{
- const f=setup({preferences:{autoplayNext:false}});t.after(()=>f.service.dispose());await settle();assert.equal(f.service.mayAdvance(),false);
- f.service.interact();assert.equal(f.service.mayAdvance(),false);await f.service.savePreferences({autoplayNext:true});assert.equal(f.service.mayAdvance(),true);
+test('a stale video autoplay preference cannot block album continuation',async t=>{
+ const f=setup({preferences:{autoplayNext:true}});t.after(()=>f.service.dispose());await settle();assert.equal(f.service.mayAdvance(),true);
+ await assert.rejects(f.service.savePreferences({autoplayNext:false}));
+ f.service.interact();assert.equal(f.service.mayAdvance(),true);await f.service.savePreferences({autoplayNext:true});assert.equal(f.service.mayAdvance(),true);
 });
 test('item timer requires an actual ended observation and book timer survives ordered parts',async t=>{
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});t.after(()=>f.service.dispose());await settle();
@@ -93,7 +94,7 @@ test('late old-profile reads and disposed clocks cannot publish or pause',async(
 test('save conflict retains actual preference and demands explicit reload; context retry is real',async t=>{
  let failedContext=true;const f=setup({request:async(path,_body,method)=>{if(path==='/v1/listening/preferences'){if(method==='PUT')throw Object.assign(new Error('conflict'),{code:'listening_preferences_conflict'});return wrapped(prefs);}if(failedContext)throw new Error('offline');return wrapped({itemId:'song',libraryId:'library',kind:'song'});}});t.after(()=>f.service.dispose());await settle();
  assert.equal(f.service.getSnapshot().context,null);failedContext=false;f.service.retryContext();await settle();assert.equal(f.service.getSnapshot().context?.itemId,'song');
- await assert.rejects(f.service.savePreferences({autoplayNext:false}),/changed on another device/);assert.equal(f.service.getSnapshot().preferences?.autoplayNext,true);assert.equal(f.service.getSnapshot().phase,'error');await f.service.refreshPreferences();assert.equal(f.service.getSnapshot().phase,'ready');
+ await assert.rejects(f.service.savePreferences({bookRate:2}),/changed on another device/);assert.equal(f.service.getSnapshot().preferences?.autoplayNext,true);assert.equal(f.service.getSnapshot().phase,'error');await f.service.refreshPreferences();assert.equal(f.service.getSnapshot().phase,'ready');
 });
 test('full listening action reads every signed page, preserving server order and mix seed',async()=>{
  const items=Array.from({length:205},(_,i)=>listeningItemInput(`song-${i}`,target));let calls=0;
@@ -127,7 +128,7 @@ test('native owns expiry and rate application; stale timer receipts cannot clear
  f.engine.update({nativeListening:{timerStopped:false,expiredTimerRevision:-1}});
  await f.service.setTimer(15);const old=f.engine.policies.at(-1).timerRevision;
  await f.service.setTimer(30);const current=f.engine.policies.at(-1).timerRevision;
- const rates=f.engine.rates.length;await f.service.setRate(1.75);assert.equal(f.engine.rates.length,rates,'no duplicate JS rate writer for a native occurrence');
+ const rates=f.engine.rates.length;await f.service.setRate(1);assert.equal(f.engine.rates.length,rates,'no duplicate JS rate writer for a native occurrence');
  f.setNow(9999999);f.service.tick();assert.equal(f.engine.pauses,0,'JS must not run the native deadline engine');
  f.engine.update({nativeListening:{timerStopped:true,expiredTimerRevision:old}});assert.equal(f.service.getSnapshot().timer?.choice,30);
  f.engine.update({nativeListening:{timerStopped:true,expiredTimerRevision:current}});assert.equal(f.service.getSnapshot().timer,null);assert.equal(f.service.mayAdvance(),false);assert.equal(f.engine.pauses,0);

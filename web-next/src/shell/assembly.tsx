@@ -1,4 +1,5 @@
 import {preferenceValue} from '@core/preferences.ts';
+import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import {setServiceI18n} from '@core/presentation/service-text.ts';
@@ -54,7 +55,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
       playback: playbackBinding,
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible, onSignOut: context.signOut,
         phoneSelection: selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={dockVisible} />},
-      home: {service: context.home, artwork: context.artwork, time, reducedMotion: preferenceValue<boolean>(context.facts.preferences, 'appearance.reduceMotion'), selection: selection.selection,
+      home: {service: context.home, artwork: context.artwork, time, reducedMotion: appearancePreferences(context.facts.preferences, globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches).reducedMotion, selection: selection.selection,
         effects: {play: async (entry, target) => {
           const document = context.home.getSnapshot().document;
           const item = document && homePlaybackItem(document, entry, target);

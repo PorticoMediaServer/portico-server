@@ -2334,6 +2334,33 @@ CREATE TABLE analysis_stage_runs (
  next_ms INTEGER NOT NULL DEFAULT 0, updated_ms INTEGER NOT NULL,
  PRIMARY KEY(job_id,object_id,source_revision,policy_revision,stage,algorithm)
 ) STRICT;
+-- Viewer preference overrides: explicit scalar and ordered-list choices.
+CREATE TABLE preference_scopes(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ scope TEXT NOT NULL CHECK(scope IN('profile-server','profile-device-class','profile-device')),
+ device_key TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>=1), updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key),
+ CHECK((scope='profile-server' AND device_key='') OR (scope='profile-device-class' AND device_key IN('web','mobile','tablet','television')) OR (scope='profile-device' AND length(device_key)>0))
+) STRICT, WITHOUT ROWID;
+CREATE TABLE preference_values(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, kind TEXT NOT NULL, bool_value INTEGER, number_value REAL, text_value TEXT,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key) REFERENCES preference_scopes ON DELETE CASCADE,
+ CHECK((kind='boolean' AND bool_value IS NOT NULL AND bool_value IN(0,1) AND number_value IS NULL AND text_value IS NULL)
+ OR (kind IN('integer','number') AND bool_value IS NULL AND number_value IS NOT NULL AND text_value IS NULL AND (kind='number' OR number_value=CAST(number_value AS INTEGER)))
+ OR (kind IN('string','locale') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NOT NULL)
+ OR (kind IN('string-list','languageList') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NULL))
+) STRICT, WITHOUT ROWID;
+CREATE TABLE preference_list_items(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0 AND position<64), value TEXT NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key,position),
+ UNIQUE(authority,account_id,profile_id,scope,device_key,key,value),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key,key) REFERENCES preference_values ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE console_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL,body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE console_receipts(scope TEXT NOT NULL,key TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,expires_ms INTEGER NOT NULL,PRIMARY KEY(scope,key)) STRICT;
 CREATE TABLE console_audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,time_ms INTEGER NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,previous_hash TEXT NOT NULL,hash TEXT NOT NULL) STRICT;

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,41 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 )
+
+// Exercise the real HTTP producer and optionally retain its non-secret data
+// bytes for a client-parser check. The response contains fixture preferences,
+// never the fixture's sign-in token.
+func TestApprovedPreferencesHTTPDefaultsAndNoPreference(t *testing.T) {
+	f := preferenceHTTP(t)
+	read := f.data(f.call("GET", "/v1/preferences?deviceClass=tablet", nil))
+	effective := read["effective"].(map[string]any)
+	if effective["playback.subtitleMode"] != "foreign" || effective["privacy.showActivityToMembers"] != false {
+		t.Fatal(effective)
+	}
+	data := f.data(f.call("PATCH", "/v1/preferences", map[string]any{"scope": "profile-server", "deviceClass": "tablet", "expectedRevision": 1, "idempotencyKey": "no-preference", "values": map[string]any{"playback.preferredAudioLanguages": []string{}, "playback.preferredSubtitleLanguages": []string{}, "playback.subtitleColor": "yellow", "reading.theme": "sepia", "reading.textSize": 7}}))
+	effective = data["effective"].(map[string]any)
+	if len(effective["playback.preferredAudioLanguages"].([]any)) != 0 || len(effective["playback.preferredSubtitleLanguages"].([]any)) != 0 || effective["playback.subtitleColor"] != "yellow" || effective["reading.theme"] != "sepia" {
+		t.Fatal(effective)
+	}
+	for _, entry := range []struct {
+		key   string
+		value any
+	}{{"music.defaultSpeed", 1}, {"appearance.reduceMotion", true}, {"playback.preferredAudioLanguages", []string{"@original", "@original"}}, {"playback.preferredSubtitleLanguages", []string{"@original"}}} {
+		bad := f.call("PATCH", "/v1/preferences", map[string]any{"scope": "profile-server", "deviceClass": "tablet", "expectedRevision": 2, "idempotencyKey": "negative-" + entry.key, "values": map[string]any{entry.key: entry.value}})
+		if bad.Code != 400 {
+			t.Fatal(entry, bad.Code, bad.Body.String())
+		}
+	}
+	if out := os.Getenv("PORTICO_PREFERENCE_CONTRACT_FILE"); out != "" {
+		bytes, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(out, append(bytes, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 type preferenceFixture struct {
 	handler http.Handler

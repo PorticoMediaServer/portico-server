@@ -368,7 +368,7 @@ func TestListeningPreferencesCASAndProfileIsolation(t *testing.T) {
 	}
 	old := p
 	p.BookRate = 1.5
-	p.AutoplayNext = false
+	p.AutoplayNext = true
 	p.PassoutMinutes = 30
 	saved, e := s.SaveListeningPreferences(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, p, allow)
 	if e != nil || saved.Revision != 2 {
@@ -382,7 +382,7 @@ func TestListeningPreferencesCASAndProfileIsolation(t *testing.T) {
 		t.Fatal("preferences escaped profile", other, e)
 	}
 	values, _, _, e := operations.EffectivePreferences(db, identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "p"}, "")
-	if e != nil || values.Bool("playback.autoplayNext") || values.Float("audiobooks.defaultSpeed") != 1.5 {
+	if e != nil || !values.Bool("playback.autoplayNext") || values.Float("audiobooks.defaultSpeed") != 1.5 {
 		t.Fatal("registry and listening disagree", values, e)
 	}
 	invalid := saved

@@ -112,21 +112,21 @@ func TestConsolePreferenceScopeIsolationAndViewerIsolation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	result, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "device", Values: PreferencePatch{"appearance.reduceMotion": true}})
-	if e != nil || !result.Effective.Bool("appearance.reduceMotion") || !result.Effective.Bool("privacy.pauseWatchHistory") {
+	result, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "device", Values: PreferencePatch{"appearance.cardSizePercent": 125}})
+	if e != nil || !(result.Effective.Int("appearance.cardSizePercent") == 125) || !result.Effective.Bool("privacy.pauseWatchHistory") {
 		t.Fatalf("scopes did not merge: %v %+v", e, result.Effective)
 	}
 	// A device-class document belongs to that class alone; the profile document
 	// is shared across every class.
 	result, e = s.Preferences(ctx, p, "television", a)
-	if e != nil || result.Effective.Bool("appearance.reduceMotion") || !result.Effective.Bool("privacy.pauseWatchHistory") {
+	if e != nil || (result.Effective.Int("appearance.cardSizePercent") == 125) || !result.Effective.Bool("privacy.pauseWatchHistory") {
 		t.Fatalf("device document leaked across classes: %v %+v", e, result.Effective)
 	}
 	other := p
 	other.AccountID = "other"
 	other.Hash = "other-session"
 	result, e = s.Preferences(ctx, other, "web", a)
-	if e != nil || result.Effective.Bool("privacy.pauseWatchHistory") || result.Effective.Bool("appearance.reduceMotion") {
+	if e != nil || result.Effective.Bool("privacy.pauseWatchHistory") || (result.Effective.Int("appearance.cardSizePercent") == 125) {
 		t.Fatal("profile alias leaked", e)
 	}
 	// Clearing an override falls back to the registry default, not to false-by-omission.

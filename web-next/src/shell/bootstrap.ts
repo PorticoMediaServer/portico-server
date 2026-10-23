@@ -3,6 +3,7 @@ import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
 import {selectedViewerRecord} from '@core/viewer-selection.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
+import {appearancePreferences} from '@core/preference-effects.ts';
 import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
@@ -198,7 +199,10 @@ export class ShellBootstrap {
     };
     globalThis.document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake);
     cleanups.push(() => { globalThis.document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); });
-    globalThis.document.documentElement.dataset.reduceMotion = String(facts.preferences.effective['appearance.reduceMotion'] === true);
+    const motion = globalThis.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotion = () => { globalThis.document.documentElement.dataset.reduceMotion = String(appearancePreferences(facts.preferences, motion.matches).reducedMotion); };
+    applyMotion(); motion.addEventListener('change', applyMotion);
+    cleanups.push(() => motion.removeEventListener('change', applyMotion));
     publishBinding();
   }
   dispose = () => { this.fence(); this.publish({phase: 'signed-out'}); };

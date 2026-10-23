@@ -17,7 +17,7 @@ type ListeningPreferences struct {
 }
 
 func listeningPreferences(snapshot operations.PreferenceSnapshot) ListeningPreferences {
-	out := ListeningPreferences{Revision: 1, MusicRate: snapshot.Effective.Float("music.defaultSpeed"), BookRate: snapshot.Effective.Float("audiobooks.defaultSpeed"), AutoplayNext: snapshot.Effective.Bool("playback.autoplayNext"), PassoutMinutes: snapshot.Effective.Int("playback.sleepTimerMinutes")}
+	out := ListeningPreferences{Revision: 1, MusicRate: 1, BookRate: snapshot.Effective.Float("audiobooks.defaultSpeed"), AutoplayNext: true, PassoutMinutes: snapshot.Effective.Int("playback.sleepTimerMinutes")}
 	for _, d := range snapshot.Documents {
 		if d.Scope == operations.ScopeProfileServer {
 			out.Revision = d.Revision
@@ -33,9 +33,12 @@ func (s *Service) ListeningPreferences(viewer identity.Viewer, authorize operati
 	return listeningPreferences(snapshot), e
 }
 func (s *Service) SaveListeningPreferences(viewer identity.Viewer, p ListeningPreferences, authorize operations.Authorize) (ListeningPreferences, error) {
+	if p.MusicRate != 1 || !p.AutoplayNext {
+		return p, operations.ErrInvalid
+	}
 	snapshot, e := operations.New(s.db).ApplyPreferences(s.Context(), identity.Principal{Viewer: viewer}, authorize, operations.PreferenceChange{
 		Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: p.Revision, IdempotencyKey: identity.Token(),
-		Values: operations.PreferencePatch{"music.defaultSpeed": p.MusicRate, "audiobooks.defaultSpeed": p.BookRate, "playback.autoplayNext": p.AutoplayNext, "playback.sleepTimerMinutes": p.PassoutMinutes},
+		Values: operations.PreferencePatch{"audiobooks.defaultSpeed": p.BookRate, "playback.sleepTimerMinutes": p.PassoutMinutes},
 	})
 	var conflict *operations.ConflictError
 	if errors.As(e, &conflict) {

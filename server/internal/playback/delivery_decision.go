@@ -308,6 +308,19 @@ func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred [
 		}
 	}
 	for _, want := range preferred {
+		if want == "@original" {
+			for i := range tracks {
+				if tracks[i].Default && !tracks[i].Commentary {
+					return &tracks[i], "original_default"
+				}
+			}
+			for i := range tracks {
+				if !tracks[i].Commentary {
+					return &tracks[i], "original_first"
+				}
+			}
+			continue
+		}
 		want = languageKey(want)
 		if want == "" {
 			continue

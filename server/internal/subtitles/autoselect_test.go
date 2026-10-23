@@ -95,8 +95,8 @@ func TestAutomaticUnknownForcedAndFileDefault(t *testing.T) {
 		t.Fatal("ambiguous forced track selected")
 	}
 	tracks = []AutoCandidate{{ID: "default", Default: true, Language: "eng"}}
-	if got := ChooseAutomatic(AutoChoice{Enabled: true}, tracks); got == nil {
-		t.Fatal("file default ignored without viewer language preferences")
+	if got := ChooseAutomatic(AutoChoice{Enabled: true, NoLanguage: true}, tracks); got != nil {
+		t.Fatal("explicit empty languages must keep subtitles off")
 	}
 	if got := ChooseAutomatic(AutoChoice{Enabled: true, Languages: []string{"fr"}}, tracks); got != nil {
 		t.Fatal("file default overrode preferred language")

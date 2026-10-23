@@ -200,6 +200,8 @@ type DeliveryInput struct {
 	AudioStream             int
 	HasAudioChoice          bool
 	PreferredAudioLanguages []string
+	AudioTrackChoice        string
+	PreferAudioDescription  bool
 	// CarriedAudioLanguage is the language of the audio track picked in the
 	// player earlier in this playback (a queue continued); it outranks the
 	// preferred list.
@@ -383,7 +385,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.HasAudioChoice {
 		explicit = in.AudioStream
 	}
-	audio, chosenBy := chooseAudio(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages)
+	audio, chosenBy := chooseAudioWithPolicy(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages, in.AudioTrackChoice, in.PreferAudioDescription, client)
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec

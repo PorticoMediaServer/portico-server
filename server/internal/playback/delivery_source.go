@@ -17,16 +17,17 @@ type SourceVideo struct {
 }
 
 type SourceAudio struct {
-	NativeCodec string `json:"-"`
-	Title       string `json:"title,omitempty"`
-	Index       int    `json:"index"`
-	Ordinal     int    `json:"ordinal"`
-	Codec       string `json:"codec"`
-	Channels    int    `json:"channels"`
-	Layout      string `json:"layout,omitempty"`
-	Language    string `json:"language,omitempty"`
-	Default     bool   `json:"default,omitempty"`
-	Commentary  bool   `json:"commentary,omitempty"`
+	NativeCodec      string `json:"-"`
+	Title            string `json:"title,omitempty"`
+	Index            int    `json:"index"`
+	Ordinal          int    `json:"ordinal"`
+	Codec            string `json:"codec"`
+	Channels         int    `json:"channels"`
+	Layout           string `json:"layout,omitempty"`
+	Language         string `json:"language,omitempty"`
+	Default          bool   `json:"default,omitempty"`
+	Commentary       bool   `json:"commentary,omitempty"`
+	AudioDescription bool   `json:"audioDescription,omitempty"`
 	assets.StreamDetail
 }
 

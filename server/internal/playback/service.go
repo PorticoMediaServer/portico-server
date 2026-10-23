@@ -94,7 +94,11 @@ func New(db *sql.DB) *Service { return &Service{db: db} }
 func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p identity.Principal, input *DeliveryInput, values DeliveryPreferenceReader, catalogued bool, explicitAudio *int) error {
 	device := capabilityDocumentFor(ctx, tx, p)
 	input.Device = &device
-	input.PreferredAudioLanguages = preferredAudioLanguages(values)
+	input.PreferredAudioLanguages = resolvePreferenceLanguages(values, "playback.preferredAudioLanguages", DeliveryContextFrom(ctx).AppLanguage)
+	if values != nil {
+		input.AudioTrackChoice = values.Text("playback.audioTrackChoice")
+		input.PreferAudioDescription = values.Text("playback.audioDescription") == "prefer"
+	}
 	input.Server = decoder.CurrentToolchain()
 	input.FMP4Output = s.hls.fragmentedOutput()
 	input.NoHLS = s.hls == nil
@@ -474,7 +478,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
-	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace)); e != nil {
+	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
 		return Session{}, e
 	}
 

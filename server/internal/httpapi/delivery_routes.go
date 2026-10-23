@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"golang.org/x/text/language"
 	"net/http"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
@@ -23,7 +24,22 @@ func (d Dependencies) deliveryContext(r *http.Request) playback.DeliveryContext 
 	// One rule says whether a request is inside the owner's home networks, for
 	// every purpose: the same one that decides a member's remote limits.
 	class, locality := playback.NetworkClassOf(d.requestIsRemote(r))
-	return playback.DeliveryContext{NetworkClass: class, ServerLocality: locality, TransportClass: playback.NormalizeTransportClass(r.Header.Get(playback.TransportClassHeader)), DeviceClass: deviceClassHeader(r)}
+	return playback.DeliveryContext{NetworkClass: class, ServerLocality: locality, TransportClass: playback.NormalizeTransportClass(r.Header.Get(playback.TransportClassHeader)), DeviceClass: deviceClassHeader(r), AppLanguage: requestAppLanguage(r)}
+}
+
+// App language is a device presentation fact, never an authorization input.
+func requestAppLanguage(r *http.Request) string {
+	if raw := r.Header.Get("X-Portico-App-Language"); len(raw) <= 64 && raw != "" {
+		if tag, err := language.Parse(raw); err == nil && tag != language.Und {
+			return tag.String()
+		}
+	}
+	if raw := r.Header.Get("Accept-Language"); len(raw) <= 1024 {
+		if tags, _, err := language.ParseAcceptLanguage(raw); err == nil && len(tags) > 0 {
+			return tags[0].String()
+		}
+	}
+	return ""
 }
 
 // trustedProxy reports whether the immediate peer is a configured proxy, which
@@ -47,6 +63,8 @@ func deviceClassHeader(r *http.Request) string {
 	switch strings.ToLower(strings.TrimSpace(r.Header.Get(DeviceClassHeader))) {
 	case "web":
 		return "web"
+	case "tablet":
+		return "tablet"
 	case "mobile":
 		return "mobile"
 	case "television", "tv":

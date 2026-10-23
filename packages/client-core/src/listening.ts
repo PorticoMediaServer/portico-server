@@ -28,7 +28,7 @@ const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v
 const counter=(v:unknown):v is number=>Number.isSafeInteger(v)&&Number(v)>=0;
 function bad():never{throw new Error(unreadableServerResponse);}
 export function parseListeningPreferences(v:unknown):ListeningPreferences {
- if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!audiobookRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
+ if(!object(v)||!counter(v.revision)||v.musicRate!==1||!audiobookRates.includes(v.bookRate as never)||v.autoplayNext!==true||!passoutChoices.includes(v.passoutMinutes as never))bad();
  return Object.freeze({revision:v.revision,musicRate:v.musicRate as number,bookRate:v.bookRate as number,autoplayNext:v.autoplayNext,passoutMinutes:v.passoutMinutes as number});
 }
 export function listeningData(raw:unknown,scope:QueueScope):unknown {

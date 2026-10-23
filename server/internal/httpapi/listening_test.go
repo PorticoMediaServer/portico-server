@@ -23,7 +23,7 @@ func TestListeningHTTPPreferenceEnvelopeAndCAS(t *testing.T) {
 	if read.Code != 200 || !bytes.Contains(read.Body.Bytes(), []byte(`"profileId":"profile"`)) {
 		t.Fatal(read.Code, read.Body.String())
 	}
-	body := map[string]any{"revision": 1, "musicRate": 1.25, "bookRate": 1.5, "autoplayNext": false, "passoutMinutes": 30}
+	body := map[string]any{"revision": 1, "musicRate": 1, "bookRate": 1.5, "autoplayNext": true, "passoutMinutes": 30}
 	for key := range body {
 		incomplete := make(map[string]any)
 		for k, v := range body {

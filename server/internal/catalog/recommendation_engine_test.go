@@ -338,6 +338,7 @@ func TestRecommendationRestrictionSameAvailableChildAndCommunity(t *testing.T) {
 	})
 	// Popular on this server needs three viewers who share their activity.
 	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["tv"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	for index, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(index), key, f.items["e101"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
@@ -478,6 +479,7 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	r := engineRequest("movies")
 	r.CommunityActivity = true
 	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, f.db)
 	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(i), key, f.items["m1"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
@@ -492,10 +494,9 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	check(1)
 	for _, field := range []string{"privacy.showActivityToMembers", "privacy.pauseWatchHistory"} {
 		value := field == "privacy.pauseWatchHistory"
-		raw, _ := json.Marshal(map[string]bool{field: value})
-		engineExec(t, f, `INSERT OR REPLACE INTO console_documents VALUES(?,1,?,0)`, `profile:["local","b","q"]`, string(raw))
+		storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{field: value})
 		check(0)
-		engineExec(t, f, `DELETE FROM console_documents WHERE scope=?`, `profile:["local","b","q"]`)
+		storePreference(t, f.db, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{"privacy.showActivityToMembers": true, "privacy.pauseWatchHistory": false})
 		check(1)
 	}
 	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='[]' WHERE account_id='b'`)

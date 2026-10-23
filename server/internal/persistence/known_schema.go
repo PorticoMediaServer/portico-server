@@ -1165,6 +1165,9 @@ table playlist_shares
 table policy
 table portico_admitted_families
 table portico_factor_challenges
+table preference_list_items
+table preference_scopes
+table preference_values
 table prepared_media_jobs
 table prepared_media_session_pins
 table prepared_media_source_revisions
@@ -2553,8 +2556,7 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need
