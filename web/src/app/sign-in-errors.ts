@@ -58,8 +58,6 @@ export const serverCodes: Readonly<Record<string, Answer>> = {
   rate_limited: E('web.signIn.error.tooMany'), too_many_requests: E('web.signIn.error.tooMany'), identity_credential_attempts: E('web.signIn.error.tooMany'),
   identity_account_attempt_budget: E('web.signIn.error.tooMany'), profile_pin_locked: E('web.signIn.error.tooMany'),
   authentication_busy: E('web.signIn.error.busy'), server_busy: E('web.signIn.error.busy'), busy: E('web.signIn.error.busy'),
-  device_approval_pending: E('device.approval.body'),
-  device_denied: E('web.signIn.error.deviceDenied'),
   access_refused: E('web.portico.noAccess'),
   clock_skew: E('web.portico.clockSkew'),
   clocks_disagree: E('web.signIn.error.clock'),

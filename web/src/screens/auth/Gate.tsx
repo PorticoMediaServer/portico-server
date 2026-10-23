@@ -33,6 +33,5 @@ export function Gate({children}: {children: React.ReactNode}) {
   // its own. Only a direct sign-in that ended (hint `local`) opens the direct form, for that server.
   if (session.phase === 'signedOut' && session.hosted && session.signInHint?.authority !== 'local') return <ServerlessShell />;
   if (session.phase === 'signedOut') return <SignInScreen />;
-  // A browser waiting for the owner's approval, or refused, is told so inside the shell's frame.
-  return <DeviceGate blocked={access => <ServerlessShell device={access} />}>{children}</DeviceGate>;
+  return <DeviceGate>{children}</DeviceGate>;
 }

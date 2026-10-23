@@ -211,7 +211,7 @@ export function deletionConfirmationTarget(contactAddress: string | undefined, u
 }
 /** What deleting removes, one sentence per kind of thing. */
 function consequences(preview: DeletionPreview, t: I18n['t']): string[] {
-  const lines = [t('web.deleteAccount.profiles', {count: preview.profileCount})];
+  const lines: string[] = [];
   const owned = preview.ownedServers.length, member = preview.affectedServers.length - owned;
   if (owned) lines.push(t('web.deleteAccount.owned', {count: owned, servers: preview.ownedServers.map(x => x.name).join(', ')}));
   if (member > 0) lines.push(t('web.deleteAccount.member', {count: member}));
@@ -221,7 +221,7 @@ export const confirmationMatches = (typed: string, target: string) => !!target &
 
 /**
  * A80: deleting the Portico Account needs the signed-in session only. The preview says what goes
- * (profiles, servers you own, servers you're a member of); the person types their email (or
+ * (servers you own, servers you're a member of); the person types their email (or
  * username) to confirm. A mismatch is 400 `deletion_confirmation_mismatch`.
  */
 function DeleteAccount({state, scope, onClose}: {state: SecurityState; scope: AccountScope; onClose: () => void}) {

@@ -33,9 +33,8 @@ test('gate 2: routing: a Portico Account lands in the shell; only an ended direc
   assert.equal((await gate({phase: 'signedOut'})).type, 'SignInScreen');
   const ready = await gate({phase: 'ready'});
   assert.equal(ready.type, 'DeviceGate');
-  const blocked = ready.props.blocked({state: 'pending', checking: false, recheck() {}});
-  assert.equal(blocked.type, 'ServerlessShell', 'waiting for approval: inside the shell, not a page of its own');
-  assert.equal(blocked.props.device.state, 'pending');
+  assert.equal(ready.props.blocked, undefined, 'binding a device does not introduce owner approval');
+  assert.deepEqual(ready.props.children, ['app']);
 });
 
 // ── NEW-12: `/account` inside the product shell when a server session is open ──
@@ -90,17 +89,15 @@ test('gate 2: an ended direct sign-in with a Portico Account still signed in sho
 
 // ── Gate 3: every sign-in failure says what happened ──────────────────────────────────────
 
-test('gate 3: clock skew, unreachable, device pending and denied each say what happened', () => {
+test('gate 3: clock skew, unreachable and current access refusal remain distinct', () => {
   assert.equal(say(new ApiError(401, 'clock_skew', 'x')).text, enUS['web.portico.clockSkew'].replace('{server}', 'Den'));
   const down = say(new TypeError('Failed to fetch'));
   assert.equal(down.messageId, 'web.signIn.error.unreachable');
   assert.equal(down.wait, 'server', 'the server is expected back: Portico retries it');
   assert.equal(say(new TypeError('Failed to fetch'), 'password', 'Den', false).messageId, 'web.signIn.error.offline');
   assert.equal(say(Object.assign(new Error('route'), {code: 'route_unavailable'})).wait, 'server');
-  assert.equal(say(new ApiError(403, 'device_approval_pending', 'x'), 'password').text, enUS['device.approval.body']);
-  const denied = say(new ApiError(403, 'device_denied', 'x'), 'password');
-  assert.match(denied.text, /The owner of Den has turned this browser away/);
-  assert.equal(denied.wait, undefined, 'a refusal is not retried');
+  assert.equal(Object.hasOwn(serverCodes, 'device_approval_pending'), false);
+  assert.equal(Object.hasOwn(serverCodes, 'device_denied'), false);
   assert.equal(say(new ApiError(403, 'access_refused', 'x')).refused, true);
 });
 
@@ -125,8 +122,8 @@ test('gate 3: the codes the INT review named get their own sentence', () => {
   assert.equal(say(new ApiError(400, 'invalid_request', 'x'), 'password').messageId, 'web.signIn.error.details');
   assert.equal(say(new ApiError(422, 'invalid_request', 'x'), 'new-password').messageId, 'web.signIn.error.newPassword');
   assert.equal(say(new CodedError('invalid_response', 'unreadable')).messageId, 'web.signIn.error.unreadable');
-  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'web.signIn.error.identity');
-  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'web.portico.notProven');
+  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'portico.failure.identity.body');
+  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'portico.failure.identity.body');
   assert.equal(say(new DOMException('The operation timed out.', 'TimeoutError')).messageId, 'web.signIn.error.timeout');
   assert.equal(say(new ApiError(429, 'rate_limited', 'x', true, 30), 'password').text, 'Too many sign-in attempts. Try again in 30 seconds.');
   assert.equal(say(superseded()).silent, true, 'a sign-in the person moved on from says nothing');
@@ -181,39 +178,22 @@ async function deviceModule(announce: () => Promise<string>, session: object) {
   return {m, h, effects};
 }
 
-test('gate 3: a device the owner denied or has yet to approve is held inside the shell with Check again and Sign out', async () => {
-  let signedOut = 0;
-  const session = {api: {}, session: {sessionFamilyId: 'fam', viewer: {authority: 'local'}}, signOut: () => signedOut++, system: {name: 'Den'}};
-  for (const outcome of ['pending', 'denied'] as const) {
+test('signed-in device binding never inserts an owner-approval wait or signs out the viewer', async () => {
+  const session = {api: {}, session: {sessionFamilyId: 'fam', viewer: {authority: 'local'}}};
+  for (const outcome of ['bound', 'skipped']) {
     let calls = 0;
-    const {m, h, effects} = await deviceModule(async () => { calls++; return outcome; }, session);
-    const render = () => h.render(() => m.DeviceGate({children: 'app', blocked: (access: any) => ({type: 'Shell', access})}));
-    assert.deepEqual(render().props.children, ['app'], 'the app shows while the device is announced');
-    await effects[0]();
-    const held = render().props.children[0];
-    assert.equal(held.type, 'Shell');
-    const access = held.access;
-    assert.equal(access.state, outcome);
-    const block = h.render(() => m.DeviceBlock({access}));
-    assert.equal(block.type, 'StateView');
-    assert.equal(block.props.title, outcome === 'denied' ? 'web.device.deniedTitle' : 'device.approval.title');
-    if (outcome === 'denied') assert.match(block.props.body, /"server":"Den"/);
-    assert.equal(block.props.action.label, 'device.approval.checkAgain');
-    block.props.action.onClick();
-    assert.equal(calls, 2, 'Check again asks the server again');
-    block.props.secondaryAction.onClick();
+    const {m, h, effects} = await deviceModule(async () => {calls++; return outcome;}, session);
+    const render = () => h.render(() => m.DeviceGate({children: 'app'}));
+    assert.deepEqual(render().props.children, ['app']);
+    effects[0](); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, 1); assert.deepEqual(render().props.children, ['app']);
+    assert.equal(m.DeviceBlock, undefined);
   }
-  assert.equal(signedOut, 2);
-  const {m, h, effects} = await deviceModule(async () => 'skipped', session);
-  h.render(() => m.DeviceGate({children: 'app', blocked: () => 'held'}));
-  await effects[0]();
-  assert.deepEqual(h.render(() => m.DeviceGate({children: 'app', blocked: () => 'held'})).props.children, ['app'], 'an incomplete device list never costs the sign-in');
 });
 
-test('gate 3: device pending and a direct step show inside the shell, not as a page', () => {
-  const shell = src('shell/ServerlessShell.tsx');
-  assert.match(shell, /device \? <DeviceBlock access=\{device\} \/> : session\.direct\.step \? <DirectStep inShell \/>/);
-  assert.match(shell, /<SignInEnded \/>/, 'an ended member sign-in is explained in the shell');
-  assert.doesNotMatch(src('app/device.tsx'), /minHeight: '100dvh'/, 'no full-page approval wait');
-  assert.match(src('screens/auth/SignIn.tsx'), /function StepFrame\(\{inShell/);
+test('only configured two-step and password-change steps remain in the serverless shell', () => {
+  assert.doesNotMatch(src('app/session.tsx'), /device-pending/);
+  assert.doesNotMatch(src('shell/ServerlessShell.tsx'), /DeviceBlock|DeviceAccess/);
+  assert.match(src('shell/ServerlessShell.tsx'), /<DirectStep inShell \/>/);
+  assert.match(src('shell/ServerlessShell.tsx'), /<SignInEnded \/>/);
 });

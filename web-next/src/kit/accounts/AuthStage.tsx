@@ -1,4 +1,4 @@
-import {useId, useRef, useState, type ReactNode} from 'react';
+import {forwardRef, useId, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {presentError} from '@core/presentation/errors.ts';
 import {ColourBackdrop} from '../artwork';
@@ -24,13 +24,13 @@ export function AuthStage({children, shape = 'side', layout = 'column', service 
 export function AuthLinks({children}: {children: ReactNode}) { return <div className={styles.links}>{children}</div>; }
 
 /** One real password input retains browser autofill and native password-manager support. */
-export function AuthPasswordField(props: Omit<TextFieldProps, 'type' | 'trailing'>) {
+export const AuthPasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'trailing'>>(function AuthPasswordField(props, ref) {
   const [shown, setShown] = useState(false);
-  return <TextField {...props} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
+  return <TextField {...props} ref={ref} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
     aria-label={t(shown ? 'field.hidePassword' : 'field.showPassword')} aria-pressed={shown} onClick={() => setShown(value => !value)}>
     <Icon name="i-eye" size={20} />{!shown && <span>{t('accounts.signIn.showPassword')}</span>}
   </button>} />;
-}
+});
 
 /** A single accessible input owns typing, paste, selection and one-time-code autofill.
  * The boxes are visual only; completing a value never moves focus to another field. */

@@ -13,7 +13,7 @@ export function App({binding, bootstrap}: {binding?: ShellBindings; bootstrap?: 
 function RestoredApp({bootstrap}: {bootstrap: ShellBootstrap}) {
   const snapshot = useSyncExternalStore(bootstrap.subscribe, bootstrap.getSnapshot, bootstrap.getSnapshot);
   useEffect(() => { void bootstrap.start(); return () => bootstrap.dispose(); }, [bootstrap]);
-  return <ShellBootstrapState value={{snapshot, retry: bootstrap.start}}><BoundApp binding={snapshot.binding} /></ShellBootstrapState>;
+  return <ShellBootstrapState value={{snapshot, retry: bootstrap.start, suspendForAccountEntry: bootstrap.suspendForAccountEntry, resumeAfterAccountEntry: bootstrap.resumeAfterAccountEntry}}><BoundApp binding={snapshot.binding} /></ShellBootstrapState>;
 }
 function BoundApp({binding}: {binding?: ShellBindings}) {
   useEffect(() => bindShellRouteMotion(router), []);

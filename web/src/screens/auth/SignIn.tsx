@@ -177,7 +177,7 @@ function StepFrame({inShell, title, lede, children}: {inShell?: boolean; title: 
   );
 }
 
-/** C45: the extra step a direct sign-in may need: a two-step code, a required new password, or the owner's approval. */
+/** C45: a two-step code or required new password. */
 export function DirectStep({inShell}: {inShell?: boolean}) {
   const {t} = useI18n();
   const session = useSession();
@@ -187,17 +187,6 @@ export function DirectStep({inShell}: {inShell?: boolean}) {
   const [again, setAgain] = useState('');
   const strong = (v: string) => passwordStrength(v).acceptable;
   const back = <div className={s.links}><Button variant="link" icon="back" label={t('action.back')} onClick={() => { session.clearError(); direct.cancelStep(); }} /></div>;
-  if (step.kind === 'device-pending') {
-    return (
-      <StepFrame inShell={inShell} title={t('device.approval.title')} lede={t('device.approval.body')}>
-        <div className={s.stack}>
-          {session.error ? <Notice tone="error">{session.error}</Notice> : null}
-          <Button variant="primary" size="lg" label={t('device.approval.checkAgain')} loading={session.busy} block onClick={() => void direct.continueSignIn('')} />
-          {back}
-        </div>
-      </StepFrame>
-    );
-  }
   if (step.kind === 'new-password') {
     const ok = strong(value) && value === again;
     return (

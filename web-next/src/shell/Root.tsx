@@ -17,7 +17,8 @@ function RouteContent() {
 }
 export function ShellRoot() {
   const binding = useShellBindings();
-  if (!binding) return <RouteContent />;
+  const accountEntry = useRouterState({select: state => ['/sign-in', '/profiles', '/servers'].includes(state.location.pathname)});
+  if (!binding || accountEntry) return <RouteContent />;
   const viewer = binding.shell.identity.viewer;
   return <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>
     <Shell {...binding.shell}><RouteContent /></Shell>

@@ -3,7 +3,7 @@ import {HttpLocalApi} from '@core/index.ts';
 import {browserAccount} from '../../bridge/account';
 import {useI18n} from '../../app/i18n';
 import {errorText} from '../../app/errors';
-import {Button, KeyValue, Loading, Notice, Select, Text} from '../../ui';
+import {Button, KeyValue, Loading, Notice, Text} from '../../ui';
 import {AccountForm} from './AccountForm';
 import {AuthFrame} from './AuthFrame';
 import s from './Auth.module.css';
@@ -34,7 +34,7 @@ export function takeClaimFragment(loc: Pick<Location, 'hash' | 'pathname' | 'sea
 
 type Api = Pick<HttpLocalApi, 'request'>;
 export const claimLookup = (api: Api, code: string, signal?: AbortSignal) => api.request<PendingClaim>('/v1/server-claims/lookup', 'POST', {code}, signal);
-export const claimApprove = (api: Api, code: string, ownerProfileId?: string) => api.request<{status: string; code: string}>('/v1/server-claims/approve-code', 'POST', {code, ...(ownerProfileId ? {ownerProfileId} : {})});
+export const claimApprove = (api: Api, code: string) => api.request<{status: string; code: string}>('/v1/server-claims/approve-code', 'POST', {code});
 export const claimDeny = (api: Api, code: string) => api.request<unknown>('/v1/server-claims/deny', 'POST', {code});
 
 type Phase = 'loading' | 'review' | 'working' | 'done' | 'denied' | 'failed';
@@ -43,7 +43,7 @@ type Phase = 'loading' | 'review' | 'working' | 'done' | 'denied' | 'failed';
  * `/claim` on the Portico Account site: approve connecting a server to this
  * account. The server opened this page with a claim code in the fragment;
  * this page looks the claim up, shows which server and address asked, lets
- * the owner pick the profile that will own it, then approves or denies with
+ * the owner approve or deny with
  * this account's own session. Hosted pushes the decision to the server; this
  * page never talks to the server.
  */
@@ -56,7 +56,6 @@ export function ClaimApprovalScreen() {
   const account = useSyncExternalStore(central.service.subscribe, central.service.getSnapshot);
   const live = account.session;
   const [pending, setPending] = useState<PendingClaim>();
-  const [profileId, setProfileId] = useState('');
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState<unknown>();
 
@@ -64,10 +63,6 @@ export function ClaimApprovalScreen() {
     const session = await central.service.accessSession();
     return new HttpLocalApi(central.api.origin, session.accessToken);
   };
-
-  useEffect(() => {
-    if (live && !profileId) setProfileId(live.profiles[0]?.id ?? '');
-  }, [live, profileId]);
 
   useEffect(() => {
     if (!request || !live) return;
@@ -98,7 +93,7 @@ export function ClaimApprovalScreen() {
     setError(undefined);
     try {
       const api = await accountApi();
-      if (approve) await claimApprove(api, request.code, (live?.profiles.length ?? 0) > 1 ? profileId : undefined);
+      if (approve) await claimApprove(api, request.code);
       else await claimDeny(api, request.code);
       setPhase(approve ? 'done' : 'denied');
     } catch (e) {
@@ -137,11 +132,10 @@ export function ClaimApprovalScreen() {
         ) : (
           <>
             <KeyValue rows={[[i18n.t('web.claim.server'), serverLabel], [i18n.t('web.claim.address'), address], [i18n.t('web.claim.account'), live.account.displayName || live.account.username], ...(pending?.requestedAt ? [[i18n.t('web.claim.requested'), i18n.relativeTime(pending.requestedAt)] as [string, string]] : [])].filter(([, v]) => v) as [string, string][]} />
-            {live.profiles.length > 1 ? <Select label={i18n.t('web.claim.ownerProfile')} value={profileId} onChange={e => setProfileId(e.target.value)} options={live.profiles.map(p => ({value: p.id, label: p.name}))} help={i18n.t('web.claim.ownerProfileHelp')} /> : null}
             <Text variant="caption" tone="secondary">{i18n.t('web.claim.checkAddress')}</Text>
             {error ? <Notice tone="error">{failedText(error)}</Notice> : null}
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-              <Button variant="primary" label={i18n.t('web.claim.approve')} onClick={() => void decide(true)} loading={phase === 'working'} disabled={phase === 'working' || (live.profiles.length > 1 && !profileId)} />
+              <Button variant="primary" label={i18n.t('web.claim.approve')} onClick={() => void decide(true)} loading={phase === 'working'} disabled={phase === 'working'} />
               <Button variant="ghost" label={i18n.t('web.claim.deny')} onClick={() => void decide(false)} disabled={phase === 'working'} />
             </div>
           </>

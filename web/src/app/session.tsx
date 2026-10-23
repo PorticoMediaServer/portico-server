@@ -66,8 +66,8 @@ export const currentAccessToken = () => viewer.getSnapshot().session?.accessToke
  * Account service is down or busy, the server is fine (Portico retries once the service allows). */
 export type PorticoOutcome = 'done' | 'refused' | 'unreachable' | 'account-unavailable' | 'failed';
 export type DirectPending = {api: HttpLocalApi; snapshot?: DirectSnapshot; accountGrant: boolean; accountSession?: LocalSession; profilesError?: string; /** A Portico Account member: routes keep coming from Hosted. */ hosted?: RememberedServer['hosted']};
-/** A direct sign-in that needs one more answer: a two-step code, a new password, or the owner's approval. */
-export type DirectStep = {kind: 'code' | 'new-password' | 'device-pending'};
+/** A direct sign-in that needs a two-step code or a new password. */
+export type DirectStep = {kind: 'code' | 'new-password'};
 /** `hostedAccountId`: a Portico Account member of this server; its password and two-step verification live at the Portico Account. */
 export type LocalAccount = {username: string; canManage: boolean; managementFamily: string; hostedAccountId?: string; /** INT M6: the owner is a Portico Account but Hosted's custody of the server's registration isn't with it yet. */ custodyPending?: boolean; profiles: readonly {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]};
 export type AccountState = ReturnType<ReturnType<typeof browserAccount>['service']['getSnapshot']>;
@@ -643,7 +643,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
   /**
    * C45: what a direct sign-in answer leads to. A viewer session is accepted; an account-scoped one
    * opens the profile chooser; a challenge asks for a code; a required password change asks for a new
-   * password; a device waiting for approval says so. Returns 'failed' when nothing was kept.
+   * password. Returns 'failed' when nothing was kept.
    * A Portico sign-in (`extra.again`) keeps its Hosted route source, repeats its identity sign-in
    * instead of a password, and may pick up the profile it had before (`preferProfileId`, silent
    * re-admission) when that needs no PIN here.
@@ -654,11 +654,6 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
     if (result.kind === 'challenge') {
       stepRef.current = {connected, username, password, token: result.token, again, hosted};
       setDirectStep({kind: 'code'});
-      return 'step';
-    }
-    if (result.kind === 'device-pending') {
-      stepRef.current = {connected, username, password, again, hosted};
-      setDirectStep({kind: 'device-pending'});
       return 'step';
     }
     const {snapshot, session} = result;
@@ -702,8 +697,6 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
         // After the change, sign in again with the new password.
         result = await directSignIn(step.connected.api, step.username, value);
         step.password = value;
-      } else if (directStep?.kind === 'device-pending') {
-        result = step.again ? await step.again() : await directSignIn(step.connected.api, step.username, step.password);
       } else return;
       await finishDirectSignIn(step.connected, result, step.username, step.password, () => gen === generation.current, {again: step.again, hosted: step.hosted});
     } catch (e) {

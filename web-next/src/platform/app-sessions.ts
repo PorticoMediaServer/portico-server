@@ -5,6 +5,8 @@ import {parseDirectSnapshot, selectDirectProfile, shouldRetireAccountSession} fr
 import {rememberNativeSession, restoreNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {browserAppSessions, browserConnectionEnvironment} from './server-connections';
 import {browserAccount} from './account';
+import {browserInstallation} from './profile-trust';
+import {browserTabProfileTrust} from './tab-profile-trust';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 
 /** Browser account actions share the canonical protected record. The caller retires its mounted
@@ -16,21 +18,28 @@ export class BrowserAppSessionActions {
  async switchServer(serverId:string){this.probe.cancel();await this.store.select(serverId);}
  async signOutServer(session:LocalSession){
   this.probe.cancel();const captured=await this.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);
+  for(const entry of captured)browserTabProfileTrust.forgetAccount(entry.connection.pin.serverId,entry.connection.session.viewer.accountId);
   return Promise.allSettled(captured.map(async entry=>this.revoke(entry)));
  }
  async signOutPorticoAccount(account:PorticoAccountScope,logout:()=>Promise<void>){
   this.probe.cancel();const captured=await this.store.signOutPorticoAccount(account);
+  for(const entry of captured)browserTabProfileTrust.forgetAccount(entry.connection.pin.serverId,entry.connection.session.viewer.accountId);
   return Promise.allSettled([Promise.resolve().then(logout),...captured.map(async entry=>this.revoke(entry))]);
  }
- async switchProfile(api:HttpLocalApi,session:LocalSession,profileId:string,pin:string,signal:AbortSignal,isCurrent:()=>boolean){
+ async switchProfile(api:HttpLocalApi,session:LocalSession,profileId:string,pin:string,signal:AbortSignal,isCurrent:()=>boolean,remember=false){
   const state=await this.store.read(),entry=state.servers.find(value=>value.connection.pin.serverId===session.viewer.serverId);
   if(!entry||entry.connection.session.sessionFamilyId!==session.sessionFamilyId)throw new Error('This server sign-in has ended.');
   const snapshot=parseDirectSnapshot(await api.request(routePath('get_direct_account'),'GET',undefined,signal),{authority:'local',serverId:session.viewer.serverId,accountId:session.viewer.accountId});
   if(!snapshot.profiles.some(value=>value.id===profileId))throw new Error('This profile is no longer available.');
-  const chosen=await selectDirectProfile(api,{authority:'local',serverId:session.viewer.serverId,accountId:session.viewer.accountId},profileId,{pin},signal);
+  const scope={authority:'local' as const,serverId:session.viewer.serverId,accountId:session.viewer.accountId,profileId,installationId:browserInstallation()};
+  const proof=browserTabProfileTrust.read(scope);
+  let chosen:Awaited<ReturnType<typeof selectDirectProfile>>;
+  try{chosen=await selectDirectProfile(api,scope,profileId,{pin,installationId:scope.installationId,...(remember?{trust:true}:{}),...(proof?{trustToken:proof.token}:{})},signal);}
+  catch(error){if(['profile_pin','profile_pin_invalid','profile_pin_required','profile_pin_locked'].includes(String((error as {code?:unknown})?.code)))browserTabProfileTrust.forget(scope);throw error;}
   const env={...this.environment(session.viewer.serverId),storage:this.store.connectionStorage(session.viewer.serverId,{signIn:entry.signIn,hostedAccount:entry.connection.hosted,expectedRevision:state.revision})};
   try{await rememberNativeSession(api,chosen.session,env,entry.connection.hosted,()=>isCurrent()&&!signal.aborted);}
   catch(error){const cleanup=new HttpLocalApi(api.baseUrl,chosen.session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);await cleanup.logout().catch(()=>{});throw error;}
+  if(remember&&chosen.trustedSelection&&isCurrent()&&!signal.aborted)browserTabProfileTrust.save(chosen.trustedSelection);
   if(shouldRetireAccountSession(session,chosen.session)){
    const cleanup=new HttpLocalApi(api.baseUrl,session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);
    await cleanup.logout().catch(()=>{});

@@ -97,6 +97,11 @@ export class ShellBootstrap {
     ++this.epoch; this.controller?.abort(); this.controller = undefined;
     this.retire?.(); this.retire = undefined;
   }
+  /** Entering account/profile/server controls retires the mounted private
+   * player and feeds before any new authority can be selected. Saved sessions
+   * remain intact until a concrete sign-out or admission succeeds. */
+  suspendForAccountEntry = () => {this.fence(); this.publish({phase: 'signed-out'});};
+  resumeAfterAccountEntry = async () => {await this.running; await this.start();};
   private restart = () => {
     this.fence(); this.publish({phase: 'restoring'});
     const pending = this.running, expected = this.epoch;

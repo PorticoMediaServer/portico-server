@@ -8,6 +8,7 @@ import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
 import {browserServerDisplay} from './server-display';
+import {BrowserProfileRecovery} from './profile-recovery';
 
 export type AccountEntryState = Readonly<{
  phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready';
@@ -111,11 +112,16 @@ export class BrowserAccountEntry {
    this.publish({phase:'profiles',server,snapshot,busy:false});
   }catch(error){if(op.current()){this.release();this.publish({phase:'profiles',error});}}
  }
- async chooseProfile(profileId:string,pin=''){
+ async chooseProfile(profileId:string,pin='',remember=false){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||!api||!session)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current);if(op.current())this.publish({...state,phase:'ready',busy:false});}
+  try{await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current,remember);if(op.current())this.publish({...state,phase:'ready',busy:false});}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ profileRecovery(profileId:string){
+  const api=this.api,state=this.state,snapshot=state.snapshot,epoch=this.epoch;
+  if(state.phase!=='profiles'||!api||!snapshot||!state.server)throw new Error('Choose a current server profile first.');
+  return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,()=>!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.snapshot===snapshot);
  }
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();}
 }

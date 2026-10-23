@@ -8,6 +8,16 @@ const unavailableAssembly: ShellAssembler = async () => { throw new Error('Unexp
 const selected = {session: {sessionFamilyId: 'family-a'}} as SelectedViewerRecord;
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
 
+test('account entry fences an in-flight restore; resuming waits for retirement and reads the actual new selection', async () => {
+  const vault = deferred<SelectedViewerRecord | null>(); let reads = 0, restores = 0;
+  const bootstrap = new ShellBootstrap(unavailableAssembly, {selected: {read: async () => ++reads === 1 ? vault.promise : null}, restore: async () => {restores++; return undefined;}});
+  const old = bootstrap.start(); bootstrap.suspendForAccountEntry();
+  assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
+  const resumed = bootstrap.resumeAfterAccountEntry(); vault.resolve(selected);
+  await old; await resumed;
+  assert.equal(reads, 2); assert.equal(restores, 0); assert.equal(bootstrap.getSnapshot().phase, 'signed-out'); bootstrap.dispose();
+});
+
 test('an absent protected selection reaches the registered signed-out flow without reading a server', async () => {
   let reads = 0;
   const bootstrap = new ShellBootstrap(unavailableAssembly, {selected: {read: async () => null}, restore: async () => { reads++; return undefined; }});

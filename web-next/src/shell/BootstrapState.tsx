@@ -5,8 +5,9 @@ import {router} from '../router';
 import {useShellWidth} from './viewport';
 import type {ShellBootstrapSnapshot} from './bootstrap';
 
-type BootstrapState = Readonly<{snapshot: ShellBootstrapSnapshot; retry: () => Promise<void>}>;
+type BootstrapState = Readonly<{snapshot: ShellBootstrapSnapshot; retry: () => Promise<void>; suspendForAccountEntry?: () => void; resumeAfterAccountEntry?: () => Promise<void>}>;
 const Context = createContext<BootstrapState | undefined>(undefined);
+export function useAccountBootstrap() {return useContext(Context);}
 export function ShellBootstrapState({value, children}: {value: BootstrapState | undefined; children: ReactNode}) { return <Context.Provider value={value}>{children}</Context.Provider>; }
 export function BootstrapContent({children}: {children: ReactNode}) {
   const state = useContext(Context), width = useShellWidth();
