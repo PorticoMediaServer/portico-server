@@ -90,9 +90,16 @@ cast.getportico.tv {
 	header {
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-		Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 		Cache-Control "no-store"
 	}
+	# CAF 3.0.0156 loads Google's Shaka 4.15.56 itself. This exception is
+	# only for the receiver documents; assets and other Services keep their CSP.
+	# https://developers.google.com/cast/docs/release-notes
+	# https://developers.google.com/speed/libraries/#shaka-player
+	@receiver_page path / /index.html
+	header @receiver_page Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/ https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+	@receiver_asset not path / /index.html
+	header @receiver_asset Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 	root * /opt/portico-cast-receiver/current
 	file_server
 }
