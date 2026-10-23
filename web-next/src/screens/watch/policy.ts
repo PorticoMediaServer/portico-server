@@ -31,9 +31,12 @@ export function watchUndoOffer(binding: WatchPolicyBinding, shown: WebPlaybackRu
 
 function offersMarker(policy: PolicyView | null, action: WatchMarkerAction): boolean {
   if (!policy || policy.attention || policy.finished) return false;
-  return action.kind === 'undo'
-    ? policy.undo?.marker.id === action.markerId && policy.undo.remainingSeconds > 0
-    : policy.prompt?.kind === 'skip' && policy.prompt.marker.id === action.markerId;
+  if (action.kind === 'undo') return policy.undo?.marker.id === action.markerId && policy.undo.remainingSeconds > 0;
+  if (policy.prompt?.kind === 'skip') return policy.prompt.marker.id === action.markerId;
+  // The drawn credits card can skip its real closing marker. Dismiss is still skip-only;
+  // Watch credits dismisses the distinct offer through the media owner's offer action.
+  const marker = policy.prompt?.kind === 'up-next' ? policy.prompt.offer.marker : undefined;
+  return action.kind === 'skip' && marker?.id === action.markerId && (marker.kind === 'credits' || marker.kind === 'outro');
 }
 
 /** Marker identity goes to the real policy owner; the UI never supplies a seek position. */

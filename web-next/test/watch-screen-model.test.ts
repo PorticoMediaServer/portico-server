@@ -276,6 +276,26 @@ test('Undo progress comes from the live policy, expires while paused and stays o
   assert.equal(watchUndoOffer(binding, shown), null);
 });
 
+test('the credits card sends only its current closing marker to skip and never reuses dismiss for Watch credits', async () => {
+  const policy = new PlaybackPolicy();
+  policy.begin(fence, [{id: 'credits', kind: 'credits', startSeconds: 500, endSeconds: 550, automaticSafe: true}], 600);
+  const postPlay = {nextEntryId: 'next', available: true, reason: 'ready' as const, countdownSeconds: 10, autoplay: true, passoutCheckDue: false, automaticAdvances: 0, startDuringCredits: false};
+  const view = policy.update({fence, nowMs: 0, positionSeconds: 520, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {credits: 'ask'}, postPlay})!.view;
+  assert.equal(view.prompt?.kind, 'up-next');
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown, calls = 0;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: (error: unknown) => { throw error; }, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
+    calls++; assert.deepEqual(action, {kind: 'skip', markerId: 'credits'});
+    assert.equal(policy.skip(captured)?.positionSeconds, 550);
+  }};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'dismiss', markerId: 'credits'}), false);
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'foreign'}), false);
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'credits'}), true);
+  live = {...shown, fence: {...fence, generation: 2}};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'credits'}), false);
+  assert.equal(calls, 1);
+});
+
 test('the version chooser follows actual grouped options order and permits one remaining failure choice', async () => {
   const version = (id: string): MediaVersion => ({id, label: 'transport label must not become chooser copy', durationMs: 200000, parts: [{id, index: 0, durationMs: 200000}], video: [], audio: [], subtitles: []});
   const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [version('failed'), version('remaining')], chapters: [], markers: [], qualities: [], resume: {positionMs: 123456, partIndex: 0}};
