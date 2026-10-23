@@ -11,6 +11,7 @@ import {dockMessages} from './dock.ts';
 import {castPlayerMessages} from './cast-player.ts';
 import {mediaMessages} from './media.ts';
 import {homeMessages} from './home.ts';
+import {savedMessages} from './saved.ts';
 import {controlsNativeMessages} from './controls-native.ts';
 import {overlaysNativeMessages} from './overlays-native.ts';
 import {artworkNativeMessages} from './artwork-native.ts';
@@ -42,6 +43,7 @@ export const nextMessages = {
   ...castPlayerMessages,
   ...mediaMessages,
   ...homeMessages,
+  ...savedMessages,
   ...controlsNativeMessages,
   ...overlaysNativeMessages,
   ...artworkNativeMessages,
