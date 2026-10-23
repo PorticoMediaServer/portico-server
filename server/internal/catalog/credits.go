@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"net/url"
 	"strconv"
 	"time"
 )
@@ -49,12 +48,13 @@ const creditCrewRank = `CASE WHEN lower(trim(d.label))='directing' OR lower(r.la
  WHEN lower(trim(d.label))='music' OR lower(r.label) LIKE '%composer%' THEN 4
  WHEN lower(r.label) LIKE '%producer%' OR lower(trim(d.label))='production' AND trim(r.label)='' THEN 5 ELSE -1 END`
 
-const creditColumns = `c.credit_id,c.credited_name,r.label,d.label,c.provider,COALESCE(a.thumbnail_digest,''),c.provider_person_id,COALESCE(p.token,'')`
+const creditColumns = `c.credit_id,c.credited_name,r.label,d.label,c.provider,COALESCE(o.digest,''),c.provider_person_id,COALESCE(p.token,'')`
 
 const creditFrom = ` FROM catalog_credits c
  JOIN catalog_credit_labels r ON r.id=c.role_id JOIN catalog_credit_labels d ON d.id=c.department_id
  LEFT JOIN catalog_people p ON p.id=c.person_id
  LEFT JOIN artwork_selections a ON a.kind='item' AND a.entity_id=c.entity_id AND a.role='portrait' AND a.subject=c.provider||':'||c.provider_person_id
+	LEFT JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'
  WHERE c.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`
 
 // queryCredits runs a credits query whose first argument is the item.
@@ -71,9 +71,7 @@ func (s *Service) queryCredits(item, query string, args ...any) ([]Credit, error
 		if err = rows.Scan(&v.ID, &v.Name, &v.Role, &v.Department, &v.Provider, &digest, &person, &v.PersonID); err != nil {
 			return nil, err
 		}
-		if digest != "" {
-			v.PortraitURL = "/v1/metadata/item/" + url.PathEscape(item) + "/art/portrait?size=thumbnail&subject=" + url.QueryEscape(v.Provider+":"+person) + "&v=" + digest
-		}
+		v.PortraitURL = selectedArtworkURL("item", item, "portrait", v.Provider+":"+person, digest, 400)
 		out = append(out, v)
 	}
 	return out, rows.Err()
