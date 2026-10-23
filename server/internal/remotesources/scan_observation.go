@@ -180,31 +180,71 @@ func (s *Service) RecordScanObservationTx(ctx context.Context, tx *sql.Tx, job, 
 // ScanObservation reads one consistent set of normalized scan facts. It is
 // private source evidence, not permission to decode or proof of origin freshness.
 func (s *Service) ScanObservation(ctx context.Context, file string) (RecordedScanObservation, error) {
+	recorded, _, err := s.ScanSnapshot(ctx, file)
+	return recorded, err
+}
+
+// ScanSnapshot reads the recorded facts and their exact transport namespace in
+// one DB snapshot. It performs no provider I/O and grants no content access.
+func (s *Service) ScanSnapshot(ctx context.Context, file string) (RecordedScanObservation, storage.Snapshot, error) {
+	if s == nil || s.db == nil {
+		return RecordedScanObservation{}, storage.Snapshot{}, storage.ErrRemoteConfig
+	}
+	view, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return RecordedScanObservation{}, storage.Snapshot{}, err
+	}
+	defer view.Rollback()
+	return s.ScanSnapshotTx(ctx, view.Tx(), file)
+}
+
+// ScanSnapshotTx is the caller-transaction variant for real actor/target
+// resolvers. The snapshot's ChangeToken is Binding.ScanRevision; catalogue
+// callers must separately use catalog.ObservationRevision with their actual
+// library source. Neither revision is an immutable provider byte version.
+func (s *Service) ScanSnapshotTx(ctx context.Context, tx *sql.Tx, file string) (RecordedScanObservation, storage.Snapshot, error) {
+	empty := func(err error) (RecordedScanObservation, storage.Snapshot, error) {
+		return RecordedScanObservation{}, storage.Snapshot{}, err
+	}
+	if s == nil || tx == nil || !filepath.IsAbs(file) || filepath.Clean(file) != file {
+		return empty(storage.ErrRemoteConfig)
+	}
+	if err := ctx.Err(); err != nil {
+		return empty(err)
+	}
 	b, object, ok := s.find(file)
 	if !ok || b.Removed || !validObservationObject(object) {
-		return RecordedScanObservation{}, storage.ErrRemoteOffline
+		return empty(storage.ErrRemoteOffline)
 	}
-	gated, err := dbwork.BeginSnapshot(ctx, s.db)
-	if err != nil {
-		return RecordedScanObservation{}, err
+	var root, kind string
+	if err := tx.QueryRowContext(ctx, `SELECT root,kind FROM remote_sources WHERE id=? AND removed=0`, b.ID).Scan(&root, &kind); err != nil {
+		return empty(err)
 	}
-	defer gated.Rollback()
-	tx := gated.Tx()
+	if root != b.Root || kind != b.Kind {
+		return empty(storage.ErrRemoteChanged)
+	}
 	generation, err := observationGenerationTx(ctx, tx, b.ID)
 	if err != nil {
-		return RecordedScanObservation{}, err
+		return empty(err)
 	}
 	out, err := readScanObservationTx(ctx, tx, b.ID, object)
 	if errors.Is(err, sql.ErrNoRows) {
-		return RecordedScanObservation{}, storage.ErrRemoteChanged
+		return empty(storage.ErrRemoteChanged)
 	}
 	if err != nil {
-		return RecordedScanObservation{}, err
+		return empty(err)
 	}
 	if out.Ref.Generation != generation {
-		return RecordedScanObservation{}, storage.ErrRemoteChanged
+		return empty(storage.ErrRemoteChanged)
 	}
-	return out, nil
+	snapshot, err := observationSnapshot(b, generation, out.Observation.Facts)
+	if err != nil {
+		return empty(err)
+	}
+	if snapshot.ChangeToken != out.Observation.ScanRevision {
+		return empty(storage.ErrRemoteChanged)
+	}
+	return out, snapshot, nil
 }
 
 // CheckScanObservation rejects a retired scan observation even if the provider
