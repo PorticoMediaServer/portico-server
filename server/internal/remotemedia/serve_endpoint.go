@@ -26,6 +26,11 @@ type ServeEndpoint struct {
 type serveReconnectKey struct{}
 type serveListingReadKey struct{}
 
+type serveAdmissionFailure struct{ cause error }
+
+func (e *serveAdmissionFailure) Error() string { return "remote source admission refused" }
+func (e *serveAdmissionFailure) Unwrap() error { return e.cause }
+
 func NewServeEndpoint(port int, username, password string, connections int) (*ServeEndpoint, error) {
 	if port < 1 || port > 65535 || connections < 1 || connections > 256 || username == "" || password == "" || len(username) > 1024 || len(password) > 8192 || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") {
 		return nil, ErrPolicy
@@ -44,7 +49,7 @@ func NewServeEndpoint(port int, username, password string, connections int) (*Se
 				return nil, ErrPolicy
 			}
 			if err := check(); err != nil {
-				return nil, err
+				return nil, &serveAdmissionFailure{cause: err}
 			}
 			conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp4", address)
 			if err != nil {
@@ -52,7 +57,7 @@ func NewServeEndpoint(port int, username, password string, connections int) (*Se
 			}
 			if err := check(); err != nil {
 				conn.Close()
-				return nil, err
+				return nil, &serveAdmissionFailure{cause: err}
 			}
 			deadline := 15 * time.Second
 			if ctx.Value(serveListingReadKey{}) == true {
