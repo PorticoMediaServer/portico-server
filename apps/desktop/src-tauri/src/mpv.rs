@@ -262,6 +262,7 @@ impl Mpv {
             &&!self.flag("eof-reached")&&!self.flag("idle-active")
             &&self.number("audio-out-params/samplerate").is_some_and(|rate|rate>0.0)
             &&self.property("audio-out-params/format").is_some_and(|format|!format.starts_with("spdif"))
+            &&self.property("af").is_some_and(|chain|chain.contains(&format!("@{FILTER_LABEL}:")))
     }
     fn clear_leveling(&self)->Result<()> {
         self.leveling_applied.store(false,Ordering::Release);
@@ -293,6 +294,7 @@ impl Mpv {
             &&!self.flag("eof-reached")&&!self.flag("idle-active")
             &&self.number("audio-out-params/samplerate").is_some_and(|rate|rate>0.0)
             &&self.property("audio-out-params/format").is_some_and(|format|!format.starts_with("spdif"))
+            &&self.property("af").is_some_and(|chain|chain.contains(&format!("@{LEVELING_FILTER}:")))
     }
     fn finish_start(&self)->Result<()> {
         if !self.loaded.load(Ordering::Acquire)||!(self.starting.load(Ordering::Acquire)||self.equalizer_route_pending.load(Ordering::Acquire)){return Ok(());}
