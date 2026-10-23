@@ -670,7 +670,7 @@ func run() (runErr error) {
 	// Offline downloads read original bytes, in place, through the same isolated
 	// media process playback uses, and prepared bytes through the producer that
 	// owns them. It produces nothing itself and copies nothing.
-	offlineDownloads, e := downloads.New(downloads.Options{DB: db, OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
+	offlineDownloads, e := downloads.New(downloads.Options{DB: db, DeliveryConfiguration: player.DeliveryConfiguration, OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
 		return storeIO.OpenPlayback(ctx, path, size, modified)
 	}, Artifacts: preparedVersions, Optimizer: preparedVersions, Plays: cat.AcceptPlaybackProgressAt})
 	if e != nil {
