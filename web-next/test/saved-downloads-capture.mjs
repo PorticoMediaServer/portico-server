@@ -36,7 +36,8 @@ try {
     const bounds = element.getBoundingClientRect();
     return {bounds: {width: bounds.width, height: bounds.height}, text: element.textContent,
       title: (() => { const title = element.querySelector('h2'); const style = getComputedStyle(title); return {font: style.font, spacing: style.letterSpacing}; })(),
-      buttons: [...element.querySelectorAll('button')].map(button => ({text: button.textContent, label: button.getAttribute('aria-label'), width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height}))};
+      body: getComputedStyle(element.querySelector('p')).font,
+      buttons: [...element.querySelectorAll('button')].map(button => ({text: button.textContent, label: button.getAttribute('aria-label'), width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height, font: getComputedStyle(button).font, padding: getComputedStyle(button).padding}))};
   });
   await dialog.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'downloads-load-failure-dialog.jpg'), type: 'jpeg', quality: 95});
   await page.screenshot({path: join(process.env.PORTICO_RUNNER_OUTPUT, 'downloads-load-failure-panel.jpg'), type: 'jpeg', quality: 95, clip: {x: 510, y: 270, width: 420, height: 360}});
