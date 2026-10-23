@@ -85,6 +85,19 @@ class ReviewDeployment(unittest.TestCase):
                 self.assertEqual(saved.read_bytes(), source.read_bytes())
                 self.assertEqual(saved.stat().st_mode & 0o777, source.stat().st_mode & 0o777)
 
+    def test_feature_or_stale_cutoff_is_refused_before_build(self):
+        cutoff, current = 'a' * 40, 'b' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=current + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'actual published origin/main'):
+                build.require_current_main(Path('/checkout'), cutoff)
+            run.assert_not_called()
+
+    def test_current_remote_main_still_requires_checked_local_ancestry(self):
+        cutoff = 'a' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=cutoff + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'git')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                build.require_current_main(Path('/checkout'), cutoff)
+
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
         value = build.public_root(pem)
