@@ -87,6 +87,7 @@ try {
   await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('[data-reader-panel]')&&window.readerDisplayProof)document.fonts.ready.then(resolve);else if(performance.now()>until)reject(new Error('Display did not mount'));else requestAnimationFrame(check)};check()})`);
   await paint();
   assert.equal(await evaluate('document.activeElement?.textContent'), 'AaSepia');
+  await evaluate('Promise.all(document.querySelector("[data-reader-panel]").getAnimations().map(animation => animation.finished))');
   const bounds = await evaluate('document.querySelector("[data-reader-panel]").getBoundingClientRect().toJSON()');
   assert.equal(bounds.x, 460); assert.equal(bounds.y, 96); assert.equal(bounds.width, 360); assert.ok(bounds.height >= 720);
   // Match the existing reference crop's size/state. This is only the supplied
