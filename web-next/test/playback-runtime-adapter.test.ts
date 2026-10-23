@@ -5,12 +5,15 @@ import {HttpLocalApi} from '@core/index.ts';
 import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
 import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
 import type {ServerEvent} from '@core/playback-v1/types.ts';
+import {GroupSessionService} from '@core/group-session.ts';
+import {SOCIAL_PROTOCOL} from '@core/social-playback.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
 import {playbackPolicyNext} from '../src/platform/playback/policy.ts';
 import {dispatchWatchNext, watchUpNextOffer} from '../src/screens/watch/up-next.ts';
 import {watchBodyTarget, watchBodyKey} from '../src/screens/watch/body-target.ts';
+import {watchFeedbackTarget} from '../src/screens/watch/feedback.ts';
 import {playbackVersionRows} from '../src/platform/playback/version-rows.ts';
 import {WebCastSender, type CastBrowser, type CastSession} from '../src/platform/cast/index.ts';
 import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playback/types.ts';
@@ -2167,4 +2170,115 @@ test('the drawn automatic Up next progress uses the real policy clock and reject
   assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), true);await f.arrive();
   assert.equal(f.runtime.getSnapshot().session!.itemId, 'next');assert.equal(watchUpNextOffer(binding, shown), null);
   assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), false);
+});
+
+
+// Controlled room wire contracts exercise the actual canonical service, follower and media
+// runtime together. This is source qualification, never a real cohort/frame/receiver claim.
+async function runtimeRoom(t: TestContext, playing = false, canControl = true, markers = false) {
+  const f = setup(t, markers ? {skipModes: () => ({intro: 'auto'})} : {}), at = '2026-10-23T20:00:00Z';let roomId = 'room_first', revision = 1, state = playing ? 'playing' : 'paused', positionUs = '10000000';
+  const group = () => ({id: roomId, name: 'Actual room', state, hostAuthority: 'host-only', hostMemberId: 'member', revision: String(revision), playbackRevision: String(revision),
+    settingsRevision: '1', governanceRevision: '1', queueRevision: '1', reconnectGeneration: '1', lastCommand: state === 'playing' ? 'play' : 'pause', lastCommandId: 'command', endedReason: '',
+    eventOrdinal: String(revision), createdAt: at, updatedAt: at, permissions: {isHost: canControl, canControl, canManageQueue: canControl},
+    authority: {deviceId: 'device', playbackId: null, state: 'fresh'}, host: {presence: 'connected', lastSeenAt: at, pauseAt: null, endAt: null},
+    timeline: {itemId: 'movie', currentEntryId: 'group_entry', state, anchorPositionUs: positionUs, anchorAt: at, rate: {numerator: '1', denominator: '1'}, queuePosition: 0, waitUntil: null},
+    settings: {shuffleEnabled: false, repeatMode: 'none'}, sync: {noCorrectionUnderMs: 750, rateCorrectionMinimum: '0.90', rateCorrectionMaximum: '1.10', rateCorrectionMaxMs: 4000, seekAtOrOverMs: 3000},
+    readiness: {aggregate: 'ready', ready: 1, buffering: 0, lagging: 0, stale: 0, memberCount: 1},
+    members: [{id: 'member', displayName: 'Actual member', private: false, role: canControl ? 'host' : 'member', state: 'joined', readiness: 'ready', positionUs: '10000000', reportedAt: at, presence: 'connected', joinedAt: at}], queue: null, viewerMemberId: 'member'});
+  f.intercept(async (request, response) => {
+    if (markers && request.path.includes('/playback-offers?')) {const body = response.body as {current: {sourceId: string}};return {...response, body: {...body, markers: {sourceId: body.current.sourceId, revision: 'group_markers', markers: [introMarker]}}};}
+    if (!request.path.startsWith('/v1/groups/')) return response;
+    const ok = (body: unknown) => ({status: 200, headers: {}, body});
+    if (request.path.endsWith('/transport')) {
+      const command = (request.body as {command: string}).command;if (command === 'play') state = 'playing';else if (command === 'pause') state = 'paused';else if (command === 'seek') positionUs = (request.body as {positionUs: string}).positionUs;revision++;
+      return ok({protocolVersion: SOCIAL_PROTOCOL, groupId: roomId, idempotencyKey: (request.body as {idempotencyKey: string}).idempotencyKey,
+        disposition: 'accepted', groupState: state, command, revision: String(revision), playbackRevision: String(revision), queueRevision: '1', serverTime: at, recordedAt: at, timeline: group().timeline, settings: group().settings, override: null});
+    }
+    if (request.path.endsWith('/queue')) return ok({protocolVersion: SOCIAL_PROTOCOL, serverTime: at, groupId: roomId,
+      queue: {revision: '1', position: 0, entries: [{entryId: 'group_entry', position: 0, itemId: 'movie', unavailable: false, addedBy: 'member'}], eligibility: null}});
+    return ok({protocolVersion: SOCIAL_PROTOCOL, serverTime: at, group: group()});
+  });
+  const service = new GroupSessionService({api: f.api, now: () => Date.parse(at), heartbeatMs: 100000, stream: (_path, _last, signal) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new DOMException('closed', 'AbortError')), {once: true});
+  })});
+  const errors: unknown[] = [], unbind = f.runtime.bindGroup(service, () => true, error => errors.push(error));
+  t.after(() => {unbind();service.dispose();});
+  assert.equal(await service.open(roomId), true);await settle();await f.arrive();f.video.land();await settle();
+  return {...f, service, errors, nextRoom: async () => {roomId = 'room_second';await service.open(roomId);await settle();await f.arrive();}};
+}
+
+test('Together loads a paused room paused before the first picture and sends user controls through the real room revision', async t => {
+  const f = await runtimeRoom(t);
+  assert.deepEqual(f.errors, []);const shown = f.runtime.getSnapshot(), fence = shown.fence!;
+  assert.equal(shown.session!.state, 'paused');assert.equal(shown.playback.intent, 'paused');assert.equal(f.video.plays, 0, 'no play-then-pause first frame');
+  const started = f.log.find(request => request.method === 'POST' && request.path === '/v1/playback/sessions')!;
+  assert.equal((started.body as {state: string}).state, 'paused');assert.equal((started.body as {startPositionMs: number}).startPositionMs, 10000);
+  await f.runtime.resume(fence);await settle();
+  const commands = f.log.filter(request => request.path.endsWith('/transport'));
+  assert.equal(commands.length, 1);assert.equal((commands[0]!.body as {command: string}).command, 'play');
+  assert.equal((commands[0]!.body as {expectedRevision: string}).expectedRevision, '1');
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'playing');
+});
+
+test('Together read-only members cannot issue local transport, and the same title in another room is admitted afresh', async t => {
+  const f = await runtimeRoom(t, true, false), first = f.runtime.getSnapshot().fence!;
+  assert.deepEqual(f.errors, []);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'group_entry'), true);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'foreign_room', 'group_entry'), false);
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'foreign_entry'), false);
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('pause'), false);
+  await assert.rejects(f.runtime.pause(first), /playback_command_unavailable/);
+  assert.equal(f.log.filter(request => request.path.endsWith('/transport')).length, 0);
+  await f.nextRoom();
+  const second = f.runtime.getSnapshot().fence!;
+  assert.notEqual(second.sessionId, first.sessionId, 'room occurrence cannot inherit a same-item old engine fence');
+  assert.equal(f.runtime.groupPlaybackMatches(first, 'room_first', 'group_entry'), false);
+  assert.equal(f.runtime.groupPlaybackMatches(second, 'room_second', 'group_entry'), true);
+  await assert.rejects(f.runtime.pause(first), /stale_playback_command/);
+  assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 2);
+});
+
+
+test('Together never executes an unattended member skip locally; a permitted manual skip uses the real room transport', async t => {
+  const f = await runtimeRoom(t, true, true, true), fence = f.runtime.getSnapshot().fence!;
+  if (fence.kind !== 'queue') assert.fail('actual queue fence');
+  await f.service.transport('seek', {positionUs: '40000000'});await settle();
+  f.video.land(40);f.video.advance(40);await settle();
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.prompt?.kind, 'skip');
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek, undefined, 'device autoplay preferences cannot change the group clock');
+  await f.runtime.policyAction(fence, {kind: 'skip', markerId: 'intro'});await settle();
+  const commands = f.log.filter(request => request.path.endsWith('/transport') && (request.body as {command: string}).command === 'seek');
+  assert.deepEqual(commands.map(request => (request.body as {positionUs: string}).positionUs), ['40000000', '79000000']);
+  assert.equal(f.runtime.getSnapshot().playback.pendingSeek!.positionSeconds, 79, 'the canonical follower applies the accepted room clock');
+  assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
+});
+
+test('Together completion reports the actual room end without a private replay or queue advance', async t => {
+  const f = await runtimeRoom(t, true), fence = f.runtime.getSnapshot().fence!;
+  f.video.finish();await settle();
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ended');
+  assert.equal(f.runtime.getSnapshot().presentation!.finished, false, 'the room owns its next occurrence');
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('replay'), false);
+  assert.equal(f.runtime.getSnapshot().presentation!.policy!.endCountdown, undefined);
+  f.clock.advance(60000);await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence);
+  assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 1);
+  assert.equal(f.log.some(request => request.path.endsWith(':advance')), false);
+  await f.service.transport('seek', {positionUs: String(f.video.duration * 1000000)});await settle();
+  assert.ok(f.log.some(request => request.path.endsWith('/readiness') && (request.body as {ended?: boolean}).ended === true), 'the canonical follower reports a genuine ended observation against the current room revision');
+});
+
+test('Watch Feedback retains the actual item and full session fence and retires on a newer source', async t => {
+  const f = setup(t);await f.runtime.play('movie');await f.arrive();
+  const shown = f.runtime.getSnapshot(), binding = {runtime: f.runtime, environment: {locale: 'en-US'}, artwork: {} as never,
+    skips: {back: 10, forward: 30}, reportError: () => {}};
+  const target = watchFeedbackTarget(binding, shown)!;
+  assert.ok(target);assert.equal(target.item.id, shown.session!.itemId);assert.equal(target.item.title, 'movie');
+  assert.equal(target.playback.fence, shown.fence);assert.equal(target.playback.isCurrent(), true);
+  let changes = 0;const off = target.playback.subscribe(() => {changes++;});
+  await f.runtime.play('next_movie');await f.arrive();off();
+  assert.ok(changes > 0);assert.equal(target.playback.isCurrent(), false);assert.equal(watchFeedbackTarget(binding, shown), undefined);
+  assert.equal(watchFeedbackTarget(binding, {...f.runtime.getSnapshot(), session: {...f.runtime.getSnapshot().session!, itemId: 'foreign'}}), undefined);
+  await f.runtime.playFromGuide(homeChannel.channel, {signal: new AbortController().signal, isCurrent: () => true});await f.arriveLive();
+  assert.equal(watchFeedbackTarget(binding, f.runtime.getSnapshot()), undefined, 'a channel is not a fabricated title/session target');
 });

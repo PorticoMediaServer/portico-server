@@ -88,18 +88,19 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
-	Backend        HardwareBackend `json:"backend"`
-	Available      bool            `json:"available"`
-	Reason         string          `json:"reason"`
-	Encoder        string          `json:"encoder,omitempty"`
-	NativeFilters  bool            `json:"nativeFilters"`
-	ScaleFilters   bool            `json:"scaleFilters"`
-	ToneMapFilters bool            `json:"toneMapFilters"`
-	OutputEncoders map[string]bool `json:"outputEncoders,omitempty"`
-	OutputQuality  map[string]bool `json:"outputQuality,omitempty"`
-	Device         string          `json:"device,omitempty"`
-	Identity       string          `json:"identity"`
-	DurationMS     int64           `json:"durationMs"`
+	SelectedDeviceID string          `json:"-"`
+	Backend          HardwareBackend `json:"backend"`
+	Available        bool            `json:"available"`
+	Reason           string          `json:"reason"`
+	Encoder          string          `json:"encoder,omitempty"`
+	NativeFilters    bool            `json:"nativeFilters"`
+	ScaleFilters     bool            `json:"scaleFilters"`
+	ToneMapFilters   bool            `json:"toneMapFilters"`
+	OutputEncoders   map[string]bool `json:"outputEncoders,omitempty"`
+	OutputQuality    map[string]bool `json:"outputQuality,omitempty"`
+	Device           string          `json:"device,omitempty"`
+	Identity         string          `json:"identity"`
+	DurationMS       int64           `json:"durationMs"`
 }
 
 type backendSpec struct {
@@ -220,6 +221,8 @@ func SoftwareToneMap(algorithm string) string {
 // verdict. The cache key is the ffmpeg binary identity plus backend and device,
 // so replacing ffmpeg re-probes without a restart.
 type HardwareDetector struct {
+	// Devices supplies physical discovery only; candidates still require probes.
+	Devices func(context.Context) []HardwareDevice
 	// Timeout bounds one probe encode. Zero uses the default.
 	Timeout time.Duration
 	// Libraries are the confinement's readable dependency files, as resolved by
@@ -426,10 +429,14 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		bounded, cancel = context.WithTimeout(ctx, timeout)
 		out.OutputQuality["h264:8"] = d.run(bounded, executable, qualityArgs) == nil
 		cancel()
-		for _, depth := range []int{8, 10} {
-			hevcSpec := spec
-			hevcSpec.encoder = "hevc_" + string(backend)
-			args := probeArgs(hevcSpec, device, "")
+		for _, cell := range []struct {
+			codec string
+			depth int
+		}{{"hevc", 8}, {"hevc", 10}, {"av1", 8}, {"av1", 10}} {
+			depth := cell.depth
+			codecSpec := spec
+			codecSpec.encoder = cell.codec + "_" + string(backend)
+			args := probeArgs(codecSpec, device, "")
 			if depth == 10 {
 				for i := 0; i+1 < len(args); i++ {
 					if args[i] == "-vf" {
@@ -441,11 +448,12 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 				}
 			}
 			bounded, cancel = context.WithTimeout(ctx, timeout)
-			out.OutputEncoders["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, args) == nil
+			key := cell.codec + ":" + strconv.Itoa(depth)
+			out.OutputEncoders[key] = d.run(bounded, executable, args) == nil
 			cancel()
-			if out.OutputEncoders["hevc:"+strconv.Itoa(depth)] {
+			if out.OutputEncoders[key] {
 				bounded, cancel = context.WithTimeout(ctx, timeout)
-				out.OutputQuality["hevc:"+strconv.Itoa(depth)] = d.run(bounded, executable, probeQualityArgs(hevcSpec, device, depth)) == nil
+				out.OutputQuality[key] = d.run(bounded, executable, probeQualityArgs(codecSpec, device, depth)) == nil
 				cancel()
 			}
 		}
