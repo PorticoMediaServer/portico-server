@@ -12,6 +12,7 @@ Object.assign(globalThis, {__mobileActivityTest: state});
 const actualAccount = new URL('../src/kit/shell/AccountSurfaces.tsx', import.meta.url).href;
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === '@tanstack/react-router' && context.parentURL?.endsWith('/src/shell/DesktopNavigation.tsx')) return {url: 'mobile-activity:router', shortCircuit: true};
     if (context.parentURL?.endsWith('/src/shell/Shell.tsx')) {
       if (specifier === './viewport') return {url: 'mobile-activity:viewport', shortCircuit: true};
       if (specifier === '../kit/theme') return {url: 'mobile-activity:theme', shortCircuit: true};
@@ -32,7 +33,7 @@ registerHooks({
     if (url === 'mobile-activity:account') return {format: 'module', source: `
       import {createElement} from ${JSON.stringify(import.meta.resolve('react'))};
       import {AccountMenu as ActualAccountMenu} from ${JSON.stringify(actualAccount)};
-      export {ProfileAvatar} from ${JSON.stringify(actualAccount)};
+      export {ProfileAvatar, ProfileAvatarFace} from ${JSON.stringify(actualAccount)};
       export const AccountMenu = props => { globalThis.__mobileActivityTest.menus.push(props); return createElement(ActualAccountMenu, props); };
     `, shortCircuit: true};
     if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
@@ -46,7 +47,7 @@ const {AccountMenu} = await import('../src/kit/shell/AccountSurfaces.tsx');
 const {MenuSeparator} = await import('../src/kit/overlays/Popover.tsx');
 function identity(role: string): ShellIdentity {
   return {viewer: {serverId: 'server', accountId: 'account', profileId: 'profile', authority: 'local', role},
-    username: 'actual-account', profileName: 'Actual profile', primaryProfile: true,
+    username: 'actual-account', profileName: 'Actual profile', serverName: 'Actual server', primaryProfile: true,
     profiles: [], canManageProfiles: false, accountFacts: [], libraries: [], liveAvailable: false, unread: 0, showNotificationDot: false};
 }
 function render(role: string, width = 390, pathname = '/') {
@@ -75,19 +76,19 @@ test('compact owner Home has one statically labelled Activity glyph beside the a
     assert.match(html, />Libraries<\/span>/);
   }
 });
-test('medium owner rail keeps its named Dashboard action and profile at the bottom without private Activity reads', () => {
+test('medium owner rail mounts only its genuine owner Activity source and keeps the profile pinned', () => {
   for (const width of [600, 844, 1023]) {
     const {html, mounts} = render('owner', width);
-    assert.equal(mounts, 0);
+    assert.equal(mounts, 1);
     assert.match(html, /data-navigation="rail"/);
-    assert.match(html, /class="railBottom".*Server activity.*Settings.*Actual profile, account menu/s);
-    assert.doesNotMatch(html, /Owner-only reads|class="phoneHeader"/);
+    assert.match(html, /class="railBottom".*Owner-only reads.*Settings.*Actual profile, account menu/s);
+    assert.doesNotMatch(html, /class="phoneHeader"/);
   }
 });
 test('administrator, member and unknown roles never get the owner Home glyph or its private component', () => {
-  for (const role of ['admin', 'administrator', 'member', 'unknown', '']) {
-    const {html, mounts} = render(role);
-    assert.equal(mounts, 0); assert.doesNotMatch(html, /i-activity|aria-label="Server activity"/);
+  for (const role of ['admin', 'administrator', 'member', 'unknown', '']) for (const width of [390, 600, 1023, 1440]) {
+    const {html, mounts} = render(role, width);
+    assert.equal(mounts, 0); assert.doesNotMatch(html, /i-activity|aria-label="Server activity"|data-nav-activity|Owner-only reads/);
   }
 });
 test('genuine owner and administrator account actions navigate to their existing admitted Dashboard destination', () => {

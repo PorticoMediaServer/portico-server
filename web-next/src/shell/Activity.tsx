@@ -5,8 +5,12 @@ import type {TimeEnvironment} from '@core/presentation/kit-model/index.ts';
 import {TopBarActivity, type ActivityPanelView} from '../kit/shell';
 import type {ShellAssemblyContext} from './bootstrap';
 import {activityPanelView} from './activity-model';
+import {defaultI18n} from '@i18n';
+import {Icon} from '../kit/Icon';
 
-/** The component itself is mounted only for the desktop owner. No other role constructs a client. */
+export type OwnerActivityProps = Readonly<{presentation?: 'topbar' | 'rail' | 'sidebar'; className?: string}>;
+
+/** Only an owner surface mounts this service, using its existing scoped transport. */
 export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnvironment, onDashboard: ActivityPanelView['onDashboard'], openUpdate: () => void) {
   const mounted = new Set<ActivitySummaryService>();
   let retired = false;
@@ -17,7 +21,7 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
     getSnapshot: () => !retired && context.isCurrent() ? value : null,
     subscribe: listener => { sourceListeners.add(listener); return () => { sourceListeners.delete(listener); }; },
   };
-  function OwnerActivity() {
+  function OwnerActivity({presentation = 'topbar', className}: OwnerActivityProps) {
     const service = useMemo(() => new ActivitySummaryService({source}), []);
     const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
     const [open, setOpen] = useState(false);
@@ -28,6 +32,14 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
     }, [service]);
     const retry = () => { void service.retry(); };
     const view = activityPanelView(snapshot, context.facts.serverName, time, {onDashboard, onRetry: retry, openUpdate});
+    if (presentation !== 'topbar') {
+      const count = view.phase === 'ready' ? view.streamCount : undefined;
+      return <button type="button" className={className} data-nav-activity data-icon-only={presentation === 'rail' || undefined}
+        aria-label={count === undefined ? defaultI18n.t('next.shell.activity') : defaultI18n.t('next.shell.activityLabel', {count})} onClick={() => onDashboard()}>
+        <Icon name="i-act" size={22} />{presentation === 'sidebar' && <span data-nav-label>{defaultI18n.t('next.shell.activity')}</span>}
+        {count !== undefined && count > 0 && <span data-nav-count aria-hidden="true">{count}</span>}
+      </button>;
+    }
     return <TopBarActivity viewerRole="owner" view={view} open={open} onOpenChange={setOpen} />;
   }
   return {OwnerActivity, dispose: () => {
