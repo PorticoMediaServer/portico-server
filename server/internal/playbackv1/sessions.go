@@ -250,19 +250,33 @@ type Caller struct {
 	// connection (quality.home or quality.remote): "original", "automatic" or
 	// a ladder id. Empty means registry default; an error retains Original.
 	SavedQuality func(ctx context.Context) (string, error)
+	// SavedMusicQuality reads the source-defined music preference for this connection.
+	SavedMusicQuality func(ctx context.Context) (string, error)
 }
 
 // defaultQuality is the quality of a start that names none: the viewer's
 // saved default for where the request comes from.
-func (c *Caller) defaultQuality(ctx context.Context, audioOnly bool) Quality {
-	if c.SavedQuality == nil {
-		return savedQuality(playback.DefaultSavedQuality("", c.TransportClass, audioOnly))
+func (c *Caller) defaultQuality(ctx context.Context, kind string) Quality {
+	music := ""
+	if musicKind(kind) && c.SavedMusicQuality != nil {
+		var err error
+		music, err = c.SavedMusicQuality(ctx)
+		if err != nil {
+			return Quality{Mode: QualityOriginal}
+		}
+		if music != "" {
+			return musicQuality(music)
+		}
 	}
-	name, err := c.SavedQuality(ctx)
-	if err != nil {
-		return Quality{Mode: QualityOriginal}
+	saved := ""
+	if c.SavedQuality != nil {
+		var err error
+		saved, err = c.SavedQuality(ctx)
+		if err != nil {
+			return Quality{Mode: QualityOriginal}
+		}
 	}
-	return savedQuality(playback.DefaultSavedQuality(name, c.TransportClass, audioOnly))
+	return defaultQuality(saved, music, c.TransportClass, kind)
 }
 
 type replanKey struct{}
@@ -1007,7 +1021,7 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 	if kind == "song" || kind == "audiobook_file" || kind == "track" {
 		sessionKind = "audio"
 	}
-	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, sessionKind == "audio"), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
+	stored := storedRequest{VersionID: req.VersionID, Quality: c.defaultQuality(ctx, kind), Audio: req.Audio, Subtitles: req.Subtitles, Network: req.Network}
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}

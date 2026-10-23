@@ -1,0 +1,26 @@
+package playback
+
+import "portico.local/server/internal/qualityladder"
+
+// SavedMusicQualityPreference reads only a stored music choice. Transport is
+// never inferred from locality or device class, and grants no extra authority.
+func SavedMusicQualityPreference(values DeliveryPreferenceReader, class NetworkClass, transport string) string {
+	if values == nil {
+		return ""
+	}
+	key := "music.qualityAway"
+	if NormalizeTransportClass(transport) == "cellular" {
+		key = "music.qualityMobile"
+	} else if class == NetworkLocal {
+		return ""
+	}
+	if source, ok := values.(interface{ PreferenceSource(string) string }); ok && source.PreferenceSource(key) == "default" {
+		return ""
+	}
+	if value := values.Text(key); value != "" {
+		if _, ok := qualityladder.FindMusic(value); ok {
+			return value
+		}
+	}
+	return ""
+}

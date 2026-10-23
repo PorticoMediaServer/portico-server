@@ -87,6 +87,8 @@ export const preferenceMessages = {
   'pref.label.music.crossfadeMs': 'Crossfade',
   'pref.help.music.crossfadeMs': 'Overlap between songs.',
   'pref.value.music.crossfadeMs.0': 'Off',
+  'pref.label.music.qualityAway': 'Away from home',
+  'pref.label.music.qualityMobile': 'On mobile data',
   'pref.label.music.gapless': 'Gapless playback',
   'pref.label.music.shuffleDefault': 'Shuffle by default',
   'pref.label.music.repeatDefault': 'Repeat by default',
