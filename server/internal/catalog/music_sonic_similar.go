@@ -23,6 +23,16 @@ type sonicGroup struct {
 	vector sonic.Embedding
 }
 
+const currentSonicEligibleSQL = `EXISTS(SELECT 1 FROM catalog_asset_links source_link
+ JOIN catalog_assets source_asset ON source_asset.id=source_link.asset_id
+ JOIN inventory_objects source_object INDEXED BY inventory_objects_asset ON source_object.asset_id=source_asset.token
+ JOIN library_sources source_config ON source_config.id=source_object.source_id
+ WHERE source_link.entity_id=item.id AND source_link.available=1 AND source_asset.available=1
+ AND source_asset.audio_codec<>'' AND source_asset.duration>0
+ AND source_object.retired=0 AND source_object.state='available' AND source_object.unsupported_reason=''
+ AND source_object.size=source_asset.size AND source_object.modified_ns=source_asset.modified_ns
+ AND source_config.enabled=1 AND source_config.library_id=library.library_id AND source_object.root_incarnation=source_config.incarnation)`
+
 // currentSonicVectorSQL reads only the current source/version/range. The outer
 // item must already be permitted by the current viewer. A newer copy wins
 // deterministically; no global album/artist means can include hidden songs.
@@ -72,6 +82,7 @@ func (s *Service) sonicGroups(viewer Viewer, kind int, only int64, visit func(so
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
  JOIN catalog_entities target ON target.id=`+target+` AND target.retired=0
  WHERE item.kind=7 AND `+visible+`
+	 AND `+currentSonicEligibleSQL+`
  AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1
  AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
  ORDER BY target.id,item.id`, append([]any{sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256}, args...)...)
@@ -232,6 +243,7 @@ func QueueSonicRefreshTx(ctx context.Context, tx *sql.Tx) error {
 	 AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=configured.id),1)=1
 	 AND EXISTS(SELECT 1 FROM catalog_entities item WHERE item.library_id=library.id AND item.kind=7 AND item.retired=0
 	 AND EXISTS(SELECT 1 FROM catalog_item_availability available WHERE available.entity_id=item.id AND available.available=1 AND available.retired=0)
+	 AND `+currentSonicEligibleSQL+`
 	 AND `+currentSonicVectorSQL+` IS NULL)
 	 ON CONFLICT(library_id) DO UPDATE SET revision=excluded.revision`, sonic.ModelID, sonic.ModelVersion, sonic.ModelSHA256)
 	return err
