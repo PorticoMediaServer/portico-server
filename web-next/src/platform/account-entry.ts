@@ -2,15 +2,15 @@ import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
 import {directSignIn, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
-import type {ServerPin} from '@core/route-identity.ts';
-import type {AppSessionStore} from '@core/app-sessions.ts';
+import {assertFirstContactIdentity, RouteError, type ServerPin} from '@core/route-identity.ts';
+import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
 import {browserAppSessionActions, type BrowserAppSessionActions} from './app-sessions';
 import {browserServerDisplay} from './server-display';
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'identity'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  busy?:boolean; error?:unknown;
 }>;
@@ -38,30 +38,27 @@ export class BrowserAccountEntry {
  private release(){this.api?.getRouteConnection()?.dispose();this.api=undefined;this.session=undefined;this.challenge=undefined;}
  cancel(){++this.epoch;this.controller?.abort();this.probe.cancel();this.release();this.publish({phase:'welcome'});}
  address(){this.cancel();this.publish({phase:'address'});}
- async inspect(address:string){
+ async inspect(address:string,linkId?:string){
   this.cancel();const op=this.operation();this.publish({phase:'checking'});
   try{
    const server=await this.probe.inspect(address);if(!op.current())return;
    if(!server)throw this.probe.getSnapshot().error??new Error('The server did not answer.');
    const origin=this.probe.getSnapshot().origin!;
    const pin=await this.ports.inspect(origin,this.ports.environment(server.id),op.signal);
-   if(!op.current())return;if(pin.serverId!==server.id)throw new Error('The server identity changed.');
-   this.publish({phase:'identity',server,origin,pin});
-  }catch(error){if(op.current())this.publish({phase:'address',error});}
- }
- async confirmIdentity(){
-  const state=this.state;if(state.phase!=='identity'||!state.server||!state.pin||!state.origin||state.server.setupRequired)return;
-  const op=this.operation();this.publish({...state,busy:true,error:undefined});
-  try{
-   const connected=await this.ports.connect(state.origin,state.pin,this.ports.environment(state.server.id),op.signal);
+   if(!op.current())return;if(pin.serverId!==server.id)throw new RouteError('identity_mismatch','The server identity changed.');
+   assertFirstContactIdentity(origin,pin,{linkId,knownRoutes:knownServerRoutes(await this.ports.store.read())});
+   if(!op.current())return;if(server.setupRequired)throw new RouteError('setup_required','This server needs setup.');
+   const connected=await this.ports.connect(origin,pin,this.ports.environment(server.id),op.signal);
    if(!op.current()){connected.connection.dispose();return;}
    // A second kind read on the verified connection closes a change between discovery and entry.
    this.api=connected.api;
-   const server=parseServerSignIn(await connected.api.request(routePath('get_system'),'GET',undefined,op.signal));
-   if(!op.current())return;if(server.id!==state.server.id||server.signIn!==state.server.signIn)throw new Error('The server sign-in changed.');
-   this.ports.rememberName?.(connected.api,server.name);
-   this.publish({...state,server,phase:server.signIn==='local'?'password':'portico',busy:false});
-  }catch(error){if(op.current()){this.release();this.publish({...state,busy:false,error});}}
+   const verified=parseServerSignIn(await connected.api.request(routePath('get_system'),'GET',undefined,op.signal));
+   if(!op.current())return;if(verified.id!==server.id||verified.signIn!==server.signIn)throw new RouteError('identity_mismatch','The server sign-in changed.');
+   assertFirstContactIdentity(origin,pin,{linkId,knownRoutes:knownServerRoutes(await this.ports.store.read())});
+   if(!op.current())return;
+   this.ports.rememberName?.(connected.api,verified.name);
+   this.publish({server:verified,origin,pin,phase:verified.signIn==='local'?'password':'portico',busy:false});
+  }catch(error){if(op.current()){this.release();this.publish({phase:'address',error});}}
  }
  private async retire(api:HttpLocalApi,session:LocalSession){
   const cleanup=new HttpLocalApi(api.baseUrl,session.accessToken);const route=api.getRouteConnection();if(route)cleanup.useRoutes(route);

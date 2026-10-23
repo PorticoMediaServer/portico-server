@@ -64,8 +64,9 @@ export async function connectHostedServer(server:HostedServer,source:HostedConne
  const connection=new RouteConnection({pin:verified.document,logicalOrigin:origin,memory:{current:verified,paired:[]},fetcher:env.fetcher,crypto:env.crypto,discover:env.discover,fresh:async signal=>{const next=await currentDocument(source,env,verified.document,hosted.key,signal);hosted.key=next.key;return next.routes;}});
  try{await connection.resolve(signal);const api=new HttpLocalApi(origin,'',env.fetcher);api.useRoutes(connection);return {api,connection,hosted};}catch(e){connection.dispose();throw e;}
 }
-/** Explicit local pairing precedes credential entry. A public self-signed key is
- * not silently trusted; UI must display and confirm this pin. */
+/** Anonymous proof precedes credential entry. Native decides certificate trust first;
+ * browsers use their system trust store. No explicit fingerprint confirmation is shown.
+ * First-contact callers must also apply assertFirstContactIdentity to saved route owners. */
 export async function inspectDirectServer(origin:string,env:ConnectionEnvironment,signal:AbortSignal):Promise<ServerPin>{return probeRoute(routeOrigin(origin),undefined,{fetcher:env.fetcher,crypto:env.crypto,signal});}
 export async function connectPairedServer(origin:string,pin:ServerPin,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection}>{
  const checked=await serverPin(pin.serverId,pin.publicKey,pin.fingerprint,env.crypto);

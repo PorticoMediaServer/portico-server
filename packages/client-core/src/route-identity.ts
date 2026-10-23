@@ -27,6 +27,43 @@ export function routeBytes(value:unknown,length?:number,max=65536):Uint8Array {
  for(const c of value){buffer=(buffer<<6)|alphabet.indexOf(c);bits+=6;if(bits>=8){bits-=8;out[index++]=(buffer>>>bits)&255;}}
  if((length!==undefined&&out.length!==length)||out.length>max||routeBase64(out)!==value)throw new RouteError('invalid_identity','Invalid identity encoding.');return out;
 }
+const identityAlphabet='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** A readable comparison of a server identity, never an authentication credential.
+ * Callers must not display, log or transmit the expected value in a code challenge. */
+export function identityCode(serverId:string):string {
+ if(typeof serverId!=='string'||!/^srv_[A-Za-z0-9_-]{43}$/.test(serverId))throw new RouteError('invalid_identity','Invalid server identity.');
+ const digest=routeBytes(serverId.slice(4),32);
+ let n=0n;for(const byte of digest.subarray(0,8))n=(n<<8n)|BigInt(byte);
+ n%=31n**12n;
+ let code='';for(let i=0;i<12;i++){code=identityAlphabet[Number(n%31n)]+code;n/=31n;}
+ return code.slice(0,4)+'-'+code.slice(4,8)+'-'+code.slice(8);
+}
+/** Only a complete code is comparable; invalid symbols are never silently removed. */
+export function normaliseIdentityCode(input:string):string|undefined {
+ if(typeof input!=='string'||input.length>128||/[^A-Za-z2-9\s-]/.test(input))return;
+ const code=input.toUpperCase().replace(/[\s-]/g,'');
+ if(code.length!==12||[...code].some(c=>!identityAlphabet.includes(c)))return;
+ return code.slice(0,4)+'-'+code.slice(4,8)+'-'+code.slice(8);
+}
+/** Public identity and route ownership captured from the device's protected session record. */
+export type KnownServerRoute=Readonly<{signIn:'local'|'portico';pin:ServerPin;origins:readonly string[]}>;
+/** An address remains owned by every saved Local identity that remembers it. A link or a
+ * freshly typed address cannot replace that ownership; only an explicit Forget removes it. */
+export function knownRouteOwners(origin:string,known:readonly KnownServerRoute[]):readonly KnownServerRoute[] {
+ const checked=routeOrigin(origin);
+ return known.filter(value=>value.signIn==='local'&&value.origins.some(raw=>routeOrigin(raw)===checked));
+}
+export class FirstContactIdentityError extends RouteError {
+ readonly savedServerId?:string;
+ constructor(savedServerId?:string){super('identity_mismatch','The address did not prove the expected server identity. No credentials were sent.');this.savedServerId=savedServerId;}
+}
+/** Link expectation is checked first. A matching link still cannot take over a saved Local
+ * server's address. The proof must already have passed probeRoute's cryptographic checks. */
+export function assertFirstContactIdentity(origin:string,proof:ServerPin,context:Readonly<{linkId?:string;knownRoutes?:readonly KnownServerRoute[]}>={}):void {
+ if(context.linkId!==undefined&&(!/^srv_[A-Za-z0-9_-]{43}$/.test(context.linkId)||proof.serverId!==context.linkId))throw new FirstContactIdentityError();
+ const changed=knownRouteOwners(origin,context.knownRoutes??[]).find(value=>!sameServerPin(value.pin,proof));
+ if(changed)throw new FirstContactIdentityError(changed.pin.serverId);
+}
 /** Route crypto for a page without `crypto.subtle` (plain HTTP on the LAN is not a secure
  * context). The web app registers an audited JavaScript SHA-256 and Ed25519 here at startup;
  * the checks themselves are the same, only the implementation differs. */
