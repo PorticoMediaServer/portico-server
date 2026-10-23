@@ -505,6 +505,8 @@ export const webMessages = {
   'web.together.ended.empty': 'Everyone left.',
   'web.together.ended.other': 'The group is over.',
   'web.together.subtitle': 'Watch in sync with people on this server. Everyone sees the same moment, and the host keeps you together.',
+  'web.together.hostIntro': 'You host this group. Everyone here plays, pauses and skips together, each on their own screen.',
+  'web.together.here': '{count, number} here',
   'web.together.goAhead': 'Go ahead without them',
   'web.together.refused': 'Someone in the group can’t see this title on their profile.',
   'web.together.defaultName': '{name}’s group',

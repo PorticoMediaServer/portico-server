@@ -10,6 +10,9 @@ import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@cor
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeChannel} from '@core/home.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
+import type {GroupSessionService} from '@core/group-session.ts';
+import type {GroupTransportCommand} from '@core/social-playback.ts';
+import {bindRuntimeGroup, type RuntimeGroupBinding} from './group-binding.ts';
 import {localPlaybackScope} from '../../../../packages/player-core/src/index.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
@@ -89,6 +92,9 @@ export class WebShellPlaybackRuntime {
   private again = false;
   private sequence = 0;
   private operation = 0;
+  private group?: RuntimeGroupBinding;
+  private detachGroup?: () => void;
+  private groupRate = 1;
   private runtimeProblem?: string;
   private policyView: PolicyView | null = null;
   private policyAdvanceFence?: QueuePlaybackFence;
@@ -363,6 +369,54 @@ export class WebShellPlaybackRuntime {
     finally {lifetime.removeEventListener('abort', cancel);}
   }
 
+  /** Canonical room follower and local corrections share this runtime's one actual engine. */
+  bindGroup(service: GroupSessionService, isCurrent: () => boolean, reportError: (error: unknown) => void): () => void {
+    this.assertCurrent();if (this.group) problem('group_playback_already_bound');
+    const currentGroup = () => {const value = service.getSnapshot();return this.current() && isCurrent() && (value.phase === 'live' || value.phase === 'reconnecting') ? value.group : undefined;};
+    const owner = bindRuntimeGroup({service, isCurrent: () => this.current() && isCurrent(), reportError,
+      player: {
+        state: () => {const value = this.getSnapshot().playback;return {itemId: value.itemId ?? '', positionSeconds: value.positionSeconds,
+          playing: value.phase === 'ready' && value.intent === 'playing' && !value.audioEffects.waiting, ready: value.phase === 'ready',
+          buffering: value.phase === 'starting' || !!value.recovering || value.audioEffects.waiting, seeking: !!value.pendingSeek,
+          ...(value.duration > 0 ? {durationSeconds: value.duration} : {})};},
+        play: () => {if (currentGroup()?.timeline.itemId === this.stack.service.getSnapshot().itemId) this.stack.service.resume();},
+        pause: () => {if (currentGroup()?.timeline.itemId === this.stack.service.getSnapshot().itemId) this.stack.service.pause();},
+        seek: seconds => {if (currentGroup()?.timeline.itemId === this.stack.service.getSnapshot().itemId) this.stack.service.seek(seconds);},
+        setRate: rate => {if (this.current() && Number.isFinite(rate) && rate >= .25 && rate <= 4) {this.groupRate = rate;this.stack.service.setPlaybackRate(rate);this.stack.web.setRate(rate);this.sync();}},
+      },
+      load: (itemId, seconds, playing, context) => this.playGroupItem(itemId, seconds, playing, context),
+    });
+    this.group = owner;this.groupServices.set(owner, service);const off = service.subscribe(this.sync);this.sync();
+    const detach = () => {if (this.group !== owner) return;off();this.group = undefined;this.detachGroup = undefined;owner.dispose();this.groupRate = 1;if (this.current()) this.sync();};
+    this.detachGroup = detach;return detach;
+  }
+  private async playGroupItem(itemId: string, seconds: number, playing: boolean, context: WebPlaybackScreenLifetime): Promise<void> {
+    this.assertCurrent();if (!/^[A-Za-z0-9_.-]{1,128}$/.test(itemId) || !validSeconds(seconds) || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+    const serial = ++this.operation, previous = this.stack;
+    const raw = await this.source.api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, AbortSignal.any([context.signal, previous.life.signal, this.life.signal]));
+    if (!this.current(previous) || serial !== this.operation || context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+    const item = parseMediaItem(raw);if (item.id !== itemId || !item.available || raw.missing) problem('invalid_playback_target');
+    const stack = this.replace();stack.itemId = item.id;stack.libraryId = item.libraryId;stack.subject = itemSubject(raw);stack.posterUrl = item.posterUrl;stack.backdropUrl = item.backdropUrl;stack.expanded = stack.subject.kind !== 'music';
+    const signal = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+    const current = () => !signal.aborted && this.current(stack) && serial === this.operation && context.isCurrent();
+    const cancel = () => {if (this.current(stack) && serial === this.operation) stack.service.leave();};
+    signal.addEventListener('abort', cancel, {once: true});
+    try {
+      await stack.queue.playItem(itemId, seconds, undefined, undefined, undefined, undefined, {signal, isCurrent: current, state: playing ? 'playing' : 'paused'});
+      if (!current()) problem('stale_selection_context');
+      if (stack.queue.currentSession()?.itemId !== itemId || stack.service.getSnapshot().phase === 'error') problem('group_playback_failed');
+      this.sync();
+    } catch (error) {cancel();throw error;} finally {signal.removeEventListener('abort', cancel);}
+  }
+  private async groupTransport(command: GroupTransportCommand, fence: PlaybackFence, seconds?: number): Promise<boolean> {
+    if (!this.group?.matches(fence)) return false;
+    const group = this.group.active();if (!group?.permissions.canControl) problem('group_control_forbidden');
+    // The screen's service owns its actual expected revision and refusal/readback path.
+    const service = this.groupServices.get(this.group);if (!service) problem('group_playback_unavailable');
+    await service.transport(command, seconds === undefined ? {} : {positionUs: String(Math.round(seconds * 1e6))});return true;
+  }
+  private readonly groupServices = new WeakMap<RuntimeGroupBinding, GroupSessionService>();
+
   /** A chooser reads real current options without stopping the playing source. Its owner keeps
    * this read alive until the chosen start settles, then closes/disposes the chooser. */
   async readVersions(expected: QueuePlaybackFence, signal: AbortSignal, {excludeFailed = false}: Readonly<{excludeFailed?: boolean}> = {}): Promise<WebPlaybackVersionChoices | null> {
@@ -611,7 +665,7 @@ export class WebShellPlaybackRuntime {
       if (fence && stack.subject) {
         this.choices.begin(fence.playback); this.choices.bindSource(fence);
         const savedSpeed = stack.subject.kind === 'music' || stack.subject.kind === 'channel' ? 1 : stack.subject.kind === 'audiobook' ? this.source.settings.audiobookSpeed() : this.source.settings.videoSpeed();
-        const speed = this.choices.get('speed', fence.playback, savedSpeed);
+        const speed = this.group?.matches(fence) ? this.groupRate : this.choices.get('speed', fence.playback, savedSpeed);
         stack.service.setPlaybackRate(speed); stack.web.setRate(speed);
         const timing = {positionSeconds: playback.pendingSeek?.positionSeconds ?? playback.positionSeconds, playing: playback.intent === 'playing' && playback.phase !== 'ended' && playback.phase !== 'error', expanded: stack.expanded};
         // v1 is not the strict player-core QueueSnapshot protocol. Keep its genuine queue
@@ -655,6 +709,14 @@ export class WebShellPlaybackRuntime {
         if (fence.kind === 'queue' && queue?.next.available && !playback.ended) controls.push('next');
         if (fence.kind === 'queue' && queue && (queue.queue.entries.findIndex(entry => entry.id === fence.entryId) > 0 || playback.positionSeconds > 3) && !playback.ended) controls.push('previous');
         if (this.source.settings.webVolume() && this.video) controls.push('volume');
+        if (this.group?.matches(fence)) {
+          const group = this.group.active(), queue = this.groupServices.get(this.group)?.getSnapshot().queue ?? group?.queue;
+          if (!group?.permissions.canControl) controls.splice(0, controls.length, ...controls.filter(value => value === 'volume'));
+          else if (queue) {
+            if (queue.entries.some(entry => entry.position > queue.position && !entry.unavailable && entry.itemId) && !controls.includes('next')) controls.push('next');
+            if (queue.entries.some(entry => entry.position < queue.position && !entry.unavailable && entry.itemId) && !controls.includes('previous')) controls.push('previous');
+          }
+        }
         presentation = {fence, subject: stack.subject, kind: stack.subject.kind === 'channel' ? 'video' : stack.subject.kind, posterUrl: stack.posterUrl, backdropUrl: stack.backdropUrl, durationSeconds: playback.duration, positionSeconds: local.positionSeconds, playing: local.playing, expanded: stack.expanded, finished, controls, volume: this.video?.volume ?? 1, muted: this.video?.muted ?? false, rate: speed, policy: this.policyView, ...(playback.channel && playback.linear ? {seekWindow: {startSeconds: Number(playback.linear.media.windowStartUs) / 1e6, endSeconds: Number(playback.linear.media.windowEndUs) / 1e6}} : {})};
         this.renderSubtitles(stack);
       }
@@ -849,14 +911,14 @@ export class WebShellPlaybackRuntime {
     });
   }
 
-  async pause(fence: PlaybackFence): Promise<void> { this.offered(fence, 'pause').service.pause(); }
-  async resume(fence: PlaybackFence): Promise<void> { this.offered(fence, 'play').service.resume(); }
+  async pause(fence: PlaybackFence): Promise<void> {const stack = this.offered(fence, 'pause');if (!await this.groupTransport('pause', fence)) stack.service.pause();}
+  async resume(fence: PlaybackFence): Promise<void> {const stack = this.offered(fence, 'play');if (!await this.groupTransport('play', fence)) stack.service.resume();}
   async toggle(fence: PlaybackFence): Promise<void> { const stack = this.require(fence); if (stack.service.getSnapshot().intent === 'playing') await this.pause(fence); else await this.resume(fence); }
-  async seek(fence: PlaybackFence, seconds: number): Promise<void> { if (!validSeconds(seconds)) problem('invalid_playback_position'); const stack = this.offered(fence, 'seek'); stack.service.seek(Math.min(stack.service.getSnapshot().duration || Infinity, seconds)); }
+  async seek(fence: PlaybackFence, seconds: number): Promise<void> {if (!validSeconds(seconds)) problem('invalid_playback_position');const stack = this.offered(fence, 'seek');if (!await this.groupTransport('seek', fence, seconds)) stack.service.seek(Math.min(stack.service.getSnapshot().duration || Infinity, seconds));}
   async skip(fence: PlaybackFence, seconds: number): Promise<void> { if (!Number.isFinite(seconds)) problem('invalid_playback_position'); const stack = this.require(fence); await this.seek(fence, Math.max(0, (stack.service.getSnapshot().pendingSeek?.positionSeconds ?? stack.service.getSnapshot().positionSeconds) + seconds)); }
   async replay(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'replay'); await stack.service.play(fence.itemId, 0); if (this.current(stack)) this.sync(); }
-  async previous(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'previous'); await stack.queue.previous(); if (this.current(stack)) this.sync(); }
-  async next(fence: PlaybackFence): Promise<void> { if (fence.kind !== 'queue') problem('playback_command_unavailable'); const stack = this.offered(fence, 'next'), view = stack.queue.getSnapshot().view; if (!view) problem('playback_command_unavailable'); await stack.queue.next(view.queue.id, view.queue.revision); if (this.current(stack)) this.sync(); }
+  async previous(fence: PlaybackFence): Promise<void> {if (fence.kind !== 'queue') problem('playback_command_unavailable');const stack = this.offered(fence, 'previous');if (!await this.groupTransport('previous', fence)) await stack.queue.previous();if (this.current(stack)) this.sync();}
+  async next(fence: PlaybackFence): Promise<void> {if (fence.kind !== 'queue') problem('playback_command_unavailable');const stack = this.offered(fence, 'next');if (!await this.groupTransport('next', fence)) {const view = stack.queue.getSnapshot().view;if (!view) problem('playback_command_unavailable');await stack.queue.next(view.queue.id, view.queue.revision);}if (this.current(stack)) this.sync();}
   open(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = true; this.dock.expand(fence); this.sync(); }
   collapse(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = false; this.dock.collapse(fence); this.surface?.guard(false); this.surface?.clear(); this.sync(); }
   async stop(fence: PlaybackFence): Promise<void> { this.require(fence); this.rememberCurrent(); await this.onTransition(this.dock.close(fence)); }
@@ -1033,6 +1095,7 @@ export class WebShellPlaybackRuntime {
   dispose(): void {
     if (this.disposed) return;
     this.replacing = true; ++this.operation;
+    this.detachGroup?.();
     this.retire(this.stack); this.disposed = true;
     this.clearTimer(this.timer); this.timer = undefined;
     for (const off of this.lifecycle.splice(0)) off();
