@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/catalog"
 	"strconv"
 	"strings"
 	"time"
@@ -387,6 +388,9 @@ func (s *Service) timelineChannel(ctx context.Context, r row, report Report) (ti
 		}
 		changed := state != r.state
 		revision := r.revision
+		if e := catalog.RecordLivePlaybackTx(tx, r.id, now.UnixMilli(), report.State); e != nil {
+			return e
+		}
 		if changed {
 			revision++
 		}

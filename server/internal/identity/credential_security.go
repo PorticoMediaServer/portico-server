@@ -227,6 +227,9 @@ type currentPasswordProof struct {
 // must never hold SQLite's one writer or either hash slot during a cool-off.
 // The mutation rechecks this exact hash in its own transaction before writing.
 func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password string) (currentPasswordProof, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return currentPasswordProof{}, err
+	}
 	var proof currentPasswordProof
 	read, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
@@ -283,6 +286,9 @@ func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password str
 }
 
 func (s *Service) checkCurrentPasswordProofTx(ctx context.Context, tx *sql.Tx, bearer string, proof currentPasswordProof) (directCaller, error) {
+	if err := RequireSignInKindTx(ctx, tx, SignInLocal); err != nil {
+		return directCaller{}, err
+	}
 	c, err := s.directCallerTx(ctx, tx, bearer, true)
 	if err != nil || c.account.ID != proof.account {
 		return directCaller{}, ErrUnauthorized

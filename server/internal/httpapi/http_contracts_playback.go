@@ -178,14 +178,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/router.go:856
-	if err := apikit.RegisterHTTP[struct{}, struct {
-		Id               string `json:"id"`
-		Name             string `json:"name"`
-		SetupRequired    bool   `json:"setupRequired"`
-		HostedConfigured bool   `json:"hostedConfigured"`
-		HostedAttached   bool   `json:"hostedAttached"`
-		Version          string `json:"version"`
-	}](registry, apikit.Metadata{ID: "get_system", Method: "GET", Path: "/v1/system", Summary: "Read system", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SystemInfo](registry, apikit.Metadata{ID: "get_system", Method: "GET", Path: "/v1/system", Summary: "Read system", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/router.go:859
