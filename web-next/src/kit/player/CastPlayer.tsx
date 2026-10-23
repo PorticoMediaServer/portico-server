@@ -13,8 +13,8 @@ export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef
   const remote = snapshot.remote;
   if (!remote || snapshot.disposed) return null;
   const t = defaultI18n.t, open = snapshot.panel === 'remote' && remote.phase === 'playing';
-  const position = clockText(remote.positionSeconds) ?? '', remaining = clockText(Math.max(0, remote.durationSeconds - remote.positionSeconds)) ?? '';
-  const back = visuals?.skipBackSeconds ?? 0, forward = visuals?.skipForwardSeconds ?? 0;
+  const position = remote.positionKnown ? clockText(remote.positionSeconds) ?? '' : '', remaining = clockText(Math.max(0, remote.durationSeconds - remote.positionSeconds)) ?? '';
+  const back = visuals.skipBackSeconds, forward = visuals.skipForwardSeconds;
   return <Dialog open={open} onOpenChange={() => controller.closePanel()} title={t('next.dock.castControls')} showCloseButton={false} responsive={false}
     returnFocusRef={returnFocusRef} className={styles.remoteDialog} bodyClassName={styles.remoteBody}>
     <div className={styles.remote} data-phone={phone || undefined}>
@@ -24,16 +24,16 @@ export function CastPlayer({controller, snapshot, visuals, phone, returnFocusRef
         <span><small>{t('next.cast.playingOn')}</small><b>{remote.deviceName}</b></span>
         {visuals?.onMore && <Control icon="i-more" label={t('next.controls.more')} onClick={visuals.onMore} />}
       </header>
-      <Artwork source={visuals?.artwork} alt={visuals?.identity.title ?? remote.title ?? ''} className={styles.remoteArt} />
-      <div className={styles.remoteIdentity}><div><b>{visuals?.identity.title ?? remote.title}</b>{visuals?.identity.subtitle && <span><Facts parts={visuals.identity.subtitle} /></span>}</div>
+      <Artwork source={visuals?.artwork} alt={visuals.identity?.title ?? remote.title ?? ''} className={styles.remoteArt} />
+      <div className={styles.remoteIdentity}><div><b>{visuals.identity?.title ?? remote.title}</b>{visuals.identity?.subtitle && <span><Facts parts={visuals.identity!.subtitle} /></span>}</div>
         {visuals?.onMyList && <Control icon="i-plus" label={t('entry.addToWatchlist')} onClick={visuals.onMyList} />}</div>
       <div className={styles.remoteScrub}><Slider variant="player" value={remote.positionSeconds} min={0} max={remote.durationSeconds || 1} step={1} disabled={!remote.durationSeconds}
         aria-label={t('next.dock.remotePosition')} aria-valuetext={t('next.dock.positionOf', {position, duration: clockText(remote.durationSeconds) ?? ''})} onValueChange={seconds => controller.seek(remote, seconds)} />
         <div className={styles.remoteTimes}><span>{position}</span><span>{remote.durationSeconds ? '-' + remaining : ''}</span></div></div>
       <div className={styles.remoteTransport}>
-        <Control icon="i-rew" iconSize={38} skip={back} disabled={!back} label={t('next.dock.back', {seconds: back})} onClick={() => controller.seek(remote, Math.max(0, remote.positionSeconds - back))} />
-        <Control primary icon={remote.paused ? 'i-play' : 'i-pause'} iconSize={34} label={t(remote.paused ? 'next.dock.play' : 'next.dock.pause')} onClick={() => controller.toggle(remote)} />
-        <Control icon="i-fwd" iconSize={38} skip={forward} disabled={!forward} label={t('next.dock.forward', {seconds: forward})} onClick={() => controller.seek(remote, remote.positionSeconds + forward)} />
+        <Control icon="i-rew" iconSize={38} skip={back} disabled={!remote.positionKnown || !back} label={t('next.dock.back', {seconds: back})} onClick={() => controller.seek(remote, Math.max(0, remote.positionSeconds - back))} />
+        <Control primary disabled={!remote.positionKnown} icon={remote.paused ? 'i-play' : 'i-pause'} iconSize={34} label={t(remote.paused ? 'next.dock.play' : 'next.dock.pause')} onClick={() => controller.toggle(remote)} />
+        <Control icon="i-fwd" iconSize={38} skip={forward} disabled={!remote.positionKnown || !forward} label={t('next.dock.forward', {seconds: forward})} onClick={() => controller.seek(remote, remote.positionSeconds + forward)} />
       </div>
       <div className={styles.remoteActions}>
         {!!snapshot.cast.textTracks.length && <button type="button" onClick={() => controller.openTracks(remote)}><Icon name="d-cc" size={16} />{t('next.cast.subtitles')}</button>}

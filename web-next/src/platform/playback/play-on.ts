@@ -5,7 +5,7 @@ import type {WebShellPlaybackRuntime} from './runtime';
 
 /** Structural contract agreed with platform/cast. No SDK, script, receiver or URL logic here. */
 export type WebCastPort = Readonly<{
-  getSnapshot(): CastSnapshot & Readonly<{device?: Readonly<{name: string; id?: string}>}>;
+  getSnapshot(): CastSnapshot & Readonly<{device?: Readonly<{name: string; id?: string}>; receiver?: Readonly<{itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean}>}>;
   subscribe(listener: () => void): () => void;
   prepareOnIdle(): () => void;
   prepareForPlayer(): Promise<boolean>;
@@ -23,8 +23,8 @@ export type CastRemotePhase = 'connecting' | 'pairing' | 'waiting' | 'playing' |
 export type CastRemoteToken = Readonly<{id: string; sequence: number}>;
 export type CastRemoteView = CastRemoteToken & Readonly<{
   phase: CastRemotePhase; confirmed: boolean; itemId?: string; title?: string; deviceName?: string;
-  positionSeconds: number; durationSeconds: number; paused: boolean;
-  source?: WebPlaybackPresentation;
+  positionKnown: boolean; positionSeconds: number; durationSeconds: number; paused: boolean;
+  source?: WebPlaybackPresentation; metadata?: CastMetadata;
 }>;
 export type PlayOnSnapshot = Readonly<{
   cast: ReturnType<WebCastPort['getSnapshot']>; airPlayAvailable: boolean;
@@ -36,6 +36,8 @@ export type PlayOnControllerOptions = Readonly<{
   /** The assembly's real viewer/authority lifetime, never a route lifetime. */
   isCurrent(): boolean;
   reportError(error: unknown): void;
+  /** Current viewer's actual catalogue metadata; never a fabricated playback session. */
+  describeItem?: (itemId: string) => Promise<CastMetadata>;
   now?: () => number; key?: () => string;
   setTimer?: (callback: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -51,9 +53,10 @@ export class PlayOnController {
   private attempt?: {id: string; serial: number; source: WebPlaybackPresentation; choices: CastChoices & {queue?: {queueId: string; entryId: string}}; handedOff: boolean};
   private expiry?: unknown;
   private terminalAt?: number;
-  private playerPrepared = false;
+  private playerOpen = false;
   private disposed = false;
   private dismissing = false;
+  private describedItem?: string;
   constructor(private readonly options: PlayOnControllerOptions) {
     this.state = Object.freeze({cast: options.sender.getSnapshot(), airPlayAvailable: options.airPlay?.available() === true, panel: null, disposed: false});
     this.detach.push(options.sender.subscribe(this.senderChanged), options.runtime.subscribe(this.runtimeChanged), options.sender.prepareOnIdle());
@@ -82,10 +85,11 @@ export class PlayOnController {
   private runtimeChanged = (): void => {
     if (!this.current()) { this.dispose(); return; }
     const snapshot = this.options.runtime.getSnapshot();
-    if (snapshot.presentation?.expanded && !this.playerPrepared) {
-      this.playerPrepared = true;
+    const playerOpen = snapshot.presentation?.expanded === true;
+    if (playerOpen && !this.playerOpen) {
       void this.options.sender.prepareForPlayer().catch(this.options.reportError);
     }
+    this.playerOpen = playerOpen;
     const attempt = this.attempt;
     if (attempt && !attempt.handedOff && !sameFence(snapshot.fence, attempt.source.fence)) {
       ++this.serial; this.attempt = undefined;
@@ -103,16 +107,28 @@ export class PlayOnController {
     }
     const phase: CastRemotePhase = cast.phase === 'casting' ? 'playing' : cast.phase === 'off' ? 'stopped' : cast.phase;
     const confirmed = phase === 'playing' || previous?.confirmed === true;
+    const itemId = cast.receiver?.itemId ?? cast.itemId ?? previous?.itemId ?? (attempt?.source.fence.kind === 'queue' ? attempt.source.fence.itemId : undefined);
+    const receiver = cast.receiver?.itemId === itemId ? cast.receiver : undefined;
+    const sourceCandidate = attempt?.source ?? previous?.source;
+    const source = sourceCandidate?.fence.kind === 'queue' && sourceCandidate.fence.itemId === itemId ? sourceCandidate : undefined;
+    const itemChanged = !!previous?.itemId && !!itemId && previous.itemId !== itemId;
     // Off/replaced can clear the sender's title/device. Keep the last actual receiver position.
     const remote: CastRemoteView = Object.freeze({
       id: attempt?.id ?? previous?.id ?? (this.options.key ?? (() => crypto.randomUUID()))(), sequence: ++this.sequence,
-      phase, confirmed, source: attempt?.source ?? previous?.source,
-      itemId: cast.itemId ?? previous?.itemId ?? (attempt?.source.fence.kind === 'queue' ? attempt.source.fence.itemId : undefined),
-      title: cast.title ?? previous?.title, deviceName: cast.device?.name ?? cast.deviceName ?? previous?.deviceName,
-      positionSeconds: phase === 'stopped' || phase === 'replaced' ? previous?.positionSeconds ?? cast.positionSeconds : cast.positionSeconds,
-      durationSeconds: cast.durationSeconds || previous?.durationSeconds || attempt?.source.durationSeconds || 0, paused: cast.paused,
+      phase, confirmed, source, itemId, metadata: itemChanged ? undefined : previous?.metadata,
+      title: itemChanged ? undefined : previous?.metadata?.title ?? (source || !previous?.itemId ? cast.title : previous?.title), deviceName: cast.device?.name ?? cast.deviceName ?? previous?.deviceName,
+      positionKnown: !!receiver, positionSeconds: receiver?.positionSeconds ?? 0, durationSeconds: receiver?.durationSeconds ?? 0, paused: receiver?.paused ?? cast.paused,
     });
     this.publish({cast, remote, ...(phase === 'stopped' || phase === 'replaced' || phase === 'error' ? {panel: null} : {})});
+    if (itemId && this.options.describeItem && this.describedItem !== itemId) {
+      this.describedItem = itemId;
+      const id = remote.id;
+      void this.options.describeItem(itemId).then(metadata => {
+        const latest = this.state.remote;
+        if (!this.current() || !latest || latest.id !== id || latest.itemId !== itemId) return;
+        this.publish({remote: Object.freeze({...latest, title: metadata.title, metadata, sequence: ++this.sequence})});
+      }).catch(this.options.reportError);
+    }
     if (phase === 'stopped' || phase === 'replaced' || phase === 'error') this.terminal();
     else this.clearExpiry();
     // Only an explicit source attempt hands off local playback. SDK adoption does not stop an
@@ -133,8 +149,9 @@ export class PlayOnController {
   startCast(): Promise<boolean> {
     this.assertCurrent();
     const snapshot = this.options.runtime.getSnapshot(), source = snapshot.presentation;
+    if (['connecting', 'pairing', 'waiting'].includes(this.state.cast.phase)) return Promise.resolve(false);
     if (!this.state.cast.available || !source || source.fence.kind !== 'queue' || !snapshot.session?.queue || snapshot.session.itemId !== source.fence.itemId) return Promise.resolve(false);
-    this.clearExpiry();
+    this.clearExpiry(); this.describedItem = undefined;
     const item = source.subject.kind === 'channel' ? undefined : source.subject.item;
     if (!item) return Promise.resolve(false);
     const serial = ++this.serial;
@@ -160,7 +177,7 @@ export class PlayOnController {
   toggle(token: CastRemoteToken): void { if (this.requireRemote(token).phase === 'playing') this.options.sender.toggle(); }
   seek(token: CastRemoteToken, seconds: number): void {
     const remote = this.requireRemote(token);
-    if (remote.phase !== 'playing' || !Number.isFinite(seconds) || seconds < 0) return;
+    if (remote.phase !== 'playing' || !remote.positionKnown || !Number.isFinite(seconds) || seconds < 0) return;
     this.options.sender.seek(remote.durationSeconds > 0 ? Math.min(seconds, remote.durationSeconds) : seconds);
   }
   audio(token: CastRemoteToken, id: number): void { if (this.requireRemote(token).phase === 'playing' && this.state.cast.audioTracks.some(track => track.id === id)) this.options.sender.setAudioTrack(id); }
@@ -170,12 +187,12 @@ export class PlayOnController {
     if (!remote.confirmed) { this.attempt = undefined; this.options.sender.cancelConnecting(); this.clearExpiry(); this.publish({remote: undefined, panel: null}); return; }
     this.options.sender.stop();
   }
-  dismiss(token: CastRemoteToken): void { this.requireRemote(token); ++this.serial; this.attempt = undefined; this.clearExpiry(); this.dismissing = true;
+  dismiss(token: CastRemoteToken): void { this.requireRemote(token); ++this.serial; this.attempt = undefined; this.describedItem = undefined; this.clearExpiry(); this.dismissing = true;
     try { this.options.sender.dismiss(); } finally { this.dismissing = false; }
     this.publish({cast: this.options.sender.getSnapshot(), remote: undefined, panel: null}); }
   async continueHere(token: CastRemoteToken): Promise<void> {
     const remote = this.requireRemote(token);
-    if (!remote.confirmed || remote.phase !== 'stopped' || !remote.itemId) return;
+    if (!remote.confirmed || !remote.positionKnown || remote.phase !== 'stopped' || !remote.itemId) return;
     const position = remote.positionSeconds, itemId = remote.itemId;
     this.dismiss(token);
     await this.options.runtime.play(itemId, position);
@@ -183,7 +200,7 @@ export class PlayOnController {
   answerTakeover(allow: boolean): void { this.assertCurrent(); this.options.sender.answerTakeover(allow); }
   dispose(): void {
     if (this.disposed) return;
-    this.clearExpiry(); ++this.serial; this.attempt = undefined;
+    this.clearExpiry(); ++this.serial; this.attempt = undefined; this.describedItem = undefined;
     for (const off of this.detach.splice(0)) off();
     this.options.sender.dispose();
     this.disposed = true;

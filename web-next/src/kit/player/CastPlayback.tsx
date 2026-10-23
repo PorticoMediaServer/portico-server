@@ -8,7 +8,7 @@ import type {CastPlayerVisuals} from './types';
 
 /** Sibling controls only. The shell's existing MediaSurface/video remain their sole owner. */
 export function CastPlayback({controller, visuals, phone, anchorRef, reportError}: Readonly<{
-  controller: PlayOnController; visuals?: CastPlayerVisuals; phone: boolean;
+  controller: PlayOnController; visuals: CastPlayerVisuals; phone: boolean;
   anchorRef: RefObject<HTMLElement | null>; reportError: (error: unknown) => void;
 }>) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);

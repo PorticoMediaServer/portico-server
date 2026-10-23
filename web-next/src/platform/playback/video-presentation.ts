@@ -14,7 +14,9 @@ export function videoPresentationLayout(window: PlaybackWindow, docked: boolean)
   const {width, height, hinge} = window;
   if (![width, height].every(n => Number.isFinite(n) && n > 0)) throw new Error('invalid_playback_window');
   if (docked) return {mode: 'docked', hideStatusAndRail: false, panelWidth: 0, picture: {x: 0, y: 0, width: 0, height: 0}};
+  if (hinge && (![hinge.x, hinge.y, hinge.width, hinge.height].every(n => Number.isFinite(n) && n >= 0) || hinge.x + hinge.width > width || hinge.y + hinge.height > height)) throw new Error('invalid_playback_hinge');
   const vertical = hinge?.axis === 'vertical' ? hinge : undefined;
+  if (window.posture === 'book' && !vertical || window.posture === 'tabletop' && hinge?.axis !== 'horizontal') throw new Error('playback_hinge_unavailable');
   const panelWidth = vertical ? width - vertical.x - vertical.width : Math.min(380, width);
   if (window.posture === 'book' && vertical) {
     const band = {x: Math.max(0, vertical.x - 16), y: 0, width: vertical.width + 32, height};
@@ -37,10 +39,12 @@ export class VideoPresentationContinuity {
   private key?: string;
   apply(window: PlaybackWindow, docked: boolean, reducedMotion: boolean,
     effects: Readonly<{layout(value: VideoPresentationLayout): void; crossfade(ms: number): void; revealControls(ms: number): void}>): void {
-    const key = JSON.stringify([window, docked]);
+    const h = window.hinge;
+    const key = JSON.stringify([window.width, window.height, window.posture, h?.axis, h?.x, h?.y, h?.width, h?.height, docked]);
     if (key === this.key) return;
-    const changed = this.key !== undefined; this.key = key;
+    const changed = this.key !== undefined;
     effects.layout(videoPresentationLayout(window, docked));
+    this.key = key;
     if (changed) {
       effects.crossfade(reducedMotion ? 0 : 250);
       if (!docked) effects.revealControls(3000);
