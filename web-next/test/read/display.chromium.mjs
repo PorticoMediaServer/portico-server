@@ -184,10 +184,12 @@ try {
     await call('Page.navigate', {url: frame.href});
     await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))resolve();else if(performance.now()>until)reject(new Error('Frame did not mount'));else requestAnimationFrame(check)};check()})`);
     await evaluate(`Promise.all([document.fonts.load('600 22px Literata', 'Aa'),document.fonts.load('700 13px Manrope', 'Page')]).then(()=>document.fonts.ready)`);
+    await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'start',inline:'nearest'})`);
     await paint();
     reference = await evaluate(`(()=>{const p=document.querySelector(${JSON.stringify(selector)}),base=p.getBoundingClientRect();return{bounds:base.toJSON(),fonts:[...document.fonts].map(f=>({family:f.family,weight:f.weight,status:f.status})),sampleFont:getComputedStyle(p.querySelector(${JSON.stringify(phone ? '.thm span' : '.th span')})).font,metrics:[...p.children,...p.querySelectorAll('h3')].map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{text:e.textContent,y:r.y-base.y,height:r.height,font:s.font}})}})()`);
     for (const family of ['Literata', 'Manrope']) assert.ok(reference.fonts.some(font => font.family.replaceAll('"', '') === family && font.status === 'loaded'), family);
     assert.equal(reference.bounds.width, phone ? 390 : 360);
+    assert.ok(reference.bounds.y >= 0 && reference.bounds.y + (phone ? 586 : 720) <= 1330, 'reference capture must be visible');
     const frameImage = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
       clip: {x: reference.bounds.x, y: reference.bounds.y, width: phone ? 390 : 360, height: phone ? 586 : 720, scale: 1}});
     await writeFile(resolve(output, 'reference-controls.jpg'), Buffer.from(frameImage.data, 'base64'));
