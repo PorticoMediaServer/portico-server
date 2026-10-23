@@ -5,7 +5,7 @@ import {currentUTCTimestamp} from './local-session.ts';
 export type RegisteredSignInContext = Readonly<{payload: string; signature: string}>;
 const fields = ['kind', 'version', 'serverId', 'publicKey', 'fingerprint', 'serverName', 'registrationId', 'registrationOrigin', 'hostedOrigin', 'claimOperationId', 'challenge', 'nonce', 'installationId', 'issuedAt', 'expiresAt'] as const;
 export type RegisteredSignInContextFacts = Readonly<Record<typeof fields[number], string>>;
-const invalid = (): never => {throw new TypeError('Invalid registered sign-in context.');};
+function invalid(): never {throw new TypeError('Invalid registered sign-in context.');}
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 }
