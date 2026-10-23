@@ -12,6 +12,18 @@ import type {PlaybackOptions, MediaVersion} from '@core/playback-v1/types.ts';
 import type {WebPlaybackAction, WebPlaybackRuntimeSnapshot} from '../src/platform/playback/types.ts';
 import type {QueuePlaybackFence} from '../../packages/player-core/src/index.ts';
 import {PlaybackDock} from '../../packages/player-core/src/index.ts';
+import {parseTrickplay, trickplayFrameAt} from '@core/trickplay.ts';
+import {createArtworkRuntime} from '../src/kit/artwork/source.ts';
+import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.ts';
+
+function previewSet() {
+  const id = 'a'.repeat(64);
+  return parseTrickplay({scope: {serverId: 'server', libraryId: 'library', itemId: 'item', viewerFence: 'viewer', sessionId: '', sessionGeneration: 0}, sets: [{
+    id, revision: 'b'.repeat(64), sourceId: 'source', sourceRevision: 'revision', width: 640, height: 360, tileWidth: 320, tileHeight: 180,
+    columns: 2, rows: 2, intervalMs: 10000, durationMs: 60000, sourceOffsetMs: 0, tileCount: 2, frameCount: 6, stale: false,
+    tilesUrl: `/v1/items/item/trickplay/${id}/tiles`, thumbnailsUrl: `/v1/items/item/trickplay/${id}/thumbnails.vtt`,
+  }]}, 'server', {libraryId: 'library', itemId: 'item'}).sets[0]!;
+}
 
 const authority = Object.freeze({serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile', epoch: 1, viewerFence: 'viewer-fence'});
 const fence: QueuePlaybackFence = {kind: 'queue', playback: {scope: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'}, run: 1}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1};
@@ -72,6 +84,31 @@ test('clock lengths remain exact while window shape changes presentation only', 
   assert.equal(watchIsPortrait(834, 1194), true);
   assert.equal(watchIsPortrait(890, 626), false);
   assert.equal(watchIsPortrait(1440, 810), false);
+});
+
+test('preview selection never requests an obsolete or retired resource', () => {
+  const set = previewSet(), frame = trickplayFrameAt(set, 35)!;
+  let calls = 0, current = true;
+  const artwork = createArtworkRuntime({scopeKey: 'scope', load: async () => { throw new Error('preview_selection_must_not_load'); }, classify: () => ({retryable: false})});
+  const source = artwork.source({url: frame.tileUrl, cacheKey: 'tile'});
+  const port = {fence, isCurrent: () => current, frameAt: (seconds: number) => { calls++; const frame = trickplayFrameAt(set, seconds); return frame ? {frame, source} : null; }};
+  assert.equal(watchPreviewFrame(snapshot(), port, 35)?.frame.index, 3);
+  assert.equal(calls, 1);
+  for (const shown of [snapshot({disposed: true}), snapshot({fence: {...fence, sourceId: 'other'}}), snapshot({fence: {...fence, generation: 2}})]) assert.equal(watchPreviewFrame(shown, port, 35), null);
+  for (const seconds of [NaN, Infinity, -1, 7201, null]) assert.equal(watchPreviewFrame(snapshot(), port, seconds), null);
+  current = false;
+  assert.equal(watchPreviewFrame(snapshot(), port, 35), null);
+  assert.equal(calls, 1);
+  artwork.dispose();
+});
+
+test('preview crops use canonical sprite cells and reject missing or inconsistent image dimensions', () => {
+  const set = previewSet(), frame = trickplayFrameAt(set, 35)!;
+  assert.deepEqual(scrubImageStyle(frame, {width: 640, height: 360}, false), {position: 'absolute', width: 512, height: 288, left: -256, top: -144});
+  const phone = scrubImageStyle(frame, {width: 640, height: 360}, true)!;
+  assert.equal(phone.width, 356);
+  assert.equal(phone.left, -178);
+  for (const image of [{}, {width: 320, height: 180}, {width: NaN, height: 360}]) assert.equal(scrubImageStyle(frame, image, false), null);
 });
 
 test('File info uses its real bounded endpoint and discards a read after a source change', async () => {
