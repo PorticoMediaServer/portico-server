@@ -32,8 +32,9 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'streaming.uploadSpeed':{form:'connectivity',key:'uploadCapacityKbps',scale:1000},
  'streaming.awayQuality':{form:'connectivity',key:'remoteBitrateLimitKbps',codec:'away-quality'},
  'streaming.awayExact':{form:'connectivity',key:'remoteBitrateLimitKbps',scale:1000},
- 'streaming.hardware':{form:'runtime',key:'hardwareBackend'},
- 'streaming.hardwareDevice':{form:'runtime',key:'hardwareDevice'},
+ // The drawn Device selector needs the checked opaque device-ID producer.
+ // hardwareBackend names a method and cannot represent this decision; the
+ // former free-text streaming.hardwareDevice row is retired by 812.
  'streaming.toneMapping':{form:'runtime',key:'hdrToneMapping'},
  'streaming.toneMappingMethod':{form:'runtime',key:'hdrToneMappingAlgorithm'},
  'streaming.encoderSpeed':{form:'runtime',key:'x264Preset'},

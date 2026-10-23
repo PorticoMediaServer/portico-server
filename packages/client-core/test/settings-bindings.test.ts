@@ -42,7 +42,10 @@ test('identity code is a read-only snapshot fact, independent of own-address pol
 });
 
 test('retired hardware controls have no Settings binding',()=>{
- for(const retired of ['quality.playerEngine','audioSubtitles.burnIn','audioSubtitles.passthroughFormats'])assert.equal(settingsBinding(retired),undefined);
+ for(const retired of ['quality.playerEngine','audioSubtitles.burnIn','audioSubtitles.passthroughFormats','streaming.hardwareDevice'])assert.equal(settingsBinding(retired),undefined);
+ // The revised selector must not accidentally write an opaque device ID into
+ // the old method enum while its actual producer is still pending.
+ assert.equal(settingsBinding('streaming.hardware'),undefined);
 });
 
 test('heavy window edits preserve the independent backup policy and exact day matrix',()=>{
