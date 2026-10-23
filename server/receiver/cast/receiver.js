@@ -840,7 +840,9 @@
     if (types.PRELOAD) manager.setMessageInterceptor(types.PRELOAD, function(request){return serial(function(){return preloadNext(request);});});
     // Standard queue mutation commands must pass the same controller gate as LOAD.
     ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(request){return fromOther(request)?null:request;});});
-    ['QUEUE_INSERT','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_LOAD','QUEUE_NEXT','QUEUE_PREV'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(){return null;});});
+    // CAF maps QUEUE_NEXT/PREV to QUEUE_UPDATE (jump +/-1); those enum values
+    // are not accepted by setMessageInterceptor, even though the SDK exposes them.
+    ['QUEUE_INSERT','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_LOAD'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(){return null;});});
     manager.setMessageInterceptor(types.PAUSE,function(request){return request;});
     manager.setMessageInterceptor(types.PLAY,function(request){return fromOther(request)?null:request;});
     manager.setMessageInterceptor(types.SEEK,function(request){
