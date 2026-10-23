@@ -115,7 +115,7 @@ func TestPorticoIdentityAdmitsOnlyMembers(t *testing.T) {
 	f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id='local-m'`).Scan(&revision)
 	// Nor can anyone give a Portico member a password.
 	f.db.QueryRow(`SELECT revision FROM direct_memberships WHERE account_id='local-m'`).Scan(&revision)
-	if _, e = f.id.MakeMemberResetCode(ctx, f.owner.AccessToken, "local-m", identity.MemberResetRequest{ExpectedRevision: revision}); !errors.Is(e, identity.ErrForbidden) {
+	if _, e = f.id.MakeMemberResetCode(ctx, f.owner.AccessToken, "local-m", identity.MemberResetRequest{ExpectedRevision: revision}); !errors.Is(e, identity.ErrSignInKindPortico) {
 		t.Fatal("password set on a Portico member", e)
 	}
 	if e = f.id.UpdateDirectMember(ctx, f.owner.AccessToken, "local-m", identity.DirectMemberInput{ExpectedRevision: revision, Disabled: true}); e != nil {

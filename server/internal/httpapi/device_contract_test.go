@@ -58,8 +58,8 @@ func TestTypedDeviceLifecycleAndBinding(t *testing.T) {
 	if w := request("PATCH", "/v1/devices/"+owner.DeviceID, owner.AccessToken, `{"name":"Living Room"}`); w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(`"name":"Living Room"`)) {
 		t.Fatalf("edit device: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("POST", "/v1/devices/"+tv.ID+"/approval", owner.AccessToken, `{"approved":true}`); w.Code != 200 {
-		t.Fatalf("approve device: %d %s", w.Code, w.Body.String())
+	if w := request("POST", "/v1/devices/"+tv.ID+"/approval", owner.AccessToken, `{"approved":true}`); w.Code != 404 {
+		t.Fatalf("retired approval route: %d %s", w.Code, w.Body.String())
 	}
 	bindBody := `{"installationId":"` + owner.InstallationID + `","sessionFamilyId":"` + owner.SessionFamilyID + `"}`
 	if w := request("POST", "/v1/devices/"+tv.ID+"/sessions/bind", owner.AccessToken, bindBody); w.Code != 404 {

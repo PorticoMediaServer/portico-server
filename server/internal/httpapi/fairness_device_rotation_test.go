@@ -76,16 +76,16 @@ func TestVerifiedDeviceFairnessSurvivesRefreshProfileAndGrant(t *testing.T) {
 	if otherKey == want {
 		t.Fatal("distinct verified device shares collided")
 	}
-	if _, err = f.db.Exec(`UPDATE identity_devices SET approval_state='denied' WHERE id=?`, first.DeviceID); err != nil {
+	if err = f.id.SignOutDevice(context.Background(), successor.AccessToken, first.DeviceID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = f.id.Authenticate(successor.AccessToken); err == nil {
-		t.Fatal("remembered device bypassed live denial")
+		t.Fatal("remembered device bypassed live sign-out")
 	}
 	if _, _, _, err = f.deps.Playback.ResolveGrantContext(context.Background(), grant); err == nil {
-		t.Fatal("remembered grant bypassed live device denial")
+		t.Fatal("remembered grant bypassed live device sign-out")
 	}
 	if _, err = f.id.Authenticate(other.AccessToken); err != nil {
-		t.Fatal("denying one device affected another", err)
+		t.Fatal("signing out one device affected another", err)
 	}
 }

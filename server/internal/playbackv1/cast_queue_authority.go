@@ -1,0 +1,24 @@
+package playbackv1
+
+import (
+	"context"
+	"database/sql"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+)
+
+func (s *Service) castQueueAuthorityTx(ctx context.Context, tx *sql.Tx, c Caller, queue string) error {
+	if c.Principal.Grant != identity.GrantCastTarget {
+		return nil
+	}
+	if s.CastQueueAuthority == nil {
+		return identity.ErrForbidden
+	}
+	return s.CastQueueAuthority(ctx, tx, c, queue)
+}
+func (s *Service) castQueueAuthority(ctx context.Context, c Caller, queue string) error {
+	if c.Principal.Grant != identity.GrantCastTarget {
+		return nil
+	}
+	return dbwork.WithReadSnapshot(ctx, s.DB, func(ctx context.Context) error { return s.castQueueAuthorityTx(ctx, dbwork.Snapshot(ctx), c, queue) })
+}
