@@ -63,6 +63,18 @@ func (h *ClaimHandler) ownerReturnRouteTx(ctx context.Context, tx *sql.Tx, v Int
 	return serverreturn.Registration{ID: serverreturn.RegistrationID(v.ServerID, v.OperationID, claim, credential, generation, origin), Origin: origin}, generation, nil
 }
 
+// This preflight releases its read-only snapshot before the resolver request.
+// The caller later opens the claim store's gated writer, rechecks the route and
+// only then invokes the registration-binding writer callback.
+func (h *ClaimHandler) ownerReturnRoute(ctx context.Context, v Intent) (serverreturn.Registration, int64, error) {
+	tx, release, err := dbwork.BeginRead(ctx, h.store.db)
+	if err != nil {
+		return serverreturn.Registration{}, 0, err
+	}
+	defer release()
+	return h.ownerReturnRouteTx(ctx, tx, v)
+}
+
 // BindOwnerReturn resolves and freezes a genuine HTTPS registration only
 // after the captured owner guard and actual local installation/ACK/TLS/route.
 // A terminal bind callback commits its own denial without asking the family it
@@ -87,12 +99,7 @@ func (h *ClaimHandler) BindOwnerReturn(parent context.Context, guard ClaimReques
 		if v.Purpose != "switch" || v.CurrentOwnerAccountID != "" || !v.InstallationAcknowledged {
 			return ErrStale
 		}
-		read, e := dbwork.BeginSnapshot(ctx, h.store.db)
-		if e != nil {
-			return e
-		}
-		want, gen, e := h.ownerReturnRouteTx(ctx, read.Tx(), v)
-		read.Rollback()
+		want, gen, e := h.ownerReturnRoute(ctx, v)
 		if e != nil {
 			return e
 		}
