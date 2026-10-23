@@ -7,47 +7,36 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
-	"portico.local/server/internal/persistence"
 )
 
 func hostedAdministrationFixture(t *testing.T, role string) (Dependencies, identity.Envelope, identity.Principal) {
 	t.Helper()
-	root := t.TempDir()
-	db, err := persistence.Open(filepath.Join(root, "owner.db"))
+	d, session := completedLocalFoundationFixture(t)
+	d.Console = operations.New(d.DB)
+	if role != identity.TierOwner {
+		if role != identity.TierMember {
+			t.Fatalf("unsupported fixture role %q", role)
+		}
+		_, err := d.Identity.CreateDirectMember(context.Background(), session.AccessToken, identity.DirectMemberCreate{Username: "fixture-member", Password: "Local-password1!", Name: "Member", AllowedLibraries: []string{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		session, err = d.Identity.Login("fixture-member", "Local-password1!")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	principal, err := d.Identity.Authenticate(session.AccessToken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
-	id, err := identity.New(db, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, err := hosted.New(db, id, "http://127.0.0.1:1", testHostedRootPin(), testHostedRootID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy := hosted.Policy{ServerID: id.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "account", ProfileID: "profile", Role: role, AllLibraries: true}}}
-	raw, _ := json.Marshal(policy)
-	if err = storeHTTPFixturePolicy(db, raw); err != nil {
-		t.Fatal(err)
-	}
-	envelope, err := issuePorticoFixture(t, db, id, "account", "profile", role)
-	if err != nil {
-		t.Fatal(err)
-	}
-	principal, err := id.Authenticate(envelope.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return Dependencies{DB: db, Identity: id, Hosted: h, Console: operations.New(db)}, envelope, principal
+	return d, session, principal
 }
 
 func TestPorticoOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
@@ -96,12 +85,12 @@ func TestPorticoOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 
 func TestPorticoOwnerRechecksMembershipAndFamilyInsideTransaction(t *testing.T) {
 	cases := map[string]string{
-		"downgraded":      `UPDATE direct_memberships SET role='member' WHERE account_id='account'`,
-		"removed":         `DELETE FROM direct_memberships WHERE account_id='account'`,
+		"downgraded":      `UPDATE direct_memberships SET role='member' WHERE account_id=?`,
+		"removed":         `DELETE FROM direct_memberships WHERE account_id=?`,
 		"wrong account":   `UPDATE authorization_session_families SET account_id='other'`,
 		"wrong profile":   `UPDATE authorization_session_families SET profile_id='other'`,
 		"expired token":   `UPDATE authorization_family_tokens SET expires_at='2000-01-01T00:00:00Z'`,
-		"revoked profile": `UPDATE direct_profiles SET deleted=1 WHERE id='profile'`,
+		"revoked profile": `UPDATE direct_profiles SET deleted=1 WHERE id=?`,
 		"revoked session": `UPDATE authorization_session_families SET revoked=1`,
 		"retired token":   `UPDATE authorization_family_tokens SET retired=1`,
 	}
@@ -119,7 +108,14 @@ func TestPorticoOwnerRechecksMembershipAndFamilyInsideTransaction(t *testing.T) 
 			if err = d.ownerAuthorityTx(ctx, tx, p); err != nil {
 				t.Fatal("initial owner", err)
 			}
-			if _, err = tx.ExecContext(ctx, query); err != nil {
+			var args []any
+			if name == "downgraded" || name == "removed" {
+				args = []any{p.AccountID}
+			}
+			if name == "revoked profile" {
+				args = []any{p.ProfileID}
+			}
+			if _, err = tx.ExecContext(ctx, query, args...); err != nil {
 				t.Fatal(err)
 			}
 			for _, check := range []func(context.Context, *sql.Tx, identity.Principal) error{d.ownerAuthorityTx, d.manualMetadataAuthorize} {
@@ -132,11 +128,11 @@ func TestPorticoOwnerRechecksMembershipAndFamilyInsideTransaction(t *testing.T) 
 }
 
 func TestPorticoOwnerLateRevocationDropsReadResponse(t *testing.T) {
-	d, session, _ := hostedAdministrationFixture(t, "owner")
+	d, session, p := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/admin/operations/{panel}", d.operationsHandler(func(ctx context.Context, db *sql.DB, name string) (operations.Panel, error) {
 		panel, err := operations.Read(ctx, db, name)
-		if _, e := db.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id='account'`); e != nil {
+		if _, e := db.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id=?`, p.AccountID); e != nil {
 			t.Fatal(e)
 		}
 		return panel, err
@@ -148,7 +144,7 @@ func TestPorticoOwnerLateRevocationDropsReadResponse(t *testing.T) {
 }
 
 func TestPorticoOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *testing.T) {
-	d, session, _ := hostedAdministrationFixture(t, "owner")
+	d, session, p := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	registry, err := FoundationRegistry(d)
 	if err != nil {
@@ -183,7 +179,7 @@ func TestPorticoOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *te
 	if !strings.Contains(w.Body.String(), "Owner updated server") {
 		t.Fatal("setting did not persist", w.Body.String())
 	}
-	if _, err := d.DB.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id='account'`); err != nil {
+	if _, err := d.DB.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id=?`, p.AccountID); err != nil {
 		t.Fatal(err)
 	}
 	if w = apply(); w.Code != 401 {
