@@ -24,8 +24,9 @@ export function playbackFence(value:ChannelPlaybackFence):ChannelPlaybackFence;
 export function playbackFence(value:LocalPlaybackFence):LocalPlaybackFence;
 export function playbackFence(value:PlaybackFence):PlaybackFence;
 export function playbackFence(value: PlaybackFence): PlaybackFence {
-  if(record(value)&&value.kind==='local')return localPlaybackFence(value);
-  if (!record(value) || !wireId(value.sessionId) || !Number.isSafeInteger(value.generation) || value.generation < 1) invalidState();
+  if(!record(value))invalidState();
+  if(value.kind==='local')return localPlaybackFence(value);
+  if (!wireId(value.sessionId) || !Number.isSafeInteger(value.generation) || value.generation < 1) invalidState();
   const common={playback:playbackIdentity(value.playback),sessionId:value.sessionId,generation:value.generation};
   if(value.kind==='queue') {
     if(!wireId(value.itemId)||!wireId(value.sourceId)||!queueOccurrenceId(value.entryId) || value.showId!==undefined&&!wireId(value.showId) || value.seasonId!==undefined&&!wireId(value.seasonId) || ['channelKind','channelId','channelGeneration'].some(k=>k in value))invalidState();
