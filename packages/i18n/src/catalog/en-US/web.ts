@@ -2203,4 +2203,6 @@ export const webMessages = {
   'api.webhooks.group.people': 'People',
   'api.webhooks.group.server': 'This server',
   'api.webhooks.group.other': 'Other',
+  // Ruling 16: verbatim mechanical legacy preservation; removed with Phase 10.
+  'legacy.librarySettings.needs': 'Needs: {requirements}.',
 } as const satisfies Record<string, string>;
