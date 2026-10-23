@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/audiotags"
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
 	"portico.local/server/internal/naming"
@@ -27,6 +28,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	Disc                *disc.Probe          `json:"-"`
 	VideoName           naming.Embedded      `json:"-"`
 	VideoNameSkipped    bool                 `json:"-"`
 	ArtworkObserved     bool                 `json:"-"`

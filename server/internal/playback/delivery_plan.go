@@ -403,7 +403,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		p.AudioStream = audio.Index
 		trace.Audio = &TraceAudio{Variant: sourceVariant(audio), SampleRate: audio.SampleRate, BitDepth: sourceAudioDepth(audio), Layout: audio.Layout, StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: len(source.Audio)}
 	}
-	if in.Remote && !in.BurnIn {
+	if in.Remote && !in.BurnIn && source.Disc == nil {
 		p.Mode = "remote"
 		p.Reason = ReasonRemotePreflightCompatible
 		p.ReasonCodes = []string{ReasonRemotePreflightCompatible}
@@ -482,6 +482,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 1: the original file.
 	{
 		rejections := excluded(DeliveryOriginal)
+		if source.Disc != nil {
+			rejections = append(rejections, RouteRejection{RejectDiscOriginal, ""})
+		}
 		rejections = append(rejections, audioRules...)
 		rejections = append(rejections, pictureRules...)
 		if policy.DirectPlay == "never" {

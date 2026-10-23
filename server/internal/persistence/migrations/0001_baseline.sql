@@ -8419,3 +8419,48 @@ CREATE TABLE asset_stream_breadth(
  PRIMARY KEY(asset_id,stream_index),
  FOREIGN KEY(asset_id,stream_index) REFERENCES asset_streams(asset_id,stream_index) ON DELETE CASCADE
 ) STRICT;
+
+-- Disc structures are relational source facts, fenced to the observed asset.
+-- Playlist/cell ordering is library-owned; it never becomes a loose-file list.
+CREATE TABLE asset_discs(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ source_size INTEGER NOT NULL,source_modified_ns INTEGER NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>0),fingerprint TEXT NOT NULL,
+ kind TEXT NOT NULL CHECK(kind IN('bluray','dvd')),
+ packaging TEXT NOT NULL CHECK(packaging IN('iso','folder')),
+ encryption TEXT NOT NULL CHECK(encryption IN('none','aacs','bdplus','css'))) STRICT;
+CREATE TABLE disc_titles(
+ asset_id TEXT NOT NULL REFERENCES asset_discs(asset_id) ON DELETE CASCADE,
+ title_key TEXT NOT NULL,display_number INTEGER NOT NULL CHECK(display_number>0),
+ disc_order INTEGER NOT NULL CHECK(disc_order>=0),playlist INTEGER,playlist_file TEXT NOT NULL,
+ dvd_title INTEGER NOT NULL,vts INTEGER NOT NULL,pgc INTEGER NOT NULL,
+ duration_ms INTEGER NOT NULL CHECK(duration_ms>=60000),angle_count INTEGER NOT NULL CHECK(angle_count>0),
+ PRIMARY KEY(asset_id,title_key),UNIQUE(asset_id,display_number),UNIQUE(asset_id,disc_order)) STRICT;
+CREATE TABLE disc_clips(
+ asset_id TEXT NOT NULL,title_key TEXT NOT NULL,sequence INTEGER NOT NULL CHECK(sequence>=0),
+ clip_file TEXT NOT NULL,in_time_90k INTEGER NOT NULL CHECK(in_time_90k>=0),
+ out_time_90k INTEGER NOT NULL CHECK(out_time_90k>in_time_90k),
+ PRIMARY KEY(asset_id,title_key,sequence),
+ FOREIGN KEY(asset_id,title_key) REFERENCES disc_titles(asset_id,title_key) ON DELETE CASCADE) STRICT;
+CREATE TABLE disc_streams(
+ asset_id TEXT NOT NULL,title_key TEXT NOT NULL,ordinal INTEGER NOT NULL CHECK(ordinal>=0),
+ clip_sequence INTEGER NOT NULL CHECK(clip_sequence>=0),pid INTEGER NOT NULL CHECK(pid BETWEEN 0 AND 8191),
+ kind TEXT NOT NULL CHECK(kind IN('video','audio','subtitle','interactive')),
+ coding INTEGER NOT NULL CHECK(coding BETWEEN 0 AND 255),language TEXT NOT NULL,
+ dv_enhancement INTEGER NOT NULL CHECK(dv_enhancement IN(0,1)),
+ dv_enhancement_known INTEGER NOT NULL CHECK(dv_enhancement_known IN(0,1)),
+ PRIMARY KEY(asset_id,title_key,ordinal),
+ FOREIGN KEY(asset_id,title_key) REFERENCES disc_titles(asset_id,title_key) ON DELETE CASCADE,
+ CHECK(dv_enhancement=0 OR dv_enhancement_known=1)) STRICT;
+CREATE TABLE disc_chapters(
+ asset_id TEXT NOT NULL,title_key TEXT NOT NULL,chapter_index INTEGER NOT NULL CHECK(chapter_index>=0),
+ start_ms INTEGER NOT NULL CHECK(start_ms>=0),
+ PRIMARY KEY(asset_id,title_key,chapter_index),
+ FOREIGN KEY(asset_id,title_key) REFERENCES disc_titles(asset_id,title_key) ON DELETE CASCADE) STRICT;
+-- Choice is independent of display numbering. A changed source invalidates it;
+-- callers must never transfer an owner's choice to replacement disc bytes.
+CREATE TABLE disc_main_titles(
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ asset_id TEXT NOT NULL REFERENCES asset_discs(asset_id) ON DELETE CASCADE,
+ title_key TEXT NOT NULL,source_size INTEGER NOT NULL,source_modified_ns INTEGER NOT NULL,
+ PRIMARY KEY(item_id,asset_id)) STRICT;

@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediasource"
@@ -688,6 +689,9 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		if err = compactcatalog.SetAssetTx(ctx, tx, assetID, map[string]any{"container": f.Container, "video_codec": f.VideoCodec, "audio_codec": f.AudioCodec, "width": f.Width, "height": f.Height, "duration": f.Duration}); err != nil {
 			return err
 		}
+	}
+	if err = disc.Persist(ctx, tx, asset, size, modified, f.Disc); err != nil {
+		return err
 	}
 	if err = assets.PersistStreams(tx, asset, size, modified, f.Streams); err != nil {
 		return err

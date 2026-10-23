@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <libbluray/bluray.h>
 #include <dvdread/dvd_reader.h>
 #include <dvdread/ifo_read.h>
@@ -51,6 +52,7 @@ static void probe_start(const char *kind, const char *packaging, const char *enc
     emit("{\"schema\":1,\"kind\":\"%s\",\"packaging\":\"%s\",\"encryption\":\"%s\",\"titles\":[", kind, packaging, encryption);
 }
 static void bd_streams(const BLURAY_STREAM_INFO *streams, unsigned n, const char *kind, unsigned clip, int *first) {
+    if ((n && !streams) || n > 256) { output_error = 1; return; }
     for (unsigned i = 0; i < n; i++) {
         const BLURAY_STREAM_INFO *s = &streams[i];
         emit("%s{\"clipSequence\":%u,\"pid\":%u,\"kind\":\"%s\",\"coding\":%u,\"language\":", *first ? "" : ",", clip, s->pid, kind, s->coding_type);
@@ -75,6 +77,7 @@ static int probe_bd(BLURAY *bd, const char *packaging) {
         BLURAY_TITLE_INFO *t = bd_get_title_info(bd, i, 0);
         int first = 1;
         if (!t) return 3;
+        if (!t->angle_count || t->clip_count > 4096 || t->chapter_count > 65535 || (t->clip_count && !t->clips) || (t->chapter_count && !t->chapters)) { bd_free_title_info(t); return 4; }
         if (t->duration < 60 * UINT64_C(90000)) { bd_free_title_info(t); continue; }
         emit("%s{\"discOrder\":%u,\"playlist\":%u,\"playlistFile\":\"%05u.mpls\",\"durationMs\":%" PRIu64 ",\"angleCount\":%u,\"clips\":[", order ? "," : "", order, t->playlist, t->playlist, t->duration/90, t->angle_count);
         for (uint32_t j = 0; j < t->clip_count; j++) {
@@ -167,10 +170,11 @@ static int probe_dvd(const char *path, const char *packaging) {
         pgc_t *pgc;
         int first = 1;
         count = dvdnav_describe_title_chapters(nav, i+1, &ends, &duration);
-        if (!count || !ends) { free(ends); goto done; }
+        if (!count || !ends || count > 65535) { free(ends); goto done; }
         if (duration < 60*UINT64_C(90000)) { free(ends); continue; }
         vts = ifoOpen(dvd, ti.title_set_nr);
-        if (!vts || !vts->vts_ptt_srpt || !vts->vts_pgcit || !vts->vtsi_mat || !ti.vts_ttn || ti.vts_ttn > vts->vts_ptt_srpt->nr_of_srpts) { free(ends); goto done; }
+        if (!vts || !vts->vts_ptt_srpt || !vts->vts_pgcit || !vts->vtsi_mat || !ti.nr_of_ptts || !ti.nr_of_angles || !ti.vts_ttn || ti.vts_ttn > vts->vts_ptt_srpt->nr_of_srpts) { free(ends); goto done; }
+        if (!vts->vts_ptt_srpt->title[ti.vts_ttn-1].nr_of_ptts || !vts->vts_ptt_srpt->title[ti.vts_ttn-1].ptt) { free(ends); goto done; }
         pgcn = vts->vts_ptt_srpt->title[ti.vts_ttn-1].ptt[0].pgcn;
         if (!pgcn || pgcn > vts->vts_pgcit->nr_of_pgci_srp) { free(ends); goto done; }
         pgc = vts->vts_pgcit->pgci_srp[pgcn-1].pgc;

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/disc"
 )
 
 // SourceVideo and SourceAudio are the planner's view of one file. They are read
@@ -33,6 +34,8 @@ type SourceAudio struct {
 
 // DeliverySource is everything planning knows about one file.
 type DeliverySource struct {
+	// Disc is observed structure, fenced to this exact asset revision.
+	Disc      *disc.Probe
 	ID        string
 	Container string
 	Duration  float64
@@ -97,10 +100,14 @@ type sourceQuery interface {
 func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (DeliverySource, error) {
 	var s DeliverySource
 	var video, audio string
-	var size int64
+	var size, modified int64
 	var width, height, version int
 	s.ID = asset
-	err := q.QueryRowContext(ctx, `SELECT a.container,a.video_codec,a.audio_codec,a.duration,a.size,COALESCE(a.width,0),COALESCE(a.height,0),COALESCE((SELECT f.detail_version FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, asset).Scan(&s.Container, &video, &audio, &s.Duration, &size, &width, &height, &version)
+	err := q.QueryRowContext(ctx, `SELECT a.container,a.video_codec,a.audio_codec,a.duration,a.size,a.modified_ns,COALESCE(a.width,0),COALESCE(a.height,0),COALESCE((SELECT f.detail_version FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, asset).Scan(&s.Container, &video, &audio, &s.Duration, &size, &modified, &width, &height, &version)
+	if err != nil {
+		return s, err
+	}
+	s.Disc, err = disc.Load(ctx, q, asset, size, modified)
 	if err != nil {
 		return s, err
 	}

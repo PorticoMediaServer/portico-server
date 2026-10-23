@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
@@ -413,6 +414,9 @@ func (s *Service) CommitMedia(ctx context.Context, job, library, path string, f 
 		return e
 	}
 	if e = subtitles.Persist(tx, aid, size, modified, f.SubtitleInventory); e != nil {
+		return e
+	}
+	if e = disc.Persist(ctx, tx, aid, size, modified, f.Disc); e != nil {
 		return e
 	}
 	if e = assets.PersistStreams(tx, aid, size, modified, f.Streams); e != nil {

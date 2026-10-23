@@ -13,6 +13,7 @@ import (
 // trace of a plan reads as "why not the cheaper thing" without re-deriving it.
 // They are wire strings: added to, never reworded.
 const (
+	RejectDiscOriginal        = "disc_requires_repackaging"
 	RejectContainer           = "container_unsupported"
 	RejectChroma              = "chroma_subsampling_unsupported"
 	RejectFrameRateMode       = "frame_rate_mode_unsupported"
