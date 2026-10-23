@@ -1,7 +1,7 @@
 import {ApiError} from '@core/index.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {verificationLink} from './fragments';
-import {currentAccountWork, type ServicesAccount} from './session';
+import {accountIdentity, currentAccountWork, type ServicesAccount} from './session';
 
 export async function resetPassword(account: Pick<ServicesAccount, 'client'>, token: string,
   password: string, factor: string, signal: AbortSignal): Promise<void> {
@@ -26,10 +26,14 @@ export async function verifyEmail(account: ServicesAccount, token: string, signa
     }
   }
   if (link?.kind === 'email_change' && account.service.getSnapshot().session) {
-    await currentAccountWork(account, session => account.client.request(routePath('account_security_email_confirm'), 'POST',
-      routeBody('account_security_email_confirm', {challengeId: link.resource, code: link.code, operationId: crypto.randomUUID()}), signal, session.accessToken));
-    // Hosted invalidates the old family. Never log out whichever different
-    // account another tab may have adopted while this confirmation completed.
+    const identity = await currentAccountWork(account, async session => {
+      await account.client.request(routePath('account_security_email_confirm'), 'POST',
+        routeBody('account_security_email_confirm', {challengeId: link.resource, code: link.code, operationId: crypto.randomUUID()}), signal, session.accessToken);
+      return accountIdentity(session);
+    });
+    // Hosted invalidates every sign-in. Retire this browser's reviewed family,
+    // preserving an account another tab adopted while cleanup was queued.
+    await account.service.logoutIfCurrent(identity);
     return 'changed';
   }
   const value = await account.client.request(routePath('email_link_confirm'), 'POST', routeBody('email_link_confirm', {token}), signal);

@@ -10,6 +10,8 @@ import (
 // is wired to this struct through DeliverySettings, so the two concerns can be
 // built independently and neither owns the other's file.
 type DeliveryConfiguration struct {
+	// Empty ConversionMode retains the legacy owner boolean until the canonical
+	// adapter supplies a validated mode. Canonical settings default to all.
 	ConversionMode     string `json:"conversionMode"`
 	OutputFormat       string `json:"outputFormat"`
 	DownloadMaxQuality string `json:"downloadMaxQuality"`
@@ -73,7 +75,7 @@ func validPlanningPolicy(p string) bool {
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
 		HardwareBackend: "auto",
-		ConversionMode:  "all", OutputFormat: "auto", DownloadMaxQuality: "original",
+		OutputFormat:    "auto", DownloadMaxQuality: "original",
 		MaxMusicQuality:        "original",
 		SessionStorageMiB:      4096,
 		ToneMapping:            true,
@@ -182,4 +184,45 @@ func validDownloadQuality(v string) bool {
 		}
 	}
 	return false
+}
+
+// AudioConversionAllowed resolves the sole mode authority. A legacy adapter
+// that has not supplied a mode keeps its actual stored owner boolean.
+func (c DeliveryConfiguration) AudioConversionAllowed(legacyEnabled bool) bool {
+	switch c.ConversionMode {
+	case "all", "sound":
+		return true
+	case "never":
+		return false
+	}
+	return legacyEnabled
+}
+
+func (c DeliveryConfiguration) VideoConversionAllowed(legacyEnabled bool) bool {
+	switch c.ConversionMode {
+	case "all":
+		return true
+	case "sound", "never":
+		return false
+	}
+	return legacyEnabled
+}
+
+// ClampDownloadQuality narrows a video request to the fixed owner ceiling.
+// Audio callers keep their separate music quality policy.
+func (c DeliveryConfiguration) ClampDownloadQuality(requested string) string {
+	c = c.Normalized()
+	cap, capped := LadderPreset(c.DownloadMaxQuality)
+	if !capped {
+		return requested
+	}
+	rung, fixed := LadderPreset(requested)
+	if !fixed || rung.Height > cap.Height || rung.VideoBitrateBPS > cap.VideoBitrateBPS {
+		return cap.ID
+	}
+	return requested
+}
+
+func (c DeliveryConfiguration) DownloadQualityAllowed(quality string) bool {
+	return c.ClampDownloadQuality(quality) == quality
 }

@@ -38,12 +38,14 @@ type Optimizer interface {
 }
 
 type Options struct {
-	DB         *sql.DB
-	Now        func() time.Time
-	OpenSource SourceOpener
-	Artifacts  ArtifactOpener
-	Optimizer  Optimizer
-	Notifier   DownloadNotifier
+	// DeliveryConfiguration reads the same current owner policy as playback.
+	DeliveryConfiguration func() playback.DeliveryConfiguration
+	DB                    *sql.DB
+	Now                   func() time.Time
+	OpenSource            SourceOpener
+	Artifacts             ArtifactOpener
+	Optimizer             Optimizer
+	Notifier              DownloadNotifier
 	// Plays is the personal-state writer offline plays are recorded through
 	// (catalog.AcceptPlaybackProgressAt): the one online playback uses.
 	Plays playback.OfflineWriter
@@ -54,23 +56,24 @@ type Options struct {
 }
 
 type Service struct {
-	libraryAccess LibraryAccess
-	access        RequestAccess
-	accessMu      sync.RWMutex
-	advanceMu     sync.Mutex
-	tidied        time.Time
-	pruned        time.Time
-	db            *sql.DB
-	now           func() time.Time
-	openOriginal  SourceOpener
-	artifacts     ArtifactOpener
-	optimizer     Optimizer
-	notifier      DownloadNotifier
-	plays         playback.OfflineWriter
-	grantPath     string
-	wake          *worker.Signal
-	done          chan struct{}
-	cancel        context.CancelFunc
+	deliveryConfiguration func() playback.DeliveryConfiguration
+	libraryAccess         LibraryAccess
+	access                RequestAccess
+	accessMu              sync.RWMutex
+	advanceMu             sync.Mutex
+	tidied                time.Time
+	pruned                time.Time
+	db                    *sql.DB
+	now                   func() time.Time
+	openOriginal          SourceOpener
+	artifacts             ArtifactOpener
+	optimizer             Optimizer
+	notifier              DownloadNotifier
+	plays                 playback.OfflineWriter
+	grantPath             string
+	wake                  *worker.Signal
+	done                  chan struct{}
+	cancel                context.CancelFunc
 }
 
 func New(o Options) (*Service, error) {
@@ -86,7 +89,7 @@ func New(o Options) (*Service, error) {
 	if o.BaseGrantPath == "" {
 		o.BaseGrantPath = "/v1/downloads/artifacts/"
 	}
-	return &Service{db: o.DB, now: o.Now, openOriginal: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, plays: o.Plays, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
+	return &Service{deliveryConfiguration: o.DeliveryConfiguration, db: o.DB, now: o.Now, openOriginal: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, plays: o.Plays, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }
@@ -152,6 +155,7 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	if out.Qualities, e = producibleQualities(tx); e != nil {
 		return out, e
 	}
+	out.Qualities = s.cappedQualities(out.Qualities)
 	return out, gated.Commit()
 }
 

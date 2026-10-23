@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {PlaybackDock, type DockPlayback, type QueuePlaybackFence, type QueueScope} from '../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../src/platform/playback/index.ts';
 import type {DockNoticeData, DockPresentation} from '../src/kit/dock/index.ts';
-import {fenceKey, hasDock, PlaybackPresentations, retainedPlaybackNotice} from '../src/shell/playback-model.ts';
+import {fenceKey, hasDock, localVideoSurfaceActive, PlaybackPresentations, retainedPlaybackNotice} from '../src/shell/playback-model.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 import {PlaybackMediaOwner} from '../src/shell/playback-media-owner.ts';
 
@@ -94,6 +94,25 @@ test('spacing follows accepted dock arbitration, including remote ownership whil
   dock.collapse(video.fence); assert.equal(hasDock(snapshot(dock)), true);
   dock.expand(video.fence); dock.beginRemote({id: 'remote', kind: 'play-on', phase: 'connecting', sequence: '1', playback: video, positionSeconds: 845}, 0);
   assert.equal(hasDock(snapshot(dock)), true);
+});
+test('the persistent local picture survives real pending receiver phases and retires on confirmed play', () => {
+  const dock = new PlaybackDock(scope);dock.start(video);
+  const read = () => ({...snapshot(dock), disposed: false, presentation: {kind: 'video', fence: video.fence}} as WebPlaybackRuntimeSnapshot);
+  assert.equal(localVideoSurfaceActive(read()), true);
+  for (const [index, phase] of ['connecting', 'pairing', 'waiting'].entries()) {
+    dock.beginRemote({id: 'remote', kind: 'play-on', phase: phase as 'connecting' | 'pairing' | 'waiting', sequence: String(index + 1), playback: video, positionSeconds: 845}, index);
+    assert.equal(localVideoSurfaceActive(read()), true);
+  }
+  dock.remote({id: 'remote', kind: 'play-on', phase: 'playing', sequence: '4', playback: video, positionSeconds: 845}, 3);
+  assert.equal(localVideoSurfaceActive(read()), false);
+});
+test('no absent, disposed or mismatched local source can expose the persistent picture', () => {
+  const dock = new PlaybackDock(scope);dock.start(video);
+  const shown = {...snapshot(dock), disposed: false, presentation: {kind: 'video', fence: video.fence}} as WebPlaybackRuntimeSnapshot;
+  assert.equal(localVideoSurfaceActive(undefined), false);
+  assert.equal(localVideoSurfaceActive({...shown, disposed: true}), false);
+  dock.start({...video, fence: fence('replacement')});
+  assert.equal(localVideoSurfaceActive({...shown, dock: dock.getSnapshot()}), false);
 });
 test('one media element survives scope gaps and old runtime disposal precedes every new adoption', () => {
   const media = {}, owner = new PlaybackMediaOwner<object>(), calls: unknown[] = [];

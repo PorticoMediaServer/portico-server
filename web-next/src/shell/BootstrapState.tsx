@@ -17,10 +17,10 @@ export function BootstrapContent({children}: {children: ReactNode}) {
     return () => timers.forEach(clearTimeout);
   }, [state?.snapshot.phase, started]);
   useEffect(() => {
-    if (state?.snapshot.phase !== 'signed-out') return;
+    if (state?.snapshot.phase !== 'signed-out' || state.snapshot.entry) return;
     const path = router.state.location.pathname;
     if (!['/sign-in', '/profiles', '/servers', '/account'].includes(path) && !path.startsWith('/dev/')) void router.navigate({to: '/sign-in', replace: true});
-  }, [state?.snapshot.phase]);
+  }, [state?.snapshot.phase, state?.snapshot.entry]);
   if (state?.snapshot.phase === 'restoring') return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}} />;
   if (state?.snapshot.phase === 'error') return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => { void state.retry(); }}} />;

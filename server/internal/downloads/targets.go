@@ -383,7 +383,7 @@ func qualityLabel(quality string) string {
 // would give up (HDR, ten bits, surround sound, or an HEVC or AV1 original)
 // and the device plays its result; otherwise the H.264 recipe, which is quicker
 // to make and plays everywhere. "" for the original.
-func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, found source) string {
+func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, found source, configuration ...playback.DeliveryConfiguration) string {
 	if found.Kind == "song" && canonicalMusicQuality(quality) {
 		return musicRecipeFor(device, quality, found)
 	}
@@ -396,7 +396,7 @@ func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDoc
 		}
 		for _, p := range playback.QualityLadder {
 			if found.Height > 0 && p.Height <= found.Height {
-				return chooseRecipe(ctx, tx, device, p.ID, found)
+				return chooseRecipe(ctx, tx, device, p.ID, found, configuration...)
 			}
 		}
 		return ""
@@ -410,7 +410,7 @@ func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDoc
 		plain = ""
 	}
 	rich := preparedmedia.RichProfileFor(rung.ID)
-	if audioKind(found.Kind) || rich == "" || found.Asset == "" {
+	if audioKind(found.Kind) || rich == "" || found.Asset == "" || len(configuration) > 0 && configuration[0].OutputFormat == "h264" {
 		return plain
 	}
 	facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset)

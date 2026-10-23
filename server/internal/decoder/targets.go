@@ -40,10 +40,12 @@ type ConversionTarget struct {
 	DolbyVisionProfile       int     `json:"dolbyVisionProfile"`
 	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility"`
 	CopyDolbyVision          bool    `json:"copyDolbyVision,omitempty"`
-	VideoProfile             string  `json:"videoProfile,omitempty"`
-	VideoLevel               int     `json:"videoLevel"`
-	MasterDisplay            string  `json:"masterDisplay,omitempty"`
-	MaxCLL                   string  `json:"maxCLL,omitempty"`
+	// A packet rewrite, separate from source profile facts and image conversion.
+	DolbyVisionConversion string `json:"dolbyVisionConversion,omitempty"`
+	VideoProfile          string `json:"videoProfile,omitempty"`
+	VideoLevel            int    `json:"videoLevel"`
+	MasterDisplay         string `json:"masterDisplay,omitempty"`
+	MaxCLL                string `json:"maxCLL,omitempty"`
 }
 
 var masteringDisplayPattern = regexp.MustCompile(`^G\([0-9]{1,5},[0-9]{1,5}\)B\([0-9]{1,5},[0-9]{1,5}\)R\([0-9]{1,5},[0-9]{1,5}\)WP\([0-9]{1,5},[0-9]{1,5}\)L\([0-9]{1,10},[0-9]{1,10}\)$`)
@@ -117,6 +119,9 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 		return t, errors.New("dynamic_range_conversion_unavailable")
 	}
 	if t.CopyDolbyVision && (t.VideoCodec != "hevc" || t.BitDepth != 10 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
+		return t, ErrInvalidConfiguration
+	}
+	if t.DolbyVisionConversion != "" && (t.DolbyVisionConversion != DolbyVisionProfile7To81 || !t.CopyDolbyVision || t.DolbyVisionProfile != 7 || t.DolbyVisionCompatibility != 6) {
 		return t, ErrInvalidConfiguration
 	}
 	if t.Unmapped && (t.ToneMap || t.DynamicRange != "sdr") {

@@ -71,6 +71,8 @@ type InvitationPreview struct {
 }
 type InvitationLibrary struct {
 	Name string `json:"name"`
+	// Kind is the actual library category, never inferred from its name.
+	Kind string `json:"kind,omitempty"`
 }
 
 type InvitationPreviewRequest struct {
@@ -145,14 +147,14 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		}
 		out.Libraries = []InvitationLibrary{}
 		for _, library := range ids {
-			var name string
-			if e = tx.QueryRowContext(ctx, `SELECT name FROM libraries WHERE id=?`, library).Scan(&name); e != nil {
+			var name, kind string
+			if e = tx.QueryRowContext(ctx, `SELECT name,kind FROM libraries WHERE id=?`, library).Scan(&name, &kind); e != nil {
 				if errors.Is(e, sql.ErrNoRows) {
 					return ErrInvitationNotFound
 				}
 				return e
 			}
-			out.Libraries = append(out.Libraries, InvitationLibrary{Name: name})
+			out.Libraries = append(out.Libraries, InvitationLibrary{Name: name, Kind: kind})
 		}
 		out.AllLibraries = len(ids) == 0
 		out.SignInMethod = "local"
@@ -175,16 +177,21 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 }
 
 func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
+	v, _, err := invitationRowCreated(row)
+	return v, err
+}
+
+func invitationRowCreated(row interface{ Scan(...any) error }) (Invitation, int64, error) {
 	var v Invitation
 	var libraries string
 	var created, expires int64
 	var accepted sql.NullInt64
 	var account sql.NullString
 	if e := row.Scan(&v.ID, &v.Notes, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername); e != nil {
-		return v, e
+		return v, 0, e
 	}
 	if e := json.Unmarshal([]byte(libraries), &v.AllowedLibraries); e != nil {
-		return v, e
+		return v, 0, e
 	}
 	if v.AllowedLibraries == nil {
 		v.AllowedLibraries = []string{}
@@ -197,7 +204,7 @@ func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
 	if account.Valid {
 		v.AccountID = account.String
 	}
-	return v, nil
+	return v, created, nil
 }
 
 const invitationColumns = `id,notes,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username`
@@ -272,12 +279,10 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 			// the code exists exactly once, in the original response.
 			return json.Unmarshal([]byte(body), &out)
 		}
-		// Expired offers no longer occupy the pending capacity.
-		if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='revoked',revision=revision+1 WHERE state='pending' AND expires_ms<=?`, s.now()); e != nil {
-			return e
-		}
+		// Expiry is an observed status, not an administrator's revocation. Keep
+		// its original record and revision while excluding it from live capacity.
 		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM access_invitations WHERE state='pending'`).Scan(&count); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM access_invitations WHERE state='pending' AND expires_ms>?`, s.now()).Scan(&count); e != nil {
 			return e
 		}
 		if count >= 200 {

@@ -59,6 +59,8 @@ export class ReaderController<P extends object> {
   private publishPreferences() {
     this.publish({preferences: this.effective(), overriddenKeys: Object.freeze(Object.keys(this.overrides) as (keyof P)[])});
   }
+  /** Canonical consumers may refresh their projection for each new book. */
+  protected preferencesAtOpen(): Readonly<P> { return this.base; }
   async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata}>): Promise<void> {
     const lifecycleVersion = ++this.lifecycleVersion;
     // Invalidate before waiting for disposal, so simultaneous opens cannot adopt
@@ -74,6 +76,8 @@ export class ReaderController<P extends object> {
     try {
       await this.disposeSession(previous);
       if (!this.current(session)) return;
+      const preferences = this.preferencesAtOpen();
+      if (preferences !== this.base) { this.base = copy(preferences); this.publishPreferences(); }
       validateSource(options.source);
       if (options.location) validateLocation(options.location, options.format);
       const adapter = this.adapters.get(options.format);
