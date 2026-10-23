@@ -996,6 +996,24 @@ export class WebShellPlaybackRuntime {
   private matches(fence: PlaybackFence): boolean { return this.current() && sameFence(this.snapshot?.fence, fence) && sameFence(this.dock.getSnapshot().local?.fence, fence); }
   private require(fence: PlaybackFence): Stack { if (!this.matches(fence)) problem('stale_playback_command'); return this.stack; }
   private offered(fence: PlaybackFence, command: WebPlaybackPresentation['controls'][number]): Stack { const stack = this.require(fence); if (!this.snapshot.presentation?.controls.includes(command)) problem('playback_command_unavailable'); return stack; }
+  private awaitLocalPaused(stack: Stack, serial: number): Promise<LocalPlaybackFence> {
+    return new Promise((resolve, reject) => {
+      const controller = stack.local?.controller;if (!controller) {reject(new Error('playback_restore_failed'));return;}
+      let off = () => {};
+      const timer = this.setTimer(() => {off();reject(new Error('playback_source_timeout'));}, this.env.service?.operationTimeoutMs ?? 5000);
+      const check = () => {
+        const state = controller.getSnapshot();
+        if (!this.current(stack) || serial !== this.operation || state.phase === 'error' || state.phase === 'disposed') {
+          off();this.clearTimer(timer);reject(new Error('playback_restore_failed'));return;
+        }
+        // A native command ACK is not FILE_LOADED/paused observation. Keep the exact
+        // preparation alive until its current media port reports the real paused load.
+        if (!state.fence || state.observation?.state !== 'paused') return;
+        off();this.clearTimer(timer);resolve(state.fence);
+      };
+      off = controller.subscribe(check);check();
+    });
+  }
   private awaitFence(stack: Stack, serial: number): Promise<PlaybackFence> {
     return new Promise((resolve, reject) => {
       let off = () => {};
@@ -1072,8 +1090,8 @@ export class WebShellPlaybackRuntime {
           stack.expanded = false;
           await controller.start({signal: stack.life.signal, isCurrent: () => this.current(stack) && serial === this.operation}, {index: saved.index, startPositionMs: saved.positionMs, autoplay: false});
           if (!this.current(stack) || serial !== this.operation) return;
-          const accepted = controller.getSnapshot();
-          if (accepted.fence?.kind !== 'local' || accepted.fence.sessionId === fence.sessionId || accepted.observation?.state !== 'paused') problem('playback_restore_failed');
+          const accepted = await this.awaitLocalPaused(stack, serial);
+          if (accepted.sessionId === fence.sessionId) problem('playback_restore_failed');
           continue;
         }
         const queueId = bookmark.queueId, channel = bookmark.channel?.channel;
