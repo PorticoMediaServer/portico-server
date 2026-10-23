@@ -1,3 +1,4 @@
+/// <reference path="./foliate.d.ts" />
 import {EPUB} from 'foliate-js/epub.js';
 import './vendor/paginator.js';
 import {fromRange, joinIndir} from 'foliate-js/epubcfi.js';
