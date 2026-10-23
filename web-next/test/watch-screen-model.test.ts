@@ -172,7 +172,7 @@ test('a chooser cannot dispatch stale, aborted, reordered or unoffered version r
   const choices = {options, versions: options.versions, isCurrent: () => current};
   const rows = [{id: 'one', heading: '4K Dolby Vision', detail: ''}, {id: 'two', heading: '1080p', detail: ''}];
   const binding = {choices, rows, reportError() {}, playVersion: async () => { calls++; }};
-  for (const invalid of [rows.toReversed(), rows.slice(1), [{...rows[0]!, id: 'other'}, rows[1]!], [{...rows[0]!, heading: ''}, rows[1]!]]) assert.equal(watchVersionRows({...binding, rows: invalid}), null);
+  for (const invalid of [rows.toReversed(), rows.slice(1), [{...rows[0]!, id: 'other'}, rows[1]!]]) assert.equal(watchVersionRows({...binding, rows: invalid}), null);
   assert.equal(watchVersionRows({...binding, choices: {...choices, versions: options.versions.toReversed()}}), null);
   const abort = new AbortController(); abort.abort();
   assert.equal(await dispatchWatchVersion(binding, 'one', abort.signal), false);
@@ -180,6 +180,21 @@ test('a chooser cannot dispatch stale, aborted, reordered or unoffered version r
   current = false;
   assert.equal(await dispatchWatchVersion(binding, 'one', new AbortController().signal), false);
   assert.equal(calls, 0);
+});
+
+test('unknown canonical version text preserves the actual row without a label or placeholder substitute', async () => {
+  const version: MediaVersion = {id: 'one', label: 'legacy label must not fill missing canonical facts', durationMs: 1, parts: [{id: 'one', index: 0, durationMs: 1}], video: [], audio: [], subtitles: []};
+  const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [version], chapters: [], markers: [], qualities: []};
+  const choices = {options, versions: options.versions, isCurrent: () => true};
+  const rows = [{id: 'one', heading: '', detail: ''}];
+  let calls = 0;
+  const binding = {choices, rows, reportError() {}, playVersion: async (request: {choices: typeof choices; versionId: string; signal: AbortSignal}) => {
+    calls++; assert.equal(request.choices, choices); assert.equal(request.choices.versions[0], version); assert.equal(request.versionId, 'one');
+  }};
+  assert.equal(watchVersionRows(binding), rows);
+  assert.equal(await dispatchWatchVersion(binding, 'one', new AbortController().signal), true);
+  assert.equal(calls, 1);
+  assert.deepEqual(rows, [{id: 'one', heading: '', detail: ''}]);
 });
 
 test('chooser completion waits for the real start and a closed chooser aborts its retained command', async () => {

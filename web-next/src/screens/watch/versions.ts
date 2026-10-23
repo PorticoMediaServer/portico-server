@@ -31,7 +31,7 @@ export function watchVersionRows<Choices extends WatchVersionSelection>(binding:
   if (!offered.length || new Set(offered.map(version => version.id)).size !== offered.length) return null;
   const available = offered.filter(version => version.id !== choices.failedVersionId);
   if (available.length !== choices.versions.length || rows.length !== available.length
-    || available.some((version, index) => version.id !== choices.versions[index]?.id || version.id !== rows[index]?.id || !rows[index]?.heading.trim())) return null;
+    || available.some((version, index) => version.id !== choices.versions[index]?.id || version.id !== rows[index]?.id)) return null;
   return rows;
 }
 
