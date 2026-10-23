@@ -109,11 +109,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		// A prepared track's budget is reserved for the range asked, then settled
 		// to the body bytes actually sent: a failed or short response gives the
 		// rest back (NEW-33).
-		if private && r.Method != http.MethodHead && openAudioRange(r.Header.Get("Range")) {
-			body := d.privateAudioBody(w, r, grant, session, plan.PrefetchBytes)
-			defer body.close()
-			w = body
-		} else if private && r.Method != http.MethodHead {
+		if private && r.Method != http.MethodHead {
 			reserved := rangeLength(r.Header.Get("Range"), plan.Bytes)
 			if !d.Playback.PrefetchCharge(session, reserved, plan.PrefetchBytes) {
 				writePreparedLimit(w)
@@ -209,14 +205,21 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		w.Header().Set("X-Audio-Trim-End", strconv.FormatInt(end, 10))
 		w.Header().Set("X-Audio-Frames", strconv.FormatInt(out, 10))
 		w.Header().Set("Cache-Control", "private, no-store")
-		if private {
-			held := d.privateAudioBody(w, r, grant, session, plan.PrefetchBytes)
-			defer held.close()
-			w = held
-		}
 		body := withRollingDeadline(w)
 		defer body.release()
-		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, body); err != nil && r.Context().Err() == nil {
+		var sink io.Writer = body
+		if private {
+			retire := d.Playback.RetainPrefetch(session)
+			defer retire()
+			sink = &budgetWriter{w: body, ctx: r.Context(), check: newStreamAuthority(func() error {
+				_, principal, currentItem, e := d.Playback.ResolveDecodeGrantContext(r.Context(), grant)
+				if e == nil {
+					e = d.itemAccess(r.Context(), principal, currentItem)
+				}
+				return e
+			}).check, take: func(n int64) int64 { return d.Playback.PrefetchTake(session, n, plan.PrefetchBytes) }, refund: func(n int64) { d.Playback.PrefetchRefund(session, n) }}
+		}
+		if err := d.AudioMedia.ConvertAudio(r.Context(), item, aid, spec, sink); err != nil && r.Context().Err() == nil {
 			// Headers are gone; the stream just ends early and the client falls back (§18.3).
 			fmt.Fprint(io.Discard, err)
 		}

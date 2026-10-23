@@ -26,6 +26,13 @@ func musepackHeader8(total, silence int64) []byte {
 func TestMusepackHeaderCompletionAndBounds(t *testing.T) {
 	f := Facts{Codec: "mpc8", SampleRate: 44100, Channels: 2, RawFrames: 23040, DurationFrames: 23040, TrimSource: "mpc-header-pending"}
 	header := musepackHeader8(22050, 32)
+	h, err := ParseMusepackHeader("mpc8", header)
+	if err != nil || h.SampleRate != 44100 || h.Channels != 2 || h.DurationFrames != 22018 || h.DecoderDelayFrames != 481 {
+		t.Fatal(h, err)
+	}
+	if _, err = ParseMusepackHeader("mpc8", make([]byte, (1<<20)+1)); err != ErrInconsistent {
+		t.Fatal("unbounded header accepted", err)
+	}
 	got, err := CompleteCodecHeaders(f, header)
 	if err != nil || got.StartFrames != 513 || got.DurationFrames != 22018 || got.EndFrames != 509 || got.TrimSource != "musepack-header" {
 		t.Fatal(got, err)

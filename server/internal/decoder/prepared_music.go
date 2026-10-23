@@ -143,8 +143,11 @@ func preparedMusicArgs(args []string, r PreparedRecipe) ([]string, error) {
 // output_sample_bits is an SWR option, not a soxr quantizer option.
 func musicResampleFilters(sourceRate, rate, sourceDepth, depth int, processed bool) []string {
 	out := []string{}
-	rateChanged := sourceRate != rate
-	if rateChanged {
+	// Zero is an unspecified legacy input rate, not evidence of a rate change.
+	// Still establish the output rate before the final output-frame trim. Only
+	// measured changes add dither; measured music recipes supply the actual rate.
+	rateChanged := sourceRate > 0 && sourceRate != rate
+	if sourceRate == 0 || rateChanged {
 		out = append(out, fmt.Sprintf("aresample=%d:resampler=soxr:precision=28:osf=dbl", rate))
 	}
 	if depth > 0 && (rateChanged || processed || sourceDepth > depth) {

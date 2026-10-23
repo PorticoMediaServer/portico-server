@@ -383,10 +383,17 @@ func TestPreparedWholeSealedRecordingEndAndMultipartAdmission(t *testing.T) {
 
 func TestPreparedRecipesUseCanonicalVersionedIdentity(t *testing.T) {
 	for _, current := range Profiles() {
+		r := recipeFor(current)
+		if current.Kind == "audio" {
+			quality, codec, ok := MusicProfile(current.ID)
+			if !ok || !strings.HasSuffix(current.ID, "-v1") || !r.AudioOnly || r.MusicQuality != quality || r.MusicCodec != codec {
+				t.Fatal("invalid immutable music recipe", current.ID)
+			}
+			continue
+		}
 		if !strings.HasSuffix(current.ID, "-v3") {
 			t.Fatal(current.ID)
 		}
-		r := recipeFor(current)
 		if !r.DropChapters || !r.BoundedFragments {
 			t.Fatal("unbounded or unremapped current recipe", current.ID)
 		}

@@ -78,144 +78,102 @@ func openPrivateBody(t *testing.T, s *httptest.Server, url, rangeHeader string) 
 	return response, cancel
 }
 
-func TestMusicPrivateDirectSameBodyContinuesAfterCommitR36(t *testing.T) {
-	for _, rangeHeader := range []string{"", "bytes=0-"} {
-		t.Run(rangeHeader, func(t *testing.T) {
-			f, _ := renderingFixture(t, 2)
-			q := playingQueue(t, f, "music-held-direct-queue")
-			p := prepareNext(t, f, q, "music-held-direct-prepare")
-			url := p.Presentation.AudioRender.URL
-			musicPrefetchLimit(t, f, url, 4)
-			// HEAD observes headers without spending a byte of the body budget.
-			if w := f.raw("HEAD", url, "", nil, nil); w.Code != 200 || w.Body.Len() != 0 {
-				t.Fatal(w.Code, w.Body.String())
-			}
-			s, done := privateAudioHTTP(t, f, url)
-			r, _ := openPrivateBody(t, s, url, rangeHeader)
-			prefix := make([]byte, 4)
-			if _, err := io.ReadFull(r.Body, prefix); err != nil || string(prefix) != "0123" {
-				t.Fatal(string(prefix), err)
-			}
-			tail := make(chan []byte, 1)
-			readErr := make(chan error, 1)
-			go func() { b, err := io.ReadAll(r.Body); tail <- b; readErr <- err }()
-			select {
-			case b := <-tail:
-				t.Fatal("private body passed its byte budget", string(b))
-			case <-time.After(150 * time.Millisecond):
-			}
-			var ended int64
-			if err := f.db.QueryRow(`SELECT ended_ms FROM playback_v1_sessions WHERE id=?`, q.Session.ID).Scan(&ended); err != nil || ended != 0 {
-				t.Fatal("old authority ended before commit", ended, err)
-			}
-			var committed playbackv1.QueueReply
-			f.call("POST", "/v1/queues/"+q.Queue.ID+":commit-next", nil, map[string]any{"token": p.Token}, 200, &committed)
-			if committed.Session.Presentation.AudioRender.URL != url {
-				t.Fatal("commit changed media identity")
-			}
-			select {
-			case b := <-tail:
-				if string(b) != "456789" {
-					t.Fatal(string(b))
-				}
-				if err := <-readErr; err != nil {
-					t.Fatal(err)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("committed body did not continue")
-			}
-			select {
-			case <-done:
-			case <-time.After(time.Second):
-				t.Fatal("handler did not retire")
-			}
-		})
-	}
-}
-
-func TestMusicPrivateHeldBodyStopsOnCancelExpiryAndRevocationR36(t *testing.T) {
-	for _, kind := range []string{"disconnect", "expired", "stopped"} {
-		t.Run(kind, func(t *testing.T) {
-			f, player := renderingFixture(t, 2)
-			q := playingQueue(t, f, "music-held-stop-queue")
-			p := prepareNext(t, f, q, "music-held-stop-prepare")
-			url := p.Presentation.AudioRender.URL
-			sid := musicPrefetchLimit(t, f, url, 4)
-			s, done := privateAudioHTTP(t, f, url)
-			r, cancel := openPrivateBody(t, s, url, "")
-			prefix := make([]byte, 4)
-			if _, err := io.ReadFull(r.Body, prefix); err != nil {
-				t.Fatal(err)
-			}
-			switch kind {
-			case "disconnect":
-				cancel()
-			case "expired":
-				if _, err := f.db.Exec(`UPDATE playback_private_presentations SET expires_ms=? WHERE session_id=?`, time.Now().Add(-time.Second).UnixMilli(), sid); err != nil {
-					t.Fatal(err)
-				}
-			case "stopped":
-				if err := player.StopV1(context.Background(), sid); err != nil {
-					t.Fatal(err)
-				}
-			}
-			b, err := io.ReadAll(r.Body)
-			if len(b) != 0 || err == nil {
-				t.Fatal("private body continued after cancellation", string(b), err)
-			}
-			select {
-			case <-done:
-			case <-time.After(2 * time.Second):
-				t.Fatal("held handler leaked")
-			}
-			if kind != "disconnect" {
-				if w := f.raw("GET", url, "", map[string]string{"Range": "bytes=0-0"}, nil); w.Code != 404 {
-					t.Fatal(w.Code, w.Body.String())
-				}
-			}
-		})
-	}
-}
-
-// Overlap and suffix probes spend the same aggregate budget. A canceled
-// request does not refund successfully delivered bytes and reopen cannot reset it.
-func TestMusicPrivateRangeReopenCannotResetBudgetR36(t *testing.T) {
+// Private reads are ordinary bounded responses. No request waits for commit.
+func TestMusicPrivateDirectBoundedRangesAndCommitR36(t *testing.T) {
 	f, _ := renderingFixture(t, 2)
-	q := playingQueue(t, f, "music-range-queue-01")
-	p := prepareNext(t, f, q, "music-range-prep-01")
+	q := playingQueue(t, f, "music-private-queue-01")
+	p := prepareNext(t, f, q, "music-private-prep-01")
 	url := p.Presentation.AudioRender.URL
 	musicPrefetchLimit(t, f, url, 4)
-	for _, rangeHeader := range []string{"bytes=0-1", "bytes=-2"} {
-		w := f.raw("GET", url, "", map[string]string{"Range": rangeHeader}, nil)
+	if w := f.raw("HEAD", url, "", nil, nil); w.Code != 200 || w.Body.Len() != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, header := range []string{"", "bytes=0-"} {
+		if w := f.raw("GET", url, "", map[string]string{"Range": header}, nil); w.Code != 403 {
+			t.Fatal("unbounded private request", header, w.Code, w.Body.String())
+		}
+	}
+	for _, header := range []string{"bytes=0-1", "bytes=-2"} {
+		w := f.raw("GET", url, "", map[string]string{"Range": header}, nil)
 		if w.Code != 206 || w.Body.Len() != 2 {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
 	if w := f.raw("GET", url, "", map[string]string{"Range": "bytes=0-0"}, nil); w.Code != 403 {
-		t.Fatal(w.Code, w.Body.String())
+		t.Fatal("reopen reset budget", w.Code, w.Body.String())
 	}
-	s, done := privateAudioHTTP(t, f, url)
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", s.URL+url, nil)
-	response, err := s.Client().Do(req)
-	if err == nil {
-		defer response.Body.Close()
-		b, _ := io.ReadAll(response.Body)
-		if len(b) != 0 {
-			t.Fatal("reopen reset budget", string(b))
-		}
+	var ended int64
+	if err := f.db.QueryRow(`SELECT ended_ms FROM playback_v1_sessions WHERE id=?`, q.Session.ID).Scan(&ended); err != nil || ended != 0 {
+		t.Fatal(ended, err)
 	}
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("reopened request did not retire")
+	var commit playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":commit-next", nil, map[string]any{"token": p.Token}, 200, &commit)
+	if commit.Session.Presentation.AudioRender.URL != url {
+		t.Fatal("commit changed media identity")
+	}
+	s, _ := privateAudioHTTP(t, f, url)
+	r, _ := openPrivateBody(t, s, url, "")
+	body, err := io.ReadAll(r.Body)
+	if err != nil || string(body) != "0123456789" {
+		t.Fatal(string(body), err)
+	}
+}
+
+func TestMusicPrivateBudgetStopsWithoutWaitR36(t *testing.T) {
+	for _, kind := range []string{"partial", "disconnect", "revoked"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if kind == "disconnect" {
+				cancel()
+			}
+			var out bytes.Buffer
+			b := budgetWriter{w: &out, ctx: ctx, check: func() error {
+				if kind == "revoked" {
+					return playback.ErrGrantEnded
+				}
+				return nil
+			}, take: func(int64) int64 { return 4 }, refund: func(int64) {}}
+			n, err := b.Write([]byte("0123456789"))
+			if kind == "partial" {
+				if n != 4 || err != errBudget || out.String() != "0123" {
+					t.Fatal(n, err, out.String())
+				}
+			} else if n != 0 || err == nil || out.Len() != 0 {
+				t.Fatal(n, err, out.String())
+			}
+		})
+	}
+}
+
+func TestMusicPrivateReopenRefusesExpiredOrStoppedGrantR36(t *testing.T) {
+	for _, kind := range []string{"expired", "stopped"} {
+		t.Run(kind, func(t *testing.T) {
+			f, player := renderingFixture(t, 2)
+			q := playingQueue(t, f, "music-revoke-queue-01")
+			p := prepareNext(t, f, q, "music-revoke-prep-01")
+			url := p.Presentation.AudioRender.URL
+			sid := musicPrefetchLimit(t, f, url, 4)
+			if w := f.raw("GET", url, "", map[string]string{"Range": "bytes=0-1"}, nil); w.Code != 206 || w.Body.Len() != 2 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if kind == "expired" {
+				if _, err := f.db.Exec(`UPDATE playback_private_presentations SET expires_ms=? WHERE session_id=?`, time.Now().Add(-time.Second).UnixMilli(), sid); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := player.StopV1(context.Background(), sid); err != nil {
+				t.Fatal(err)
+			}
+			if w := f.raw("GET", url, "", map[string]string{"Range": "bytes=0-1"}, nil); w.Code != 404 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		})
 	}
 }
 
 // This runs the actual retained-input runtime and supervised encoder through
 // HTTP. It qualifies server bytes and authority, never CAF fetch behaviour.
-func TestMusicPrivateConvertedHTTPFormatGainFramesAndContinuationR36(t *testing.T) {
+func TestMusicPrivateConvertedHTTPFormatGainFramesAfterCommitR36(t *testing.T) {
 	ff, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg unavailable")
@@ -294,27 +252,24 @@ func TestMusicPrivateConvertedHTTPFormatGainFramesAndContinuationR36(t *testing.
 				t.Fatalf("not a baked receiver plan %+v %+v", p.Presentation, plan)
 			}
 			musicPrefetchLimit(t, f, plan.URL, 256)
-			s, done := privateAudioHTTP(t, f, plan.URL)
-			response, _ := openPrivateBody(t, s, plan.URL, "")
-			prefix := make([]byte, 256)
-			if _, err = io.ReadFull(response.Body, prefix); err != nil {
-				t.Fatal(err)
-			}
+			// Ruling17.2: ordinary commit happens before the progressive GET.
 			var commit playbackv1.QueueReply
 			f.call("POST", "/v1/queues/"+q.Queue.ID+":commit-next", nil, map[string]any{"token": p.Token}, 200, &commit)
 			if commit.Session.Presentation.URL != plan.URL {
 				t.Fatal("commit changed URL")
 			}
-			tail, err := io.ReadAll(response.Body)
+			s, done := privateAudioHTTP(t, f, plan.URL)
+			response, _ := openPrivateBody(t, s, plan.URL, "")
+			body, err := io.ReadAll(response.Body)
 			if err != nil {
 				t.Fatal(err)
 			}
-			body := append(prefix, tail...)
 			select {
 			case <-done:
 			case <-time.After(2 * time.Second):
 				t.Fatal("encoder/handler did not retire")
 			}
+
 			wantMIME := map[string]string{"flac": "audio/flac", "opus": "audio/ogg", "aac": "audio/aac"}[codec]
 			if response.Header.Get("Content-Type") != wantMIME || response.Header.Get("X-Audio-Frames") != strconv.FormatInt(plan.DurationFrames, 10) || response.Header.Get("X-Audio-Trim-Start") != strconv.FormatInt(plan.Trim.StartFrames, 10) || response.Header.Get("X-Audio-Trim-End") != strconv.FormatInt(plan.Trim.EndFrames, 10) {
 				t.Fatal(response.Header, plan)
@@ -341,7 +296,7 @@ func TestMusicPrivateConvertedHTTPFormatGainFramesAndContinuationR36(t *testing.
 			if peak < 0.04 || peak > 0.14 {
 				t.Fatal("server -12dB gain missing or applied twice", peak)
 			}
-			t.Logf("actual %s/%s %s, %dHz %dch, %d audible frames, %.5f peak; one HTTP body through commit", plan.Codec, plan.Container, wantMIME, plan.SampleRate, plan.Channels, plan.DurationFrames, peak)
+			t.Logf("actual %s/%s %s, %dHz %dch, %d audible frames, %.5f peak; fresh progressive GET after commit", plan.Codec, plan.Container, wantMIME, plan.SampleRate, plan.Channels, plan.DurationFrames, peak)
 		})
 	}
 }
