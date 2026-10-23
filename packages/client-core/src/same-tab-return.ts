@@ -5,6 +5,7 @@ import {parseDirectSignIn} from './profile-management.ts';
 import type {HttpLocalApi,LocalSession} from './index.ts';
 import {CodedError} from './server-messages.ts';
 import {routeBase64,routeBytes,routeOrigin,sameServerPin,serverPin,webRouteCrypto,type RouteCrypto} from './route-identity.ts';
+import {validInstallationId} from './installation.ts';
 
 export type ReturnPurpose='setup'|'switch'|'change-owner'|'sign-in';
 export type ReturnPending=Readonly<{serverId:string;purpose:ReturnPurpose;claimOperationId:string;registrationId:string;state:string;verifier:string;serverChallenge:string;installationId:string;createdAt:number;registrationOrigin?:string;moveTicket?:string;moveCode?:string}>;
@@ -35,7 +36,7 @@ export async function prepareRegisteredSignIn(api:Pick<HttpLocalApi,'request'|'g
  const invalid=()=>new CodedError('invalid_return_preparation','The server could not prepare this sign-in.');
  const pin=api.getRouteConnection()?.pin,crypto=options.crypto??webRouteCrypto;
  if(!pin||!input.origin.startsWith('https://')||routeOrigin(input.origin)!==input.origin||!input.hostedOrigin.startsWith('https://')||routeOrigin(input.hostedOrigin)!==input.hostedOrigin||!validMemberProof({...input,purpose:'sign-in',claimOperationId:''}))throw invalid();
- routeBytes(input.installationId,32);
+ if(!validInstallationId(input.installationId))throw invalid();
  const current=()=>!options.signal?.aborted&&(options.isCurrent?.()??true),check=()=>{if(!current())throw new CodedError('cancelled','This server sign-in changed.');};
  check();const nonce=routeBase64(crypto.random(32));
  const raw:unknown=await api.request(routePath('post_auth_portico_return_prepare'),'POST',{origin:input.origin,nonce},options.signal);check();

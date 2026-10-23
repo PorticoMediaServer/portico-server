@@ -6,8 +6,11 @@ export interface ReaderSource {
   readonly revision: string;
   readonly size: number;
   readonly resources?: ReaderResources;
+  /** Genuine interactive from-start stream; never a synthetic random reader. */
+  readonly sequential?: ReaderSequentialSource;
   read?(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
 }
+export type ReaderSequentialSource = Readonly<{open(signal: AbortSignal): Promise<ReadableStream<Uint8Array>>}>;
 export type ReaderResource = Readonly<{path: string; mime: string; size: number}>;
 export interface ReaderResources {
   readonly entries: readonly ReaderResource[];
@@ -68,6 +71,8 @@ export interface ReaderView<Preferences extends object> {
 }
 export type ReaderMount<Preferences extends object> = Readonly<{
   container: HTMLElement; preferences: Readonly<Preferences>; viewport: ReaderViewport;
+  /** Resolved catalogue identity, including authoritative omitted fields. */
+  metadata?: ReaderMetadata;
   signal: AbortSignal; onLocation(location: ReaderLocation): void;
   onSelection(selection: ReaderSelection | null): void;
   onSurfaceInput?(input: ReaderSurfaceInput): void;

@@ -379,7 +379,10 @@ export class FakePlaybackServer {
       if (!queue || !this.ownsQueue(queue)) return this.error(404, 'queue_not_found');
       const itemId = this.itemOfEntry(queue, qref.entryId);
       if (!itemId) return this.error(404, 'queue_not_found');
-      s = this.newSession(itemId, {queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0});
+      s = this.newSession(itemId, {
+        queue: qref, state: body.state === 'paused' ? 'paused' : 'playing', positionMs: typeof body.startPositionMs === 'number' ? body.startPositionMs : 0,
+        versionId: typeof body.versionId === 'string' ? body.versionId : 'v1', audio: body.audio, subtitles: body.subtitles, quality: body.quality ?? {mode: 'original'},
+      });
       queue.sessionId = s.id;
     } else if (typeof body.itemId === 'string' || typeof body.channelId === 'string') {
       s = this.newSession((body.itemId ?? body.channelId) as string, {

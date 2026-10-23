@@ -23,6 +23,14 @@ test('checked member prepare retains the installed operation, actual registratio
  assert.equal(f.pending()?.moveTicket,input.moveTicket);assert.equal(f.pending()?.registrationOrigin,input.origin);assert.equal(result.start.codeChallenge,createHash('sha256').update(f.pending()!.verifier).digest('base64url'));
  for(const secret of ['verifier','moveTicket','moveCode','registrationOrigin'])assert.equal(Object.hasOwn(result.start,secret),false);
 });
+test('ordinary preparation binds the existing UUID installation rather than creating or decoding another identity',async()=>{
+ const installationId='06be25db-f89c-497a-a817-d160d9e50761';
+ const f=fixture((_out,proof)=>{proof.installationId=installationId;});
+ const result=await prepareRegisteredSignIn(f.api as never,f.store,{...input,installationId});
+ assert.equal(result.start.installationId,installationId);assert.equal(f.pending()?.installationId,installationId);assert.equal(f.calls(),1);
+ const g=fixture();await assert.rejects(prepareRegisteredSignIn(g.api as never,g.store,{...input,installationId:'invalid/installation'}));assert.equal(g.calls(),0);assert.equal(g.pending(),undefined);
+ const h=fixture();await assert.rejects(prepareRegisteredSignIn(h.api as never,h.store,{...input,installationId}));assert.equal(h.pending(),undefined,'a different signed installation never binds the UUID');
+});
 for(const [name,patch] of Object.entries({
  registration:(out:any)=>{out.registration.id='provisional';},
  origin:(out:any)=>{out.registration.origin='https://other.example';},

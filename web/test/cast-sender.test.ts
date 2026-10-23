@@ -42,6 +42,9 @@ test('Cast pairs with a display name, waits through pair-pending, and loads with
   tv.reply({type: 'pair-pending'});
   assert.equal(sender.getSnapshot().phase, 'waiting');
   tv.reply({type: 'paired'});
+  await tick();
+  assert.equal(sender.getSnapshot().phase, 'waiting', 'transport send has not acknowledged playback');
+  tv.reply({type:'loaded',requestId:tv.sent[1].requestId,itemId:'item-1'});
   assert.equal(await started, true);
   assert.equal(tv.sent[1].type, 'load');
   assert.equal(tv.sent[1].itemId, 'item-1');
