@@ -1,4 +1,4 @@
-import {useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
 import {itemSubject} from '../../platform/playback/subject';
@@ -18,6 +18,7 @@ function stateKey(group: Group) {
 }
 /** tv-more desktop19–21 and states27. Room, membership, item facts and actions are real. */
 export function TogetherScreen({binding}: {binding: TogetherBindings}) {
+  useEffect(() => {if (binding.isCurrent()) void binding.service.refreshDirectory();}, [binding]);
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot), room = snapshot.room, group = room.group;
   const playback = useSyncExternalStore(binding.runtime.subscribe, binding.runtime.getSnapshot, binding.runtime.getSnapshot);
   const phone = usePhone();
@@ -49,7 +50,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   if (!binding.isCurrent()) return null;
   return <main className={styles.page} data-together-screen>
     {source && <div className={styles.wash} aria-hidden="true"><Artwork source={source} alt="" /></div>}
-    {phone && <div className={styles.mobileNav}><button type="button" onClick={() => inRoom ? setRoomView(false) : binding.openSettings()} aria-label={t(inRoom ? 'web.together.backToLobby' : 'web.shell.settings')}><Icon name="i-left" size={24} />{!inRoom && t('web.shell.settings')}</button><b>{inRoom ? group.name : t('web.settings.together')}</b></div>}
+    {phone && <div className={styles.mobileNav}><button type="button" onClick={() => {if (inRoom) {setRoomView(false);act(() => binding.service.refreshDirectory());} else binding.openSettings();}} aria-label={t(inRoom ? 'web.together.backToLobby' : 'web.shell.settings')}><Icon name="i-left" size={24} />{!inRoom && t('web.shell.settings')}</button><b>{inRoom ? group.name : t('web.settings.together')}</b></div>}
     <div className={styles.content}>
       {inRoom && <div className={styles.kind}>{t('web.settings.together')}</div>}
       <h1>{inRoom ? group.name : t('web.settings.together')}{inRoom && <span className={styles.badge}>{t(stateKey(group))}</span>}</h1>
@@ -61,7 +62,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
       {room.phase === 'reconnecting' && <div className={styles.notice} role="status">{t('web.together.reconnecting')}</div>}
       {room.phase === 'ended' ? <section className={styles.ended}><Icon name="i-together" size={40} /><h2>{t('web.together.endedTitle')}</h2>
         <p>{t(group?.endedReason === 'host-ended' ? 'web.together.ended.host' : group?.endedReason === 'host-unavailable' ? 'web.together.ended.away' : group?.endedReason === 'empty' ? 'web.together.ended.empty' : 'web.together.ended.other')}</p>
-        <button className={styles.primary} type="button" onClick={() => act(() => binding.service.dismiss())}>{t('web.together.backToLobby')}</button></section>
+        <button className={styles.primary} type="button" onClick={() => act(() => {binding.service.dismiss();void binding.service.refreshDirectory();})}>{t('web.together.backToLobby')}</button></section>
         : inRoom ? <div className={styles.room}>
           <section>
             <div className={styles.now}><Artwork source={source} alt="" saturation={.85} brightness={.7} /><div className={styles.nowText}>

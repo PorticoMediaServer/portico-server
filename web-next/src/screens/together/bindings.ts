@@ -56,7 +56,7 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     isCurrent, getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};},
     start: () => {guard();if (started) return;started = true;offGroup = playback.runtime.bindGroup(service, isCurrent, playback.reportError);
       offPreferences = context.preferences?.subscribe(() => {if (isCurrent()) {i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);service.setI18n(i18n);publish();}});
-      void service.refreshDirectory();},
+    },
     reportError: playback.reportError,
     dispose: () => {if (life.signal.aborted) return;life.abort();reading?.abort();offGroup?.();offPreferences?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},
   };
