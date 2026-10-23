@@ -2,6 +2,8 @@ import {useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Icon, IconSprite} from '../src/kit/Icon';
 import {PlaybackInfo, type PlaybackInfoCopy, type PlaybackInfoProjection} from '../src/kit/media/PlaybackInfo';
+import {PlayOnButton, PlayOnPanel} from '../src/kit/player/PlayOnPanel';
+import type {PlayOnSnapshot} from '../src/platform/playback/play-on';
 import '../src/kit/tokens.css';
 import '../src/kit/fonts.css';
 import '../src/bootstrap.css';
@@ -42,9 +44,14 @@ const projection: PlaybackInfoProjection = {
 };
 function Comparison() {
   const [open,setOpen]=useState(false),returnFocusRef=useRef<HTMLButtonElement>(null);
+  const playOn=new URLSearchParams(location.search).get('panel')==='play-on';
+  const snapshot:PlayOnSnapshot={cast:{available:true,phase:'off',positionSeconds:0,durationSeconds:0,paused:false,audioTracks:[],textTracks:[]},airPlayAvailable:false,panel:open?'play-on':null,disposed:false};
   return <><IconSprite /><div data-comparison-background="" style={{position:'fixed',inset:0,pointerEvents:'none'}} />
-    <button ref={returnFocusRef} type="button" aria-label="More" onClick={()=>setOpen(true)} style={{position:'fixed',left:40,top:40,width:48,height:48,display:'grid',placeItems:'center'}}><Icon name="i-more" size={22} /></button>
-    <PlaybackInfo projection={projection} copy={copy} open={open} onOpenChange={setOpen} returnFocusRef={returnFocusRef} />
+    {playOn ? <><div style={{position:'fixed',right:82,top:24}}><PlayOnButton available controller={{openPlayOn:()=>setOpen(true)}} buttonRef={returnFocusRef} /></div>
+      <PlayOnPanel controller={{closePanel:()=>setOpen(false),startAirPlay(){},async startCast(){return false;}}} snapshot={snapshot} phone={false} anchorRef={returnFocusRef} reportError={error=>{throw error;}} /></> : <>
+      <button ref={returnFocusRef} type="button" aria-label="More" onClick={()=>setOpen(true)} style={{position:'fixed',left:40,top:40,width:48,height:48,display:'grid',placeItems:'center'}}><Icon name="i-more" size={22} /></button>
+      <PlaybackInfo projection={projection} copy={copy} open={open} onOpenChange={setOpen} returnFocusRef={returnFocusRef} />
+    </>}
   </>;
 }
 createRoot(document.getElementById('root')!).render(<Comparison />);

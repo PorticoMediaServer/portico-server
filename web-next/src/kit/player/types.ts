@@ -14,4 +14,7 @@ export type CastPlayerProps = Readonly<{
   t?: CastPlayerTranslate; controller: PlayOnController; snapshot: PlayOnSnapshot; visuals: CastPlayerVisuals; phone: boolean;
   returnFocusRef?: RefObject<HTMLElement | null>; reportError: (error: unknown) => void;
 }>;
-export type PlayOnPanelProps = Pick<CastPlayerProps, 'controller' | 'snapshot' | 'phone' | 'reportError' | 't'> & Readonly<{anchorRef: RefObject<HTMLElement | null>}>;
+export type PlayOnPanelProps = Pick<CastPlayerProps, 'snapshot' | 'phone' | 'reportError' | 't'> & Readonly<{
+  controller: Pick<PlayOnController, 'closePanel' | 'startAirPlay' | 'startCast'>;
+  anchorRef: RefObject<HTMLElement | null>;
+}>;

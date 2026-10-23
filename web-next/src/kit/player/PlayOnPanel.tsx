@@ -6,7 +6,7 @@ import type {PlayOnController} from '../../platform/playback/play-on';
 import type {CastPlayerTranslate, PlayOnPanelProps} from './types';
 import styles from './cast-player.module.css';
 
-export function PlayOnButton({controller, available, buttonRef, onOpen, t = defaultI18n.t}: Readonly<{controller: PlayOnController; available: boolean; buttonRef?: RefObject<HTMLButtonElement | null>; onOpen?: () => void; t?: CastPlayerTranslate}>) {
+export function PlayOnButton({controller, available, buttonRef, onOpen, t = defaultI18n.t}: Readonly<{controller: Pick<PlayOnController, 'openPlayOn'>; available: boolean; buttonRef?: RefObject<HTMLButtonElement | null>; onOpen?: () => void; t?: CastPlayerTranslate}>) {
   if (!available) return null;
   return <button type="button" ref={buttonRef} className={styles.playOnButton} aria-label={t('next.dock.playOnDevice')} aria-haspopup="menu"
     onClick={() => { onOpen?.(); controller.openPlayOn(); }}><Icon name="i-cast" size={24} /></button>;
