@@ -2,6 +2,7 @@ import {spawn} from 'node:child_process';
 import {mkdir, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {once} from 'node:events';
+import assert from 'node:assert/strict';
 
 // Real Menu/BottomSheet/Popover component pixels, not a production shell or action proof.
 // References are served unmodified from an exact checked design pin over an owned tunnel.
@@ -55,6 +56,11 @@ const screenshot = async (name, clip) => {
 };
 const settle = () => target.evaluate(`(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(image=>image.complete?Promise.resolve():new Promise(resolve=>{image.onload=resolve;image.onerror=resolve;})));await new Promise(resolve=>setTimeout(resolve,900));return true})()`);
 const navigate = async url => {const loaded = target.next('Page.loadEventFired'); await target.call('Page.navigate', {url}); await loaded; await settle();};
+const pause = milliseconds => target.evaluate(`new Promise(resolve=>setTimeout(resolve,${milliseconds}))`);
+const primary = () => target.evaluate(`(()=>{const r=document.querySelector('[data-card-kind] > button').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+const start = point => target.call('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{...point, radiusX: 1, radiusY: 1, force: 1}]});
+const end = () => target.call('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+const state = () => target.evaluate(`(()=>{const e=document.querySelector('[data-component-only]');return{navigations:Number(e.dataset.navigations),menus:Number(e.dataset.menus),toggles:Number(e.dataset.toggles),open:!!document.querySelector('[role=menu],[role=dialog]')}})()`);
 const bounds = selector => target.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error('Missing capture element');e.scrollIntoView({block:'center',inline:'center'});const r=e.getBoundingClientRect();return{x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1}})()`);
 const measure = selector => target.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{rect:{x:r.x,y:r.y,width:r.width,height:r.height},background:s.backgroundColor,padding:s.padding,borderRadius:s.borderRadius,text:e.innerText,rows:[...e.querySelectorAll('button')].map(b=>({text:b.innerText,height:b.getBoundingClientRect().height,font:getComputedStyle(b).font,padding:getComputedStyle(b).padding})),images:[...e.querySelectorAll('img')].map(i=>({complete:i.complete,naturalWidth:i.naturalWidth,rect:{width:i.width,height:i.height}}))}})()`);
 
@@ -82,10 +88,13 @@ try {
     const referenceImage = await screenshot(`${item.id}-reference.jpg`, referenceClip);
     await target.call('Emulation.setDeviceMetricsOverride', {width: item.width, height: item.height, deviceScaleFactor: 1, mobile: false});
     await navigate(`http://127.0.0.1:18732/test/fixtures/touch-menu.html?case=${item.id}&reference=${encodeURIComponent(reference)}`);
-    const point = await target.evaluate(`(()=>{const r=document.querySelector('#root button').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
-    await target.call('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{...point, radiusX: 1, radiusY: 1, force: 1}]});
-    await target.call('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+    let point = await primary();
+    await start(point); await pause(100); await end(); await settle();
+    assert.deepEqual(await state(), {navigations: 1, menus: 0, toggles: 0, open: false});
+    point = await primary();
+    await start(point); await pause(550); await end();
     await settle();
+    assert.deepEqual(await state(), {navigations: 1, menus: 1, toggles: 0, open: true});
     if (item.id === 'compact') {
       const hover = await target.evaluate(`(()=>{const r=[...document.querySelectorAll('[data-menu-item]')].find(e=>e.textContent===${JSON.stringify('Select')}).getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
       await target.call('Input.dispatchMouseEvent', {type: 'mouseMoved', ...hover});
@@ -95,12 +104,28 @@ try {
     if (unresolved.length) throw new Error(`Missing document icon symbols: ${unresolved.join(',')}`);
     const buildFacts = await measure(selector), buildClip = await bounds(selector);
     const buildImage = await screenshot(`${item.id}-build.jpg`, buildClip);
+    await target.call('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
+    await target.call('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
+    await settle();
+    assert.equal((await state()).open, false);
+    assert.equal(await target.evaluate(`document.activeElement===document.querySelector('[data-card-kind] > button')`), true);
     results.push({id: item.id, qualification: 'component-only; exact frame supplied rows, no application/authority/dispatch acceptance', reference: referenceFacts, build: buildFacts, referenceClip, buildClip});
     const width = Math.ceil(Math.max(referenceClip.width, buildClip.width)), height = Math.ceil(Math.max(referenceClip.height, buildClip.height));
     await target.call('Emulation.setDeviceMetricsOverride', {width: width * 2, height, deviceScaleFactor: 1, mobile: false});
     await navigate('about:blank');
     await target.evaluate(`document.body.style.cssText='margin:0;background:#071018;display:flex;align-items:flex-end';document.body.innerHTML=${JSON.stringify(`<img alt="Mock-up" src="data:image/jpeg;base64,${referenceImage}" style="width:${referenceClip.width}px;height:${referenceClip.height}px"><img alt="Build" src="data:image/jpeg;base64,${buildImage}" style="width:${buildClip.width}px;height:${buildClip.height}px">`)};true`);
     await settle(); await screenshot(`${item.id}-pair.jpg`, {x: 0, y: 0, width: width * 2, height, scale: 1});
+    await target.call('Emulation.setDeviceMetricsOverride', {width: item.width, height: item.height, deviceScaleFactor: 1, mobile: false});
+    const fixture = `http://127.0.0.1:18732/test/fixtures/touch-menu.html?case=${item.id}&reference=${encodeURIComponent(reference)}`;
+    await navigate(fixture);
+    point = await primary(); await start(point);
+    await target.call('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{x: point.x + 6, y: point.y + 8.1, radiusX: 1, radiusY: 1, force: 1}]});
+    await pause(550); await end(); await settle();
+    assert.deepEqual(await state(), {navigations: 0, menus: 0, toggles: 0, open: false});
+    await navigate(`${fixture}&selecting=1`);
+    point = await primary(); await start(point); await pause(550); await end(); await settle();
+    assert.deepEqual(await state(), {navigations: 0, menus: 0, toggles: 1, open: false});
+    log({id: item.id, componentInteractionChecks: ['short tap navigates once', 'hold opens menu without title activation', 'Escape closes and restores genuine opener', 'movement greater than10px cancels', 'selecting hold toggles once without opening menu']});
   }
   log({cases: results, errors});
   if (errors.length) process.exitCode = 1;
