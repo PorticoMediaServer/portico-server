@@ -5,7 +5,7 @@ type Route = SavedRoute | Readonly<{view: 'downloads'}>;
 
 const names = ['watchlist', 'favorites', 'playlists', 'playlist', 'collections', 'views', 'history', 'resource', 'downloads'] as const;
 const text = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
-const invalid = (): never => {throw new Error('invalid-saved-route');};
+function invalid(): never {throw new Error('invalid-saved-route');}
 /** The owned URL schema forwards only the selected server policy, never raw keys. */
 export function parseSavedScreenRoute(raw: Record<string, unknown>): Route {
   const view = names.find(name => name === (raw.view ?? (raw.resourceId === undefined ? 'watchlist' : 'resource')));
