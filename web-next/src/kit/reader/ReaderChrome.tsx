@@ -24,6 +24,8 @@ export type ReaderChromeProps = Readonly<{
   onBack: () => void; onTurn: (turn: ReadTurn) => void; onSeek?: (progression: number) => void;
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
   panelReflows?: boolean; showPageArrows: boolean;
+  /** The same page tap closes a docked panel without also navigating the book. */
+  onPanelDismiss?: (reason: 'outside' | 'escape') => void;
   /** A panel/menu or a live text selection pins chrome until it closes. */
   holdOpen?: boolean; textSelectionActive?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean;
   /** Reader engine owns taps/selection in its iframe; forwarded fractions use the same handler. */
@@ -31,7 +33,7 @@ export type ReaderChromeProps = Readonly<{
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, subscribeSurfaceInput}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
@@ -43,23 +45,25 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   }, [cancel, held]);
   // Surface activity is deliberately not a React store update per mousemove.
   const wake = useCallback(() => { setVisible(true); arm(); }, [arm]);
-  useEffect(() => { root.current?.focus({preventScroll: true}); }, []);
+  useEffect(() => { if (!root.current?.contains(document.activeElement)) root.current?.focus({preventScroll: true}); }, []);
   useEffect(() => {
     // Read frames: never hide while a panel/menu/selection/focused control is active.
     if (visible) arm(); else cancel();
     return cancel;
   }, [arm, cancel, visible]);
   const tap = useCallback((fraction: number) => {
+    if (panel) { onPanelDismiss?.('outside'); return; }
     const turn = readTapTurn(fraction, direction);
     if (turn === 'chrome') { if (!held) { cancel(); setVisible(value => !value); } }
     else if (turn && tapTurnEnabled && pageTurnsEnabled && !textSelectionActive) onTurn(turn);
-  }, [direction, held, cancel, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
+  }, [panel, onPanelDismiss, direction, held, cancel, onTurn, tapTurnEnabled, pageTurnsEnabled, textSelectionActive]);
   const key = useCallback((input: Extract<ReaderSurfaceInput, {kind: 'key'}>) => {
     if (input.editable || textSelectionActive || input.alt || input.ctrl || input.meta) return;
+    if (panel && input.key === 'Escape') { input.preventDefault(); onPanelDismiss?.('escape'); return; }
     wake();
     const turn = readKeyTurn(input.key, direction, input.shift);
     if (turn && pageTurnsEnabled) { input.preventDefault(); onTurn(turn); }
-  }, [direction, onTurn, pageTurnsEnabled, textSelectionActive, wake]);
+  }, [panel, onPanelDismiss, direction, onTurn, pageTurnsEnabled, textSelectionActive, wake]);
   useEffect(() => subscribeSurfaceInput?.(input => {
     if (input.kind === 'tap') tap(input.fraction);
     else if (input.kind === 'activity') wake();
@@ -73,7 +77,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || readerInteractiveTarget(event.target)) return;
       key({kind: 'key', key: event.key, shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, editable: false, preventDefault: () => event.preventDefault()});
     }}>
-    <div className={styles.surface} onClick={event => {
+    <div className={styles.surface} data-reader-surface onClick={event => {
       if (event.defaultPrevented || readerInteractiveTarget(event.target) || window.getSelection()?.toString()) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       if (bounds.width > 0) tap((event.clientX - bounds.left) / bounds.width);

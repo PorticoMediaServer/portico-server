@@ -1,10 +1,11 @@
-import {useId, type RefObject} from 'react';
+import {useCallback, useId, useLayoutEffect, useRef, type RefObject} from 'react';
 import {RadioGroup} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
-import {Segmented} from '../controls';
+import {Segmented, Switch} from '../controls';
 import {Popover} from '../overlays/Popover';
 import {BottomSheet} from '../overlays/BottomSheet';
 import type {OverlayChange} from '../overlays/types';
+import {focusElement, focusable, useOverlayKeys, usePresence, useSurfaceMotion} from '../overlays/shared';
 import styles from './display.module.css';
 
 type DisplayOption = Readonly<{value: string; label: string; disabled?: boolean}>;
@@ -24,21 +25,28 @@ export type ReaderDisplaySize = Readonly<{
   /** Tick values and bounds come from the canonical Reading facade. */
   ticks?: readonly number[]; disabled?: boolean; onChange: (value: number) => void;
 }>;
+export type ReaderTwoPages = Readonly<{
+  label: string; description?: string; checked: boolean; disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}>;
 export type ReaderDisplayControlsProps = Readonly<{
   themes: DisplayGroup<ReaderThemeOption>; fonts: DisplayGroup<ReaderFontOption>;
   size: ReaderDisplaySize; rows: readonly ReaderDisplayRow[];
   copy: Readonly<{sample: string; sizeSample: string; sessionNote: string; defaultsNote: string; openSettings?: string}>;
   onOpenSettings?: () => void;
+  /** Tablet frames use font tiles and touch targets in both orientations. */
+  layout?: 'desktop' | 'tablet';
+  twoPages?: ReaderTwoPages;
 }>;
 
 /** Frame-backed controls only: the core supplies values and applies book-local overrides. */
-export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSettings}: ReaderDisplayControlsProps) {
+export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSettings, layout = 'desktop', twoPages}: ReaderDisplayControlsProps) {
   const id = useId();
   const fraction = size.max > size.min ? Math.max(0, Math.min(1, (size.value - size.min) / (size.max - size.min))) : 0;
   const changeSize = (value: number) => {
     if (!size.disabled && Number.isFinite(value)) size.onChange(Math.max(size.min, Math.min(size.max, value)));
   };
-  return <div className={styles.controls}>
+  return <div className={styles.controls} data-layout={layout}>
     <section className={styles.group} aria-labelledby={`${id}-page`}><h3 id={`${id}-page`}>{themes.label}</h3>
       <RadioGroup.Root className={styles.themes} value={themes.value} onValueChange={themes.onChange} aria-labelledby={`${id}-page`} orientation="horizontal">
         {themes.options.map(option => <RadioGroup.Item key={option.value} className={styles.theme} value={option.value} disabled={option.disabled} data-tone={option.tone}>
@@ -71,6 +79,9 @@ export function ReaderDisplayControls({themes, fonts, size, rows, copy, onOpenSe
       <span>{row.label}</span><Segmented className={styles.segments} aria-label={row.label} value={row.value} onValueChange={row.onChange}
         items={row.options} />
     </div>)}</div>
+    {twoPages && <label className={styles.twoPages}><span>{twoPages.label}{twoPages.description && <small>{twoPages.description}</small>}</span>
+      <Switch className={styles.twoPagesSwitch} checked={twoPages.checked} disabled={twoPages.disabled} onCheckedChange={twoPages.onChange} aria-label={twoPages.label} />
+    </label>}
     <p className={styles.note}><Icon name="i-info" size={18} /><span><b>{copy.sessionNote}</b>{' '}{copy.defaultsNote}</span>
       {onOpenSettings && copy.openSettings && <button type="button" onClick={onOpenSettings}>{copy.openSettings}<Icon name="i-right" size={16} /></button>}
     </p>
@@ -84,7 +95,8 @@ export type ReaderDisplayProps = ReaderDisplayControlsProps & Readonly<{
 
 /** Desktop popover and compact sheet share the same controlled values and callbacks. */
 export function ReaderDisplayPopover({label, open, onOpenChange, anchorRef, ...controls}: ReaderDisplayProps) {
-  return <Popover open={open} onOpenChange={onOpenChange} title={label} accessibilityLabel={label} anchorRef={anchorRef} width={404} sideOffset={8} className={styles.popover}>
+  return <Popover open={open} onOpenChange={onOpenChange} title={label} accessibilityLabel={label} anchorRef={anchorRef} width={controls.layout === 'tablet' ? 448 : 404} sideOffset={8}
+    className={`${styles.popover} ${controls.layout === 'tablet' ? styles.tabletPopover : ''}`}>
     <ReaderDisplayControls {...controls} />
   </Popover>;
 }
@@ -95,4 +107,36 @@ export function ReaderDisplaySheet({label, open, onOpenChange, anchorRef, ...con
     showCloseButton={false} fitContent className={styles.sheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>
     <ReaderDisplayControls {...controls} />
   </BottomSheet>;
+}
+
+/** tablet-read 6b: an in-reader, non-modal panel with no undrawn heading or close button. */
+export function ReaderDisplaySidePanel({label, open, onOpenChange, anchorRef, ...controls}: ReaderDisplayProps) {
+  const panel = useRef<HTMLElement | null>(null), outside = useRef(false);
+  const motionRef = useSurfaceMotion(open, 'panel'), present = usePresence(open, 160);
+  const isTop = useOverlayKeys(open, onOpenChange, true);
+  const current = useRef({onOpenChange, isTop}); current.current = {onOpenChange, isTop};
+  const ref = useCallback((element: HTMLElement | null) => { panel.current = element; motionRef(element); }, [motionRef]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const surface = panel.current, opener = anchorRef.current, owner = surface?.ownerDocument;
+    outside.current = false;
+    if (!surface || !owner) return;
+    focusElement(surface.querySelector<HTMLElement>('[role="radio"][data-state="checked"]') ?? focusable(surface)[0] ?? surface);
+    const dismiss = (event: MouseEvent) => {
+      if (!current.current.isTop() || !(event.target instanceof Node) || surface.contains(event.target) || (anchorRef.current ?? opener)?.contains(event.target)) return;
+      // Consume a page click so dismissing Display cannot also turn the page.
+      if (event.target instanceof Element && event.target.closest('[data-reader-surface]')) event.preventDefault();
+      outside.current = true; current.current.onOpenChange(false, 'outside');
+    };
+    owner.addEventListener('click', dismiss, true);
+    return () => {
+      owner.removeEventListener('click', dismiss, true);
+      if (!outside.current && (owner.activeElement === owner.body || surface.contains(owner.activeElement))) focusElement(anchorRef.current ?? opener);
+    };
+  }, [open, anchorRef]);
+  if (!present) return null;
+  return <aside ref={ref} className={styles.sidePanel} role="region" aria-label={label} tabIndex={-1} data-reader-panel
+    data-state={open ? 'open' : 'closed'} inert={!open} aria-hidden={!open}>
+    <ReaderDisplayControls {...controls} layout="tablet" />
+  </aside>;
 }
