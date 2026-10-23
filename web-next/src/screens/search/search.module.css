@@ -59,6 +59,13 @@
 .recent,.single,.partial { width: 100%; }
 
 .recent > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.recent[data-compact] header { margin-bottom: 8px; }
+.recent[data-compact] header h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-row-heading-weight); }
+.recent > .recentList { display: block; overflow: hidden; border-radius: 14px; background: var(--color-raised); }
+.recentRow { position: relative; width: 100%; min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border: 0; background: transparent; color: var(--color-text-secondary); text-align: left; font-size: calc(var(--type-body-size) + .5px); font-weight: var(--type-body-strong-weight); cursor: pointer; }
+.recentRow > svg { flex: none; color: var(--color-text-tertiary); }
+.recentRow + .recentRow::before { content: ''; position: absolute; top: 0; left: 56px; right: 0; height: 1px; background: var(--color-line); }
+.recentRow:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; }
 
 .partial { display: flex; align-items: center; gap: 14px; color: var(--color-text-secondary); padding: 12px 12px 12px 18px; border-radius: 12px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 .partial > button { margin-left: auto; }

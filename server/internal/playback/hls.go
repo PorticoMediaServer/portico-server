@@ -631,6 +631,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	// is changed so later windows do not repeat the failure.
 	if e != nil && !throttled() && ctx.Err() == nil && delivery != nil && delivery.VideoAction == "convert" && delivery.HardwareBackend != "" && delivery.HardwareBackend != string(decoder.BackendSoftware) {
 		failedBackend := delivery.HardwareBackend
+		failedDevice := delivery.HardwareDevice
 		software := *delivery
 		software.HardwareBackend, software.HardwareNative, software.HardwareDevice = string(decoder.BackendSoftware), false, ""
 		software.ReasonCodes = append(append([]string{}, delivery.ReasonCodes...), ReasonHardwareFailedSoftware)
@@ -673,7 +674,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		retryCancelled := ctx.Err() != nil || !currentWindow || processCtx.Err() != nil && !softwareThrottled
 		if hardwareFailureConfirmed(e, retryCancelled, softwareThrottled, from, beforeRetry, softwareProduced) {
-			decoder.RecordHardwareFailure(decoder.HardwareBackend(failedBackend))
+			decoder.RecordHardwareDeviceFailure(decoder.HardwareBackend(failedBackend), failedDevice)
 		}
 	}
 	if e != nil && !throttled() && ctx.Err() == nil {

@@ -25,10 +25,12 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/storage"
 )
 
 // An actual owner command saves a real read-only NAS connection, then the
@@ -227,6 +229,38 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	if counts := process.OperationCounts(); counts.Active != 0 || counts.Peak > counts.Capacity || counts.Capacity != profile.Limits.Connections {
 		t.Fatal("storage metadata escaped the source budget", counts)
 	}
+	// The actual library creation inspects its source before publishing the
+	// library-policy contributor. Its first scan/root check must be pending
+	// during old-process retirement, not permanently source_unavailable.
+	client := storage.New("")
+	client.Remote = f.s
+	libraries := catalog.New(f.s.db)
+	libraries.SetStorage(client)
+	if _, err = libraries.CreateAuthorized(ctx, "NAS books", "book", receipt.Mount.MountPath, authorize); err != nil {
+		t.Fatal("actual remote library creation", err)
+	}
+	if value, err := f.s.InspectRoot(ctx, receipt.Mount.MountPath); !errors.Is(err, storage.ErrBusy) || value != (storage.Snapshot{}) {
+		t.Fatal("first post-create root check did not preserve a pending scan", value, err)
+	}
+	if err = process.Wait(ctx); !errors.Is(err, rcloneprogram.ErrServeStopped) {
+		t.Fatal("obsolete library-policy process was not physically retired", err)
+	}
+	reopened, err := f.s.InspectRoot(ctx, receipt.Mount.MountPath)
+	if err != nil || reopened.ObjectIdentity != directory.ObjectIdentity {
+		t.Fatal("fresh admission changed root identity or failed after physical retirement", reopened, directory, err)
+	}
+	replacement, err := f.s.ensureSourceServe(ctx, binding, "")
+	if err != nil || replacement.Generation() == process.Generation() {
+		t.Fatal("new admission reused the retired epoch", err)
+	}
+	t.Cleanup(func() {
+		replacement.Stop()
+		wait, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := replacement.Wait(wait); !errors.Is(err, rcloneprogram.ErrServeStopped) {
+			t.Error("replacement source did not physically retire", err)
+		}
+	})
 	for i, host := range []string{"127.0.0.1", "169.254.169.254", "169.254.1.2"} {
 		bad := mounts.Command{OperationID: nativeSaveOperation(110 + i), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config(host)}
 		if _, err := managed.Command(ctx, "actual-owner-nas", receipt.MountID, bad, authorize); err == nil {

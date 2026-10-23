@@ -61,3 +61,37 @@ test('Live construction is inert and an authority refusal retires the bounded gu
   assert.equal(reads, 1);
   owner.dispose();assert.equal(owner.failure.getSnapshot(), undefined);
 });
+
+test('a source hint refreshes only bounded viewports and retires their prior directory revisions and marks', async () => {
+  const calls: URL[] = [];let generation = 1;
+  const context = {scope: {serverId: 'server', viewerId: 'viewer'}, isCurrent: () => true,
+    api: {async request(path: string) {
+      const url = new URL(path, 'https://example.test');calls.push(url);
+      const source = {id: 'source', name: 'Actual source', provenance: 'live-source', generation: String(generation),
+        publishedAt: new Date(0).toISOString(), availableStart: '', availableEnd: '', refreshState: 'healthy'};
+      const channel = {id: 'channel', sourceId: 'source', provenance: 'live-source', generation: String(generation), name: 'Actual channel',
+        number: '1', group: '', mark: {text: generation === 1 ? 'AC' : 'A2', seed: 'source:channel'}, programmes: [], tuneAvailable: true,
+        recordAvailable: false, favorite: false, hidden: false, preferenceRevision: 0};
+      const base = {protocolVersion: '1.0', serverId: 'server'};
+      if (url.pathname.endsWith('/sources')) return {...base, viewerFence: 'fence', revision: String(generation), sources: [
+        {...source, position: 0, recordAvailable: false, guideDays: 0, channelCount: 1, favoriteCount: 0, groups: [], groupCounts: [], unavailableReasons: {}}]};
+      if (url.pathname.endsWith('/channels')) return {...base, directory: {viewerFence: 'fence', revision: String(generation), total: 1,
+        offset: Number(url.searchParams.get('offset')), limit: Number(url.searchParams.get('limit')), channels: [channel], sources: [source]}};
+      return {...base, guide: {viewerFence: 'fence', state: 'no-guide-data', start: url.searchParams.get('start'), end: url.searchParams.get('end'),
+        timezone: 'UTC', observedAt: new Date(0).toISOString(), nextCursor: '', sources: [source], channels: [channel]}};
+    }}} as unknown as ScreenContext;
+  const owner = createLiveBindings(context, {kind: 'live-source', sourceId: 'source', timezone: 'UTC'}), shelf = owner.onNow();
+  try {
+    owner.store.setViewport({firstRow: 0, lastRow: 0, start: 0, end: 1});
+    shelf.store.setViewport({firstRow: 0, lastRow: 0, start: 0, end: 1});
+    for (let i = 0; i < 20; i++) await tick();
+    assert.equal(owner.store.channelAt(0)?.mark?.text, 'AC');assert.equal(shelf.store.channelAt(0)?.mark?.text, 'AC');
+    generation = 2;await owner.refresh();
+    for (let i = 0; i < 20; i++) await tick();
+    assert.equal(owner.store.channelAt(0)?.mark?.text, 'A2');assert.equal(shelf.store.channelAt(0)?.mark?.text, 'A2');
+    const directories = calls.filter(url => url.pathname.endsWith('/channels'));
+    assert.equal(directories.length, 4);assert.ok(directories.every(url => url.searchParams.get('offset') === '0' && url.searchParams.get('limit') === '50' && !url.searchParams.has('revision')));
+    const before = calls.length, request = new AbortController();request.abort();
+    await assert.rejects(owner.refresh(request.signal), {name: 'AbortError'});assert.equal(calls.length, before);
+  } finally {shelf.dispose();owner.dispose();}
+});

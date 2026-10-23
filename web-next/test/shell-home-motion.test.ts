@@ -39,3 +39,17 @@ test('normal history on desktop retains View Transitions and cleanup removes all
   assert.equal(updates.length, after);
   assert.equal(routeMotionOwnedByBrowser(), false);
 });
+
+test('initial motion waits for an actual rendered route and retires its listener', () => {
+  const updates: boolean[] = [];let rendered: (() => void) | undefined;
+  const router = {state: {matches: [] as unknown[]}, update: (value: {defaultViewTransition: boolean}) => {updates.push(value.defaultViewTransition);},
+    subscribe: (_event: 'onRendered', listener: () => void) => {rendered = listener;return () => {rendered = undefined;};}};
+  const off = bindShellRouteMotion(router, browser('Desktop Chrome'));
+  assert.deepEqual(updates, []);router.state.matches.push({routeId: '__root__'});rendered?.();
+  assert.deepEqual(updates, [true]);off();assert.equal(rendered, undefined);
+});
+test('motion binding after the first real commit still enables later native transitions', () => {
+  const updates: boolean[] = [];
+  const off = bindShellRouteMotion({state: {matches: [{}]}, update: value => {updates.push(value.defaultViewTransition);}}, browser('Desktop Chrome'));
+  assert.deepEqual(updates, [true]);off();
+});
