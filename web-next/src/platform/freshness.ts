@@ -43,7 +43,7 @@ export function bindBrowserFreshness(runtime: FreshnessRuntime, events: EventsCl
   page.addEventListener('visibilitychange', visibility);
   for (const kind of kinds) browser.addEventListener(kind, touch, options);
   const source = {};
-  const route = () => { const phase = api.getRouteSnapshot()?.phase; hub.report(source, phase !== 'offline' && phase !== 'probing'); };
+  const route = () => { const phase = api.getRouteSnapshot()?.phase; hub.report(source, phase !== 'offline' && phase !== 'probing' && phase !== 'identity_mismatch' && phase !== 'unconfirmed'); };
   visibility(); route();
   const off = api.subscribeRoute(route);
   return () => {

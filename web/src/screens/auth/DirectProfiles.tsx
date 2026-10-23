@@ -34,7 +34,7 @@ export function DirectProfiles({onDone}: {onDone?: () => void}) {
   }, [pending]);
   return (
     <div className={s.stack}>
-      <p className={s.lede} style={{textAlign: 'center'}}>Who’s watching{pending?.snapshot ? <> as <strong>{pending.snapshot.account.username}</strong></> : null}?</p>
+      <p className={s.lede} style={{textAlign: 'center'}}>{session.system?.name ? t('accounts.profiles.onServer', {server: session.system.name}) : t('auth.whosWatching')}</p>
       {pending ? (
         current ? (
           <form className={s.pin} onSubmit={e => { e.preventDefault(); submit(current.id, pin); }}>

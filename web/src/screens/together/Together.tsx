@@ -85,7 +85,7 @@ function Lobby() {
   const {service, state} = useTogether();
   const {session, hosted, local} = useSession();
   const profileId = session?.viewer?.profileId;
-  const mine = hosted?.profiles.find(p => p.id === profileId)?.name ?? local?.profiles.find(p => p.id === profileId)?.name ?? '';
+  const mine = local?.profiles.find(p => p.id === profileId)?.name ?? '';
   const [name, setName] = useState(mine ? t('web.together.defaultName', {name: mine}) : '');
   const [who, setWho] = useState(mine);
   const [authority, setAuthority] = useState<GroupHostAuthority>('host-only');
