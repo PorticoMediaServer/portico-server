@@ -700,7 +700,7 @@ export interface PlaybackAdapter {
 }
 /** UI intent is the sole command authority. Native events report facts, never autoplay intent. */
 export class PlaybackService {
-  /** Device engine processing (for example per-output EQ), never an account preference. */
+  /** Device engine processing (for example device-local EQ), never an account preference. */
   private deviceAudioProcessing = false;
 
   private channels?: ChannelPlayback;

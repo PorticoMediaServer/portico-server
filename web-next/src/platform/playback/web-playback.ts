@@ -33,7 +33,7 @@ import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@c
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
-import {saveOutputEqualizer} from './audio/equalizer-store';
+import {saveDeviceEqualizer} from './audio/equalizer-store';
 import type {BrowserAudioFacts} from './audio/output';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
@@ -56,7 +56,7 @@ export type PlaybackMediaPort = MediaPlayer & {
 };
 
 /** The device's own audio engine for music (`DecodeAudioRender`). */
-export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number; audioFacts?(): BrowserAudioFacts | undefined; setEqualizer?(settings: EqualizerSettings): Promise<void>};
+export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number; audioFacts?(): BrowserAudioFacts | undefined; applyEqualizer?(settings: EqualizerSettings): void};
 
 /** Failure codes this path stores as the service's error; `playbackFailure` words them. */
 export const failure = {
@@ -515,17 +515,28 @@ export class WebPlayback implements PlaybackAdapter {
 
   audioFacts(): BrowserAudioFacts | undefined { return this.render?.audioFacts?.(); }
   async setEqualizer(settings: EqualizerSettings): Promise<void> {
-    const value = parseEqualizer(settings);
     if (!this.host.createRender || !this.service) throw new Error('equalizer_unavailable');
-    if (!this.render) {
-      await saveOutputEqualizer(value);
-      this.service.setDeviceAudioProcessing(value.enabled);
-      if (!value.enabled) return;
-    }
-    const render = this.render;
-    if (!render?.setEqualizer) { this.service.setDeviceAudioProcessing(false); throw new Error('equalizer_unavailable'); }
-    try { await render.setEqualizer(value); }
-    catch (error) { this.service.setDeviceAudioProcessing(false); throw error; }
+    const value = await saveDeviceEqualizer(settings);
+    this.applyEqualizer(value);
+  }
+
+  /** Same committed setting for the Settings entry and player shortcut, including while idle. */
+  applyEqualizer(settings: EqualizerSettings): void {
+    const value = parseEqualizer(settings), service = this.service;
+    if (!this.host.createRender || !service || this.disposed) throw new Error('equalizer_unavailable');
+    try {
+      // Apply off before releasing an EQ-only renderer. Turning on can create it synchronously.
+      const previous = this.render;
+      if (previous) {
+        if (!previous.applyEqualizer) throw new Error('equalizer_unavailable');
+        previous.applyEqualizer(value);
+      }
+      service.setDeviceAudioProcessing(value.enabled);
+      if (value.enabled && this.render && this.render !== previous) {
+        if (!this.render.applyEqualizer) throw new Error('equalizer_unavailable');
+        this.render.applyEqualizer(value);
+      }
+    } catch (error) { service.setDeviceAudioProcessing(false); throw error; }
   }
 
   private endRender() {

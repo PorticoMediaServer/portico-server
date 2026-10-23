@@ -1270,8 +1270,9 @@ test('native surface paint is false until the actual current video port reports 
 });
 
 test('device processing alone selects the renderer and preserves the actual queue/session when toggled', async t => {
-  const applied: string[] = []; let disposed=0;
+  const applied: string[] = [], equalizers: import('../src/platform/playback/audio/equalizer.ts').EqualizerSettings[] = []; let disposed=0;
   const f=setup(t,{audioEffects:()=>({gapless:false,crossfadeSeconds:0,normalization:'off'})},{createRender:(service)=>({
+    applyEqualizer(settings){equalizers.push(settings);},
     apply(snapshot){
       if(!snapshot.session)return;applied.push(snapshot.session.id);
       service.ready(snapshot.intentId);
@@ -1281,12 +1282,15 @@ test('device processing alone selects the renderer and preserves the actual queu
   await f.runtime.play('song_device');await f.arrive();
   const first=f.runtime.getSnapshot(), id=first.playback.session!.id, queue=first.session!.queue;
   assert.equal(first.playback.audioEffects.rendering,false);assert.equal(applied.length,0);
-  const service=(f.runtime as unknown as {stack:{service: import('../../packages/client-core/src/index.ts').PlaybackService}}).stack.service;
-  service.setDeviceAudioProcessing(true);await settle();
+  const web=(f.runtime as unknown as {stack:{web: import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
+  const enabled={enabled:true,preampDb:-3,bandsDb:Array(10).fill(2)};
+  web.applyEqualizer(enabled);await settle();
+  assert.deepEqual(equalizers.at(-1),enabled,'the committed device setting reaches the actual renderer seam');
   assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,true);assert.ok(applied.includes(id));
   assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
   assert.equal(f.runtime.audioEngineFacts(f.runtime.getSnapshot().fence!),undefined,'an unconfirmed renderer has no invented processing facts');
-  service.setDeviceAudioProcessing(false);await f.arrive();
+  web.applyEqualizer({...enabled,enabled:false});await f.arrive();
+  assert.equal(equalizers.at(-1)!.enabled,false,'off reaches the graph before the ordinary path resumes');
   assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,false);assert.ok(disposed>0);
   assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
   assert.deepEqual(f.runtime.getSnapshot().playback.audioEffects.settings,{gapless:false,crossfadeSeconds:0,normalization:'off'});

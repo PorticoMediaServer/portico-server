@@ -6,7 +6,7 @@ import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
 import {BrowserEqualizer, flatEqualizer, parseEqualizer, type EqualizerSettings} from './audio/equalizer';
-import {EqualizerStore, resolvedOutputId} from './audio/equalizer-store';
+import {loadDeviceEqualizer} from './audio/equalizer-store';
 import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
 
@@ -43,9 +43,8 @@ export class DecodeAudioRender {
   private master: GainNode;
   private carrier: MediaCarrier;
   private readonly equalizer: BrowserEqualizer;
-  private readonly equalizerStore = new EqualizerStore();
-  private outputId = 'default';
-  private outputRevision = 0;
+  private equalizerRevision = 0;
+  private equalizerFailed = false;
   private outputCount = 2;
   private clockBasis: BrowserAudioFacts['clock'] = 'latency';
   /** Seconds between the context's clock and what is heard (the output path's latency), smoothed. */
@@ -86,7 +85,11 @@ export class DecodeAudioRender {
     this.equalizer.output.connect(this.master);
     // Through a media element where the browser allows it, so media keys and the lock screen reach music too.
     this.carrier = new MediaCarrier(this.context, this.master, () => { if (!this.disposed && this.service.getSnapshot().intent === 'playing') this.service.pause(); });
-    void this.outputChanged();
+    this.outputChanged();
+    const equalizerRevision = this.equalizerRevision;
+    void loadDeviceEqualizer().then(settings => {
+      if (!this.disposed && equalizerRevision === this.equalizerRevision) this.applyEqualizer(settings);
+    }).catch(() => { /* Storage/graph failure grants no processing facts. The caller can retry. */ });
     this.context.addEventListener('sinkchange', this.outputChanged);
     navigator.mediaDevices?.addEventListener?.('devicechange', this.outputChanged);
     this.volume();
@@ -345,38 +348,32 @@ export class DecodeAudioRender {
     }
   }
 
-  private outputChanged = async () => {
-    const revision = ++this.outputRevision;
-    this.outputCount = this.carrier.refreshOutput();
-    this.equalizer.apply(flatEqualizer);
-    try {
-      const outputId = await resolvedOutputId(this.context);
-      const settings = await this.equalizerStore.load(outputId);
-      if (this.disposed || revision !== this.outputRevision) return;
-      this.outputId = outputId;
-      this.equalizer.apply(settings);
-      this.service.setDeviceAudioProcessing?.(settings.enabled);
-    } catch {
-      if (!this.disposed && revision === this.outputRevision) this.service.audioEffectsNotice('The equalizer settings for this output could not be loaded.');
-    }
+  private outputChanged = () => {
+    // A route change may alter channel limits, never the app's EQ choice or filter state.
+    if (!this.disposed) this.outputCount = this.carrier.refreshOutput();
   };
 
-  /** Resolve only after atomic persistence and after the active graph confirms the same output. */
-  async setEqualizer(settings: EqualizerSettings): Promise<void> {
-    const value = parseEqualizer(settings), revision = ++this.outputRevision, outputId = await resolvedOutputId(this.context);
-    await this.equalizerStore.save(outputId, value);
-    if (this.disposed || revision !== this.outputRevision) throw new Error('audio_output_changed');
-    this.outputId = outputId;
-    this.equalizer.apply(value);
+  /** Apply committed device settings; only a successfully configured graph reports EQ on. */
+  applyEqualizer(settings: EqualizerSettings): void {
+    const value = parseEqualizer(settings);
+    if (this.disposed) throw new Error('equalizer_unavailable');
+    ++this.equalizerRevision;
+    try { this.equalizer.apply(value); this.equalizerFailed = false; }
+    catch (error) {
+      this.equalizerFailed = true;
+      try { this.equalizer.apply(flatEqualizer); } catch { /* a broken graph grants no EQ facts */ }
+      this.service.setDeviceAudioProcessing?.(false);
+      throw error;
+    }
     this.service.setDeviceAudioProcessing?.(value.enabled);
   }
-  getEqualizer(): Readonly<{outputId: string; settings: EqualizerSettings}> { return {outputId: this.outputId, settings: this.equalizer.settings}; }
+  getEqualizer(): EqualizerSettings { return this.equalizer.settings; }
   audioFacts(): BrowserAudioFacts | undefined {
     const plan = this.primary?.plan;
     if (!plan) return undefined;
     return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
       resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
-      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqEnabled:this.equalizer.settings.enabled,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqEnabled:!this.equalizerFailed && this.equalizer.settings.enabled,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
   }
 
   transportPosition() { return this.primary ? this.position() : this.snapshot.positionSeconds; }
@@ -395,7 +392,6 @@ export class DecodeAudioRender {
     navigator.mediaDevices?.removeEventListener?.('devicechange', this.outputChanged);
     this.carrier.dispose();
     this.equalizer.dispose();
-    void this.equalizerStore.close();
     void this.context.close();
   }
 }

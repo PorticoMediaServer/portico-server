@@ -1,5 +1,5 @@
 import {BrowserEqualizer, eqFrequencies, flatEqualizer} from '../src/platform/playback/audio/equalizer';
-import {EqualizerStore} from '../src/platform/playback/audio/equalizer-store';
+import {EqualizerStore, deviceEqualizerDatabase, loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from '../src/platform/playback/audio/equalizer-store';
 import {Deck, linkDecks} from '../src/platform/playback/audio/engine';
 import {qualifyBrowserDecoders} from '../src/platform/playback/audio/qualification';
 import {WEBCODECS_SKIP, browserEngine} from '../src/platform/playback/audio/track';
@@ -57,20 +57,33 @@ export async function runBrowserAudioChecks() {
   for (let ch = 0; ch < 2; ch++) check(audio.getChannelData(ch).every((value,i) => value === (i < 10001 ? 0.125 : 0.25) * (ch ? -1 : 1)), 'gap or overlap at actual render boundary');
   report.gaplessJoinFrame = edge.start; a.close(); b.close(); graph.dispose();
 
-  // Real IndexedDB transactions: output-specific state survives closing and re-opening the DB.
+  // One app/device value, with no output identity: real normalized IndexedDB transactions.
   const database = 'portico-audio-conformance-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   let store = new EqualizerStore(indexedDB,database);
   const saved = {enabled:true,preampDb:-4,bandsDb:[1,2,3,4,0,-1,-2,-3,-4,-5]};
   try {
-    await store.save('output-a',saved); await store.close(); store = new EqualizerStore(indexedDB,database);
-    check(JSON.stringify(await store.load('output-a')) === JSON.stringify(saved), 'output state did not survive re-open');
-    check((await store.load('output-b')).enabled === false, 'EQ leaked between outputs');
-    let rejected = false; try { await store.save('output-b',{...saved,bandsDb:[NaN]}); } catch { rejected = true; }
+    check(JSON.stringify(await store.load()) === JSON.stringify(flatEqualizer), 'new app EQ is not off and flat');
+    await store.save(saved); await store.close(); store = new EqualizerStore(indexedDB,database);
+    check(JSON.stringify(await store.load()) === JSON.stringify(saved), 'app setting did not survive re-open');
+    const second = new EqualizerStore(indexedDB,database);
+    try {
+      check(JSON.stringify(await second.load()) === JSON.stringify(saved), 'app callers did not share one setting');
+      const reset = await second.reset();
+      check(reset.enabled && reset.preampDb === 0 && reset.bandsDb.every(gain => gain === 0), 'reset did not flatten controls while retaining the switch');
+      check(JSON.stringify(await store.load()) === JSON.stringify(reset), 'reset did not persist to the same app setting');
+    } finally { await second.close(); }
+    let rejected = false; try { await store.save({...saved,bandsDb:[NaN]}); } catch { rejected = true; }
     check(rejected, 'invalid equalizer settings accepted');
     const db = await new Promise<IDBDatabase>((resolve,reject) => { const r=indexedDB.open(database);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error); });
-    const tx=db.transaction(['outputs','bands'],'readonly');
-    const rows=await new Promise<number>((resolve,reject)=>{const r=tx.objectStore('bands').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
-    db.close();check(rows===10,'band rows missing');report.persistedBandRows=rows;
+    try {
+      check([...db.objectStoreNames].sort().join(',') === 'bands,settings', 'unexpected EQ stores');
+      const tx=db.transaction(['settings','bands'],'readonly');
+      const requests=[tx.objectStore('settings').getAll(),tx.objectStore('bands').getAll()];
+      const rows=await Promise.all(requests.map(r=>new Promise<any[]>((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);})));
+      check(rows[0]!.length===1 && Object.keys(rows[0]![0]).sort().join(',')==='enabled,id,preampDb', 'setting is not a single scalar row');
+      check(rows[1]!.length===10 && rows[1]!.every(row=>Object.keys(row).sort().join(',')==='band,gainDb'), 'band rows contain an identity or are missing');
+      report.deviceEqRows={settings:rows[0]!.length,bands:rows[1]!.length};
+    } finally { db.close(); }
   } finally { await store.close(); await new Promise<void>((resolve,reject)=>{const r=indexedDB.deleteDatabase(database);r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error);}); }
   await qualifyBrowserDecoders(); report.qualifiedDecoderSkips = {...WEBCODECS_SKIP[browserEngine()]};
   // The actual renderer consumes a real generated FLAC fixture and reports only confirmed facts.
@@ -84,6 +97,8 @@ export async function runBrowserAudioChecks() {
   const service:any = {getSnapshot:()=>snapshot,ready:()=>{ready=true;},audioRenderFailed:(message:string)=>{failure=message;},
     audioEffectsNotice(){},audioRenderStatus(){},setDeviceAudioProcessing(){},engineProgress(){},fact(){},pause(){}};
   const render = new DecodeAudioRender(service,path=>path,element,()=>false,cache);
+  // The facade used by both future entry points sends only committed local values to the engine.
+  const unsubscribe = subscribeDeviceEqualizer(settings => render.applyEqualizer(settings));
   try {
     check(render.audioFacts() === undefined,'facts published before decoded renderer exists');
     render.apply(snapshot);
@@ -91,13 +106,23 @@ export async function runBrowserAudioChecks() {
     while(!ready&&!failure&&performance.now()<until) await new Promise(resolve=>setTimeout(resolve,20));
     check(ready&&!failure,'actual FLAC renderer did not start: '+failure);
     const off=render.audioFacts()!;check(off.bitPerfect===false&&!off.eqEnabled&&off.sourceRate===44100&&off.deviceRate===null,'renderer invented output facts');
-    await render.setEqualizer({...flatEqualizer,enabled:true,bandsDb:[0,0,0,0,0,3,0,0,0,0]});
+    await saveDeviceEqualizer({...flatEqualizer,enabled:true,preampDb:-3,bandsDb:[0,0,0,0,0,3,0,0,0,0]});
     check(render.audioFacts()!.eqEnabled,'persisted choice never reached actual renderer');
-    await render.setEqualizer(flatEqualizer);check(!render.audioFacts()!.eqEnabled,'EQ off did not reach graph');
+    const current = render.getEqualizer();
+    check(JSON.stringify(await loadDeviceEqualizer())===JSON.stringify(current),'player/Settings facade differs from the actual graph');
+    const actualContext = (render as unknown as {context:AudioContext}).context;
+    actualContext.dispatchEvent(new Event('sinkchange'));
+    navigator.mediaDevices?.dispatchEvent(new Event('devicechange'));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    check(render.getEqualizer()===current,'output notification reset or reloaded the EQ');
+    await resetDeviceEqualizer();
+    check(render.getEqualizer().enabled && render.getEqualizer().preampDb===0 && render.getEqualizer().bandsDb.every(gain=>gain===0),'shared reset did not reach the graph');
+    check(render.audioFacts()!.eqEnabled && render.audioFacts()!.bitPerfect===false,'flat but enabled EQ invented bit-perfect output');
+    await saveDeviceEqualizer(flatEqualizer);check(!render.audioFacts()!.eqEnabled,'EQ off did not reach graph');
     report.actualRendererFacts=render.audioFacts();
   } finally {
-    render.dispose(); cache.clear();
-    await new Promise<void>((resolve,reject)=>{const request=indexedDB.deleteDatabase('portico-audio-output-v1');request.onsuccess=()=>resolve();request.onerror=()=>reject(request.error);});
+    unsubscribe(); render.dispose(); cache.clear();
+    await new Promise<void>((resolve,reject)=>{const request=indexedDB.deleteDatabase(deviceEqualizerDatabase);request.onsuccess=()=>resolve();request.onerror=()=>reject(request.error);});
   }
   return report;
 }

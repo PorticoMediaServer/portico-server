@@ -19,7 +19,7 @@ import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyView} from '../../../../packages/player-core/src/index.ts';
 import {WebPlayback} from './web-playback.ts';
 import {DecodeAudioRender} from './DecodeAudioRender.ts';
-import {savedOutputEqualizer} from './audio/equalizer-store.ts';
+import {loadDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
 import type {EqualizerSettings} from './audio/equalizer.ts';
 import {ByteCache} from './audio/bytes.ts';
 import {browserNativeHlsPolicy} from './native-hls.ts';
@@ -156,8 +156,8 @@ export class WebShellPlaybackRuntime {
       // The copied real browser probe is the capability source. Node's media-port tests have
       // no browser; they exercise the actual server's baseline planning instead.
       if (this.env.createRender !== null && !this.env.createPlayer && typeof indexedDB !== 'undefined') {
-        try { const eq = await savedOutputEqualizer(); if (this.current(stackReference)) service.setDeviceAudioProcessing(eq.enabled); }
-        catch { if (this.current(stackReference)) service.audioEffectsNotice('The equalizer settings for this output could not be loaded.'); }
+        try { const eq = await loadDeviceEqualizer(); if (this.current(stackReference)) stackReference.web.applyEqualizer(eq); }
+        catch { if (this.current(stackReference)) { this.runtimeProblem = 'equalizer_unavailable'; this.sync(); } }
       }
       if (!this.env.capabilities && (typeof document === 'undefined' || typeof window === 'undefined')) return;
       const profile = await (this.env.capabilities ?? browserClientProfile)();
@@ -177,6 +177,11 @@ export class WebShellPlaybackRuntime {
     stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects());
     stack.offs.push(stack.web.bind(stack.service, stack.queue), stack.queue.connect());
     stack.offs.push(stack.service.subscribe(() => this.sync()), stack.queue.subscribe(() => this.sync()), stack.offers.subscribe(() => this.sync()));
+    if (this.env.createRender !== null && !this.env.createPlayer) stack.offs.push(subscribeDeviceEqualizer(settings => {
+      if (!this.current(stack)) return;
+      try { stack.web.applyEqualizer(settings); }
+      catch (error) { this.runtimeProblem = 'equalizer_unavailable'; this.sync(); throw error; }
+    }));
     stack.offs.push(this.source.events.on('session.updated', event => { if (this.current(stack) && event.resource?.kind === 'session' && event.resource.id) stack.web.transport.sessionUpdated(event.resource.id, event.revision, event.data); }));
     if (this.video) this.bindElement(stack);
     void stack.service.startRecovery();
