@@ -405,6 +405,8 @@ func TestLegacyLocalReadQueuesBoundedPictureWithoutServingOriginal(t *testing.T)
 func TestPictureSizeChangeDuringReadDiscardsOldEncodingAndRetries(t *testing.T) {
 	s, db, target := repairFixture(t)
 	ctx := context.Background()
+	now := time.Now().UTC()
+	s.now = func() time.Time { return now }
 	off := false
 	saveGlobal(t, s, func(in *MetadataSettingsUpdate) { in.OnlineLookups = &off })
 	raw := p08cPNG(t, 2700, 1350)
@@ -438,6 +440,32 @@ func TestPictureSizeChangeDuringReadDiscardsOldEncodingAndRetries(t *testing.T) 
 	var selected int
 	if err := db.QueryRow(`SELECT count(*) FROM artwork_selections`).Scan(&selected); err != nil || selected != 0 || reads != 1 {
 		t.Fatal("old-size bytes were published", selected, reads, err)
+	}
+	// A slow acquisition sees the source watcher cancel the obsolete fence
+	// before encoding finishes and keeps the ordinary retry backoff. A fast
+	// acquisition reaches the publication fence and is immediately stale.
+	var jobID, status, next string
+	if err := db.QueryRow(`SELECT id,status,next_attempt FROM artwork_jobs ORDER BY created_at DESC,id DESC LIMIT 1`).Scan(&jobID, &status, &next); err != nil {
+		t.Fatal(err)
+	}
+	switch status {
+	case "stale":
+	case "retry":
+		due, err := time.Parse(time.RFC3339Nano, next)
+		if err != nil || !due.After(now) || due.After(now.Add(time.Minute)) {
+			t.Fatal("obsolete acquisition lost bounded retry", next, err)
+		}
+		// Exercise the real due-job claim without sleeping or bypassing it.
+		now = due
+		if err := s.ArtworkStep(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var code string
+		if err := db.QueryRow(`SELECT status,error FROM artwork_jobs WHERE id=?`, jobID).Scan(&status, &code); err != nil || status != "stale" || code != "source_or_match_changed" || reads != 1 {
+			t.Fatal("due obsolete job was acquired or not retired", status, code, reads, err)
+		}
+	default:
+		t.Fatal("obsolete acquisition was not rejected", status)
 	}
 	if err := s.ArtworkStep(ctx); err != nil {
 		t.Fatal(err)

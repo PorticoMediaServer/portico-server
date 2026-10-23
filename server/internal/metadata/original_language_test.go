@@ -53,3 +53,39 @@ func TestOriginalLanguagePublicationReachesDetailWithoutOwnerLanguageOverride(t 
 		})
 	}
 }
+
+func TestOriginalLanguageUnknownRefreshWithdrawsPriorFactDuringFillMissing(t *testing.T) {
+	s, db, p := screenFixture(t)
+	item := publicationFixtureMovie(t, db)
+	ctx := context.Background()
+	screenConfirm(t, s)
+	p.record.Language = "ja"
+	if err := s.ScreenStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := metadatalanguage.Published(ctx, db, item.Public); err != nil || got != "ja" {
+		t.Fatal("initial published language", got, err)
+	}
+	// Expire the fixture's provider receipt and schedule the same identity.
+	// Both publications still pass through the actual ScreenStep producer.
+	publicationExec(t, db, `UPDATE screen_metadata_policies SET refresh_mode='fill_missing',revision=revision+1 WHERE library_id='lib';
+UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=?;
+DELETE FROM metadata_document_freshness`, item.ID)
+	p.record.Language = "xx"
+	p.record.Overview = "Replacement description"
+	if err := s.ScreenStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := metadatalanguage.Published(ctx, db, item.Public); err != nil || got != "" {
+		t.Fatal("unknown refresh retained prior language", got, err)
+	}
+	if got := publicationScalar(t, db, `SELECT count(*) FROM screen_metadata_fields WHERE target_kind='item' AND target_id=? AND field='language'`, item.ID); got != "0" {
+		t.Fatal("obsolete language remains stored", got)
+	}
+	if got := publicationScalar(t, db, `SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='item' AND target_id=? AND field='overview'`, item.ID); got != "Verified description" {
+		t.Fatal("fill-missing description changed", got)
+	}
+	if got := publicationScalar(t, db, `SELECT count(*) FROM screen_metadata_publications WHERE target_kind='item' AND target_id=? AND decision='accepted'`, item.ID); got != "1" {
+		t.Fatal("accepted publication authority", got)
+	}
+}
