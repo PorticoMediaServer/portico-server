@@ -66,7 +66,7 @@ func TestEpisodeThumbnailPolicyProviderAndRangedGeneration(t *testing.T) {
 			}
 			return func(ctx context.Context, key string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
 				decoded++
-				if key != EpisodeThumbnailOperation || spec.Kind != "image" || spec.StartUS != 6000000 || spec.MaxDurationUS != requestDurationUS || spec.SourceVideo != video {
+				if key != catalog.EpisodeThumbnailOperation || spec.Kind != "image" || spec.StartUS != 6000000 || spec.MaxDurationUS != requestDurationUS || spec.SourceVideo != video {
 					t.Fatalf("recipe %+v %s", spec, key)
 				}
 				// Seek far into a large input, requesting only one small extent.
@@ -134,7 +134,7 @@ func TestEpisodeThumbnailExplicitCommandGeneratesUnderEveryAutomaticMode(t *test
 				authorized, opened, decoded := 0, 0, 0
 				r := EpisodeThumbnailRequest{Mode: mode, Manual: true, ProviderStill: provider, DurationUS: requestDurationUS, EndUS: requestDurationUS,
 					Authorize: func(_ context.Context, operation, cost string, manual bool) error {
-						if operation != EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || !manual {
+						if operation != catalog.EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || !manual {
 							t.Fatal("explicit invocation used different authority")
 						}
 						authorized++
@@ -144,7 +144,7 @@ func TestEpisodeThumbnailExplicitCommandGeneratesUnderEveryAutomaticMode(t *test
 					Decoder: func(in Input) Decode {
 						return func(ctx context.Context, key string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
 							decoded++
-							if key != EpisodeThumbnailOperation || spec.Kind != "image" || spec.StartUS != requestDurationUS/10 {
+							if key != catalog.EpisodeThumbnailOperation || spec.Kind != "image" || spec.StartUS != requestDurationUS/10 {
 								t.Fatal("not one bounded image recipe")
 							}
 							if _, err := in.ReadExtent(ctx, 1<<30, 128); err != nil {
@@ -193,7 +193,7 @@ func TestEpisodeThumbnailRejectsPermissionRevocationAtEveryBoundary(t *testing.T
 					r := EpisodeThumbnailRequest{Mode: mode, Manual: manual, DurationUS: 10, EndUS: 10,
 						Open: func(context.Context) (Input, error) { opened++; return input, nil },
 						Authorize: func(_ context.Context, operation, cost string, explicit bool) error {
-							if operation != EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || explicit != manual {
+							if operation != catalog.EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || explicit != manual {
 								t.Fatal("wrong invocation/operation authorization scope")
 							}
 							authorized++

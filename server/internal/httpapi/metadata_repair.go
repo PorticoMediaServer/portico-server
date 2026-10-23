@@ -21,6 +21,10 @@ func repairFailure(w http.ResponseWriter, err error) {
 		write(w, 409, map[string]any{"error": map[string]any{"code": "metadata_conflict", "message": "Metadata changed. Reload and review your decision.", "retryable": false}})
 		return
 	}
+	if errors.Is(err, metadata.ErrArtworkPending) {
+		policyError(w, "artwork_pending")
+		return
+	}
 	if errors.Is(err, metadata.ErrRepairInput) {
 		write(w, 400, map[string]any{"error": map[string]any{"code": "invalid_metadata_repair", "message": "Check the repair fields and confirmation.", "retryable": false}})
 		return
@@ -59,7 +63,14 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				}
 				var body metadata.RepairCommand
 				if err = decode(w, r, &body); err == nil {
-					out, err = d.Metadata.Repair(ctx, target, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize)
+					if body.Action == "make_episode_thumbnail" {
+						out, err = d.Metadata.MakeEpisodeThumbnail(ctx, target, body, p, authorize)
+						if err != nil && !errors.Is(err, metadata.ErrRepairInput) && !errors.Is(err, metadata.ErrRepairConflict) && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, identity.ErrUnauthorized) && !errors.Is(err, identity.ErrForbidden) {
+							err = errors.Join(metadata.ErrArtworkPending, err)
+						}
+					} else {
+						out, err = d.Metadata.Repair(ctx, target, body, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, authorize)
+					}
 				}
 			}
 			if err != nil {

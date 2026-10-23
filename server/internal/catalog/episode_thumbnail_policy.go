@@ -5,6 +5,8 @@ import (
 	"database/sql"
 )
 
+const EpisodeThumbnailOperation = "episode_thumbnail"
+
 // EpisodeThumbnailPolicy is the single runtime automatic-thumbnail policy.
 // Its revision is the existing library_scan_policies revision, shared with
 // operation/depth updates and the administration aggregate CAS.

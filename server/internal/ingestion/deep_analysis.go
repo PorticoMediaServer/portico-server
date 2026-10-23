@@ -37,6 +37,9 @@ func deepAnalysisBudget(size int64, durationSeconds float64) time.Duration {
 
 func (s *Service) analyzeDeep(parent context.Context, job, object, revision string, policy catalog.ScanPolicy, source catalog.LibrarySource) error {
 	if s.DeepAnalysis == nil {
+		if policy.Allows(catalog.EpisodeThumbnailOperation) {
+			return nil
+		}
 		return s.analysisOutcome(parent, job, object, revision, policy.Revision, true, "analysis_worker_unavailable")
 	}
 	var relative string
@@ -86,6 +89,21 @@ func (s *Service) analyzeDeep(parent context.Context, job, object, revision stri
 		return err
 	}
 	if done {
+		if policy.Allows(catalog.EpisodeThumbnailOperation) {
+			if s.EpisodeThumbnails == nil {
+				return nil
+			}
+			episodeDone, episodeWarning, e := s.EpisodeThumbnails(ctx, job, source.ID, object, revision, policy.Revision)
+			if e != nil {
+				return e
+			}
+			if !episodeDone {
+				return nil
+			}
+			if episodeWarning != "" {
+				warning = episodeWarning
+			}
+		}
 		return s.analysisOutcome(parent, job, object, revision, policy.Revision, warning != "", warning)
 	}
 	return nil

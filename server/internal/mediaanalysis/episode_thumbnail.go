@@ -6,10 +6,10 @@ import (
 	"image/jpeg"
 	"io"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/decoder"
 )
 
-const EpisodeThumbnailOperation = "episode_thumbnail"
 const EpisodeThumbnailCostClass = "decode"
 const EpisodeThumbnailDefaultMode = "provider_then_made"
 const EpisodeThumbnailProviderMode = "provider"
@@ -75,7 +75,7 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return r.Authorize(ctx, EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
+		return r.Authorize(ctx, catalog.EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
 	}
 	if err := authorize(); err != nil {
 		return out, err
@@ -103,7 +103,7 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	if decode == nil {
 		return out, ErrUnsupported
 	}
-	err = decode(ctx, EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
+	err = decode(ctx, catalog.EpisodeThumbnailOperation, spec, func(reader io.Reader) error {
 		var err error
 		data, err = io.ReadAll(io.LimitReader(reader, (1<<20)+1))
 		if len(data) > 1<<20 {
@@ -132,19 +132,4 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	}
 	out = EpisodeThumbnailResult{Origin: "generated", JPEG: data, Width: 320, Height: 180, PositionUS: position}
 	return out, nil
-}
-
-// produceEpisodeThumbnail stages immutable output for the existing durable
-// publisher. The policy owner selects this operation and supplies Authorize.
-func (s *Service) produceEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest, key string) (produced, error) {
-	out := produced{Artifacts: []artifactOutput{}, Markers: []Marker{}}
-	picture, err := MakeEpisodeThumbnail(ctx, r)
-	if err != nil {
-		return out, err
-	}
-	out.Summary = map[string]any{"origin": picture.Origin, "operation": EpisodeThumbnailOperation, "costClass": EpisodeThumbnailCostClass}
-	if picture.Origin == "generated" {
-		err = s.adder(ctx, key, &out)(picture.JPEG, EpisodeThumbnailOperation, "image/jpeg", 0, 0, r.DurationUS, picture.Width, picture.Height)
-	}
-	return out, err
 }
