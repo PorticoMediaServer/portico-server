@@ -19,7 +19,7 @@ import detail from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {EpisodeDetailsLayout, TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
-import {TitlePeople} from './People';
+import {TitlePeople, ShowPeople} from './People';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
@@ -93,7 +93,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
       </div>
       <div className={styles.paging}>{snapshot.pagination.canPrevious && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousEpisodes(); })}>{t('title.previousPage')}</Button>}{snapshot.pagination.nextCursor && <Button size="compact" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextEpisodes(); })}>{t('title.nextPage')}</Button>}</div>
     </section>}
-    {tab === 'details' && <div className={detail.details}><section>{show.overview && <TitleProse className={detail.about}>{show.overview}</TitleProse>}<dl>{[[t('title.network'), show.network], [t('title.studio'), show.studio], [t('title.country'), show.country], [t('title.genres'), show.genres?.join(', ')]].filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section></div>}
+    {tab === 'details' && <div className={detail.details}><section>{show.overview && <TitleProse className={detail.about}>{show.overview}</TitleProse>}<dl>{[[t('title.network'), show.network], [t('title.studio'), show.studio], [t('title.country'), show.country], [t('title.genres'), show.genres?.join(', ')]].filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section><ShowPeople binding={binding} data={data} /></div>}
     {tab === 'related' && (recommendations.phase === 'error' ? <ScreenFailure retry={() => { void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }} /> : recommendations.phase === 'loading' ? <DetailLoading /> : titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} binding={binding} heading={row.title} entries={row.entries} guard={() => binding.current(data)} />))}
     </div>
   </article>;

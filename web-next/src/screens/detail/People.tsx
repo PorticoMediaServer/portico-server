@@ -9,6 +9,10 @@ import styles from './detail.module.css';
 import {runScreenCommand} from './context';
 import {WindowedGrid} from '../../kit/layout';
 import {titleCreditsWindow} from './credits-window';
+import type {ShowWorkspaceData, WorkspaceShowCredit} from '@core/show-workspace.ts';
+import {showPeople} from '@core/presentation/title-page.ts';
+import {createWindowedCollection} from '@core/collections/index.ts';
+import type {ShowBindings} from './show-bindings';
 
 function Person({credit, binding, data}: {credit: DetailCredit; binding: DetailBindings; data: DetailProjection}) {
   const art = binding.context.artwork.foreground(credit.portraitUrl, 208, 1);
@@ -60,4 +64,42 @@ function CreditWindow({binding, data, group}: {binding: DetailBindings; data: De
     <WindowedGrid collection={collection} label={label} cardWidth={120} rowHeight={180} height={240} gap={20} rowGap={16}
       renderPlaceholder={index => <span className={styles.creditPlaceholder} key={index} />} renderItem={credit => <div className={styles.people}><Person credit={credit} binding={binding} data={data} /></div>} />
   </section>;
+}
+
+const showCreditKey = (credit: WorkspaceShowCredit) => JSON.stringify([credit.id, credit.name, credit.ordinal, credit.department, credit.role]);
+function ShowPerson({credit, binding, data}: {credit: WorkspaceShowCredit; binding: ShowBindings; data: ShowWorkspaceData}) {
+  const art = binding.context.artwork.foreground(credit.portraitUrl, 208, 1);
+  return <button type="button" disabled={!credit.id} onClick={() => runScreenCommand(binding.context, () => {
+    binding.current(data); if (credit.id) binding.context.effects.openEntry({id: credit.id, kind: 'person', title: credit.name, navigation: {view: 'person', entityId: credit.id}});
+  })}><PersonCircle covers={art ? [art] : []} initials={credit.name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} alt="" /><b>{credit.name}</b>{(credit.role || credit.department) && <small>{credit.role || credit.department}</small>}</button>;
+}
+
+/** The workspace producer publishes the show's complete cast and crew, not a credit preview. */
+export function ShowPeople({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
+  const [open, setOpen] = useState(false), trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => setOpen(false), [data]);
+  const credits = data.show.credits ?? [], preview = showPeople(credits, 6);
+  const rendered = Math.min(6, preview.cast.length) + preview.crew.length;
+  if (!credits.length) return null;
+  return <div className={styles.creditGroups}>
+    <header className={styles.peopleHeader}><h2>{t('title.allPeople')}</h2>{credits.length > rendered && <Button ref={trigger} variant="text" size="small" icon="i-right" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); setOpen(true); })}>{t('shelf.seeAllCount', {count: credits.length})}</Button>}</header>
+    {[preview.cast.slice(0, 6), preview.crew].map((group, index) => group.length > 0 && <section key={index}><div className={styles.people}>{group.map(credit => <ShowPerson key={showCreditKey(credit)} binding={binding} data={data} credit={credit} />)}</div></section>)}
+    <Dialog open={open} onOpenChange={setOpen} title={t('title.allPeople')} description={data.show.title} width={560} returnFocusRef={trigger}>
+      {open && <ShowCreditWindow binding={binding} data={data} />}
+    </Dialog>
+  </div>;
+}
+
+function ShowCreditWindow({binding, data}: {binding: ShowBindings; data: ShowWorkspaceData}) {
+  const collection = useMemo(() => createWindowedCollection<WorkspaceShowCredit>({
+    pageSize: 40, maxConcurrent: 1, maxResidentPages: 5, keyOf: showCreditKey,
+    async fetchPage(start, count, signal) {
+      binding.current(data); signal.throwIfAborted();
+      const credits = data.show.credits ?? [];
+      return {items: credits.slice(start, start + count), total: credits.length};
+    },
+  }), [binding, data]);
+  useEffect(() => () => collection.dispose(), [collection]);
+  return <WindowedGrid collection={collection} label={t('title.allPeople')} cardWidth={120} rowHeight={180} height={480} gap={20} rowGap={16}
+    renderPlaceholder={index => <span className={styles.creditPlaceholder} key={index} />} renderItem={credit => <div className={styles.people}><ShowPerson binding={binding} data={data} credit={credit} /></div>} />;
 }
