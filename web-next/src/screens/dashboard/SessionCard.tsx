@@ -4,6 +4,8 @@ import type {DashboardSession as AdminSession} from './bindings';
 import {Button} from '../../kit/controls';
 import {Dialog, Menu} from '../../kit/overlays';
 import {Icon, type IconName} from '../../kit/Icon';
+import {Artwork} from '../../kit/artwork/Artwork';
+import {accountAvatarStyle} from '../../kit/settings/account-avatar';
 import type {DashboardBindings} from './bindings';
 import {fmtDur, formatStreamRate, formatTrackRoute} from './format';
 import {clock, sessionTitle, sessionStopTitle, sessionTracks, type Track} from './model';
@@ -36,8 +38,8 @@ export function SessionCard({session: s, bindings: b, refresh}: {session: AdminS
   const episode = item?.showTitle && s.title !== item.showTitle;
   const tracks = sessionTracks(s), current = s.currentBitrateKbps;
   return <article className={styles.session} data-state={s.state} data-leaving={leaving || undefined} aria-label={title}>
-    {backdrop && <div className={styles.ambient} aria-hidden="true"><img src={backdrop} alt="" /></div>}
-    <div className={styles.art} data-square={square || undefined}>{art ? <img src={art} alt="" loading="lazy" /> : <Icon name={square ? 'i-music' : s.live ? 'i-live' : 'i-play'} size={28} />}</div>
+    {backdrop && <div className={styles.ambient} aria-hidden="true"><Artwork source={backdrop} alt="" width="100%" height="100%" /></div>}
+    <div className={styles.art} data-square={square || undefined}>{art ? <Artwork source={art} alt="" width="100%" height="100%" /> : <Icon name={square ? 'i-music' : s.live ? 'i-live' : 'i-play'} size={28} />}</div>
     <div className={styles.info}>{title && <h4>{title}</h4>}{episode ? <><p>{item.seasonNumber !== undefined && item.episodeNumber !== undefined && <b>{t('title.episodeCode', {season: item.seasonNumber, episode: item.episodeNumber})}</b>}{s.title}</p>{s.durationMs && <p className={styles.secondaryMeta}>{t('next.dashboard.format.runtimeMinutes', {minutes: Math.round(s.durationMs / 60000)})}</p>}</>
       : s.live ? <>{s.channel && <p>{s.channel.name}</p>}{s.programme && <p className={styles.secondaryMeta}>{t('next.dashboard.format.ends', {time: defaultI18n.time(Date.parse(s.programme.endsAt))})}</p>}</>
       : square ? <>{(item?.artist || item?.author) && <p>{item.artist || item.author}</p>}{(item?.album || runtime && item?.kind === 'audiobook_file') && <p className={styles.secondaryMeta}>{item?.album || runtime}</p>}</>
@@ -50,7 +52,7 @@ export function SessionCard({session: s, bindings: b, refresh}: {session: AdminS
       return <div className={styles.track} key={track.kind}><span className={styles.source} title={t(`next.dashboard.${track.kind}`)}><TrackIcon kind={track.kind} /><span>{track.source}</span></span>{label && <><svg className={styles.trackArrow} width="20" height="10" viewBox="0 0 20 10" aria-hidden="true"><path d="M0 5h18M14 1.2 18.4 5 14 8.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span className={styles.delivery} data-route={track.route}><i className={styles.routeDot} aria-hidden="true" /><span>{label}</span>{track.hardware && <b>{t('next.dashboard.hardware')}</b>}</span><span className={styles.trackStub} aria-hidden="true" /></>}</div>;
     })}</div>
     <div className={styles.device}><span className={styles.appIcon}><DeviceGlyph platform={s.platform} device={s.device} /></span><div>{s.app && <b>{s.app}</b>}{s.device && <span>{s.device}</span>}{(s.location === 'local' || s.location === 'remote' || current != null) && <strong className={styles.network}>{(s.location === 'local' || s.location === 'remote') && <><i data-series={s.location === 'remote' ? 'away' : 'home'} />{t(s.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away')}</>}{current != null && <em>{formatStreamRate(current)}</em>}</strong>}{s.address && <small>{s.address}</small>}</div></div>
-    <div className={styles.who}><span className={styles.avatar} aria-hidden="true">{s.user.slice(0, 1).toUpperCase()}</span><b>{s.user}{s.profile && s.profile !== s.user && <small>{s.profile}</small>}</b>
+    <div className={styles.who}><span className={styles.avatar} style={accountAvatarStyle(s.user)} aria-hidden="true">{s.user.slice(0, 1).toUpperCase()}</span><b>{s.user}{s.profile && s.profile !== s.user && <small>{s.profile}</small>}</b>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.dashboard.sessionMenu', {user: s.user})} trigger={<Button ref={opener} data-session-menu icon="i-more" iconOnly size="xs" disabled={busy} aria-label={t('next.dashboard.sessionMenu', {user: s.user})} />} items={[
         ...(['paused', 'playing'].includes(s.state) ? [{id: 'transport', icon: s.state === 'paused' ? 'i-play' as const : 'i-pause' as const, label: s.state === 'paused' ? t('next.dashboard.resume') : t('next.dashboard.pause'), onSelect: () => {void act(() => b.effects.transport(s.id, s.state === 'paused' ? 'resume' : 'pause'));}}] : []),
         ...(b.role === 'owner' && stopTitle ? [{id: 'stop', icon: 'i-stop' as const, label: t('next.dashboard.stop'), destructive: true, onSelect: () => {setMessage(''); setStop(true);}}] : []),

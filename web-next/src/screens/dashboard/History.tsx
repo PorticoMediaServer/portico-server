@@ -39,8 +39,8 @@ function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
   const tableRows = useMemo(() => rows.map((entry): SettingsTableRow => {
     const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
     return {id: entry.id, label: entry.title, cells: {
-      title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, image: artwork},
-      person: {title: entry.user, avatar: entry.user.slice(0, 1).toUpperCase(), meta: entry.profile !== entry.user ? entry.profile : undefined},
+      title: {title: entry.kind === 'episode' && entry.parentTitle ? entry.parentTitle : entry.title, meta: entry.kind === 'episode' ? [entry.episode !== undefined && (entry.season === undefined ? t('title.episodeOnly', {episode: entry.episode}) : t('title.episodeCode', {season: entry.season, episode: entry.episode})), entry.title].filter(Boolean).join(' ') : entry.parentTitle, artwork},
+      person: {title: entry.user, avatar: entry.user.slice(0, 1).toUpperCase(), avatarKey: entry.user, meta: entry.profile !== entry.user ? entry.profile : undefined},
       // The platform wire identifier is not an app display name. Actual app waits for the checked producer.
       player: {title: '', meta: entry.device},
       played: {title: formatHistoryStarted(entry.startedAt, b.context.timeZone, b.context.until)},

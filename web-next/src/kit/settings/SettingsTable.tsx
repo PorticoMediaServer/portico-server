@@ -2,11 +2,14 @@ import {useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, use
 import {defaultI18n} from '@i18n';
 import {Button, Select, TextField} from '../controls';
 import {Icon} from '../Icon';
+import {Artwork} from '../artwork/Artwork';
+import type {ArtworkSource} from '../artwork/types';
+import {accountAvatarStyle} from './account-avatar';
 import {nextTableSort, selectTableRows, settingsTableHeaderHeight, settingsTableRowHeight, settingsTableWindow, tableFocusFallback, type TableQuery} from './table-model';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
-export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; image?: string; tone?: 'ok' | 'warn' | 'bad' | 'quiet'}>;
+export type SettingsTableCell = string | Readonly<{title: string; meta?: string; avatar?: string; avatarKey?: string; image?: string; artwork?: ArtworkSource; tone?: 'ok' | 'warn' | 'bad' | 'quiet'}>;
 export type SettingsTableRow = Readonly<{id: string; label: string; cells: Readonly<Record<string, SettingsTableCell>>}>;
 export type SettingsTableColumn = Readonly<{id: string; label: string; kind?: 'main' | 'text' | 'muted' | 'badge' | 'num'; sortable?: boolean; width?: string}>;
 export type SettingsTableFilter = Readonly<{id: string; label: string; options: readonly {value: string; label: string}[]}>;
@@ -25,7 +28,7 @@ function Cell({value, kind}: {value?: SettingsTableCell; kind?: SettingsTableCol
   const cell = typeof value === 'string' ? {title: value} : value;
   if (!cell) return null;
   return <div className={styles.cell} data-kind={kind} title={[cell.title, cell.meta].filter(Boolean).join('\n')}>
-    {kind === 'main' && (cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} aria-hidden="true">{cell.avatar}</span> : null)}
+    {kind === 'main' && (cell.artwork ? <Artwork source={cell.artwork} alt="" className={styles.poster} /> : cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} style={cell.avatarKey !== undefined ? accountAvatarStyle(cell.avatarKey) : undefined} data-gradient={cell.avatarKey !== undefined || undefined} aria-hidden="true">{cell.avatar}</span> : null)}
     <span className={kind === 'badge' ? styles.badge : styles.cellText} data-tone={cell.tone}><span>{cell.title}</span>{cell.meta && <small>{cell.meta}</small>}</span>
   </div>;
 }

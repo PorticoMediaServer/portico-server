@@ -13,6 +13,7 @@ import {playbackControlsService} from '@core/playback-controls.ts';
 import {sendTransport} from '@core/server-admin/now-playing.ts';
 import {fetchPlayHistory, type PlayHistoryApi, type PlayHistoryFilters, type PlayHistoryPage} from '@core/play-history.ts';
 import {parseTelemetryReading, type TelemetryReading} from '@core/telemetry.ts';
+import type {ArtworkSource} from '../../kit/artwork/types';
 
 export type DashboardEvents = Readonly<{on(type: string, listener: () => void): () => void; onResync?(listener: () => void): () => void}>;
 export type DashboardAlert = DashboardStatus['alerts'][number];
@@ -44,7 +45,7 @@ export type DashboardBindings = Readonly<{
     alert?: (alert: DashboardAlert) => Promise<void>;
     reportError: (error: unknown) => void;
   }>;
-  artwork: (itemId: string, kind: 'poster' | 'backdrop' | 'square', revision?: string) => string | undefined;
+  artwork: (itemId: string, kind: 'poster' | 'backdrop' | 'square', revision?: string) => ArtworkSource | undefined;
   dispose: () => void;
 }>;
 export type DashboardBindingOptions = Pick<DashboardBindings, 'scope' | 'role' | 'context' | 'isCurrent' | 'isMainProfile' | 'events' | 'artwork' | 'subscribeAuthority'> & {
