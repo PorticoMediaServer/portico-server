@@ -33,7 +33,7 @@ export function localPlaybackFence(value:LocalPlaybackFence):LocalPlaybackFence 
   const suffix=typeof value.sessionId==='string'&&value.sessionId.startsWith(`local:${value.entryId}:`)?value.sessionId.slice(`local:${value.entryId}:`.length):'';
   if(!/^[1-9][0-9]{0,15}$/.test(suffix)||!Number.isSafeInteger(Number(suffix)))invalidState();
   only(value.artifact,['sha256','bytes']);
-  if(typeof value.artifact.sha256!=='string'||! /^[a-f0-9]{64}$/.test(value.artifact.sha256)||!positive(value.artifact.bytes))invalidState();
+  if(typeof value.artifact.sha256!=='string'||!/^[a-f0-9]{64}$/.test(value.artifact.sha256)||!positive(value.artifact.bytes))invalidState();
   return Object.freeze({kind:'local',playback:localPlaybackIdentity(value.playback),sessionId:value.sessionId,generation:value.generation,
     itemId:value.itemId,entryId:value.entryId,playId:value.playId,artifact:Object.freeze({sha256:value.artifact.sha256,bytes:value.artifact.bytes})});
 }
