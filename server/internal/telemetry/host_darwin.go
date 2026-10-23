@@ -4,7 +4,6 @@ package telemetry
 
 import (
 	"context"
-	"runtime"
 	"strconv"
 	"strings"
 )
@@ -15,20 +14,7 @@ import (
 // is deliberately not used: it requires elevated access this server never takes.
 
 func sampleCPU(ctx context.Context, previous *cpuCounter) Metric {
-	out, e := runCommand(ctx, "sysctl", "-n", "vm.loadavg")
-	if e != nil {
-		return Unavailable("macOS did not expose a load average.")
-	}
-	parts := fields(strings.Trim(strings.TrimSpace(out), "{}"))
-	if len(parts) == 0 {
-		return Unavailable("macOS reported an unreadable load average.")
-	}
-	average, e := strconv.ParseFloat(parts[0], 64)
-	cores := float64(runtime.NumCPU())
-	if e != nil || average < 0 || cores <= 0 {
-		return Unavailable("macOS reported an unreadable load average.")
-	}
-	return Limited(percent(average/cores*100), "Derived from the one-minute load average; macOS does not expose per-core busy time without elevated access.")
+	return Unavailable("macOS does not expose host processor utilization through this sampler.")
 }
 
 func sampleMemory(ctx context.Context) (Metric, int64, int64) {

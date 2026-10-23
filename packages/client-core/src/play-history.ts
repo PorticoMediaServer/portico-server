@@ -1,3 +1,4 @@
+import {parseReportInterval,verifyReportInterval,reportQuery,type ReportContext,type ReportInterval} from './report-context.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
@@ -13,6 +14,7 @@ import type {I18n, MessageId} from '../../i18n/src/index.ts';
  * It is not a viewer's own History (`personal-saved`), which they may pause and clear.
  */
 export type PlayHistoryEntry = Readonly<{
+  watchedMs?:number;location?:string;
   id: string;
   user: string;
   /** Named only for a profile other than the account's first. */
@@ -34,11 +36,12 @@ export type PlayHistoryEntry = Readonly<{
   durationSeconds: number;
   completed: boolean;
 }>;
-export type PlayHistoryPage = Readonly<{entries: readonly PlayHistoryEntry[]; /** Plays matching the filters; first page only. */ total?: number; nextCursor: string}>;
+export type PlayHistoryPage = ReportInterval & Readonly<{entries: readonly PlayHistoryEntry[]; /** Plays matching the filters; first page only. */ total?: number; nextCursor: string}>;
 
-export const PLAY_HISTORY_PERIODS = ['all', '24h', '7d', '30d', '90d'] as const;
+export const PLAY_HISTORY_PERIODS = ['all', 'today', '24h', '7d', '30d', '90d', '1y'] as const;
 export type PlayHistoryPeriod = (typeof PLAY_HISTORY_PERIODS)[number];
-export type PlayHistoryFilters = Readonly<{accountId?: string; libraryId?: string; period: PlayHistoryPeriod}>;
+export type ReportPeriod=PlayHistoryPeriod|'12h';
+export type PlayHistoryFilters = ReportContext & Readonly<{accountId?: string; libraryId?: string;media?:string;search?:string;sort?:string;direction?:'asc'|'desc'; period: ReportPeriod}>;
 export const PLAY_HISTORY_PAGE = 100;
 
 export interface PlayHistoryApi {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}
@@ -62,7 +65,8 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
     if (!object(raw) || !text(raw.id, 64) || !raw.id || !text(raw.user) || !text(raw.accountId, 256) || !text(raw.kind, 64) || !text(raw.title) || !text(raw.libraryId, 256)) invalid();
     if (!text(raw.startedAt, 64) || !Number.isFinite(Date.parse(raw.startedAt)) || !amount(raw.positionSeconds) || !amount(raw.durationSeconds) || typeof raw.completed !== 'boolean') invalid();
     const entry: {-readonly [K in keyof PlayHistoryEntry]: PlayHistoryEntry[K]} = {
-      id: raw.id, user: raw.user, accountId: raw.accountId, kind: raw.kind, title: raw.title, libraryId: raw.libraryId,
+      ...(whole(raw.watchedMs)?{watchedMs:raw.watchedMs}:{}),...(text(raw.location,32)?{location:raw.location}:{}),
+ id: raw.id, user: raw.user, accountId: raw.accountId, kind: raw.kind, title: raw.title, libraryId: raw.libraryId,
       startedAt: raw.startedAt, positionSeconds: raw.positionSeconds, durationSeconds: raw.durationSeconds, completed: raw.completed,
     };
     for (const field of ['profile', 'parentTitle', 'itemId', 'device', 'platform'] as const) {
@@ -79,16 +83,17 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
     }
     return Object.freeze(entry);
   }), entry => entry.id);
-  return Object.freeze({entries: Object.freeze(entries), ...(total === undefined ? {} : {total}), nextCursor: value.nextCursor});
+  return Object.freeze({...parseReportInterval(value),entries: Object.freeze(entries), ...(total === undefined ? {} : {total}), nextCursor: value.nextCursor});
 }
 
 export async function fetchPlayHistory(api: PlayHistoryApi, filters: PlayHistoryFilters, cursor = '', signal?: AbortSignal): Promise<PlayHistoryPage> {
-  const query = new URLSearchParams({limit: String(PLAY_HISTORY_PAGE)});
+  const query = reportQuery(filters);query.set('limit',String(PLAY_HISTORY_PAGE));
+  if(filters.media)query.set('media',filters.media);if(filters.search)query.set('q',filters.search);if(filters.sort)query.set('sort',filters.sort);if(filters.direction)query.set('direction',filters.direction);
   if (filters.accountId) query.set('accountId', filters.accountId);
   if (filters.libraryId) query.set('libraryId', filters.libraryId);
-  if (filters.period !== 'all') query.set('period', filters.period);
+  query.set('period', filters.period);
   if (cursor) query.set('cursor', cursor);
-  return parsePlayHistory(await api.request<RouteResponse<"get_admin_play_history">>(routePath("get_admin_play_history") + "?" + (query.toString()), 'GET', undefined, signal));
+  const out=parsePlayHistory(await api.request<RouteResponse<"get_admin_play_history">>(routePath("get_admin_play_history") + "?" + (query.toString()), 'GET', undefined, signal));verifyReportInterval(out,filters,filters.period);return out;
 }
 
 // ── Viewing statistics ──────────────────────────────────────────────────────────────────────
@@ -99,16 +104,16 @@ export async function fetchPlayHistory(api: PlayHistoryApi, filters: PlayHistory
  * are kept for as long as the history is: forever, unless the owner sets a number of days.
  */
 export type PlayCount = Readonly<{name: string; plays: number}>;
-export type PlaySummary = Readonly<{plays: number; people: number; watchedSeconds: number; converted: number; mostPlayed: readonly PlayCount[]; mostActive: readonly PlayCount[]}>;
+export type PlaySummary = ReportInterval & Readonly<{plays: number; people: number; watchedMs: number; converted: number; mostPlayed: readonly PlayCount[]; mostActive: readonly PlayCount[]}>;
 
 /** The periods the Dashboard offers: today, the week, the month, and everything the server has kept. */
-export const VIEWING_PERIODS = ['24h', '7d', '30d', 'all'] as const;
+export const VIEWING_PERIODS = ['today', '7d', '30d', 'all'] as const;
 export type ViewingPeriod = (typeof VIEWING_PERIODS)[number];
-export const viewingPeriodLabel = (period: ViewingPeriod): MessageId => (period === '24h' ? 'server.viewing.today' : period === 'all' ? 'server.plays.allTime' : `server.viewing.period.${period}`);
+export const viewingPeriodLabel = (period: ViewingPeriod): MessageId => (period === 'today' ? 'server.viewing.today' : period === 'all' ? 'server.plays.allTime' : `server.viewing.period.${period}`);
 
 export function parsePlaySummary(value: unknown): PlaySummary {
- value=wireDurations(value,{watchedSeconds:"watchedMs"});
-  if (!object(value) || !whole(value.plays) || !whole(value.people) || !whole(value.watchedSeconds) || !whole(value.converted)) invalid();
+
+  if (!object(value) || !whole(value.plays) || !whole(value.people) || !whole(value.watchedMs) || !whole(value.converted)) invalid();
   const counts = (raw: unknown): readonly PlayCount[] => {
     if (!Array.isArray(raw) || raw.length > 50) invalid();
     return Object.freeze(keepReadable('play-summary', 'counts', raw, row => {
@@ -116,17 +121,20 @@ export function parsePlaySummary(value: unknown): PlaySummary {
       return Object.freeze({name: row.name, plays: row.plays});
     }));
   };
-  return Object.freeze({plays: value.plays, people: value.people, watchedSeconds: value.watchedSeconds, converted: value.converted, mostPlayed: counts(value.mostPlayed), mostActive: counts(value.mostActive)});
+  return Object.freeze({...parseReportInterval(value),plays: value.plays, people: value.people, watchedMs: value.watchedMs, converted: value.converted, mostPlayed: counts(value.mostPlayed), mostActive: counts(value.mostActive)});
 }
 
-export async function fetchPlaySummary(api: PlayHistoryApi, period: ViewingPeriod, signal?: AbortSignal): Promise<PlaySummary> {
-  return parsePlaySummary(await api.request<RouteResponse<"get_admin_play_history_summary">>(routePath("get_admin_play_history_summary") + "?period=" + (period), 'GET', undefined, signal));
+export async function fetchPlaySummary(api:PlayHistoryApi,filters:PlayHistoryFilters,signal?:AbortSignal):Promise<PlaySummary>{
+ const q=reportQuery(filters);q.set('period',filters.period);
+ for(const key of ['accountId','libraryId','media'] as const)if(filters[key])q.set(key,filters[key]!);
+ if(filters.search)q.set('q',filters.search);
+ const out=parsePlaySummary(await api.request<RouteResponse<'get_admin_play_history_summary'>>(routePath('get_admin_play_history_summary')+'?'+q,'GET',undefined,signal));verifyReportInterval(out,filters,filters.period);return out;
 }
 
 /** The four figures as the panel prints them: plays, people, hours to one decimal, and the share the server converted. */
 export function viewingFigures(summary: PlaySummary): Readonly<{plays: string; people: string; hours: string; converted: string}> {
   return {
-    plays: String(summary.plays), people: String(summary.people), hours: (summary.watchedSeconds / 3600).toFixed(1),
+    plays: String(summary.plays), people: String(summary.people), hours: (summary.watchedMs / 3_600_000).toFixed(1),
     converted: summary.plays ? `${Math.round((summary.converted / summary.plays) * 100)}%` : '—',
   };
 }
@@ -143,7 +151,7 @@ export const PLAY_HISTORY_COLUMNS: readonly Readonly<{id: 'user' | 'type' | 'tit
   {id: 'played', label: 'server.plays.played'},
 ];
 
-export const playHistoryPeriodLabel = (period: PlayHistoryPeriod): MessageId => (period === 'all' ? 'server.plays.allTime' : `server.plays.period.${period}`);
+export const playHistoryPeriodLabel = (period: PlayHistoryPeriod): MessageId => (period === 'all' ? 'server.plays.allTime' : period==='today'?'server.viewing.today':`server.plays.period.${period}`);
 
 const KIND_LABELS: Readonly<Record<string, MessageId>> = {
   movie: 'server.plays.kind.movie', episode: 'server.plays.kind.episode', song: 'server.plays.kind.song',

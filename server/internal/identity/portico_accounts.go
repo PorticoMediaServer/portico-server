@@ -74,6 +74,9 @@ func (s *Service) PorticoSignIn(ctx context.Context, who PorticoIdentity) (Direc
 // PorticoSignInTx is PorticoSignIn inside the caller's transaction, so an
 // invitation acceptance creates the account and signs it in atomically.
 func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) (DirectSignIn, error) {
+	if err := RequireSignInKindTx(ctx, tx, SignInPortico); err != nil {
+		return DirectSignIn{}, err
+	}
 	if who.Return != nil {
 		if e := CheckPorticoReturnTx(ctx, tx, who); e != nil {
 			return DirectSignIn{}, e
