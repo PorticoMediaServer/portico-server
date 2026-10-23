@@ -1,6 +1,6 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sign-in.ts';
-import {directSignIn, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
+import {directSignIn, directSignInContinuation, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, type ServerPin} from '@core/route-identity.ts';
 import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
@@ -9,7 +9,8 @@ import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
 import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
-import {CodedError} from '@core/server-messages.ts';
+import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
+import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
 import {decodePreviewInvitationResponse, decodePostAccessInvitationsAcceptResponse} from '../../../packages/contracts/src/decoders.ts';
 import type {PreviewInvitationResponse} from '../../../packages/contracts/src/types.ts';
@@ -18,7 +19,7 @@ import {browserAppSessionActions, type BrowserAppSessionActions} from './app-ses
 import {browserServerDisplay} from './server-display';
 
 export type AccountEntryState = Readonly<{
- phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico';
+ phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
  movePreview?:MoveCodePreview;
@@ -102,7 +103,8 @@ export class BrowserAccountEntry {
    await this.ports.remember(api,result.session,env,hosted,op.current);
    if(!op.current())return;
    this.session=result.session;
-   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:result.passwordChangeRequired?'password-change':result.accountScoped?'profiles':'ready'});
+   const continuation=directSignInContinuation(result);
+   this.publish({...this.state,snapshot:result.snapshot,busy:false,error:undefined,phase:continuation==='viewer'?'ready':continuation==='profile-selection'?'profiles':continuation});
   }catch(error){await this.retire(api,result.session);if(op.current())api.setAccessToken('');throw error;}
  }
  /** The link code is not posted until the kind, private-key proof, link id and
@@ -237,6 +239,44 @@ export class BrowserAccountEntry {
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
   finally{if(restricted)await this.retire(api,restricted.session);}
  }
+ /** Factor setup keeps the existing restricted account family. Passwords,
+  * secrets and recovery codes stay in the caller's ephemeral form, never state/storage. */
+ private requiredFactorAttempt(){
+  const state=this.state,api=this.api,session=this.session;
+  if(state.phase!=='two-step-setup'||state.server?.signIn!=='local'||!state.snapshot?.twoStepSetupRequired||state.busy||!api||!session||session.viewer.role!=='account')return;
+  const op=this.operation(),snapshot=state.snapshot;
+  const assertCurrent=async()=>{
+   const selected=await this.ports.store.selected(),saved=selected?.connection.session;
+   if(!op.current()||this.api!==api||this.session!==session||this.state.snapshot!==snapshot||selected?.connection.pin.serverId!==snapshot.serverId||saved?.sessionFamilyId!==session.sessionFamilyId||saved.viewer.accountId!==snapshot.account.id||saved.viewer.profileId!==session.viewer.profileId||saved.viewer.role!=='account')throw new CodedError('cancelled','The server selection changed.');
+  };
+  const guarded={request:async<T,>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{
+   await assertCurrent();op.signal.throwIfAborted();
+   const result=await api.request<T>(path,method,body,signal?AbortSignal.any([op.signal,signal]):op.signal);
+   await assertCurrent();return result;
+  }};
+  const client=new IdentityClient(guarded);
+  this.publish({...state,busy:true,error:undefined});
+  return {state,op,client,readSnapshot:async()=>parseDirectSnapshot(await guarded.request(routePath('get_direct_account'),'GET'),{authority:'local',serverId:snapshot.serverId,accountId:snapshot.account.id})};
+ }
+ async beginRequiredTwoStep(password:string):Promise<TwoFactorEnrolment|undefined>{
+  if(!password)return;
+  const attempt=this.requiredFactorAttempt();if(!attempt)return;
+  const {state,op,client}=attempt;
+  try{const enrolment=await client.enrolTwoFactor(password);if(!op.current())return;this.publish({...state,busy:false,error:undefined});return enrolment;}
+  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ async confirmRequiredTwoStep(password:string,code:string):Promise<boolean>{
+  if(!password||!code.trim())return false;
+  const attempt=this.requiredFactorAttempt();if(!attempt)return false;
+  const {state,op,client,readSnapshot}=attempt;
+  try{
+   const factor=await client.verifyTwoFactor(password,code.trim());
+   if(!factor.enabled||factor.pendingEnrolment)throw new CodedError('invalid_response',unreadableServerResponse);
+   const snapshot=await readSnapshot();
+   if(snapshot.twoStepSetupRequired)throw new CodedError('invalid_response',unreadableServerResponse);
+   this.publish({...state,snapshot,phase:'profiles',busy:false,error:undefined});return true;
+  }catch(error){if(op.current())this.publish({...state,busy:false,error});return false;}
+ }
  async completeChallenge(code:string){
   const state=this.state,api=this.api,challenge=this.challenge,revision=this.challengeRevision;if(state.phase!=='challenge'||!api||!challenge||revision===undefined)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
@@ -261,11 +301,11 @@ export class BrowserAccountEntry {
     restored.api.request(routePath('get_direct_account'),'GET',undefined,op.signal).then(raw=>parseDirectSnapshot(raw,{authority:'local',accountId:restored.session.viewer.accountId,serverId:entry.connection.pin.serverId})),
    ]);
    if(!op.current())return;if(server.id!==entry.connection.pin.serverId||server.signIn!==entry.signIn)throw new Error('The server sign-in changed.');
-   this.publish({phase:'profiles',server,snapshot,busy:false});
+   this.publish({phase:snapshot.twoStepSetupRequired?'two-step-setup':'profiles',server,snapshot,busy:false});
   }catch(error){if(op.current()){this.release();this.publish({phase:'profiles',error});}}
  }
  async chooseProfile(profileId:string,pin=''){
-  const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||!api||!session)return;
+  const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||state.snapshot.twoStepSetupRequired||!api||!session)return;
   const op=this.operation();this.publish({...state,busy:true,error:undefined});
   try{await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current);if(op.current())this.publish({...state,phase:'ready',busy:false});}
   catch(error){if(op.current())this.publish({...state,busy:false,error});}
