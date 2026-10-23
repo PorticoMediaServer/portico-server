@@ -44,7 +44,10 @@ export class ServerSignInProbe {
   private disposed = false;
   private readonly fetcher: typeof fetch; private readonly timeoutMs: number;
   constructor(fetcher: typeof fetch = globalThis.fetch, timeoutMs = 15000) {
-    this.fetcher = fetcher; this.timeoutMs = timeoutMs;
+    // Invoke the captured transport as a value, never as a method of this
+    // probe. Native Window.fetch rejects a ServerSignInProbe receiver; a
+    // caller's explicitly bound transport keeps its own receiver unchanged.
+    this.fetcher = (input, init) => fetcher(input, init); this.timeoutMs = timeoutMs;
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120000) throw new Error('Invalid probe timeout.');
   }
   getSnapshot = () => this.state;
