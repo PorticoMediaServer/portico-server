@@ -100,12 +100,20 @@ func TestToolchainRuntimeQualification(t *testing.T) {
 			if calls != tc.calls || facts.Identity != inventory.Identity || facts.VulkanAvailable != tc.vulkanOK || facts.OpenCLAvailable != tc.openclOK {
 				t.Fatalf("calls=%d facts=%+v", calls, facts)
 			}
-			cached, err := probeToolchainRuntime(context.Background(), path, func(context.Context, mediaexec.Job) (string, error) {
-				t.Fatal("repeated an already qualified same-identity runtime probe")
-				return "", nil
+			cold, err := probeToolchainInventory(context.Background(), path, runner)
+			if err != nil || cold.VulkanAvailable || cold.OpenCLAvailable || calls != tc.calls {
+				t.Fatal("optional runtime qualification contaminated trusted inventory", cold, err, calls)
+			}
+			// Same FFmpeg identity, but the external ICD/device is now unavailable.
+			// Its previous positive result must not survive an explicit reprobe.
+			refusedCalls := 0
+			refused := startupInventory(t, func(context.Context, mediaexec.Job) (string, error) {
+				refusedCalls++
+				return "", errors.New("controlled removed driver or device")
 			})
-			if err != nil || cached.Identity != facts.Identity {
-				t.Fatal(cached, err)
+			reprobed, err := probeToolchainRuntime(context.Background(), path, refused)
+			if err != nil || reprobed.Identity != facts.Identity || reprobed.VulkanAvailable || reprobed.OpenCLAvailable || refusedCalls != 2 {
+				t.Fatal("reused stale driver qualification", reprobed, err, refusedCalls)
 			}
 		})
 	}
@@ -127,8 +135,8 @@ func TestToolchainRuntimeRejectsChangedExecutable(t *testing.T) {
 	if err == nil || facts.Identity != "" {
 		t.Fatal("published runtime facts for replaced executable", facts, err)
 	}
-	if _, ok := toolchainRuntimeCache.Load(inventory.Identity); ok {
-		t.Fatal("cached changed-executable runtime result")
+	if cached, ok := toolchainCache.Load(inventory.Identity); ok && (cached.(ToolchainFacts).VulkanAvailable || cached.(ToolchainFacts).OpenCLAvailable) {
+		t.Fatal("cached changed-executable runtime grants")
 	}
 }
 
@@ -145,8 +153,8 @@ func TestToolchainRuntimeCancellationDoesNotPublish(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || facts.Identity != "" {
 		t.Fatal("published cancelled qualification", facts, err)
 	}
-	if _, ok := toolchainRuntimeCache.Load(inventory.Identity); ok {
-		t.Fatal("cached cancelled qualification")
+	if cached, ok := toolchainCache.Load(inventory.Identity); ok && (cached.(ToolchainFacts).VulkanAvailable || cached.(ToolchainFacts).OpenCLAvailable) {
+		t.Fatal("cached cancelled qualification grants")
 	}
 }
 
