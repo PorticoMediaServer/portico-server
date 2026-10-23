@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"portico.local/server/internal/identity"
 	"strings"
 	"testing"
@@ -78,4 +79,34 @@ func TestAccountMovePublicHTTPCodeAndOwnerReadOnly(t *testing.T) {
 	if replay := f.call("POST", "/v1/auth/move/local", "", `{"code":"`+code+`","username":"member","password":"New-member1!"}`); replay.Code != 410 {
 		t.Fatalf("code replay %d %s", replay.Code, replay.Body)
 	}
+}
+
+func TestMoveCollisionPublishesIdentityFactsAndOwnerReadHasNoSecrets(t *testing.T) {
+	w := httptest.NewRecorder()
+	failure(w, &identity.MoveCollisionError{Username: "sam_k", ServerName: "Portico demo"})
+	var wire struct {
+		Error struct {
+			Code    string               `json:"code"`
+			Current MoveCollisionDetails `json:"current"`
+		}
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &wire); e != nil || w.Code != 409 || wire.Error.Code != "move_collision" || wire.Error.Current.ExistingUsername != "sam_k" || wire.Error.Current.ServerName != "Portico demo" {
+		t.Fatalf("structured collision %d %s %v", w.Code, w.Body, e)
+	}
+	f := administrationFixtureNew(t)
+	if _, e := f.deps.DB.Exec(`UPDATE accounts SET display_name='Current Owner',email='verified@example.test' WHERE id='owner'`); e != nil {
+		t.Fatal(e)
+	}
+	owner := f.call("GET", "/v1/admin/sign-in", f.owner, "")
+	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"username":"owner"`) || !strings.Contains(owner.Body.String(), `"email":"verified@example.test"`) {
+		t.Fatalf("owner facts %d %s", owner.Code, owner.Body)
+	}
+	if w := f.call("GET", "/v1/admin/sign-in", f.admin, ""); w.Code != 403 {
+		t.Fatalf("admin read owner identity %d %s", w.Code, w.Body)
+	}
+	var settings identity.SignInSettings
+	if e := json.Unmarshal(owner.Body.Bytes(), &settings); e != nil || settings.WebPath != "/settings?scope=server&section=signin" {
+		t.Fatalf("canonical web route %q %v", settings.WebPath, e)
+	}
+	assertSpecResponse(t, "GET", "/v1/admin/sign-in", owner)
 }

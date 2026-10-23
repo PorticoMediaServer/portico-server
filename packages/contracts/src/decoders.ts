@@ -325,6 +325,7 @@ export function decodeGetShowsIdRecommendationsResponse(input: unknown): types.G
 export function decodeGetShowsIdSeasonsResponse(input: unknown): types.GetShowsIdSeasonsResponse { return decode("GetShowsIdSeasonsResponse", input) as types.GetShowsIdSeasonsResponse; }
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetSignInMoveResponse(input: unknown): types.GetSignInMoveResponse { return decode("GetSignInMoveResponse", input) as types.GetSignInMoveResponse; }
+export function decodeGetSignInSettingsResponse(input: unknown): types.GetSignInSettingsResponse { return decode("GetSignInSettingsResponse", input) as types.GetSignInSettingsResponse; }
 export function decodeGetStorageMountsResponse(input: unknown): types.GetStorageMountsResponse { return decode("GetStorageMountsResponse", input) as types.GetStorageMountsResponse; }
 export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetStorageOperationsIdResponse { return decode("GetStorageOperationsIdResponse", input) as types.GetStorageOperationsIdResponse; }
 export function decodeGetStorageRcloneBundledResponse(input: unknown): types.GetStorageRcloneBundledResponse { return decode("GetStorageRcloneBundledResponse", input) as types.GetStorageRcloneBundledResponse; }
