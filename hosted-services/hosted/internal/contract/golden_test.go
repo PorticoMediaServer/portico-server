@@ -331,21 +331,36 @@ func conform(schema map[string]any, value any, path string) []string {
 	if len(schema) == 0 {
 		return nil
 	}
-	if alternatives, ok := schema["anyOf"].([]any); ok {
+	if expected, ok := schema["const"]; ok && !sameJSON(expected, value) {
+		return []string{path + " does not match its const constraint"}
+	}
+	if alternatives, ok := schema["enum"].([]any); ok {
 		matched := false
+		for _, candidate := range alternatives {
+			matched = matched || sameJSON(candidate, value)
+		}
+		if !matched {
+			return []string{path + " is not an allowed enum value"}
+		}
+	}
+	for _, keyword := range []string{"anyOf", "oneOf"} {
+		alternatives, ok := schema[keyword].([]any)
+		if !ok {
+			continue
+		}
+		matches := 0
 		for _, alternative := range alternatives {
 			branch, valid := alternative.(map[string]any)
 			if valid && len(conform(branch, value, path)) == 0 {
-				matched = true
-				break
+				matches++
 			}
 		}
-		if !matched {
-			return []string{path + " matches no anyOf alternative"}
+		if matches == 0 || (keyword == "oneOf" && matches != 1) {
+			return []string{path + " does not match " + keyword + " alternatives"}
 		}
 		remainder := make(map[string]any, len(schema)-1)
 		for key, constraint := range schema {
-			if key != "anyOf" {
+			if key != keyword {
 				remainder[key] = constraint
 			}
 		}
@@ -436,6 +451,12 @@ func conform(schema map[string]any, value any, path string) []string {
 		return []string{fmt.Sprintf("%s: unsupported schema %v", path, schema)}
 	}
 	return nil
+}
+
+func sameJSON(a, b any) bool {
+	left, leftError := json.Marshal(a)
+	right, rightError := json.Marshal(b)
+	return leftError == nil && rightError == nil && bytes.Equal(left, right)
 }
 
 func TestConformNullableDateTimeUnion(t *testing.T) {
