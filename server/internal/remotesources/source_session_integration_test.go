@@ -44,7 +44,7 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if err = os.Mkdir(f.s.private, 0700); err != nil {
 				t.Fatal(err)
 			}
-			identities, owner, _ := observationOwner(t, f)
+			identities, owner, family := observationOwner(t, f)
 			// Fixture construction is not provider I/O; keep the controller
 			// operation budget separate from cold race-instrumented SQLite setup.
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -223,6 +223,83 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal("actual catalogue transaction did not publish observations", err)
+			}
+			if !sequential {
+				// The artwork state reader is synthetic here. The typed resolver,
+				// current owner, target, lazy retained lease and actual process/range
+				// adapters are production paths; this is not full engine composition.
+				revision := f.catalogObservationRevision(t)
+				for _, statement := range []struct {
+					sql  string
+					args []any
+				}{
+					{`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration) VALUES('episode-asset',?,?,?,'mkv','h264','aac',1920,1080,60)`, []any{f.file, len(payload), modified.UnixNano()}},
+					{`INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head) SELECT X'00112233445566778899AABBCCDDEEFF',id,4,'Episode','episode','e' FROM catalog_libraries WHERE library_id=?`, []any{f.library}},
+					{`INSERT INTO catalog_asset_links(entity_id,asset_id) SELECT e.id,a.id FROM catalog_entities e CROSS JOIN catalog_assets a WHERE a.token='episode-asset'`, nil},
+					{`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) SELECT 'episode-object',id,'episode-asset',incarnation,'film.mkv',?,'{}',?,?,'available' FROM library_sources WHERE id=?`, []any{revision, len(payload), modified.UnixNano(), f.library}},
+				} {
+					if _, err = f.s.db.ExecContext(ctx, statement.sql, statement.args...); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var episode string
+				if err = f.s.db.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
+					t.Fatal(err)
+				}
+				resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: &episodeFactsFixture{mode: "off"}}
+				request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "episode-object", SourceRevision: revision, EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
+				view, err := dbwork.BeginSnapshot(ctx, f.s.db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				source, err := resolver.ResolveEpisodeReadSourceTx(ctx, view.Tx(), request, func() { t.Error("actor revocation became changed-file notice") })
+				view.Rollback()
+				if err != nil || source == nil {
+					t.Fatal("explicit Off/list-only lazy source", err)
+				}
+				defer source.Close()
+				if source.remote.processGeneration != "" {
+					t.Fatal("capture invented an opened physical epoch")
+				}
+				input, err := source.Open(ctx)
+				if err != nil {
+					t.Fatal("real lazy Episode range input", err)
+				}
+				got, err := input.ReadExtent(ctx, 127, 257)
+				if err != nil || !bytes.Equal(got, payload[127:384]) {
+					input.Close()
+					t.Fatal("actual Episode extent", len(got), err)
+				}
+				if err = input.Validate(ctx); err != nil {
+					input.Close()
+					t.Fatal("fresh post-decode validation", err)
+				}
+				if err = input.Close(); err != nil {
+					t.Fatal(err)
+				}
+				publication, err := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = source.CheckTx(ctx, publication.Tx()); err != nil {
+					publication.Rollback()
+					t.Fatal("closing child input retired retained publication source", err)
+				}
+				if _, err = publication.Tx().ExecContext(ctx, `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family); err != nil {
+					publication.Rollback()
+					t.Fatal(err)
+				}
+				if err = source.CheckTx(ctx, publication.Tx()); err == nil {
+					publication.Rollback()
+					t.Fatal("publication missed actual current owner revocation")
+				}
+				publication.Rollback()
+				if err = source.Authorize(ctx, "episode_thumbnail", "decode", true); err == nil {
+					t.Fatal("rollback revived failed retained Episode source")
+				}
+				if err = source.Close(); err != nil {
+					t.Fatal(err)
+				}
 			}
 			first := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 			defer first.Close()
