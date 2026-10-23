@@ -46,6 +46,7 @@ async function harness(fixture={}){
  if(fixture.artwork)context.FileReader=class{readAsDataURL(blob){blob.arrayBuffer().then(data=>{this.result='data:'+blob.type+';base64,'+Buffer.from(data).toString('base64');this.onload();});}};
  if(fixture.clock)context.Date=class extends Date{static now(){return fixture.clock.now}};
  context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
+ if(!fixture.text)vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'..','receiver-text.js'),'utf8'),context);
  vm.runInNewContext(source,context);await new Promise(setImmediate);
  return {metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
@@ -539,3 +540,4 @@ test('CAF local media requests retain private object authority through intercept
  await h.message('phone',{type:'seek',positionSeconds:5});assert.equal(h.manager.getCurrentTimeSec(),5);
  await h.message('phone',{type:'stop'});assert.equal(h.manager.getPlayerState(),'IDLE');assert.equal(h.receiver.state().playbackId,null);
 });
+
