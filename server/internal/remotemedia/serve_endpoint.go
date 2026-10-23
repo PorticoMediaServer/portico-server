@@ -65,8 +65,9 @@ func NewServeEndpoint(port int, username, password string, connections int) (*Se
 
 func (s *ServeEndpoint) Close() { s.client.CloseIdleConnections() }
 
-// ReadRange never retries, follows redirects, or falls back to an unconditioned
-// GET. A served ETag is only an additional precondition, not provider identity.
+// ReadRange never retries a partial body, follows redirects, or falls back to
+// an unconditioned GET. Every transport reconnect checks the captured admission.
+// A served ETag is only an additional precondition, not provider identity.
 // A separate observation/authority fence must surround this operation.
 func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, size, offset, length int64, reconnect func(context.Context) error) ([]byte, error) {
 	if reconnect == nil {

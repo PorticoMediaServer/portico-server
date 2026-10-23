@@ -134,7 +134,7 @@ func (s *RangeSession) changeCallback() func() {
 	return nil
 }
 
-// ReadAt buffers one finite range before exposing bytes. Every request opens a
+// ReadAt buffers one finite range before exposing bytes. Every request uses a
 // loopback connection and is fenced on both sides and on every dial/reconnect;
 // no short-body retry,
 // sequential prefix materialization, or current-object fallback is permitted.
