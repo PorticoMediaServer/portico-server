@@ -30,7 +30,9 @@ export function mountReaderSurface<P extends object>({controller, source, format
     active = false; observer.disconnect(); offAuthority(); resolveSize?.();
     if (frame !== undefined) cancelAnimationFrame(frame);
     // A superseded effect that never opened must not close a newer core session.
-    closeResult = opened || opening ? controller.close() : Promise.resolve();
+    const closing = opened || opening ? controller.close() : Promise.resolve();
+    // An abandoned reconnect must retain its predecessor's disposal fence.
+    closeResult = Promise.all([settled, closing]).then(() => {});
     return closeResult;
   };
   const failed = (error: unknown) => { if (current()) reportError(readerErrorCode(error)); };

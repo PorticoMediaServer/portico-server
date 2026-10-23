@@ -78,3 +78,19 @@ test('StrictMode-style reconnect waits for disposal and an old cleanup cannot cl
   await first.close(); assert.equal(f.controller.getSnapshot().status, 'ready');
   await second.close(); assert.equal(f.controller.getSnapshot().status, 'closed');
 });
+
+test('an abandoned reconnect preserves the outstanding disposal fence for a third mount', async t => {
+  const env = environment(t), f = fixture(), disposal = deferred<void>();
+  const options = {controller: f.controller, source, format: 'epub' as const, authority: env.authority, container: {clientWidth: 1440, clientHeight: 900} as HTMLElement, reportError() { assert.fail('unexpected host error'); }};
+  const first = mountReaderSurface(options); await first.ready;
+  f.view.dispose = () => disposal.promise;
+  const firstClose = first.close();
+  const abandoned = mountReaderSurface({...options, settled: firstClose});
+  const abandonedClose = abandoned.close();
+  const third = mountReaderSurface({...options, settled: abandonedClose});
+  await tick(); assert.equal(f.mounted, 1);
+  disposal.resolve(); await abandoned.ready; await third.ready;
+  assert.equal(f.mounted, 2); await first.close(); await abandoned.close();
+  assert.equal(f.controller.getSnapshot().status, 'ready');
+  await third.close(); assert.equal(f.controller.getSnapshot().status, 'closed');
+});
