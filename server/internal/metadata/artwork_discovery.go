@@ -87,7 +87,16 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
+		providerStill, e := episodeProviderStillTargetTx(ctx, tx, t)
+		if e != nil {
+			return e
+		}
 		if screen != nil {
+			if !providerStill {
+				copy := *screen
+				copy.StillPath = ""
+				screen = &copy
+			}
 			if e = seedScreenArtwork(ctx, tx, t, *screen, fence, now); e != nil {
 				return e
 			}
@@ -120,7 +129,10 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 				}
 			}
 			// The episode's own still, from the TVDB page it was matched on.
-			if e = seedEpisodeStill(ctx, tx, t, fence, now); e != nil {
+			if providerStill {
+				e = seedEpisodeStill(ctx, tx, t, fence, now)
+			}
+			if e != nil {
 				return e
 			}
 		}
@@ -208,6 +220,10 @@ func (s *Service) artworkProviderEnabled(ctx context.Context, tx *sql.Tx, t Repa
 	if err != nil {
 		return false, err
 	}
+	return s.artworkProviderEnabledForEntity(ctx, tx, ent, provider)
+}
+func (s *Service) artworkProviderEnabledForEntity(ctx context.Context, tx *sql.Tx, ent repairEntity, provider string) (bool, error) {
+	var err error
 	var enabled bool
 	if provider != "local" {
 		if local, err := LibraryLocalOnlyTx(ctx, tx, ent.library); err != nil || local {
