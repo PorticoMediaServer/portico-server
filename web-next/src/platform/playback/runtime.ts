@@ -373,11 +373,11 @@ export class WebShellPlaybackRuntime {
   bindGroup(service: GroupSessionService, isCurrent: () => boolean, reportError: (error: unknown) => void): () => void {
     this.assertCurrent();if (this.group) problem('group_playback_already_bound');
     const currentGroup = () => {const value = service.getSnapshot();return this.current() && isCurrent() && (value.phase === 'live' || value.phase === 'reconnecting') ? value.group : undefined;};
-    const owner = bindRuntimeGroup({service, isCurrent: () => this.current() && isCurrent(), reportError,
+    const owner = bindRuntimeGroup({service, isCurrent: () => this.current() && isCurrent(), reportError, changed: this.sync,
       player: {
         state: () => {const value = this.getSnapshot().playback;return {itemId: value.itemId ?? '', positionSeconds: value.positionSeconds,
           playing: value.phase === 'ready' && value.intent === 'playing' && !value.audioEffects.waiting, ready: value.phase === 'ready',
-          buffering: value.phase === 'starting' || !!value.recovering || value.audioEffects.waiting, seeking: !!value.pendingSeek,
+          buffering: value.phase === 'starting' || !!value.recovering || !!value.audioEffects.waiting, seeking: !!value.pendingSeek,
           ...(value.duration > 0 ? {durationSeconds: value.duration} : {})};},
         play: () => {if (currentGroup()?.timeline.itemId === this.stack.service.getSnapshot().itemId) this.stack.service.resume();},
         pause: () => {if (currentGroup()?.timeline.itemId === this.stack.service.getSnapshot().itemId) this.stack.service.pause();},

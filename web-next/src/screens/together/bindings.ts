@@ -1,4 +1,4 @@
-import {createI18n} from '@i18n';
+import {shellLanguage} from '../../shell/settings';
 import {GroupSessionService, type GroupSessionSnapshot} from '@core/group-session.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -10,7 +10,8 @@ import {router} from '../../router';
 export type TogetherSnapshot = Readonly<{room: GroupSessionSnapshot; items: ReadonlyMap<string, GetItemsIdResponse>}>;
 /** Inert construction. The persistent Watch parent starts/disposes it for one captured session. */
 export function createTogetherBindings(context: ShellAssemblyContext, playback: WatchBindings) {
-  const captured = context.session(), life = new AbortController(), i18n = createI18n(playback.environment.locale ?? 'en-US');
+  const captured = context.session(), life = new AbortController();
+  let i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);
   const isCurrent = () => context.isCurrent() && !life.signal.aborted && !playback.runtime.getSnapshot().disposed
     && context.session().sessionFamilyId === captured.sessionFamilyId
     && (['serverId', 'authority', 'accountId', 'profileId'] as const).every(key => context.session().viewer[key] === captured.viewer[key]);
@@ -27,7 +28,7 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     guard();return value;
   }});
   const listeners = new Set<() => void>();
-  let snapshot: TogetherSnapshot = {room: service.getSnapshot(), items: new Map()}, key = '', reading: AbortController | undefined, offGroup: (() => void) | undefined, started = false;
+  let snapshot: TogetherSnapshot = {room: service.getSnapshot(), items: new Map()}, key = '', reading: AbortController | undefined, offGroup: (() => void) | undefined, offPreferences: (() => void) | undefined, started = false;
   const publish = (items = snapshot.items) => {snapshot = Object.freeze({room: service.getSnapshot(), items});for (const listener of [...listeners]) listener();};
   const off = service.subscribe(() => {
     publish();const room = snapshot.room, group = room.group, queue = room.queue ?? group?.queue;
@@ -49,13 +50,15 @@ export function createTogetherBindings(context: ShellAssemblyContext, playback: 
     })();
   });
   return {
-    service, runtime: playback.runtime, environment: playback.environment, artwork: playback.artwork, t: i18n.t, number: i18n.number,
+    service, runtime: playback.runtime, environment: playback.environment, artwork: playback.artwork, get t() {return i18n.t;}, get number() {return i18n.number;},
     profileName: context.facts.identity.profileName, profileArt: context.facts.identity.profileArt,
     openSettings: () => {guard();void router.navigate({to: '/settings'});},
     isCurrent, getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};},
-    start: () => {guard();if (started) return;started = true;offGroup = playback.runtime.bindGroup(service, isCurrent, playback.reportError);void service.refreshDirectory();},
+    start: () => {guard();if (started) return;started = true;offGroup = playback.runtime.bindGroup(service, isCurrent, playback.reportError);
+      offPreferences = context.preferences?.subscribe(() => {if (isCurrent()) {i18n = shellLanguage(context.preferences?.getSnapshot('web') ?? context.facts.preferences);service.setI18n(i18n);publish();}});
+      void service.refreshDirectory();},
     reportError: playback.reportError,
-    dispose: () => {if (life.signal.aborted) return;life.abort();reading?.abort();offGroup?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},
+    dispose: () => {if (life.signal.aborted) return;life.abort();reading?.abort();offGroup?.();offPreferences?.();off();service.dispose();snapshot = {room: service.getSnapshot(), items: new Map()};for (const listener of [...listeners]) listener();listeners.clear();},
   };
 }
 export type TogetherBindings = ReturnType<typeof createTogetherBindings>;

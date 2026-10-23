@@ -5,6 +5,8 @@ import {HttpLocalApi} from '@core/index.ts';
 import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
 import type {V1Request, V1Response} from '@core/playback-v1/http.ts';
 import type {ServerEvent} from '@core/playback-v1/types.ts';
+import {GroupSessionService} from '@core/group-session.ts';
+import {SOCIAL_PROTOCOL} from '@core/social-playback.ts';
 import {WebShellPlaybackRuntime} from '../src/platform/playback/runtime.ts';
 import {ByteCache} from '../src/platform/playback/audio/bytes.ts';
 import {PlayOnController, type WebCastPort} from '../src/platform/playback/play-on.ts';
@@ -2167,4 +2169,64 @@ test('the drawn automatic Up next progress uses the real policy clock and reject
   assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), true);await f.arrive();
   assert.equal(f.runtime.getSnapshot().session!.itemId, 'next');assert.equal(watchUpNextOffer(binding, shown), null);
   assert.equal(await dispatchWatchNext(binding, shown, 'play-now'), false);
+});
+
+
+// Controlled room wire contracts exercise the actual canonical service, follower and media
+// runtime together. This is source qualification, never a real cohort/frame/receiver claim.
+async function runtimeRoom(t: TestContext, playing = false, canControl = true) {
+  const f = setup(t), at = '2026-10-23T20:00:00Z';let roomId = 'room_first', revision = 1, state = playing ? 'playing' : 'paused';
+  const group = () => ({id: roomId, name: 'Actual room', state, hostAuthority: 'host-only', hostMemberId: 'member', revision: String(revision), playbackRevision: String(revision),
+    settingsRevision: '1', governanceRevision: '1', queueRevision: '1', reconnectGeneration: '1', lastCommand: state === 'playing' ? 'play' : 'pause', lastCommandId: 'command', endedReason: '',
+    eventOrdinal: String(revision), createdAt: at, updatedAt: at, permissions: {isHost: canControl, canControl, canManageQueue: canControl},
+    authority: {deviceId: 'device', playbackId: null, state: 'fresh'}, host: {presence: 'connected', lastSeenAt: at, pauseAt: null, endAt: null},
+    timeline: {itemId: 'movie', currentEntryId: 'group_entry', state, anchorPositionUs: '10000000', anchorAt: at, rate: {numerator: '1', denominator: '1'}, queuePosition: 0, waitUntil: null},
+    settings: {shuffleEnabled: false, repeatMode: 'none'}, sync: {noCorrectionUnderMs: 750, rateCorrectionMinimum: '0.90', rateCorrectionMaximum: '1.10', rateCorrectionMaxMs: 4000, seekAtOrOverMs: 3000},
+    readiness: {aggregate: 'ready', ready: 1, buffering: 0, lagging: 0, stale: 0, memberCount: 1},
+    members: [{id: 'member', displayName: 'Actual member', private: false, role: canControl ? 'host' : 'member', state: 'joined', readiness: 'ready', positionUs: '10000000', reportedAt: at, presence: 'connected', joinedAt: at}], queue: null, viewerMemberId: 'member'});
+  f.intercept(async (request, response) => {
+    if (!request.path.startsWith('/v1/groups/')) return response;
+    const ok = (body: unknown) => ({status: 200, headers: {}, body});
+    if (request.path.endsWith('/transport')) {
+      const command = (request.body as {command: string}).command;state = command === 'play' ? 'playing' : 'paused';revision++;
+      return ok({protocolVersion: SOCIAL_PROTOCOL, groupId: roomId, idempotencyKey: (request.body as {idempotencyKey: string}).idempotencyKey,
+        disposition: 'accepted', groupState: state, command, revision: String(revision), playbackRevision: String(revision), queueRevision: '1', serverTime: at, recordedAt: at, timeline: group().timeline, settings: group().settings, override: null});
+    }
+    if (request.path.endsWith('/queue')) return ok({protocolVersion: SOCIAL_PROTOCOL, serverTime: at, groupId: roomId,
+      queue: {revision: '1', position: 0, entries: [{entryId: 'group_entry', position: 0, itemId: 'movie', unavailable: false, addedBy: 'member'}], eligibility: null}});
+    return ok({protocolVersion: SOCIAL_PROTOCOL, serverTime: at, group: group()});
+  });
+  const service = new GroupSessionService({api: f.api, now: () => Date.parse(at), heartbeatMs: 100000, stream: (_path, _last, signal) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new DOMException('closed', 'AbortError')), {once: true});
+  })});
+  const errors: unknown[] = [], unbind = f.runtime.bindGroup(service, () => true, error => errors.push(error));
+  t.after(() => {unbind();service.dispose();});
+  assert.equal(await service.open(roomId), true);await settle();await f.arrive();
+  return {...f, service, errors, nextRoom: async () => {roomId = 'room_second';await service.open(roomId);await settle();await f.arrive();}};
+}
+
+test('Together loads a paused room paused before the first picture and sends user controls through the real room revision', async t => {
+  const f = await runtimeRoom(t);
+  assert.deepEqual(f.errors, []);const shown = f.runtime.getSnapshot(), fence = shown.fence!;
+  assert.equal(shown.session!.state, 'paused');assert.equal(shown.playback.intent, 'paused');assert.equal(f.video.plays, 0, 'no play-then-pause first frame');
+  const started = f.log.find(request => request.method === 'POST' && request.path === '/v1/playback/sessions')!;
+  assert.equal((started.body as {state: string}).state, 'paused');assert.equal((started.body as {startPositionMs: number}).startPositionMs, 10000);
+  await f.runtime.resume(fence);await settle();
+  const commands = f.log.filter(request => request.path.endsWith('/transport'));
+  assert.equal(commands.length, 1);assert.equal((commands[0]!.body as {command: string}).command, 'play');
+  assert.equal((commands[0]!.body as {expectedRevision: string}).expectedRevision, '1');
+  assert.equal(f.runtime.getSnapshot().playback.intent, 'playing');
+});
+
+test('Together read-only members cannot issue local transport, and the same title in another room is admitted afresh', async t => {
+  const f = await runtimeRoom(t, true, false), first = f.runtime.getSnapshot().fence!;
+  assert.deepEqual(f.errors, []);
+  assert.equal(f.runtime.getSnapshot().presentation!.controls.includes('pause'), false);
+  await assert.rejects(f.runtime.pause(first), /playback_command_unavailable/);
+  assert.equal(f.log.filter(request => request.path.endsWith('/transport')).length, 0);
+  await f.nextRoom();
+  const second = f.runtime.getSnapshot().fence!;
+  assert.notEqual(second.sessionId, first.sessionId, 'room occurrence cannot inherit a same-item old engine fence');
+  await assert.rejects(f.runtime.pause(first), /stale_playback_command/);
+  assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/queues').length, 2);
 });

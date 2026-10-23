@@ -3,10 +3,9 @@ import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
 import {itemSubject} from '../../platform/playback/subject';
 import {Artwork, ProfileFace} from '../../kit/artwork';
-import {ProfileAvatarFace} from '../../kit/shell';
 import {Icon} from '../../kit/Icon';
 import {Button} from '../../kit/controls';
-import {usePhone} from '../../kit/theme';
+import {usePhone} from '../../kit/overlays/shared';
 import {Dialog, Menu, type MenuEntry} from '../../kit/overlays';
 import type {TogetherBindings} from './bindings';
 import type {Group} from '@core/social-playback.ts';
@@ -33,7 +32,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
   const identity = current ? playbackIdentity(itemSubject(current), 'full', binding.environment) : undefined;
   const art = current?.backdropUrl ?? current?.posterUrl;
   const source = useMemo(() => binding.artwork.foreground(art, 1120, 16 / 9, {group: 'playback', priority: 'normal'}), [binding, art]);
-  const act = (action: () => unknown | Promise<unknown>) => {try {void Promise.resolve(action()).catch(binding.reportError);} catch (error) {binding.reportError(error);}};
+  const act = (action: () => unknown | Promise<unknown>) => {if (!binding.isCurrent() || group && binding.getSnapshot().room.group?.id !== group.id) return;try {void Promise.resolve(action()).catch(binding.reportError);} catch (error) {binding.reportError(error);}};
   const openPlayer = () => {const value = binding.runtime.getSnapshot();if (group && value.fence?.kind === 'queue' && value.fence.itemId === group.timeline.itemId) binding.runtime.open(value.fence);};
   const ask = (kind: 'leave' | 'end', button: HTMLButtonElement) => {trigger.current = button;setConfirm(kind);};
   const entries: MenuEntry[] = group && queue && menu ? [
@@ -61,8 +60,8 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
       </div>}
       {room.phase === 'reconnecting' && <div className={styles.notice} role="status">{t('web.together.reconnecting')}</div>}
       {room.phase === 'ended' ? <section className={styles.ended}><Icon name="i-together" size={40} /><h2>{t('web.together.endedTitle')}</h2>
-        <p>{t(group?.endedReason === 'host_ended' ? 'web.together.ended.host' : group?.endedReason === 'host_timeout' ? 'web.together.ended.away' : 'web.together.ended.other')}</p>
-        <button className={styles.primary} type="button" onClick={() => act(() => binding.service.leave())}>{t('web.together.backToLobby')}</button></section>
+        <p>{t(group?.endedReason === 'host-ended' ? 'web.together.ended.host' : group?.endedReason === 'host-unavailable' ? 'web.together.ended.away' : group?.endedReason === 'empty' ? 'web.together.ended.empty' : 'web.together.ended.other')}</p>
+        <button className={styles.primary} type="button" onClick={() => act(() => binding.service.dismiss())}>{t('web.together.backToLobby')}</button></section>
         : inRoom ? <div className={styles.room}>
           <section>
             <div className={styles.now}><Artwork source={source} alt="" saturation={.85} brightness={.7} /><div className={styles.nowText}>
@@ -100,7 +99,7 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
           </div><div className={styles.actions}><button type="button" className={styles.ghost} onClick={event => group.permissions.isHost ? ask('leave', event.currentTarget) : act(() => binding.service.leave())}>{t('web.together.leave')}</button>
             {group.permissions.isHost && <button type="button" className={styles.ghost} onClick={event => ask('end', event.currentTarget)}>{t('web.together.endAll')}</button>}</div></section>
         </div> : <>
-          <div className={styles.you}><ProfileAvatarFace initial={displayName.trim().slice(0, 1).toUpperCase()} art={binding.profileArt} size={44} /><span><b>{t('web.together.yourName')}</b><small>{t('web.together.shownToOthers')}</small></span>
+          <div className={styles.you}><ProfileFace initial={displayName.trim().slice(0, 1).toUpperCase()} art={binding.profileArt} size={44} /><span><b>{t('web.together.yourName')}</b><small>{t('web.together.shownToOthers')}</small></span>
             <input aria-label={t('web.together.yourName')} value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={80} /></div>
           {phone ? <div className={styles.phoneIntro}><h2>{t('web.together.tagline')}</h2><p>{t('web.together.taglineBody')}</p><button type="button" className={styles.primary} onClick={() => setSheet('start')}><Icon name="i-together" size={20} />{t('web.together.startTitle')}</button><button type="button" onClick={() => setSheet('join')}><Icon name="i-kbd" size={20} />{t('web.together.joinWithCode')}</button></div> : <div className={styles.two}>
             {joinForm}
@@ -114,6 +113,6 @@ export function TogetherScreen({binding}: {binding: TogetherBindings}) {
     <Menu open={menu !== null} onOpenChange={open => {if (!open) setMenu(null);}} title={t('web.together.queue')} items={entries} anchorRef={menuAnchor} returnFocusRef={menuAnchor} />
     <Dialog open={confirm !== null} onOpenChange={open => {if (!open) setConfirm(null);}} title={t(confirm === 'end' ? 'confirm.endGroup.title' : 'confirm.leaveAsHost.title')}
       description={t(confirm === 'end' ? 'confirm.endGroup.body' : 'confirm.leaveAsHost.body')} initialFocusRef={cancel} returnFocusRef={trigger}
-      footer={<><Button variant="glass" size="small" type="button" ref={cancel} onClick={() => setConfirm(null)}>{t('action.cancel')}</Button><Button variant="glass" size="small" type="button" className={styles.danger} onClick={() => {const action = confirm;setConfirm(null);act(() => action === 'end' ? binding.service.end() : binding.service.leave());}}>{t(confirm === 'end' ? 'confirm.endGroup.action' : 'confirm.leaveAsHost.action')}</Button></>} />
+      footer={<><Button variant="glass" size="small" type="button" ref={cancel} onClick={() => setConfirm(null)}>{t('action.cancel')}</Button><Button variant="glass" size="small" type="button" className={styles.danger} onClick={() => {const action = confirm;setConfirm(null);act(() => action === 'end' ? binding.service.end() : binding.service.leave());}}>{t(confirm === 'end' ? 'confirm.endGroup.action' : 'confirm.leaveAsHost.action')}</Button></>}>{null}</Dialog>
   </main>;
 }
