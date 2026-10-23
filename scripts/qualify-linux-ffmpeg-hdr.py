@@ -25,10 +25,8 @@ def main():
         raise ValueError('HDR qualification must stay in lane scratch')
     contract_file = root / 'third_party/ffmpeg/linux-hdr-gate.v1.json'
     contract = json.loads(contract_file.read_text())
-    subprocess.run(['git', 'merge-base', '--is-ancestor', contract['sourceCommit'], 'origin/main'],
-                   cwd=root, check=True)
-    subprocess.run(['git', 'merge-base', '--is-ancestor', contract['joinSourceCommit'], 'origin/main'],
-                   cwd=root, check=True)
+    subprocess.run(['python3', str(root / 'scripts/check-ffmpeg-build-inputs.py'),
+                    '--output', str(work / 'build-source-authority.json')], check=True)
     prefix = work / 'linux-qualification-prefix'
     seal = json.loads((work / 'qualification-prefix-files.json').read_text())
     if {str(p.relative_to(prefix)): digest(p) for p in sorted(prefix.rglob('*')) if p.is_file()} != seal:

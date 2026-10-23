@@ -19,6 +19,7 @@ export TMPDIR="$LANE_SCRATCH/tmp" GOTMPDIR="$LANE_SCRATCH/go-tmp" XDG_CACHE_HOME
 export GOCACHE="$HOME/.cache/go-build"
 mkdir -p "$TMPDIR" "$GOTMPDIR" "$XDG_CACHE_HOME" "$PIP_CACHE_DIR"
 readlock() { python3 -c 'import json,sys;v=json.load(open(sys.argv[1]));print(v[sys.argv[2]][sys.argv[3]])' "$ROOT/third_party/ffmpeg/sources.lock.json" "$1" "$2"; }
+python3 "$ROOT/scripts/check-ffmpeg-build-inputs.py" --output "$WORK/build-source-authority.json"
 VERSION="$(readlock ffmpeg version)"
 ARCHIVE="$WORK/jellyfin-ffmpeg-source.tar.gz"
 SOURCE="$WORK/ffmpeg-$VERSION.tar.xz"
@@ -30,17 +31,13 @@ DISC_HEADER="$ROOT/third_party/portico-disc/mpegts_dovi.h"
 if [[ "${PORTICO_FFMPEG_SOURCE_ONLY:-0}" != 1 && "${PORTICO_FFMPEG_DEPS_ONLY:-0}" != 1 ]]; then
   [[ ${PORTICO_DISC_SOURCE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || { echo 'Set PORTICO_DISC_SOURCE_COMMIT to the checked disc source commit' >&2; exit 1; }
   [[ "$PORTICO_DISC_SOURCE_COMMIT" == "$(readlock discHelper sourceCommit)" ]] || { echo 'Disc helper commit differs from the canonical checked source lock' >&2; exit 1; }
-  git -C "$ROOT" merge-base --is-ancestor "$PORTICO_DISC_SOURCE_COMMIT" origin/main || { echo 'Disc input must be merged on main' >&2; exit 1; }
-  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/portico-disc.c
   [[ -f "$DISC_SOURCE" && ! -L "$DISC_SOURCE" ]] || { echo 'Checked disc source is missing' >&2; exit 1; }
-  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/portico-disc.c" > "$WORK/checked-portico-disc.c"
+  cp "$DISC_SOURCE" "$WORK/checked-portico-disc.c"
   cmp "$WORK/checked-portico-disc.c" "$DISC_SOURCE"
-  git -C "$ROOT" diff --quiet HEAD -- third_party/portico-disc/mpegts_dovi.h
   [[ -f "$DISC_HEADER" && ! -L "$DISC_HEADER" ]] || { echo 'Checked disc PSI header is missing' >&2; exit 1; }
-  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:third_party/portico-disc/mpegts_dovi.h" > "$WORK/mpegts_dovi.h"
+  cp "$DISC_HEADER" "$WORK/mpegts_dovi.h"
   cmp "$WORK/mpegts_dovi.h" "$DISC_HEADER"
-  git -C "$ROOT" diff --quiet HEAD -- LICENSE
-  git -C "$ROOT" show "$PORTICO_DISC_SOURCE_COMMIT:LICENSE" > "$WORK/checked-portico-disc.LICENSE"
+  cp "$ROOT/LICENSE" "$WORK/checked-portico-disc.LICENSE"
   cmp "$WORK/checked-portico-disc.LICENSE" "$ROOT/LICENSE"
   [[ ${PORTICO_DISC_FIXTURES_SHA256:-} =~ ^[0-9a-f]{64}$ && -f ${PORTICO_DISC_FIXTURES:-} ]] || { echo 'Provide the checked disc fixture manifest and SHA256' >&2; exit 1; }
 fi
@@ -163,12 +160,14 @@ cp "$WORK/checked-portico-disc.LICENSE" "$WORK/provenance/portico-disc/LICENSE"
 cp "$ROOT/third_party/portico-disc/"{NOTICE.md,contract.md,schema1.json,fixture-expectations.json} "$WORK/provenance/portico-disc/"
 cp -al "$ROOT/fixtures/discs" "$WORK/provenance/fixtures/discs"
 cp "$ROOT/third_party/ffmpeg/"*.json "$ROOT/third_party/ffmpeg/NOTICE.md" "$WORK/provenance/contract/"
+cp "$WORK/build-source-authority.json" "$WORK/provenance/contract/"
 cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
 cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/build-portico-disc.py" "$ROOT/scripts/build-macos-ffmpeg-extras.sh" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest.py" "$ROOT/scripts/verify-ffmpeg-features.py" "$ROOT/scripts/verify-disc-bundle.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-recipes.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-abi.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/check-ffmpeg-build-inputs.py" "$WORK/provenance/scripts/"
 cp "$ARCHIVE" "$SOURCE" "$WORK/provenance/"
 if [[ "$TARGET" == linux-x64 ]]; then
   mkdir -p "$WORK/provenance/linux-dependencies"

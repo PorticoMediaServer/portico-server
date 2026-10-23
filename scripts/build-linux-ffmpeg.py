@@ -91,6 +91,8 @@ def main():
               'build-portico-disc.py': root / 'scripts/build-portico-disc.py',
               'capture-compiler.py': root / 'scripts/capture-ffmpeg-compiler.py',
               'sources.lock.json': root / 'third_party/ffmpeg/sources.lock.json',
+              'build-source-authority.json': work / 'build-source-authority.json',
+              'check-ffmpeg-build-inputs.py': root / 'scripts/check-ffmpeg-build-inputs.py',
               'portico-disc.c': work / 'recipe/portico-disc/portico-disc.c',
               'mpegts_dovi.h': work / 'recipe/portico-disc/mpegts_dovi.h',
               'LICENSE': work / 'recipe/portico-disc/LICENSE',

@@ -594,5 +594,9 @@
     "fixtureManifestSHA256": "d531e2332adb16261add1fca78f3670be0b4ec2385453018a45fa96c6add77fa",
     "supplementalFixtureManifest": "fixtures/discs/dovi/manifest.json",
     "supplementalFixtureManifestSHA256": "bdb6a6b868439e77e66ac512ac3f7580d311596fb6f64de5d0797c6d1341f51c"
+  },
+  "sourceAuthority": {
+    "path": "third_party/ffmpeg/source-authority.v1.json",
+    "sha256": "5fc803d51b19ec991c72ca0c7964661b2a36c995e0112ea19948b13df9e48543"
   }
 }
