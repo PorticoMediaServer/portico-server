@@ -170,6 +170,7 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 	if manual {
 		status = "manual"
 	}
+	targets := make(map[int64]bool, len(plan.Numbers))
 	for _, number := range plan.Numbers {
 		var item int64
 		restore := false
@@ -186,7 +187,7 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 			if loose != 0 {
 				item = loose
 				loose = 0
-				_, err = tx.Exec(`UPDATE catalog_entities SET parent_id=?,retired=0 WHERE id=?`, parent, item)
+				_, err = tx.Exec(`UPDATE catalog_entities SET parent_id=? WHERE id=?`, parent, item)
 				if err == nil {
 					err = compactcatalog.SetFactsTx(ctx, tx, item, map[string]any{"title": title})
 				}
@@ -220,6 +221,23 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 				return err
 			}
 		}
+		// A validated mapping may return to a previously retired interpretation.
+		// Only an actual reactivation restores retained state; live state is kept.
+		reactivated, e := tx.ExecContext(ctx, `UPDATE catalog_entities SET retired=0 WHERE id=? AND retired=1`, item)
+		if e != nil {
+			return e
+		}
+		n, e := reactivated.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if n != 0 {
+			if err = compactcatalog.TouchEntityTx(ctx, tx, item); err != nil {
+				return err
+			}
+			restore = true
+		}
+		targets[item] = true
 		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{Part: plan.Part, Edition: plan.Edition}); err != nil {
 			return err
 		}
@@ -235,6 +253,28 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 		}
 		if _, err = tx.Exec(`INSERT INTO episode_asset_boundaries(item_id,asset_id,status) VALUES(?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET status=excluded.status`, item, asset, boundary); err != nil {
 			return err
+		}
+	}
+	if manual {
+		for _, old := range linked {
+			if targets[old] {
+				continue
+			}
+			var stillLinked bool
+			// Offline sources are still valid interpretations of the old episode.
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links WHERE entity_id=?)`, old).Scan(&stillLinked); err != nil {
+				return err
+			}
+			if stillLinked {
+				continue
+			}
+			if err = compactcatalog.RetireEntityTx(ctx, tx, old); err != nil {
+				return err
+			}
+			// This was a superseded interpretation, not a missing valid title.
+			if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_missing_titles WHERE entity_id=?`, old); err != nil {
+				return err
+			}
 		}
 	}
 	_, err = tx.Exec(`UPDATE playback_sessions SET state='stopped' WHERE asset_id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.asset_id=?2 AND l.entity_id=playback_sessions.item_id)`, asset, assetID)
