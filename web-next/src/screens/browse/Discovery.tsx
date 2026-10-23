@@ -31,7 +31,8 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
   return <>{header}{selectionToolbar}{!snapshot.projection ? <HomeSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}/> :
     snapshot.appended.length === 0 ? empty : snapshot.appended.map(section => {
       const square = snapshot.projection!.scope.libraryKind === 'music' || snapshot.projection!.scope.libraryKind === 'audiobook';
-      const cardWidth = appearance.cardWidth, shape = square ? 1 : 2 / 3;
+      const cardWidth = appearance.cardWidth, musicGenres = snapshot.projection!.scope.libraryKind === 'music' && section.id === 'genres';
+      const shape = musicGenres ? cardWidth / 152 : square ? 1 : 2 / 3;
       return <PagedShelf key={section.id} heading={serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params})}
         platform={width >= 1024 ? 'desktop' : 'phone-web'} reducedMotion={reducedMotion} items={section.entries} getKey={entry => entry.id} cardWidth={cardWidth} artworkRatio={shape}
         hasMore={!!section.nextCursor} continuation={section.nextCursor} onMore={() => {void service.next(section.id);}} onSeeAll={section.seeAll ? () => onSeeAll(section) : undefined}
