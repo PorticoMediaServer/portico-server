@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/networkpolicy"
@@ -64,7 +65,28 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 				return networking.ErrClaimOwnerRequired
 			}
 			return e
-		}, Resume: string(resume)}, nil
+		}, Resume: string(resume), OwnerStart: &networking.OwnerStartAuthority{
+			ExpiresAt: p.ExpiresAt,
+			CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
+				return networkingOwnerStartError(id.CaptureOwnerClaimTx(ctx, tx, p, original, start, audience))
+			},
+			BindTx: func(ctx context.Context, tx *sql.Tx, operation, transaction string) error {
+				return networkingOwnerStartError(id.BindOwnerClaimTransactionTx(ctx, tx, p, operation, transaction))
+			},
+		}}, nil
+	}
+}
+
+func networkingOwnerStartError(err error) error {
+	switch {
+	case errors.Is(err, identity.ErrUnauthorized), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrSignInKindLocal), errors.Is(err, identity.ErrSignInKindPortico):
+		return networking.ErrClaimOwnerRequired
+	case errors.Is(err, identity.ErrConflict), errors.Is(err, identity.ErrProfileChanged):
+		return networking.ErrStale
+	case errors.Is(err, identity.ErrMoveCollision):
+		return networking.ErrOwnerCollision
+	default:
+		return err
 	}
 }
 

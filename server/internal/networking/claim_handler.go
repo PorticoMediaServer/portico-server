@@ -30,6 +30,8 @@ type ClaimRequestOwner struct {
 	// Resume rebuilds Guard after a server restart (ResumeWebClaims): an
 	// opaque note of the sign-in that asked, never a credential.
 	Resume string
+	// OwnerStart is a captured live family capability, never client input.
+	OwnerStart *OwnerStartAuthority
 }
 type ClaimRequestAuthorizer func(*http.Request) (ClaimRequestOwner, error)
 type ClaimExpected struct {

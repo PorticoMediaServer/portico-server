@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"portico.local/server/internal/authoritygate"
 	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -101,7 +103,18 @@ func newOwnerCaptureFixture(t *testing.T) ownerCaptureFixture {
 		t.Fatal(err)
 	}
 	op := identity.Token()
-	if _, err = store.PreparePurpose(ctx, networking.Binding{OperationID: op, ServerID: server, AccountID: networking.UnboundAccount, PublicKey: pub}, networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, networking.ClaimPurpose{Purpose: "switch"}); err != nil {
+	gate, err := authoritygate.NewAuthorityGate(strings.Repeat("a", 64), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := networking.NewAuthorityRunner(func(ctx context.Context) (networking.LifecycleLease, error) { return gate.Acquire(ctx) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = runner.Do(ctx, func(ctx context.Context) error {
+		_, err := store.PreparePurpose(ctx, networking.Binding{OperationID: op, ServerID: server, AccountID: networking.UnboundAccount, PublicKey: pub}, networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, networking.ClaimPurpose{Purpose: "switch"})
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
@@ -165,6 +178,7 @@ func TestOwnerCaptureRechecksLiveFamilyMoveAndKeyBeforeAnyChallenge(t *testing.T
 	for name, mutation := range map[string]string{
 		"family revoked":         `UPDATE authorization_session_families SET revoked=1`,
 		"token retired":          `UPDATE authorization_family_tokens SET retired=1`,
+		"reset-only family":      `INSERT INTO reset_file_sessions(family_id,kind) SELECT id,'local' FROM authorization_session_families`,
 		"epoch changed":          `UPDATE accounts SET epoch=epoch+1`,
 		"key generation changed": `UPDATE networking_claim_identity SET reset_generation=reset_generation+1`,
 		"confirmation withdrawn": `UPDATE identity_moves SET owner_confirmed=0`,

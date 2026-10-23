@@ -130,6 +130,9 @@ func (s *Service) ownerCompletionAuthorityTx(ctx context.Context, tx *sql.Tx, ex
 	if family.ID != c.family || family.revoked || family.retired || family.TokenGeneration != c.generation || family.currentGeneration != c.generation || current.Viewer != expected.Viewer || current.Epoch != expected.Epoch || current.ServerID != s.ID() || !family.tokenExpiry.After(now) || !family.AuthorizationHorizon.After(now) {
 		return c, family, ErrUnauthorized
 	}
+	if err = refuseResetDescendantTx(ctx, tx, family.ID); err != nil {
+		return c, family, err
+	}
 	if c.phase == "prepared" {
 		if expected.Grant != "" || current.Grant != "" {
 			return c, family, ErrForbidden

@@ -17,10 +17,12 @@ import (
 )
 
 type localWebClaim struct {
-	Signed    claimweb.Signed `json:"signed"`
-	Code      string          `json:"code"`
-	URL       string          `json:"url"`
-	ExpiresAt time.Time       `json:"expiresAt"`
+	Signed             claimweb.Signed  `json:"signed"`
+	OwnerStart         *claimweb.Signed `json:"ownerStart,omitempty"`
+	OwnerTransactionID string           `json:"ownerTransactionId,omitempty"`
+	Code               string           `json:"code"`
+	URL                string           `json:"url"`
+	ExpiresAt          time.Time        `json:"expiresAt"`
 }
 
 func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address string) (localWebClaim, error) {
@@ -31,6 +33,11 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	}
 	if v.Stage != Prepared {
 		return out, ErrStale
+	}
+	// An unclaimed Local switch needs its distinct frozen owner start. The
+	// ordinary claim path cannot create an unbound browser continuation.
+	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+		return out, ErrInvalid
 	}
 	// Public proof and code survive a UI remount; private signing material never leaves its store.
 	var saved string

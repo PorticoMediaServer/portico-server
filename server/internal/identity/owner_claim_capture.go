@@ -62,6 +62,9 @@ func (s *Service) CaptureOwnerClaimTx(ctx context.Context, tx *sql.Tx, expected 
 	if family.principal.Grant != "" || start.ExpiresAt.After(family.AuthorizationHorizon) || start.ExpiresAt.After(family.tokenExpiry) {
 		return ErrUnauthorized
 	}
+	if err = refuseResetDescendantTx(ctx, tx, family.ID); err != nil {
+		return err
+	}
 	var sameBrowser bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.authority='local' AND d.account_id=? AND d.installation_id=? AND d.platform='web')`, family.ID, expected.AccountID, start.InstallationID).Scan(&sameBrowser); err != nil {
 		return err
