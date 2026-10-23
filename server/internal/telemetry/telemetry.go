@@ -8,6 +8,8 @@
 // encoder utilisation says so instead of publishing a zero.
 package telemetry
 
+import "portico.local/server/internal/reportwindow"
+
 // Metric statuses. "available" carries a measured value; "limited" carries a
 // value the platform only partly exposes, or a value measured under a
 // restriction worth naming; "unavailable" carries no value at all.
@@ -62,11 +64,14 @@ func percent(v float64) float64 {
 
 // MetricNames is the published order of the series a client can chart. It is
 // also the key set of Sample.Metrics and of the status map on a reading.
-var MetricNames = []string{"cpu", "memory", "diskRead", "diskWrite", "netIn", "netOut", "gpuUsage", "gpuMemory", "gpuEncoder"}
+var MetricNames = []string{"cpu", "memory", "diskRead", "diskWrite", "netIn", "netOut", "gpuUsage", "gpuMemory", "gpuEncoder", "processCPU", "processMemory", "homeMbps", "awayMbps", "hardwareConversions", "softwareConversions"}
 
 // Sample is one observation of every published metric, plus the absolute memory
 // figures a percentage alone cannot convey.
 type Sample struct {
+	counts           map[string]int
+	totals           map[string]float64
+	firstAt, lastAt  map[string]int64
 	At               int64             `json:"at"`
 	Metrics          map[string]Metric `json:"metrics"`
 	MemoryUsedBytes  int64             `json:"memoryUsedBytes"`
@@ -92,6 +97,7 @@ type Point struct {
 
 // Reading is the wire shape of GET /v1/admin/telemetry.
 type Reading struct {
+	reportwindow.Interval
 	Window     string             `json:"window"`
 	Series     map[string][]Point `json:"series"`
 	Status     map[string]Metric  `json:"status"`

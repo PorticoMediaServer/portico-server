@@ -46,6 +46,9 @@ func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identit
 	if _, err := d.Identity.SessionFamilyTx(ctx, tx, p); err != nil {
 		return p, err
 	}
+	if err := d.Identity.RequireMainProfileTx(ctx, tx, p); err != nil {
+		return p, err
+	}
 	switch p.Authority {
 	case "local":
 		role, err := access.Role(tx, p.AccountID)

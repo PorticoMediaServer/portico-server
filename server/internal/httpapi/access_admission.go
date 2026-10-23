@@ -139,6 +139,7 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 		}
 		decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceiling)
 		budgeted, exhausted = true, full
+		decision.UploadLimited = full
 	}
 	if err = gated2.Commit(); err != nil {
 		return decision, err
