@@ -1,6 +1,7 @@
+import {readLibrarySettingsBinding,patchLibrarySettingsBinding} from '../src/presentation/settings-bindings.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {LibrarySettings} from '../src/administration.ts';
+import type {LibraryAdminDocument,LibrarySettings} from '../src/administration.ts';
 import {libraryScanDepth,setLibraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../src/server-admin/library-policy.ts';
 import {reorderLibraries,saveLibraryFolder} from '../src/server-admin/libraries.ts';
 
@@ -33,4 +34,29 @@ test('folder writes preserve optional label and canonical interval milliseconds'
  }};
  const source=await saveLibraryFolder(api,'library',undefined,{name:'',path:'/media',classification:'local',followSymlinks:false,intervalSeconds:900,expectedRevision:7,acceptReplacement:false});
  assert.equal(source.intervalSeconds,900);assert.equal(source.name,'media');
+});
+
+function bindingDocument():LibraryAdminDocument{return {libraryId:'library',libraryName:'Library',libraryKind:'movie',revision:7,digest:'current',eligibleControls:['libraries.cwWeeks','libraries.cwWatched','libraries.scrubSpacing','libraries.scanDepth','libraries.titlesFrom','libraries.language'],audience:{everyone:true,accounts:0},actions:['scan','remove','rename'],settings,defaults:{...settings,continueWatching:{...settings.continueWatching,weeks:8}},analysisMatrix:{costClasses:[],operations:[]},availableProviders:[],enumerations:{},sources:[]};}
+test('library binding reads producer defaults, converts actual units and gates absent controls',()=>{
+ const doc=bindingDocument();
+ assert.equal(readLibrarySettingsBinding('libraries.cwWeeks',doc)?.current,16);
+ assert.equal(readLibrarySettingsBinding('libraries.cwWeeks',doc)?.default,8);
+ assert.equal(readLibrarySettingsBinding('libraries.scrubSpacing',doc)?.current,10);
+ assert.equal(patchLibrarySettingsBinding('libraries.scrubSpacing',20,doc).navigation.trickplayIntervalMs,20000);
+ assert.equal(patchLibrarySettingsBinding('libraries.cwWatched','80',doc).continueWatching.videoPlayedThreshold,80);
+ assert.equal(readLibrarySettingsBinding('libraries.episodeThumbs',doc),undefined);
+ assert.throws(()=>patchLibrarySettingsBinding('libraries.episodeThumbs','off',doc));
+ assert.throws(()=>patchLibrarySettingsBinding('libraries.scanDepth','custom',doc));
+ assert.equal(doc.settings.continueWatching.videoPlayedThreshold,95);
+});
+test('library provider controls use canonical show and book media kinds',()=>{
+ for(const [libraryKind,mediaKind] of [['tv','show'],['anime','show'],['audiobook','book']] as const){
+  const provider=libraryKind==='audiobook'?'musicbrainz':'tmdb';
+  const doc={...bindingDocument(),libraryKind,settings:{...settings,providers:[{mediaKind,provider,apiKeySet:false,language:'en',region:'US'}]},availableProviders:[{id:provider,name:provider,mediaKinds:[mediaKind],supportsApiKey:false,supportsLocale:true,attributionNote:''}]} as LibraryAdminDocument;
+  assert.equal(readLibrarySettingsBinding('libraries.titlesFrom',doc)?.current,provider);
+  const changed=patchLibrarySettingsBinding('libraries.language','fr',doc);
+  assert.equal(changed.providers[0].language,'fr');
+  assert.equal(changed.providers[0].mediaKind,mediaKind);
+  assert.equal(patchLibrarySettingsBinding('libraries.titlesFrom',provider,doc).providers[0].provider,provider);
+ }
 });
