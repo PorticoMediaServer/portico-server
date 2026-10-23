@@ -26,18 +26,35 @@ portico_meson() {
  ninja -C portico-build -j "${PORTICO_BUILD_JOBS:-4}"
  ninja -C portico-build install
 }
+portico_disc_patch() {
+ local patch_file="${CWD}/portico-no-decryption/$1"
+ python3 - "$CWD/portico-ffmpeg-sources.lock.json" "$patch_file" <<'PYPATCH'
+import hashlib,json,pathlib,sys
+patch=pathlib.Path(sys.argv[2])
+entries=json.load(open(sys.argv[1]))['linuxSourceBuild']['sourcePatches']
+expected=next(x['sha256'] for x in entries if pathlib.Path(x['path']).name==patch.name)
+if hashlib.sha256(patch.read_bytes()).hexdigest()!=expected:raise SystemExit('Disc patch checksum changed')
+PYPATCH
+ if patch --batch --fuzz=0 --dry-run -p1 < "$patch_file"; then
+  patch --batch --fuzz=0 -p1 < "$patch_file"
+ else
+  patch --batch --fuzz=0 --reverse --dry-run -p1 < "$patch_file"
+ fi
+}
 export PKG_CONFIG_PATH="$WORKSPACE/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 portico_clone soxr
 portico_cmake -DWITH_OPENMP=OFF -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 portico_clone fontconfig
 portico_meson -Dtests=disabled -Dtools=disabled -Ddoc=disabled -Dxml-backend=libxml2
 portico_clone dvdread
+portico_disc_patch libdvdread-no-decryption.patch
 portico_meson -Ddefault_library=static -Dlibdvdcss=disabled
 portico_clone dvdnav
 portico_meson -Ddefault_library=static
 portico_clone udfread
 portico_meson -Denable_examples=false
 portico_clone bluray
+portico_disc_patch libbluray-no-decryption.patch
 portico_meson -Denable_docs=false -Denable_tools=false -Denable_examples=false -Dbdj_jar=disabled -Dfontconfig=enabled -Dfreetype=enabled -Dlibxml2=disabled -Dlibudfread=enabled
 portico_clone vulkanHeaders
 portico_cmake -DVULKAN_HEADERS_ENABLE_TESTS=OFF

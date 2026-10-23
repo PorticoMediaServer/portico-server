@@ -31,6 +31,11 @@ if target.startswith('macos'):
     import shutil
     shutil.copy2(root / 'scripts/build-macos-ffmpeg-extras.sh', recipe / 'portico-macos-extras.sh')
     shutil.copy2(root / 'third_party/ffmpeg/macos-extras.lock.json', recipe / 'portico-macos-extras.lock.json')
+    shutil.copy2(root / 'third_party/ffmpeg/sources.lock.json', recipe / 'portico-ffmpeg-sources.lock.json')
+    patches = recipe / 'portico-no-decryption'
+    patches.mkdir(exist_ok=True)
+    for name in ['libdvdread-no-decryption.patch', 'libbluray-no-decryption.patch']:
+        shutil.copy2(root / 'third_party/ffmpeg/patches' / name, patches / name)
     sys.exit(0)
 
 # BtbN disables Linux ARM VAAPI by default, although libva supports it.
@@ -40,7 +45,14 @@ path = recipe / 'scripts.d/47-vulkan/50-shaderc.sh'
 text = path.read_text()
 if '"/tmp/staging$FFBUILD_DESTDIR"' not in text:
     raise ValueError('Shaderc staging boundary changed')
-path.write_text(text.replace('"/tmp/staging$FFBUILD_DESTDIR"', '"${TMPDIR:?}/staging$FFBUILD_DESTDIR"'))
+text = text.replace('"/tmp/staging$FFBUILD_DESTDIR"', '"${TMPDIR:?}/staging$FFBUILD_DESTDIR"')
+# Bind mounts may expose the same host filesystem through distinct mount IDs;
+# hard links still fail with EXDEV. The short-lived install copy is removed by
+# the upstream stage, before the next dependency is built.
+if 'cp -al "$DESTDIR"/. "$FFBUILD_DESTDIR"' not in text:
+    raise ValueError('Shaderc install copy boundary changed')
+path.write_text(text.replace('cp -al "$DESTDIR"/. "$FFBUILD_DESTDIR"',
+                             'cp -a "$DESTDIR"/. "$FFBUILD_DESTDIR"'))
 
 # Its GPL recipe normally adds CSS decryption. Keep navigation/readers, with
 # no decryption library stage or dvdread decryption dependency.
