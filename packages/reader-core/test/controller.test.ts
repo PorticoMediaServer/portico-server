@@ -111,3 +111,11 @@ test('iframe surface input is synchronous and fenced; measured fixed zoom reache
   assert.ok(prevented);assert.equal(inputs,1);assert.equal(f.controller.getSnapshot().canTurnAtFit,false);assert.equal(f.controller.getSnapshot().zoom?.scale,1.5);
   await f.controller.close();f.mount.onSurfaceInput?.({kind:'tap',fraction:.9});assert.equal(inputs,1);off();
 });
+test('settings updates during initial apply queue behind that apply',async()=>{
+  const f=fixture(),pending=deferred<void>();let entered=false,inFlight=0,peak=0;
+  f.view.applyPreferences=async p=>{inFlight++;peak=Math.max(peak,inFlight);f.seen.push(p);if(!entered){entered=true;await pending.promise;}inFlight--;};
+  const opening=f.controller.open({source,format:'epub',container});
+  while(!entered)await new Promise(resolve=>setImmediate(resolve));
+  const updating=f.controller.updatePreferences({theme:'light',textSize:3,twoPages:false});
+  pending.resolve();await Promise.all([opening,updating]);assert.equal(peak,1);assert.equal(f.seen.at(-1)?.theme,'light');await f.controller.close();
+});
