@@ -8,7 +8,7 @@
 .resources { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 30px 16px; padding: 26px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .newTile { width: 172px; margin: 30px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .visibility { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; font-size: var(--type-body-size); }
-.resourceBack { padding: 92px var(--shell-gutter, var(--gutter-desktop)) 0; }
+.resourceBack { padding: 104px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .resourceHeader { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 40px; align-items: end; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .resourceCover { aspect-ratio: 1; border-radius: 14px; overflow: hidden; }
 .resourceCover > * { width: 100%; height: 100%; }
@@ -17,6 +17,9 @@
 .resourceKind { display: block; margin: 0 0 10px; font-size: var(--type-eyebrow-size); font-weight: var(--type-row-heading-weight); color: var(--color-accent-strong); }
 .resourceActions { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
 .resourceActions > button { height: 50px; padding: 0 22px; border-radius: 12px; font-size: var(--type-wide-title-size); }
+.resourceVisibility { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 10px 14px 10px 16px; width: fit-content; border-radius: 12px; background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.resourceVisibility b { font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-row-heading-weight); }
+.resourceVisibility small { display: block; margin-top: 2px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .personalRows { padding: 12px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .hiddenRow { padding: 24px 12px; color: var(--color-text-tertiary); font-size: var(--type-body-size); }
 .mediaListRow { width: 100%; height: 90px; padding: 8px 12px; border-radius: 10px; }

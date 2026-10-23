@@ -1,20 +1,24 @@
-import {useCallback, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
 import type {SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
+import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Select, Switch, TextField} from '../../kit/controls';
+import {ViewToggle} from '../../kit/browse';
 import {Dialog, Menu, MenuRow, Popover} from '../../kit/overlays';
-import {StateView} from '../../kit/states';
-import {PosterCard, SquareCard} from '../../kit/cards';
+import {Skeleton, StateView} from '../../kit/states';
+import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
+import {WindowedGrid} from '../../kit/layout';
 import {homeCardModel} from '../home/model';
 import type {SavedViewBindings} from './Saved';
 import {SavedSection} from './Saved';
 import {sameSavedRoute} from './route.ts';
 import {playlistRemovalUndo, type PlaylistRemovalUndo} from './removal.ts';
 import {RemovalUndo} from './RemovalUndo';
+import {personalEntriesWindow} from './window.ts';
 import styles from './saved.module.css';
 
 const t = defaultI18n.t;
@@ -31,6 +35,10 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   const nameShown = isPlaylist ? playlist.playlist?.name : personal.resource?.name;
   const kind = isPlaylist ? 'playlist' : personal.resource?.kind === 'view' ? 'view' : 'collection';
   const actions = resource?.actions ?? [], pinned = resource?.pinned ?? false;
+  const selectedPlaylistEntry = rowMenu && playlist.projection?.sections.flatMap(section => section.entries).find(entry => entry.id === rowMenu.entryId);
+  const selectedPersonalEntry = rowMenu && personal.entries.find(entry => entry.id === rowMenu.entryId);
+  const menuMedia = isPlaylist ? selectedPlaylistEntry?.kind === 'playlist_entry' && !selectedPlaylistEntry.hidden ? selectedPlaylistEntry.media : undefined
+    : selectedPersonalEntry && !selectedPersonalEntry.hidden ? selectedPersonalEntry.media : undefined;
   const perform = (playlistIntent: SavedIntent, personalIntent: PersonalSavedIntent, done?: () => void) => {
     if (pendingAction.current || !bindings.operations.current) return;
     pendingAction.current = true; setBusy(true);
@@ -48,8 +56,9 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
   return <main className={styles.page}>
     <div className={styles.resourceBack}><Button variant="text" icon="i-left" size="small" onClick={() => effects.selectRoute({view: kind === 'playlist' ? 'playlists' : kind === 'view' ? 'views' : 'collections'})}>{t('saved.title')}</Button></div>
     <header className={styles.resourceHeader}><div className={styles.resourceCover}><CoverMosaic covers={covers} shape="square" alt="" /></div><div>
-      <span className={styles.resourceKind}>{t(kind === 'playlist' ? 'web.saved.playlist' : kind === 'view' ? 'web.saved.savedView' : 'web.saved.collection')}</span>
-      <h1>{nameShown}</h1>{resource.summary && <p>{resource.summary}</p>}<p>{t('web.saved.items', {count: resource.entryCount})}</p>
+      <span className={styles.resourceKind}>{t(kind === 'playlist' ? 'web.saved.playlist' : kind === 'view' ? 'web.saved.savedView' : resource.role === 'owner' ? 'web.saved.collection' : 'web.saved.sharedCollection')}</span>
+      <h1>{nameShown}</h1><p>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</p>{resource.summary && <p>{resource.summary}</p>}
+      {!isPlaylist && personal.resource?.kind === 'collection' && personal.resource.actions.includes('update') && <label className={styles.resourceVisibility}><Switch checked={personal.resource.visibility === 'server'} disabled={busy} onCheckedChange={checked => perform({action: 'pin', pinned}, {action: 'update', visibility: checked ? 'server' : 'private'})} /><span><b>{t('web.saved.visibleToAll')}</b><small>{t('web.saved.sharedHelp')}</small></span></label>}
       <div className={styles.resourceActions}>
         {effects.playResource && <><Button variant="primary" icon="i-play" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: false})).catch(effects.reportError); }}>{t('action.play')}</Button>
           <Button icon="i-shuffle" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: true})).catch(effects.reportError); }}>{t('title.shuffle')}</Button></>}
@@ -59,8 +68,8 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
           {actions.includes('delete') && <MenuRow destructive onClick={() => { setDialog('delete'); setMenu(false); }}>{t(kind === 'playlist' ? 'web.saved.deletePlaylist' : kind === 'view' ? 'web.saved.deleteView' : 'web.saved.deleteCollection')}</MenuRow>}
         </Popover>
       </div>
-      {!isPlaylist && personal.resource?.kind === 'collection' && personal.resource.actions.includes('update') && <label className={styles.visibility}><span>{t('web.saved.visibleToAll')}</span><Switch checked={personal.resource.visibility === 'server'} disabled={busy} onCheckedChange={checked => perform({action: 'pin', pinned}, {action: 'update', visibility: checked ? 'server' : 'private'})} /></label>}
     </div></header>
+    <div className={styles.toolbar}>{bindings.selection.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
     {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.saved} section={section} heading={false} onMore={(entry, anchor) => {
       if (entry.kind !== 'playlist_entry' || entry.hidden || !bindings.operations.current) return;
       rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
@@ -69,12 +78,12 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
         if (!entry.media || entry.hidden || !bindings.operations.current) return;
         rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
       }} />}
-    <Menu open={!!rowMenu} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={rowMenu?.media.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
-      items={rowMenu ? [{id: 'go', label: t('web.saved.goToItem'), icon: 'i-info', onSelect: () => { if (bindings.operations.current) effects.openEntry(rowMenu.media); }},
+    <Menu open={!!rowMenu && !!menuMedia} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={menuMedia?.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
+      items={rowMenu && menuMedia ? [{id: 'go', label: t('web.saved.goToItem'), icon: 'i-info', onSelect: () => { if (bindings.operations.current) effects.openEntry(menuMedia); }},
         ...((isPlaylist ? actions.includes('remove') : kind === 'collection' && actions.includes('entries')) ? [
           {id: 'remove-separator', separator: true} as const,
           {id: 'remove', label: <span className={styles.removeMenuLabel}><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M6 12h12" /></svg>{t(isPlaylist ? 'web.saved.removeFromPlaylist' : 'web.saved.removeFromCollection')}</span>, destructive: true, disabled: busy, onSelect: () => {
-            const removed = rowMenu;
+            const removed = {...rowMenu, media: menuMedia};
             perform({action: 'remove', entryId: removed.entryId}, {action: 'entries', removeEntryIds: [removed.entryId]}, () => {
               if (isPlaylist) setUndo(playlistRemovalUndo(runtime.saved.getSnapshot().lastReceipt, {serverId: runtime.scope.serverId, viewerFence: resource.viewerFence, playlistId: resource.id, entryId: removed.entryId}, removed.media.title));
             });
@@ -84,7 +93,6 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       if (Date.now() >= value.until) return;
       perform({action: 'restore', undoToken: value.token}, {action: 'entries', undoToken: value.token}, clearUndo);
     }} />
-    {!isPlaylist && personal.nextCursor && <Button size="small" className={styles.showMore} loading={personal.loading} onClick={() => { void runtime.personal.next(); }}>{t('action.showMore')}</Button>}
     <Dialog open={!!dialog} onOpenChange={open => { if (!open && !busy) setDialog(undefined); }} title={dialog === 'rename' ? renameTitle : t('web.saved.deleteTitle', {name: nameShown ?? ''})} initialFocusRef={dialog === 'rename' ? nameInput : cancel}
       description={dialog === 'delete' ? t(kind === 'playlist' ? 'web.saved.deletePlaylistBody' : kind === 'view' ? 'web.saved.deleteViewBody' : 'web.saved.deleteCollectionBody') : undefined}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setDialog(undefined)}>{t('action.cancel')}</Button><Button variant="primary" className={dialog === 'delete' ? styles.destructive : undefined} size="small" loading={busy} disabled={dialog === 'rename' && !name.trim()} onClick={() => {
@@ -97,14 +105,30 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
 }
 
 function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings; entries: readonly PersonalResourceEntry[]; onMore: (entry: PersonalResourceEntry, anchor: HTMLButtonElement) => void}) {
-  return <div className={styles.personalRows}>{entries.map(entry => {
+  const collection = useMemo(() => personalEntriesWindow(bindings.runtime.personal), [bindings.runtime.personal]);
+  const root = useRef<HTMLDivElement>(null), [width, setWidth] = useState(0);
+  useEffect(() => {
+    const element = root.current; if (!element) return;
+    const read = () => setWidth(element.clientWidth);
+    const observer = new ResizeObserver(read); observer.observe(element); read();
+    return () => observer.disconnect();
+  }, []);
+  const grid = bindings.presentation.view === 'grid', cardWidth = bindings.presentation.cardWidth, rowHeight = grid ? cardWidth * 1.5 + 48 : 90;
+  const columns = grid ? Math.max(1, Math.floor((width + 16) / (cardWidth + 16))) : 1;
+  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil((entries.length + Number(!!bindings.runtime.personal.getSnapshot().nextCursor)) / columns) * (rowHeight + (grid ? 30 : 0))));
+  return <div className={styles.personalRows}><div ref={root}><WindowedGrid collection={collection} label={bindings.runtime.personal.getSnapshot().resource?.name ?? t('saved.title')}
+    height={height} cardWidth={grid ? cardWidth : Math.max(1, width)} rowHeight={rowHeight} gap={16} rowGap={grid ? 30 : 0} reducedMotion={bindings.presentation.reducedMotion}
+    renderPlaceholder={() => <Skeleton width={grid ? cardWidth : width} height={grid ? cardWidth * 1.5 : 72} />} renderItem={entry => {
     const media = entry.media;
-    if (!media || entry.hidden) return <div key={entry.id} className={styles.hiddenRow}>{t('card.unavailable')}</div>;
-    const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), square = ['album', 'song', 'book', 'book_part', 'artist'].includes(media.kind);
-    const Card = square ? SquareCard : PosterCard;
-    return <div key={entry.id} className={styles.mediaListRow}><Card model={model} artwork={bindings.artwork.foreground(media.posterUrl, 128, square ? 1 : 2 / 3)} context="detail" selection={bindings.selection.personalCard(bindings.runtime.personal, entry)}
-      onNavigate={() => bindings.effects.openEntry(media)} onMore={anchor => onMore(entry, anchor)} onPlay={media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined} /></div>;
-  })}</div>;
+    if (!media || entry.hidden) return <div className={styles.hiddenRow}>{t('card.unavailable')}</div>;
+    const model = homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale}), shape = shapeFor(media.kind, grid ? 'grid' : 'list');
+    const artwork = bindings.artwork.foreground(media.posterUrl, (grid ? cardWidth : 64) * devicePixelRatio, shapeAspect(shape));
+    const common = {model, context: grid ? 'grid' as const : 'detail' as const, selection: bindings.selection.personalCard(bindings.runtime.personal, entry), watched: media.watched,
+      onNavigate: () => bindings.effects.openEntry(media), onMore: (anchor: HTMLButtonElement) => onMore(entry, anchor),
+      onPlay: media.playback && media.available !== false && !media.missing ? () => { void bindings.operations.run(() => bindings.effects.playEntry(media)).catch(bindings.effects.reportError); } : undefined};
+    return <div className={grid ? undefined : styles.mediaListRow}>{shape === 'circle' ? <CircleCard {...common} covers={artwork ? [artwork] : []} variant="person" />
+      : shape === 'square' ? <SquareCard {...common} artwork={artwork} /> : <PosterCard {...common} artwork={artwork} />}</div>;
+  }} /></div></div>;
 }
 
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {

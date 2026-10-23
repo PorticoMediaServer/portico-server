@@ -7,6 +7,8 @@ import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
 import {sameSavedRoute, savedViewKey} from '../src/screens/saved/route.ts';
 import {playlistRemovalUndo} from '../src/screens/saved/removal.ts';
 import type {SavedReceipt} from '@core/saved.ts';
+import {PersonalSavedService} from '@core/personal-saved.ts';
+import {personalEntriesWindow} from '../src/screens/saved/window.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
 test('Undo accepts only the committed current-viewer removal receipt for this exact occurrence', () => {
@@ -17,6 +19,30 @@ test('Undo accepts only the committed current-viewer removal receipt for this ex
   for (const field of ['serverId', 'viewerFence', 'playlistId', 'entryId'] as const) assert.equal(playlistRemovalUndo({...receipt, [field]: 'different'}, expected, 'Exact title', now), undefined, field);
   for (const changed of [{deleted: true}, {undoToken: undefined}, {undoUntil: 'invalid'}, {undoUntil: '2026-10-23T12:00:00Z'}]) assert.equal(playlistRemovalUndo({...receipt, ...changed}, expected, 'Exact title', now), undefined);
   assert.equal(playlistRemovalUndo(null, expected, 'Exact title', now), undefined);
+});
+test('personal resource grid follows the real opaque cursor without turning a library count into resident entities', async () => {
+  const resource = {serverId: 'server', viewerFence: 'fence', id: 'collection', kind: 'collection', name: 'Collection', summary: '', visibility: 'private', revision: 1, role: 'owner', entryCount: 2000, actions: ['pin', 'update', 'delete', 'entries'], status: 'ready', invalidComponents: [], pinned: false, pinRevision: 0, shares: []};
+  const entry = (id: string) => ({id, hidden: false, media: {id, libraryId: 'library', kind: 'movie', title: id}});
+  let next!: (value: unknown) => void, calls = 0;
+  const service = new PersonalSavedService({async request<T>(path: string): Promise<T> {
+    calls++;
+    if (path.includes('cursor=opaque-next')) return await new Promise<unknown>(resolve => { next = resolve; }) as T;
+    return {resource, entries: [entry('one'), entry('two'), entry('three')], nextCursor: 'opaque-next'} as T;
+  }}, {serverId: 'server', viewerId: 'viewer'}, async () => '00000000-0000-4000-8000-000000000001');
+  const window = personalEntriesWindow(service);
+  try {
+    await service.select({view: 'resource', resourceId: 'collection'});
+    assert.equal(window.getSnapshot().total, 4);
+    assert.equal(window.getSnapshot().totalIsLowerBound, true);
+    assert.deepEqual(window.slotAt(3), {kind: 'placeholder', index: 3, key: 'placeholder:3'});
+    window.ensureRange(0, 2); window.ensureRange(0, 3);
+    assert.equal(calls, 2, 'one initial read and one real continuation while it is pending');
+    const published = new Promise<void>(resolve => { const off = service.subscribe(() => { if (!service.getSnapshot().loading) { off(); resolve(); } }); });
+    next({resource, entries: [entry('four')], nextCursor: 'opaque-later'}); await published;
+    assert.deepEqual(window.residentItems().map(value => value.id), ['one', 'two', 'three', 'four']);
+    assert.equal(window.getSnapshot().total, 5); assert.equal(window.getSnapshot().totalIsLowerBound, true);
+    assert.equal(window.keyAt(3), 'four'); window.dispose(); window.ensureRange(0, 4); assert.equal(calls, 2);
+  } finally { window.dispose(); service.dispose(); }
 });
 test('every captured identity boundary distinguishes the binding', () => {
   assert.equal(sameSavedDownloadsScope(scope, {...scope}), true);
