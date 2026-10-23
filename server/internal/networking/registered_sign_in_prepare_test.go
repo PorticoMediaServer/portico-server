@@ -48,7 +48,10 @@ func TestRegisteredSignInContextBindsActualNameFreshChallengeAndInstalledRegistr
 	hash := sha256.Sum256([]byte(q.Challenge))
 	expires := time.Now().Add(4 * time.Minute).UnixMilli()
 	name := "Actual <home> & TV\u2028Room"
-	if _, err = f.db.Exec(`INSERT INTO hosted_identity_challenges(challenge_hash,installation_id,expires_ms) VALUES(?,?,?); INSERT INTO configuration(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, base64.RawURLEncoding.EncodeToString(hash[:]), q.InstallationID, expires, name); err != nil {
+	if _, err = f.db.Exec(`INSERT INTO hosted_identity_challenges(challenge_hash,installation_id,expires_ms) VALUES(?,?,?)`, base64.RawURLEncoding.EncodeToString(hash[:]), q.InstallationID, expires); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(`INSERT INTO configuration(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, name); err != nil {
 		t.Fatal(err)
 	}
 	out, payload, signature, err := h.SignRegisteredSignInPrepare(ctx, q)
@@ -62,7 +65,7 @@ func TestRegisteredSignInContextBindsActualNameFreshChallengeAndInstalledRegistr
 	}
 	var parsed RegisteredSignInPrepare
 	if json.Unmarshal(raw, &parsed) != nil || parsed != out || out.ServerName != name || out.ExpiresAt != time.UnixMilli(expires).UTC().Format(time.RFC3339Nano) || out.RegistrationID != q.RegistrationID || out.RegistrationOrigin != origin || out.Kind != "portico.registered-sign-in-prepare" || out.Version != "1" {
-		t.Fatal("context lost actual source facts")
+		t.Fatalf("context lost actual source facts: canonical=%v name=%v expiry=%v registration=%v origin=%v kind=%v version=%v", parsed == out, out.ServerName == name, out.ExpiresAt == time.UnixMilli(expires).UTC().Format(time.RFC3339Nano), out.RegistrationID == q.RegistrationID, out.RegistrationOrigin == origin, out.Kind == "portico.registered-sign-in-prepare", out.Version == "1")
 	}
 	if !strings.Contains(string(raw), `\u003c`) || !strings.Contains(string(raw), `\u2028`) {
 		t.Fatal("noncanonical Go JSON")
