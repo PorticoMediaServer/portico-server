@@ -60,6 +60,18 @@ export class BrowserEqualizer {
     }
     return db;
   }
+  /** A failed filter is removed from the signal path synchronously. Gain automation cannot
+   * leave a half-installed wet chain audible while this song continues without the EQ. */
+  bypass(): void {
+    this.input.disconnect();
+    this.preamp?.disconnect();
+    this.filters.forEach(filter => filter.disconnect());
+    this.preamp = undefined; this.filters = [];
+    this.dry.gain.cancelScheduledValues(this.context.currentTime); this.dry.gain.value = 1;
+    this.wet.gain.cancelScheduledValues(this.context.currentTime); this.wet.gain.value = 0;
+    this.input.connect(this.dry);
+    this.value = flatEqualizer;
+  }
   apply(settings: EqualizerSettings): void {
     const value = parseEqualizer(settings), time = this.context.currentTime;
     if (value.enabled && !this.preamp) {

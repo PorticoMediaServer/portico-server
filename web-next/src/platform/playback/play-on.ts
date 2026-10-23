@@ -1,5 +1,5 @@
 import type {CastChoices, CastMetadata, CastSnapshot} from '@core/cast/index.ts';
-import {sameFence} from '../../../../../packages/player-core/src/index.ts';
+import {sameFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackPresentation} from './types';
 import type {WebShellPlaybackRuntime} from './runtime';
 

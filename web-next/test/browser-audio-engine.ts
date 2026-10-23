@@ -1,4 +1,4 @@
-import {BrowserEqualizer, eqFrequencies, flatEqualizer} from '../src/platform/playback/audio/equalizer';
+import {BrowserEqualizer, eqFrequencies, equalizerResponse, flatEqualizer} from '../src/platform/playback/audio/equalizer';
 import {EqualizerStore, deviceEqualizerDatabase, loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from '../src/platform/playback/audio/equalizer-store';
 import {Deck, linkDecks} from '../src/platform/playback/audio/engine';
 import {qualifyBrowserDecoders} from '../src/platform/playback/audio/qualification';
@@ -15,6 +15,7 @@ export async function runBrowserAudioChecks() {
   const report: Record<string, unknown> = {userAgent: navigator.userAgent};
   // Render actual Web Audio nodes. Compare the audio, not a second implementation of a biquad.
   const response: number[] = [];
+  let responseErrorDb = 0;
   for (let band = 0; band < eqFrequencies.length; band++) {
     const context = new OfflineAudioContext(1, 48000, 48000), eq = new BrowserEqualizer(context);
     const bandsDb = eqFrequencies.map((_, i) => i === band ? 6 : 0);
@@ -28,6 +29,18 @@ export async function runBrowserAudioChecks() {
     response.push(db); eq.dispose();
   }
   report.eqNetDbAtCentres = response;
+
+  const curveContext = new OfflineAudioContext(1,48000,48000), curveEq = new BrowserEqualizer(curveContext);
+  const curveSettings = {enabled:true,preampDb:-3,bandsDb:[5.5,3,-.5,-1.5,.5,-1,2.5,-2,1.5,-3.5]};
+  // Keep the graph active so the real scheduled parameter ramps advance during rendering.
+  const silence = curveContext.createConstantSource(); silence.offset.value = 0;
+  silence.connect(curveEq.input); curveEq.output.connect(curveContext.destination); silence.start();
+  curveEq.apply(curveSettings); await curveContext.startRendering();
+  const frequencies = Array.from({length:241},(_,i)=>31*(16000/31)**(i/240));
+  const predicted = equalizerResponse(curveSettings,48000,frequencies), actual = curveEq.frequencyResponse(frequencies);
+  predicted.forEach((value,i)=>{responseErrorDb=Math.max(responseErrorDb,Math.abs(value-actual[i]!));});
+  check(responseErrorDb<.001,'saved response does not match actual Web Audio filters: '+responseErrorDb);
+  report.responseCurveMaxErrorDb=responseErrorDb;curveEq.dispose();
 
   const context = new OfflineAudioContext(6, 4096, 48000), eq = new BrowserEqualizer(context);
   eq.apply(flatEqualizer); eq.output.connect(context.destination);
@@ -105,9 +118,9 @@ export async function runBrowserAudioChecks() {
     const until=performance.now()+5000;
     while(!ready&&!failure&&performance.now()<until) await new Promise(resolve=>setTimeout(resolve,20));
     check(ready&&!failure,'actual FLAC renderer did not start: '+failure);
-    const off=render.audioFacts()!;check(off.bitPerfect===false&&!off.eqEnabled&&off.sourceRate===44100&&off.deviceRate===null,'renderer invented output facts');
+    const off=render.audioFacts()!;check(off.bitPerfect===false&&!off.eqApplied&&!off.levelingApplied&&off.sourceRate===44100&&off.deviceRate===null,'renderer invented output facts');
     await saveDeviceEqualizer({...flatEqualizer,enabled:true,preampDb:-3,bandsDb:[0,0,0,0,0,3,0,0,0,0]});
-    check(render.audioFacts()!.eqEnabled,'persisted choice never reached actual renderer');
+    check(render.audioFacts()!.eqApplied,'persisted choice never reached actual renderer');
     const current = render.getEqualizer();
     check(JSON.stringify(await loadDeviceEqualizer())===JSON.stringify(current),'player/Settings facade differs from the actual graph');
     const actualContext = (render as unknown as {context:AudioContext}).context;
@@ -117,8 +130,20 @@ export async function runBrowserAudioChecks() {
     check(render.getEqualizer()===current,'output notification reset or reloaded the EQ');
     await resetDeviceEqualizer();
     check(render.getEqualizer().enabled && render.getEqualizer().preampDb===0 && render.getEqualizer().bandsDb.every(gain=>gain===0),'shared reset did not reach the graph');
-    check(render.audioFacts()!.eqEnabled && render.audioFacts()!.bitPerfect===false,'flat but enabled EQ invented bit-perfect output');
-    await saveDeviceEqualizer(flatEqualizer);check(!render.audioFacts()!.eqEnabled,'EQ off did not reach graph');
+    check(render.audioFacts()!.eqApplied && render.audioFacts()!.bitPerfect===false,'flat but enabled EQ invented bit-perfect output');
+    await saveDeviceEqualizer(flatEqualizer);check(!render.audioFacts()!.eqApplied,'EQ off did not reach graph');
+    // Force the real graph's filter installation to fail. The same decoded song stays on
+    // the dry path; saved intent stays on, while observed processing remains false.
+    const createFilter = actualContext.createBiquadFilter.bind(actualContext);
+    const nativeGraph = (render as unknown as {equalizer:BrowserEqualizer}).equalizer;
+    nativeGraph.bypass(); actualContext.createBiquadFilter = () => { throw new Error('controlled filter failure'); };
+    try {
+      await saveDeviceEqualizer({...flatEqualizer,enabled:true});
+      check(!render.audioFacts()!.eqApplied && !failure,'failed filter claimed EQ or interrupted playback');
+      check((await loadDeviceEqualizer()).enabled,'an engine failure rewrote saved intent');
+      report.failedFilterDryPlayback = true;
+    } finally { actualContext.createBiquadFilter = createFilter; }
+    await saveDeviceEqualizer(flatEqualizer);
     report.actualRendererFacts=render.audioFacts();
   } finally {
     unsubscribe(); render.dispose(); cache.clear();

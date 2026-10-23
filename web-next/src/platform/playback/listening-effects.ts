@@ -10,6 +10,6 @@ export type ListeningEffectsPort = Readonly<{
 }>;
 
 /** Only diagnostic codes leave this helper. It never returns presentation text. */
-export function listeningDiagnostic(code: 'audio_transition_unavailable' | 'audio_edge_late' | 'equalizer_filter_unavailable', error?: unknown): void {
+export function listeningDiagnostic(code: 'audio_transition_unavailable' | 'audio_edge_late' | 'audio_processing_unavailable' | 'equalizer_filter_unavailable', error?: unknown): void {
   console.debug(code, error instanceof Error ? error.name : undefined);
 }

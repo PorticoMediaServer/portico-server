@@ -5,7 +5,7 @@ import {Deck, linkDecks, type PcmSource} from './audio/engine';
 import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
-import {BrowserEqualizer, flatEqualizer, parseEqualizer, type EqualizerSettings} from './audio/equalizer';
+import {BrowserEqualizer, parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {loadDeviceEqualizer} from './audio/equalizer-store';
 import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
@@ -71,6 +71,7 @@ export class DecodeAudioRender {
   private factPosition = -1;
   private starting = false;
   private processingReport = '';
+  private resumeAttempt = 0;
   private readonly listening: ListeningEffectsPort;
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
@@ -109,7 +110,7 @@ export class DecodeAudioRender {
   private interrupted = () => {
     if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
-    void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
+    this.resumeContext();
   };
   /** While the context is not running nothing is heard, so the position stops; once it runs
    * again the schedule is brought up to date. An interruption is also answered as above. */
@@ -125,15 +126,21 @@ export class DecodeAudioRender {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
         this.carrier.play();
-        void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
+        this.resumeContext();
       }
     });
   };
 
-  private autoplayBlocked(): void {
-    if (this.disposed || this.service.getSnapshot().intent !== 'playing') return;
-    this.service.pause();
-    this.listening.listeningNotice?.('audio_autoplay_blocked');
+  private resumeContext(): void {
+    const attempt = ++this.resumeAttempt, revision = this.revision;
+    const before = this.service.getSnapshot(), key = sessionKey(before.session);
+    const refused = () => {
+      const current = this.service.getSnapshot();
+      if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
+      this.service.pause();
+      this.listening.listeningNotice?.('audio_autoplay_blocked');
+    };
+    void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
   }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
@@ -214,9 +221,7 @@ export class DecodeAudioRender {
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
-      void this.context.resume().then(() => {
-        if (this.context.state !== 'running') this.autoplayBlocked();
-      }).catch(() => this.autoplayBlocked());
+      this.resumeContext();
     }
   }
 
@@ -375,7 +380,8 @@ export class DecodeAudioRender {
     try { this.equalizer.apply(value); this.equalizerFailed = false; }
     catch (error) {
       this.equalizerFailed = true;
-      try { this.equalizer.apply(flatEqualizer); } catch { /* a broken graph grants no EQ facts */ }
+      try { this.equalizer.bypass(); }
+      catch { this.service.fallbackAudioRender(); }
       // This song continues through the dry path. Saved intent remains on, actual EQ is false.
       listeningDiagnostic('equalizer_filter_unavailable', error);
     }

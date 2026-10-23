@@ -260,6 +260,56 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}, e
 }
 function deferred() { let resolve!: () => void, enter!: () => void; const promise = new Promise<void>(r => { resolve = r; }), started = new Promise<void>(r => { enter = r; }); return {started, resolve, hold: async () => { enter(); await promise; }}; }
 
+test('entry version choice reaches the real canonical start and mounted engine using grouped version id', async t => {
+  const f = setup(t);
+  f.intercept(async (request, response) => {
+    if (request.path === '/v1/items/movie/playback-options') {
+      const body = response.body as {versions: {id: string}[]};
+      return {...response, body: {...body, versions: [...body.versions, {...body.versions[0], id: 'v2'}]}};
+    }
+    return response;
+  });
+  await f.runtime.playVersion({itemId: 'movie', versionId: 'v2', startSeconds: 25, context: selectionContext, signal: new AbortController().signal}, context => context === selectionContext);
+  await f.arrive();
+  const starts = f.log.filter(request => request.method === 'POST' && request.path.includes('/playback/sessions'));
+  assert.ok(starts.some(request => (request.body as {versionId?: string}).versionId === 'v2'));
+  assert.equal(f.runtime.getSnapshot().session!.versionId, 'v2');
+  assert.equal(f.runtime.getSnapshot().playback.phase, 'ready');
+  assert.equal(f.hls.instances.length, 1);
+  assert.equal(f.hls.instances[0]!.config.startPosition, 25);
+});
+
+test('unavailable or mismatched version offer never stops the existing playback or starts a source link', async t => {
+  const f = setup(t); await f.runtime.play('current', 15); await f.arrive();
+  const session = f.runtime.getSnapshot().session!.id, before = f.log.length;
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'raw_source_link', context: selectionContext, signal: new AbortController().signal}, () => true), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session);
+  assert.equal(f.log.slice(before).some(request => request.method === 'POST'), false);
+  f.intercept(async (request, response) => request.path === '/v1/items/movie/playback-options' ? {...response, body: {...response.body as object, itemId: 'another'}} : response);
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: selectionContext, signal: new AbortController().signal}, () => true), /playback_version_unavailable/);
+  assert.equal(f.runtime.getSnapshot().session!.id, session);
+});
+
+test('version choice validates current route/viewer and cancellation after its real options read', async t => {
+  for (const change of ['context', 'abort', 'other-play'] as const) {
+    const f = setup(t), gate = deferred(), abort = new AbortController(); let current = true;
+    f.intercept(async (request, response) => { if (request.path === '/v1/items/movie/playback-options') await gate.hold(); return response; });
+    const pending = f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: selectionContext, signal: abort.signal}, () => current);
+    // Attach rejection before releasing any asynchronous cancellation.
+    const rejected = assert.rejects(pending);
+    await gate.started;
+    if (change === 'context') current = false;
+    else if (change === 'abort') abort.abort();
+    else { await f.runtime.play('newer', 40); await f.arrive(); }
+    gate.resolve(); await rejected; await settle();
+    assert.equal(f.log.some(request => request.method === 'POST' && (request.body as {itemId?: string})?.itemId === 'movie'), false);
+    if (change === 'other-play') assert.equal(f.runtime.getSnapshot().playback.itemId, 'newer');
+  }
+  const f = setup(t);
+  await assert.rejects(f.runtime.playVersion({itemId: 'movie', versionId: 'v1', context: {...selectionContext, scope: {...selectionContext.scope, profileId: 'other'}}, signal: new AbortController().signal}, () => true), /stale_selection_context/);
+  assert.equal(f.log.some(request => request.path.includes('/items/') || request.path.includes('/playback/sessions') || request.path === '/v1/queues'), false, 'a wrong viewer cannot read title options or start playback; background capability publication is unrelated');
+});
+
 test('runtime Home play reaches the actual queue/service/element and publishes the real source fence', async t => {
   const f = setup(t); await f.runtime.play('movie', 12.5); const engine = await f.arrive();
   const snapshot = f.runtime.getSnapshot(), fence = snapshot.fence;
@@ -1308,4 +1358,19 @@ test('native media factory receives the validated audio plan and unchanged saved
  assert.deepEqual(snapshot.audioEffects.settings,settings);
  assert.equal(snapshot.session!.id,f.runtime.getSnapshot().playback.session!.id);
  assert.ok(snapshot.session!.audio!.trim,'native engine sees raw/audible trim contract, not just a URL');
+});
+
+test('unsupported EQ renderer continues the same session and queue through ordinary playback without processing facts', async t => {
+  let attempts = 0;
+  const f = setup(t, {audioEffects:()=>({gapless:false,crossfadeSeconds:0,normalization:'off'})}, {createRender:()=>{attempts++;throw new Error('unsupported');}});
+  await f.runtime.play('song_unsupported_eq',12); await f.arrive();
+  const first = f.runtime.getSnapshot(), sessionId = first.session!.id, queue = first.session!.queue;
+  const web = (f.runtime as unknown as {stack:{web:import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
+  web.applyEqualizer({enabled:true,preampDb:0,bandsDb:Array(10).fill(0)});
+  await settle(); await f.arrive();
+  const current = f.runtime.getSnapshot();
+  assert.equal(attempts,1); assert.equal(current.session!.id,sessionId); assert.deepEqual(current.session!.queue,queue);
+  assert.equal(current.playback.audioEffects.rendering,false); assert.equal(current.playback.phase,'ready');
+  assert.equal(f.runtime.audioEngineFacts(current.fence!),undefined);
+  assert.equal(current.playback.error,undefined);
 });

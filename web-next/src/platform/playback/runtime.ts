@@ -30,7 +30,7 @@ import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
 import type {VideoLike} from './web-media-player.ts';
-import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart} from './types.ts';
+import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart} from './types.ts';
 
 type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: HomeChannel; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number}>;
 type OfferBinding = {
@@ -297,6 +297,32 @@ export class WebShellPlaybackRuntime {
     await stack.service.play(itemId, startSeconds);
     if (!this.current(stack) || serial !== this.operation) return;
     this.sync();
+  }
+
+  /** Entry-menu version choice. The server groups available files into versions; an opaque
+   * source link or a menu label can never stand in for this current canonical version id. */
+  async playVersion(request: WebPlaybackVersionStart, isCurrent: (context: SelectionContext) => boolean): Promise<void> {
+    const {itemId, versionId, startSeconds, context, signal} = request;
+    this.selectionCurrent(context, signal, isCurrent);
+    if (![itemId, versionId].every(id => /^[A-Za-z0-9_.-]{1,128}$/.test(id)) || startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_target');
+    const serial = ++this.operation, previous = this.stack;
+    const options = await previous.optionsClient.options(itemId, {}, AbortSignal.any([signal, previous.life.signal]));
+    this.selectionCurrent(context, signal, isCurrent);
+    if (serial !== this.operation || !this.current(previous)) problem('stale_selection_context');
+    // options.versions is readAssets(available=1) grouped by versionsOf on the server.
+    if (options.itemId !== itemId || !options.versions.some(version => version.id === versionId)) problem('playback_version_unavailable');
+    const stack = this.replace(); stack.expanded = true;
+    const cancel = () => { if (this.current(stack) && serial === this.operation) {
+      this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
+    } };
+    signal.addEventListener('abort', cancel, {once: true});
+    try {
+      await stack.service.play(itemId, startSeconds, undefined, undefined, undefined, {versionId});
+      this.selectionCurrent(context, signal, isCurrent);
+      if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
+      this.sync();
+    } catch (error) { cancel(); throw error; }
+    finally { signal.removeEventListener('abort', cancel); }
   }
 
   /** The shell supplies the same current Home context guard used by its selection controller.

@@ -4,7 +4,7 @@ import {WaveGlyph} from './WaveGlyph';
 import type {MediaLayout, SignalPathModel, SignalTranslate} from './types';
 import styles from './media.module.css';
 
-export type SignalLineProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & Readonly<{model: SignalPathModel; translate: SignalTranslate; layout?: MediaLayout}>;
+export type SignalLineProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'translate'> & Readonly<{model: SignalPathModel; translate: SignalTranslate; layout?: MediaLayout}>;
 export const SignalLine = forwardRef<HTMLButtonElement, SignalLineProps>(function SignalLine({model, translate, layout = 'desktop', className, ...props}, ref) {
   const source = layout === 'desktop' ? model.source : model.shortSource ?? model.source;
   const state = model.state ? translate(model.state) : undefined;

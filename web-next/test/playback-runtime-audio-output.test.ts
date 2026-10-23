@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {configureDestination, destinationChannels, outputClockLag} from '../src/platform/playback/audio/output.ts';
-import {BrowserEqualizer, flatEqualizer, parseEqualizer} from '../src/platform/playback/audio/equalizer.ts';
+import {BrowserEqualizer, eqFrequencies, equalizerResponse, flatEqualizer, parseEqualizer} from '../src/platform/playback/audio/equalizer.ts';
 import {probeAudioDecode} from '../src/platform/playback/audio/capabilities.ts';
 import {MediaCarrier} from '../src/platform/playback/audio/carrier.ts';
 
@@ -43,4 +43,18 @@ test('EQ rejects malformed state and unsupported nodes never report processing e
     assert.equal(equalizer.settings.enabled,false);
   }
   assert.equal(disconnected,2,'failed intermediate gain nodes are released');equalizer.dispose();
+});
+
+test('drawn EQ bounds include preamp, half steps and exact ten centre frequencies', () => {
+  assert.deepEqual(eqFrequencies, [31,62,125,250,500,1000,2000,4000,8000,16000]);
+  for (const gain of [-12,-11.5,0,0.5,12]) assert.equal(parseEqualizer({...flatEqualizer,preampDb:gain,bandsDb:Array(10).fill(gain)}).preampDb,gain);
+  for (const gain of [-24,-12.5,12.5,24,0.25,NaN,Infinity]) {
+    assert.throws(()=>parseEqualizer({...flatEqualizer,preampDb:gain}),/invalid_equalizer/);
+    assert.throws(()=>parseEqualizer({...flatEqualizer,bandsDb:Array(10).fill(gain)}),/invalid_equalizer/);
+  }
+  const shape = {...flatEqualizer,preampDb:-3,bandsDb:[0,0,0,0,0,6,0,0,0,0]};
+  // Preview is the saved filter shape even while off; it is not a claim that EQ was applied.
+  assert.ok(Math.abs(equalizerResponse(shape,48000,[1000])[0]!-3)<1e-8);
+  assert.deepEqual(equalizerResponse(flatEqualizer,44100,[31,1000,16000]),[0,0,0]);
+  assert.throws(()=>equalizerResponse(shape,NaN,[1000]),/equalizer_rate_unknown/);
 });

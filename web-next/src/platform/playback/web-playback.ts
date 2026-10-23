@@ -35,6 +35,7 @@ import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {saveDeviceEqualizer} from './audio/equalizer-store';
 import type {BrowserAudioFacts} from './audio/output';
+import {listeningDiagnostic} from './listening-effects';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
@@ -209,6 +210,8 @@ export class WebPlayback implements PlaybackAdapter {
   private render?: RenderEngine;
   private renderRetained?: number;
   private renderState?: string;
+  private renderUnavailableSession?: string;
+  private renderCreating = false;
   private disposed = false;
   private blocked = false;
   private loadedKey = '';
@@ -486,10 +489,19 @@ export class WebPlayback implements PlaybackAdapter {
   private applyRender(next: PlaybackSnapshot, session: PlaybackSession) {
     const service = this.service, video = this.video;
     if (!service || !video || !this.host.createRender) return; // waits for the element
+    if (this.renderUnavailableSession === session.id) return; // this song already fell back
     if (!this.render) {
-      this.slot.hold(true);
-      try { this.render = this.host.createRender(service, video); }
-      catch { service.audioRenderFailed('Web Audio processing is not supported by this browser.'); return; }
+      if (this.renderCreating) return;
+      this.renderCreating = true;
+      try { this.slot.hold(true); this.render = this.host.createRender(service, video); }
+      catch {
+        this.renderUnavailableSession = session.id;
+        this.slot.hold(false);
+        listeningDiagnostic('audio_processing_unavailable');
+        if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
+        return;
+      }
+      finally { this.renderCreating = false; }
     }
     const key = `${session.id}:${session.generation}`;
     if (this.loadedKey !== key) {

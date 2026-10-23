@@ -14,11 +14,13 @@ import type {WebMediaPlayerOptions} from './web-media-player.ts';
 import type {AudioEffectsSettings} from '@core/audio-effects.ts';
 import type {QualityRequest} from '@core/playback-v1/quality.ts';
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
+import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} from '../../../../packages/player-core/src/index.ts';
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
+export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; startSeconds?: number; context: SelectionContext; signal: AbortSignal}>;
 export type WebPlaybackSettings = Readonly<{
   subtitlePreferences?: () => SubtitlePreferences;
   videoSpeed: () => number;
