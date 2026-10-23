@@ -8,7 +8,7 @@ export type SettingsEligibility = Readonly<{
   library: (context: SettingsContext) => Pick<LibraryAdminDocument, 'libraryId' | 'eligibleControls'> | undefined;
 }>;
 
-/** Shared by the per-library row, metadata column and episode artwork command adapters. */
+/** Shared by the Library row, episode artwork command and related notice adapters. */
 export function libraryControlEligible(document: Pick<LibraryAdminDocument, 'libraryId' | 'eligibleControls'> | undefined, libraryId: string | undefined, rowId: string): boolean {
   return !!document && !!libraryId && document.libraryId === libraryId && document.eligibleControls.includes(rowId);
 }
