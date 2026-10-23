@@ -107,7 +107,7 @@ func TestRepairCapabilitiesModeHTTP(t *testing.T) {
 				}
 			}
 			if mode == "hosted" {
-				if _, e = db.Exec(`UPDATE onboarding_state_v1 SET auth_mode='hosted';UPDATE accounts SET password_hash=X'';INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'fixture-portico-owner' FROM accounts`); e != nil {
+				if _, e = db.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico';UPDATE onboarding_state_v1 SET auth_mode='hosted';INSERT INTO account_portico_links(account_id,hosted_account_id) SELECT id,'fixture-portico-owner' FROM accounts`); e != nil {
 					t.Fatal(e)
 				}
 			}

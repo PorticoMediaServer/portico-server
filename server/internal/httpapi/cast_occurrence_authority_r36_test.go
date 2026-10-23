@@ -58,6 +58,14 @@ func TestCastOccurrenceAllowsOnlyAdoptedItemAndQueueCompletion(t *testing.T) {
 			t.Fatalf("Cast %s mutation: %d %s", reason, w.Code, w.Body.String())
 		}
 	}
+	// The receiver reports the genuine end before asking for automatic next.
+	// Metadata ends with that occurrence; its adopted queue can still complete
+	// while the original lease remains current.
+	f.callAs(bearer, "POST", "/v1/playback/sessions/"+session.ID+"/timeline", nil, map[string]any{"seq": 1, "generation": session.Presentation.Generation, "state": "ended", "positionMs": 600_000}, 204, nil)
+	if w := f.as(bearer, "GET", "/v1/items/"+session.ItemID, nil); w.Code != 403 {
+		t.Fatal("ended item metadata remained readable", w.Code)
+	}
+	f.callAs(bearer, "GET", "/v1/queues/"+queue.Queue.ID, nil, nil, 200, &head)
 	var next playbackv1.QueueReply
 	f.callAs(bearer, "POST", "/v1/queues/"+queue.Queue.ID+":advance", map[string]string{"If-Match": head.Revision, "Idempotency-Key": "cast-complete-current"}, map[string]string{"reason": "completion"}, 200, &next)
 	if next.Session == nil || next.Session.ID == session.ID || next.Session.ItemID != f.items[1] {
@@ -150,5 +158,16 @@ func TestCastCompletionRechecksCurrentFamilyInQueueWriter(t *testing.T) {
 	}
 	if err := f.db.QueryRow(`SELECT revoked FROM authorization_session_families WHERE id=(SELECT family_id FROM authorization_family_tokens WHERE token_hash=?)`, p.Hash).Scan(&revoked); err != nil || revoked != 0 {
 		t.Fatal("queue transaction did not roll back", err)
+	}
+	// A principal cached on an ordinary allowed receiver read cannot conceal
+	// family retirement at either current-resource edge.
+	f.callAs(bearer, "GET", "/v1/me", nil, nil, 200, nil)
+	if _, err := f.db.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=(SELECT family_id FROM authorization_family_tokens WHERE token_hash=?)`, p.Hash); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/v1/queues/" + queue.Queue.ID, "/v1/items/" + f.items[0]} {
+		if w := f.as(bearer, "GET", path, nil); w.Code < 400 || w.Code >= 500 {
+			t.Fatal("cached family retained current resource", path, w.Code, w.Body.String())
+		}
 	}
 }
