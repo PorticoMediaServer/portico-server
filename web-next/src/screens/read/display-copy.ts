@@ -1,4 +1,4 @@
-import type {I18n} from '@portico/i18n';
+import type {I18n} from '@i18n';
 import type {ReadingDisplayCopy} from './display';
 
 /** Frame wording is separate from core values and the server's size domain. */

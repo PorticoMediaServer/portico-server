@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {parsePreferenceSnapshot, type ReadingPreferences} from '@portico/client-core';
 import {createReadingController, type ReaderAdapter} from '@portico/reader-core';
-import {defaultI18n} from '@portico/i18n';
+import {defaultI18n} from '@i18n';
 import {readingDisplayControls, type ReadingDisplayCopy} from '../../src/screens/read/display.ts';
 import {readingDisplayCopy} from '../../src/screens/read/display-copy.ts';
 
