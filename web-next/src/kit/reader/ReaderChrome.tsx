@@ -18,16 +18,19 @@ export type ReaderChromeProps = Readonly<{
   /** These strings and fractions come from actual renderer observations. Missing stays absent. */
   chapter?: string; pages?: string; remainingInSection?: string; percent?: string; remainingInBook?: string;
   progression?: number; chapters?: readonly ReaderChapterMark[]; direction: ReadDirection;
+  /** From the live Reading facade and renderer fit/zoom observation, not a second default map. */
+  tapTurnEnabled: boolean; pageTurnsEnabled: boolean;
   onBack: () => void; onTurn: (turn: ReadTurn) => void; onSeek?: (progression: number) => void;
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
+  panelReflows?: boolean; showPageArrows: boolean;
   /** A panel/menu or a live text selection pins chrome until it closes. */
   holdOpen?: boolean; initiallyVisible?: boolean; reducedMotion?: boolean; fixedPage?: boolean;
   /** Reader engine owns taps/selection in its iframe; forwarded fractions use the same handler. */
   onSurfaceTap?: (handler: (fraction: number) => void) => (() => void);
 }>;
 
-export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction,
-  onBack, onTurn, onSeek, actions, children, panel, holdOpen = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, onSurfaceTap}: ReaderChromeProps) {
+export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, showPageArrows, holdOpen = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, onSurfaceTap}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || panel !== undefined && panel !== null || focusWithin;
@@ -35,6 +38,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   const show = useCallback(() => { cancel(); setVisible(true); }, [cancel]);
   const [activity, setActivity] = useState(0);
   const wake = useCallback(() => { show(); setActivity(value => value + 1); }, [show]);
+  useEffect(() => { root.current?.focus({preventScroll: true}); }, []);
   useEffect(() => {
     cancel();
     // Read frames: never hide while a panel/menu/selection/focused control is active.
@@ -44,18 +48,18 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
   const tap = useCallback((fraction: number) => {
     const turn = readTapTurn(fraction, direction);
     if (turn === 'chrome') { if (!held) { cancel(); setVisible(value => !value); } }
-    else if (turn) onTurn(turn);
-  }, [direction, held, cancel, onTurn]);
+    else if (turn && tapTurnEnabled && pageTurnsEnabled) onTurn(turn);
+  }, [direction, held, cancel, onTurn, tapTurnEnabled, pageTurnsEnabled]);
   useEffect(() => onSurfaceTap?.(tap), [onSurfaceTap, tap]);
   const shown = visible || held, progress = observedProgress(progression);
-  return <div ref={root} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
-    data-chrome={shown ? 'shown' : 'hidden'} data-panel={panel !== undefined && panel !== null || undefined} dir={direction === 'rtl' ? 'rtl' : 'ltr'}
+  return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
+    data-chrome={shown ? 'shown' : 'hidden'} data-panel={panelReflows || undefined} dir={direction === 'rtl' ? 'rtl' : 'ltr'}
     onPointerMove={event => { if (event.pointerType === 'mouse') wake(); }}
     onKeyDown={event => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || readerInteractiveTarget(event.target)) return;
       wake();
       const turn = readKeyTurn(event.key, direction, event.shiftKey);
-      if (turn) { event.preventDefault(); onTurn(turn); }
+      if (turn && pageTurnsEnabled) { event.preventDefault(); onTurn(turn); }
     }}>
     <div className={styles.surface} onClick={event => {
       if (event.defaultPrevented || readerInteractiveTarget(event.target) || window.getSelection()?.toString()) return;
@@ -73,8 +77,8 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
           aria-pressed={action.pressed} aria-expanded={action.expanded} disabled={action.disabled} data-open={action.expanded || undefined}
           onClick={event => action.onPress(event.currentTarget)}>{action.icon ? <Icon name={action.icon} size={22} /> : action.text}</button></span>)}</div>
       </header>
-      <button type="button" className={`${styles.turn} ${styles.left}`} aria-label={direction === 'rtl' ? copy.next : copy.previous} onClick={() => onTurn(direction === 'rtl' ? 'next' : 'previous')}><Icon name="i-left" size={26} /></button>
-      <button type="button" className={`${styles.turn} ${styles.right}`} aria-label={direction === 'rtl' ? copy.previous : copy.next} onClick={() => onTurn(direction === 'rtl' ? 'previous' : 'next')}><Icon name="i-right" size={26} /></button>
+      {showPageArrows && <><button type="button" disabled={!pageTurnsEnabled} className={`${styles.turn} ${styles.left}`} aria-label={direction === 'rtl' ? copy.next : copy.previous} onClick={() => onTurn(direction === 'rtl' ? 'next' : 'previous')}><Icon name="i-left" size={26} /></button>
+      <button type="button" disabled={!pageTurnsEnabled} className={`${styles.turn} ${styles.right}`} aria-label={direction === 'rtl' ? copy.previous : copy.next} onClick={() => onTurn(direction === 'rtl' ? 'previous' : 'next')}><Icon name="i-right" size={26} /></button></>}
       <footer className={styles.bottom} dir="ltr">
         <div className={styles.position}>{chapter && <b>{chapter}</b>}{pages && <small>{pages}</small>}</div>
         <div className={styles.progressGroup}>

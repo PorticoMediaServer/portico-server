@@ -25,7 +25,7 @@
 .annotation::before { content: ''; position: absolute; left: 10px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--color-amber); }
 .annotation[data-colour="blue"]::before { background: var(--color-accent-strong); }
 .annotation[data-colour="green"]::before { background: var(--color-healthy); }
-.annotation[data-colour="rose"]::before { background: var(--color-danger); }
+.annotation[data-colour="pink"]::before { background: var(--color-danger); }
 .annotation q { display: block; font-family: var(--reader-prose-font, var(--font)); font-size: 15.5px; line-height: 1.55; color: var(--color-text); quotes: none; }
 .note { display: flex; gap: 8px; margin-top: 8px; font-size: 13.5px; line-height: 1.45; color: var(--color-text-secondary); }
 .note svg { flex: none; color: var(--color-amber); margin-top: 1px; }

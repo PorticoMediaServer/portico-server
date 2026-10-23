@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {observedProgress, readKeyTurn, readTapTurn} from './interaction.ts';
+import {observedProgress, readKeyTurn, readTapTurn} from '../../src/kit/reader/interaction.ts';
 
 test('the same physical arrow reverses between Western comics and manga', () => {
   assert.equal(readKeyTurn('ArrowLeft', 'ltr'), 'previous');

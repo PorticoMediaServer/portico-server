@@ -17,8 +17,9 @@ export function ReaderPanel({label, tabs, selected, onSelect, onClose, children,
   useEffect(() => {
     if (compact) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    region.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
-    return () => { if (document.activeElement === document.body || region.current?.contains(document.activeElement)) opener?.focus({preventScroll: true}); };
+    const current = region.current;
+    current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
+    return () => { if (document.activeElement === document.body || current?.contains(document.activeElement)) opener?.focus({preventScroll: true}); };
   }, [compact]);
   const content = <>
     <div className={styles.tabs} role="tablist" aria-label={label} onKeyDown={event => {
@@ -57,14 +58,16 @@ export function ReaderContents({entries}: Readonly<{entries: readonly ReaderCont
 
 export type ReaderAnnotationEntry = Readonly<{
   id: string; quote: string; note?: string; chapter?: string; page?: string; date?: string;
-  colour: 'amber' | 'blue' | 'green' | 'rose'; onNavigate: () => void;
+  colour: 'yellow' | 'blue' | 'green' | 'pink'; onNavigate: () => void;
   onMore?: (anchor: HTMLButtonElement) => void; moreLabel?: string;
 }>;
 export function ReaderAnnotations({entries}: Readonly<{entries: readonly ReaderAnnotationEntry[]}>) {
   return <div>{entries.map(entry => <div key={entry.id} className={styles.annotationWrap}>
-    <button type="button" className={styles.annotation} data-colour={entry.colour} onClick={entry.onNavigate}>
+    <button type="button" className={styles.annotation} data-colour={entry.colour} onClick={entry.onNavigate}
+      onContextMenu={event => { if (!entry.onMore) return; event.preventDefault(); entry.onMore(event.currentTarget); }}
+      onKeyDown={event => { if (entry.onMore && (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) { event.preventDefault(); entry.onMore(event.currentTarget); } }}>
       <q>{entry.quote}</q>{entry.note && <span className={styles.note}><Icon name="i-note" size={16} />{entry.note}</span>}
       <span className={styles.where}>{entry.chapter && <span>{entry.chapter}</span>}{entry.page && <span>{entry.page}</span>}{entry.date && <span className={styles.date}>{entry.date}</span>}</span>
-    </button>{entry.onMore && entry.moreLabel && <button type="button" className={styles.more} aria-label={entry.moreLabel} onClick={event => entry.onMore?.(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
+    </button>
   </div>)}</div>;
 }
