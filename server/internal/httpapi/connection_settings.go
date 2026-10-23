@@ -31,6 +31,9 @@ func (d Dependencies) applyLiveSettings(ctx context.Context) error {
 	if d.Access.DLNA != nil {
 		d.Access.DLNA.Apply(current.Effective.DLNAEnabled)
 	}
+	if d.Administration != nil {
+		d.Administration.ApplyBackgroundPolicy(ctx)
+	}
 	if d.SettingsApplied != nil {
 		d.SettingsApplied(ctx)
 	}
