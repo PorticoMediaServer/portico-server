@@ -174,6 +174,8 @@
 .liveProgress .progress { flex:1; width:auto; margin:0; }
 .liveProgress > span:last-child:not(:first-child) { font-size:calc(var(--type-caption-size) - .5px); color:var(--color-text-tertiary); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .live .play { top:63px; bottom:auto; }
+.live.liveLarge .play { top:18px; right:18px; bottom:auto; }
+.liveLarge:hover .liveFlag, .liveLarge:focus-within .liveFlag { opacity:0; }
 .live .more { right:8px; top:54px; }
 .coverFan { position:absolute; display:block; }
 .fanItem { position:absolute; overflow:hidden; border-radius:6px; width:50px; height:75px; box-shadow:0 10px 22px -8px var(--color-shadow); }
