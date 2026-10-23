@@ -162,7 +162,7 @@ func TestShowWorkspaceProjectsShowFacts(t *testing.T) {
 	c := catalogtest.New(t, db)
 	c.Fields(names["show"].ID, map[string]any{"original_title": "Original Harbor", "tagline": "Across the water", "content_rating": "TV-14", "studio": "Harbor Studio", "network": "North Network", "country": "CA"})
 	workspaceScreenField(t, db, "tv", "show", names["show"].ID, "genres", `[{"id":"18","name":"Drama"},{"id":"18b","name":"drama"},{"id":"99","name":"Mystery"}]`)
-	workspaceScreenField(t, db, "tv", "show", names["show"].ID, "language", `"en"`)
+	workspacePublishedLanguage(t, db, "tv", "show", names["show"].ID, "en")
 	workspaceScreenField(t, db, "tv", "show", names["show"].ID, "credits", `[{"id":"p1","name":"Actor","role":"Captain","department":"Acting","ordinal":0}]`)
 	workspaceShowCredit(t, c, db, names["show"], "fixture", "p1", "Actor", "Captain", "Acting", 0)
 	page, err := s.ShowWorkspace(workspaceRequest(names))

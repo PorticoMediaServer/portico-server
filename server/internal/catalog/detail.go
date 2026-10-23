@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"portico.local/server/internal/metadatalanguage"
 	"portico.local/server/internal/segmentmarkers"
 )
 
@@ -210,12 +211,15 @@ func (s *Service) Detail(viewer Viewer, server, item string, owner bool) (Detail
 // no details row or every field is empty.
 func (s *Service) titleFacts(item string) (*TitleFacts, error) {
 	var f TitleFacts
-	err := s.read().QueryRow(`SELECT COALESCE(original_title,''),COALESCE(edition,''),COALESCE(tagline,''),COALESCE(release_date,''),COALESCE(content_rating,''),COALESCE(studio,''),COALESCE(network,''),COALESCE(country,''),COALESCE((SELECT json_extract(value,'$') FROM screen_metadata_fields WHERE target_kind='item' AND target_id=entity_id AND field='language'),'')
-	 FROM catalog_item_details WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&f.OriginalTitle, &f.Edition, &f.Tagline, &f.ReleaseDate, &f.ContentRating, &f.Studio, &f.Network, &f.Country, &f.OriginalLanguage)
+	err := s.read().QueryRow(`SELECT COALESCE(original_title,''),COALESCE(edition,''),COALESCE(tagline,''),COALESCE(release_date,''),COALESCE(content_rating,''),COALESCE(studio,''),COALESCE(network,''),COALESCE(country,'')
+	 FROM catalog_item_details WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&f.OriginalTitle, &f.Edition, &f.Tagline, &f.ReleaseDate, &f.ContentRating, &f.Studio, &f.Network, &f.Country)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
+		return nil, err
+	}
+	if f.OriginalLanguage, err = metadatalanguage.Published(s.Context(), s.read(), item); err != nil {
 		return nil, err
 	}
 	if f == (TitleFacts{}) {
