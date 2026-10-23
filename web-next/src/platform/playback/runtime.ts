@@ -31,6 +31,7 @@ import {entrySubject, itemSubject} from './subject.ts';
 import {playbackEnvironment} from './environment.ts';
 import {browserClientProfile} from './client-profile.ts';
 import {selectionSegments, selectionStartSeconds} from './selection.ts';
+import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts';
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
@@ -424,6 +425,37 @@ export class WebShellPlaybackRuntime {
       this.sync();
     } catch (error) { cancel(); throw error; }
     finally { lifetime.removeEventListener('abort', cancel); }
+  }
+
+  /** Start the whole genuine browse/resource selection. Never expand a visible page locally.
+   * The immutable captured selector and original screen lifetime reach server POST and adopt. */
+  async playFromQueue(source: WebPlaybackQueueSource, context: WebPlaybackScreenLifetime, options: Readonly<{shuffle?: boolean}> = {}): Promise<void> {
+    const check = () => {
+      this.assertCurrent();
+      if (context.signal.aborted || !context.isCurrent()) problem('stale_selection_context');
+    };
+    check();
+    const captured = captureQueueSource(source);
+    if (options.shuffle !== undefined && typeof options.shuffle !== 'boolean') problem('invalid_queue_playback_source');
+    const shuffle = options.shuffle === true, serial = ++this.operation, stack = this.replace();
+    stack.expanded = true; // Actual metadata collapses music to its real dock in selectSource.
+    const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
+    const current = () => {
+      if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
+      try {check();return true;} catch {return false;}
+    };
+    const cancel = () => {if (this.current(stack) && serial === this.operation) {
+      this.replacing = true;this.retire(stack);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();
+    }};
+    lifetime.addEventListener('abort', cancel, {once: true});
+    try {
+      const queue = await stack.queue.playSegments([{source: captured, order: {mode: shuffle ? 'shuffle' : 'source'}}], {signal: lifetime, isCurrent: current});
+      if (!current()) problem('stale_selection_context');
+      const session = stack.queue.currentSession(), started = stack.service.getSnapshot();
+      if (started.phase === 'error' || !session || session.queue?.queueId !== queue.id || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_start_failed');
+      this.sync();
+    } catch (error) {cancel();throw error;}
+    finally {lifetime.removeEventListener('abort', cancel);}
   }
 
   /** The shell supplies the same current Home context guard used by its selection controller.

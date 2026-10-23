@@ -2068,3 +2068,37 @@ test('the player EQ command preserves the injected app device port and refuses a
   await assert.rejects(f.runtime.setEqualizer(f.runtime.getSnapshot().fence!, value), /equalizer_unavailable/);
   assert.equal(changes.length, 1);
 });
+
+
+test('captured resource queue playback delegates the complete selector and original lifetime to the canonical queue', async t => {
+  const f = setup(t), life = new AbortController();
+  const source = {container: {kind: 'playlist' as const, id: 'ordered_release'}};
+  const task = f.runtime.playFromQueue(source, {signal: life.signal, isCurrent: () => true});
+  source.container.id = 'mutated_after_press';
+  await task; await f.arrive();
+  const created = f.log.find(value => value.method === 'POST' && value.path === '/v1/queues')!;
+  const body = created.body as {segments: unknown[]};
+  assert.deepEqual(body.segments, [{source: {container: {kind: 'playlist', id: 'ordered_release'}}, order: {mode: 'source'}}]);
+  const snapshot = f.runtime.getSnapshot();
+  assert.equal(snapshot.session!.itemId, 'ordered_release-0');
+  assert.equal(snapshot.queueView!.queue.total, 12, 'the engine retains the complete server container, not one visible item');
+  assert.ok(!f.log.some(value => value.method === 'POST' && value.path === '/v1/playback/sessions'), 'the actual queue creates and supplies its chosen current session');
+});
+
+test('a canceled or retired captured resource start cannot adopt a late queue or stop newer Play', async t => {
+  for (const retire of ['abort', 'navigation', 'new-play'] as const) {
+    const f = setup(t), life = new AbortController(), gate = deferred();let active = true, held = false;
+    f.intercept(async (request, response) => {
+      if (!held && request.method === 'POST' && request.path === '/v1/queues') {held = true;await gate.hold();}
+      return response;
+    });
+    const task = f.runtime.playFromQueue({container: {kind: 'collection', id: 'complete_resource'}}, {signal: life.signal, isCurrent: () => active}, {shuffle: true});
+    const rejected = assert.rejects(task);
+    await gate.started;
+    if (retire === 'new-play') {await f.runtime.play('newer_movie');await f.arrive();life.abort();}
+    else if (retire === 'abort') life.abort();
+    else active = false;
+    gate.resolve();await rejected;await settle();
+    assert.equal(f.runtime.getSnapshot().session?.itemId, retire === 'new-play' ? 'newer_movie' : undefined);
+  }
+});
