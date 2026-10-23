@@ -605,3 +605,41 @@ func TestOwnerReturnExistingClaimRequiresExactOriginalCurrentOwner(t *testing.T)
 		t.Fatal("original owner/generation binding")
 	}
 }
+
+func TestOwnerReturnCommittedBeforeLocalInstallDenyOnlyCancellation(t *testing.T) {
+	f := newOwnerReturn(t, "https://original.example")
+	f.register(t)
+	f.approve(t)
+	raw, sig := journeyProof(t, f.claimJourney, f.approval, claims.Finalize)
+	commit, e := f.service.Finalize(context.Background(), raw, sig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, sig = journeyProof(t, f.claimJourney, f.approval, claims.Result)
+	result, e := f.service.Result(context.Background(), raw, sig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Genuine Hosted commit/result without ACK: the Server half's local CAS and
+	// original-key durable outbox are a separate MAIN-to-MAIN bridge requirement.
+	raw, sig = cancelAssertion(t, f.claimJourney, commit.ClaimGeneration)
+	first, e := f.service.Cancel(context.Background(), raw, sig)
+	if e != nil {
+		t.Fatal(e)
+	}
+	replay, e := f.service.Cancel(context.Background(), raw, sig)
+	if e != nil || first != replay {
+		t.Fatal("exact deny-only replay", e)
+	}
+	if _, e = f.service.Acknowledge(context.Background(), result.ServerCredential, commit); e == nil {
+		t.Fatal("cancelled committed tuple installed")
+	}
+	if _, e = f.directory.CaptureServerAuthority(context.Background(), result.ServerCredential); e == nil {
+		t.Fatal("cancelled credential admitted")
+	}
+	var phase string
+	if e = f.store.DB.QueryRow(`SELECT phase FROM owner_claim_starts`).Scan(&phase); e != nil || phase != "cancelled" {
+		t.Fatal("owner start survived cancellation", e)
+	}
+	returnCall(t, f.handler, "/v1/server-returns/"+f.pending.OwnerTransactionID+"/complete", "claim-owner-access-token-fixture", serverreturn.Complete{}, 401)
+}
