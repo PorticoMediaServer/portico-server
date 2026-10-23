@@ -36,4 +36,8 @@ export const readerMessages = {
   'next.reader.sectionRemaining': '{count, plural, one {# page left in chapter} other {# pages left in chapter}}',
   'next.reader.matches': '{count, plural, one {# match} other {# matches}}',
   'next.reader.version': 'Version',
+  'next.reader.read': 'Read',
+  'next.reader.details': 'Details',
+  'next.reader.format': 'Format',
+  'next.reader.fileSize': 'Size',
 } as const satisfies Record<`next.reader.${string}`, string>;

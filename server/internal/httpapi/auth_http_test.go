@@ -26,6 +26,9 @@ func TestRefreshRoundTripOverPlainHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +70,9 @@ func TestUnknownAndKnownNamesHaveTheSameSignInCooloff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
+		t.Fatal(err)
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte("Testing1!"), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +111,9 @@ func TestSignInWithoutInstallationHeaderReturnsRefreshBinding(t *testing.T) {
 	defer db.Close()
 	ident, err := identity.New(db, state)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
 		t.Fatal(err)
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte("Testing1!"), bcrypt.MinCost)
