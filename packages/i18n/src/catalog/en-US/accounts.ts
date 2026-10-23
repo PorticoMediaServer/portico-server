@@ -1,6 +1,7 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.signIn.recoveryCode': 'Recovery code',
   'accounts.brand': 'Portico',
   'accounts.provider.google': 'Google',
   'accounts.provider.apple': 'Apple',
