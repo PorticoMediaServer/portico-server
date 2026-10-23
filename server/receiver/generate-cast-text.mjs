@@ -9,7 +9,7 @@ const catalogue = new URL('../../packages/i18n/src/catalog/en-US/cast-receiver.t
 const formatter = new URL('../../packages/i18n/src/messageformat.ts', import.meta.url);
 const output = new URL('./cast/receiver-text.js', import.meta.url);
 const source = readFileSync(formatter, 'utf8');
-const runtime = stripTypeScriptTypes(source).replace(/^export (class|function) /gm, '$1 ');
+const runtime = stripTypeScriptTypes(source).replace(/^export (class|function) /gm, '$1 ').replace(/[\t ]+$/gm, '');
 if (/^\s*(?:import|export)\b/m.test(runtime)) throw new Error('Receiver formatter must be self-contained.');
 for (const [key, message] of Object.entries(receiverMessages)) {
   if (!key.startsWith('cast.receiver.')) throw new Error('Invalid receiver catalogue key.');

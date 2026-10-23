@@ -14,17 +14,17 @@
  * packages must load unchanged on web, iOS, tvOS and in node tests. Catalogue
  * files are plain ICU strings, so swapping in FormatJS later is a drop-in.
  */
-                                                                               
-                                                                   
 
-           
-                                 
-                   
-                               
-                                                  
-                                                         
-                                                                                                     
-                                                                    
+
+
+
+
+
+
+
+
+
+
 
 class MessageSyntaxError extends Error {
            source        ;
@@ -110,7 +110,7 @@ function parseMessage(source        )         {
   return result;
 }
 
-                                                                                  
+
 
 const pluralCache = new Map                                 ();
 function pluralCategory(locale        , n        , ordinal         )         {
