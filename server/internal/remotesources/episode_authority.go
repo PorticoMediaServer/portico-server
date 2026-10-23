@@ -50,20 +50,11 @@ type EpisodeStateReader interface {
 	ReadEpisodeStateTx(context.Context, *sql.Tx, EpisodeTarget) (EpisodeState, error)
 }
 
-// ReadCeiling is an explicitly known operational ceiling. Zero means unbounded
-// only when Known is true; absent authority must never become an unlimited cap.
-type ReadCeiling struct {
-	Known  bool
-	Limits ReadLimits
-}
-
 type EpisodeWorkState struct {
-	ServerRevision, LibraryRevision, ProviderRevision int64
-	ReadLeaseRevision                                 int64
-	RemoteProcessGeneration                           string
-	HeavyWindowRevision, AnalysisScheduleRevision     int64
-	HeavyWindowOpen, AnalysisScheduleOpen             bool
-	Server, Library, Provider                         ReadCeiling
+	ProviderRevision, ReadLeaseRevision int64
+	RemoteProcessGeneration             string
+	AnalysisRevision                    int64
+	AnalysisOpen                        bool
 	// State is observed, normalized provider/process state. A response from
 	// rclone is not by itself proof of a provider's quota or retry time.
 	ProviderState string
@@ -154,36 +145,21 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 	return nil
 }
 
-func minimumReadLimits(source ReadLimits, ceilings ...ReadCeiling) (ReadLimits, error) {
-	if source.Connections < 0 || source.RequestsPerSecond < 0 || source.BytesPerSecond < 0 {
-		return ReadLimits{}, ErrEpisodeAuthority
-	}
-	out := source
-	for _, c := range ceilings {
-		if !c.Known || c.Limits.Connections < 0 || c.Limits.RequestsPerSecond < 0 || c.Limits.BytesPerSecond < 0 {
-			return ReadLimits{}, ErrEpisodeAuthority
-		}
-		if c.Limits.Connections > 0 && (out.Connections == 0 || c.Limits.Connections < out.Connections) {
-			out.Connections = c.Limits.Connections
-		}
-		if c.Limits.RequestsPerSecond > 0 && (out.RequestsPerSecond == 0 || c.Limits.RequestsPerSecond < out.RequestsPerSecond) {
-			out.RequestsPerSecond = c.Limits.RequestsPerSecond
-		}
-		if c.Limits.BytesPerSecond > 0 && (out.BytesPerSecond == 0 || c.Limits.BytesPerSecond < out.BytesPerSecond) {
-			out.BytesPerSecond = c.Limits.BytesPerSecond
-		}
-	}
-	return out, nil
-}
-
 func episodeWorkLimits(purpose EpisodePurpose, state EpisodeWorkState, source ReadLimits) (ReadLimits, error) {
-	if state.ServerRevision < 1 || state.LibraryRevision < 1 || state.ProviderRevision < 1 || state.ReadLeaseRevision < 1 || state.ProviderState != "ready" {
+	if state.ProviderRevision < 1 || state.ReadLeaseRevision < 1 || state.ProviderState != "ready" || source.Connections < 0 || source.RequestsPerSecond < 0 || source.BytesPerSecond < 0 {
 		return ReadLimits{}, ErrEpisodeAuthority
 	}
-	if purpose == EpisodeAutomatic && (state.HeavyWindowRevision < 1 || state.AnalysisScheduleRevision < 1 || !state.HeavyWindowOpen || !state.AnalysisScheduleOpen) {
+	if purpose == EpisodeAutomatic && (state.AnalysisRevision < 1 || !state.AnalysisOpen) {
 		return ReadLimits{}, ErrEpisodeAuthority
 	}
-	return minimumReadLimits(source, state.Server, state.Library, state.Provider)
+	if purpose != EpisodeAutomatic && purpose != EpisodeExplicitOneEpisode {
+		return ReadLimits{}, ErrEpisodeAuthority
+	}
+	// Section15: the source profile and observed provider slow-down are the
+	// complete current outbound policy. There are no server/library caps or
+	// separate analysis schedule to fabricate. The enforcing lease checks the
+	// actual source-wide limits; generic worker admission is never permission.
+	return source, nil
 }
 
 func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, request EpisodeAuthorityRequest) (episodeAuthoritySnapshot, error) {
@@ -303,8 +279,7 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 		// These facts have no permission meaning for the explicit command and
 		// must not accidentally become automatic-tier/still/window fences.
 		out.Episode.ArtworkRevision, out.Episode.ProviderResolved, out.Episode.ProviderStill, out.Episode.GenerationNeeded = "", false, false, false
-		out.Work.HeavyWindowRevision, out.Work.AnalysisScheduleRevision = 0, 0
-		out.Work.HeavyWindowOpen, out.Work.AnalysisScheduleOpen = false, false
+		out.Work.AnalysisRevision, out.Work.AnalysisOpen = 0, false
 	}
 	return out, nil
 }

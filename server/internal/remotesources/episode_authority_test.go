@@ -28,7 +28,7 @@ func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx
 }
 
 func (f *episodeFactsFixture) ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error) {
-	return EpisodeWorkState{ServerRevision: 1, LibraryRevision: 1, ProviderRevision: 1, ReadLeaseRevision: f.leaseRevision, RemoteProcessGeneration: f.processGeneration, ProviderState: f.providerState, Server: ReadCeiling{Known: true}, Library: ReadCeiling{Known: true}, Provider: ReadCeiling{Known: true}}, nil
+	return EpisodeWorkState{ProviderRevision: 1, ReadLeaseRevision: f.leaseRevision, RemoteProcessGeneration: f.processGeneration, ProviderState: f.providerState}, nil
 }
 
 func (f *episodeFactsFixture) CheckEpisodeReadLease(_ context.Context, binding EpisodeReadLeaseBinding) error {
@@ -214,20 +214,16 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 }
 
 func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.T) {
-	work := EpisodeWorkState{ServerRevision: 1, LibraryRevision: 2, ProviderRevision: 3, ReadLeaseRevision: 1, ProviderState: "ready",
-		Server:   ReadCeiling{Known: true, Limits: ReadLimits{Connections: 3, BytesPerSecond: 10_000_000}},
-		Library:  ReadCeiling{Known: true, Limits: ReadLimits{RequestsPerSecond: 2}},
-		Provider: ReadCeiling{Known: true}}
-	source := ReadLimits{Connections: 8, RequestsPerSecond: 10}
+	work := EpisodeWorkState{ProviderRevision: 3, ReadLeaseRevision: 1, ProviderState: "ready"}
+	source := ReadLimits{Connections: 8, RequestsPerSecond: 10, BytesPerSecond: 10_000_000}
 	got, err := episodeWorkLimits(EpisodeExplicitOneEpisode, work, source)
-	if err != nil || got != (ReadLimits{Connections: 3, RequestsPerSecond: 2, BytesPerSecond: 10_000_000}) {
-		t.Fatal("lowest operational ceilings did not win", got, err)
+	if err != nil || got != source {
+		t.Fatal("invented server/library ceiling or second schedule", got, err)
 	}
 	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); err == nil {
-		t.Fatal("automatic work used absent window/schedule authority")
+		t.Fatal("automatic work used absent analysis schedule authority")
 	}
-	work.HeavyWindowRevision, work.AnalysisScheduleRevision = 4, 5
-	work.HeavyWindowOpen, work.AnalysisScheduleOpen = true, true
+	work.AnalysisRevision, work.AnalysisOpen = 4, true
 	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); err != nil {
 		t.Fatal(err)
 	}
@@ -237,9 +233,9 @@ func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.
 			t.Fatal("explicit command bypassed provider state", state)
 		}
 	}
-	work.ProviderState, work.Server.Known = "ready", false
+	work.ProviderState, work.ProviderRevision = "ready", 0
 	if _, err = episodeWorkLimits(EpisodeExplicitOneEpisode, work, source); err == nil {
-		t.Fatal("unknown server limit silently treated as unlimited")
+		t.Fatal("unknown provider observation silently treated as ready")
 	}
 }
 

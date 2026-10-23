@@ -11,8 +11,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"portico.local/server/internal/childprocess"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/remotemedia"
+	"portico.local/server/internal/supervise"
 )
 
 var ErrServeConfiguration = errors.New("remote serve configuration is invalid")
@@ -26,6 +31,7 @@ type ServeCommandSpec struct {
 	Configuration     []byte
 	Remote            string
 	Port              int
+	MetadataPort      int
 	Username          string
 	Password          string
 	Connections       int
@@ -44,6 +50,7 @@ type ServeCommandSpec struct {
 // in the transient configuration directory.
 type PreparedServe struct {
 	Command *exec.Cmd
+	mu      sync.Mutex
 	private string
 }
 
@@ -55,6 +62,9 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if spec.MetadataPort < 0 || spec.MetadataPort > 65535 || spec.MetadataPort != 0 && spec.MetadataPort == spec.Port {
+		return nil, ErrServeConfiguration
 	}
 	if spec.CacheBytes < 0 || spec.CacheFloor < 0 || spec.CacheBytes > 0 && (!filepath.IsAbs(spec.CacheDirectory) || spec.CacheFloor == 0) {
 		return nil, ErrServeConfiguration
@@ -94,8 +104,14 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if spec.BytesPerSecond > 0 {
 		args = append(args, "--bwlimit", strconv.FormatInt(spec.BytesPerSecond, 10)+"B")
 	}
+	if spec.MetadataPort != 0 {
+		args = append(args, "--rc", "--rc-addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.MetadataPort)), "--rc-server-read-timeout=10s", "--rc-server-write-timeout=30s", "--rc-max-header-bytes=32768")
+	}
 	p.Command = exec.CommandContext(ctx, program.Path, args...)
 	p.Command.Env = []string{"HOME=" + private, "TMPDIR=" + private, "RCLONE_USER=" + spec.Username, "RCLONE_PASS=" + spec.Password, "RCLONE_ASK_PASSWORD=false"}
+	if spec.MetadataPort != 0 {
+		p.Command.Env = append(p.Command.Env, "RCLONE_RC_USER="+spec.Username, "RCLONE_RC_PASS="+spec.Password)
+	}
 	p.Command.Stdout, p.Command.Stderr = io.Discard, io.Discard
 	childprocess.Configure(p.Command)
 	if err = spec.Enforce(p.Command); err != nil {
@@ -109,6 +125,8 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 // failed startup and after load. The retained source/auth configuration is owned
 // elsewhere and is never removed or rewritten by this helper.
 func (p *PreparedServe) Loaded() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.private == "" {
 		return nil
 	}
@@ -117,4 +135,221 @@ func (p *PreparedServe) Loaded() error {
 	}
 	p.private = ""
 	return nil
+}
+
+// ServeProcessLease owns an already acquired physical source-process slot.
+// Its context ends on source/profile/egress revocation. It conveys no actor or
+// operation permission. StartServe consumes it on success and every failure;
+// Release runs only after physical Wait, or proof that no child was started.
+type ServeProcessLease interface {
+	Context() context.Context
+	Check(context.Context) error
+	Release()
+}
+
+var ErrServeStopped = errors.New("remote serve process stopped")
+
+// ServeProcess owns exactly one rclone serve process and private loopback
+// endpoint. A new start always has a new generation; it never revives existing
+// range sessions. Provider egress enforcement remains mandatory in the spec.
+type ServeProcess struct {
+	generation string
+	endpoint   *remotemedia.ServeEndpoint
+	metadata   *remotemedia.RcloneMetadata
+	lease      ServeProcessLease
+	life       context.Context
+	cancel     context.CancelFunc
+	done       chan struct{}
+	mu         sync.Mutex
+	err        error
+}
+
+func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lease ServeProcessLease) (*ServeProcess, error) {
+	if lease == nil {
+		return nil, ErrServeConfiguration
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			lease.Release()
+		}
+	}()
+	if lease.Context() == nil {
+		return nil, ErrServeConfiguration
+	}
+	if err := lease.Check(ctx); err != nil {
+		return nil, err
+	}
+	life, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(lease.Context(), cancel)
+	prepared, err := PrepareServe(life, program, spec)
+	if err != nil {
+		stop()
+		cancel()
+		return nil, err
+	}
+	endpoint, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, spec.Connections)
+	if err != nil {
+		_ = prepared.Loaded()
+		stop()
+		cancel()
+		return nil, err
+	}
+	s := &ServeProcess{generation: identity.Token(), endpoint: endpoint, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
+	if spec.MetadataPort != 0 {
+		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, spec.Connections, spec.Remote)
+		if err != nil {
+			endpoint.Close()
+			_ = prepared.Loaded()
+			stop()
+			cancel()
+			return nil, err
+		}
+	}
+	if err = lease.Check(life); err == nil {
+		// Bounds pipe inheritance even when a custom program starts descendants.
+		prepared.Command.WaitDelay = 100 * time.Millisecond
+		err = prepared.Command.Start()
+	}
+	if err != nil {
+		if s.metadata != nil {
+			s.metadata.Close()
+		}
+		endpoint.Close()
+		_ = prepared.Loaded()
+		stop()
+		cancel()
+		return nil, err
+	}
+	transferred = true
+	supervise.Go("rclone.serve.wait", func() {
+		defer close(s.done)
+		defer lease.Release()
+		defer stop()
+		defer cancel()
+		defer endpoint.Close()
+		if s.metadata != nil {
+			defer s.metadata.Close()
+		}
+		err := prepared.Command.Wait()
+		// A wrapper exiting must not leave its process group listening.
+		childprocess.Kill(prepared.Command)
+		cleanup := prepared.Loaded()
+		s.mu.Lock()
+		if err != nil {
+			s.err = ErrServeStopped
+		} else if cleanup != nil {
+			s.err = cleanup
+		} else {
+			s.err = ErrServeStopped
+		}
+		s.mu.Unlock()
+	})
+	// Readiness is an authenticated Depth0 request to this exact numeric port.
+	// Only connection unavailability is retried, before any endpoint is exposed.
+	ready, readyCancel := context.WithTimeout(life, 20*time.Second)
+	defer readyCancel()
+	for {
+		attempt, attemptCancel := context.WithTimeout(ready, time.Second)
+		var entry remotemedia.DAVEntry
+		entry, err = endpoint.Stat(attempt, "", s.Check)
+		attemptCancel()
+		if err == nil {
+			if !entry.Directory {
+				err = ErrServeConfiguration
+			}
+			if err == nil && s.metadata != nil {
+				_, err = s.metadata.Capabilities(ready, s.Check)
+			}
+			if err == nil {
+				err = prepared.Loaded()
+				if err == nil {
+					err = s.Check(ready)
+				}
+				break
+			}
+		}
+		if !errors.Is(err, remotemedia.ErrUnavailable) || ready.Err() != nil {
+			break
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-timer.C:
+		case <-s.done:
+			err = ErrServeStopped
+		case <-ready.Done():
+			err = ready.Err()
+		}
+		timer.Stop()
+		if err == ErrServeStopped || ready.Err() != nil {
+			break
+		}
+	}
+	if err != nil {
+		cancel()
+		childprocess.Kill(prepared.Command)
+		<-s.done
+		return nil, err
+	}
+	return s, nil
+}
+
+// Check is the non-I/O process fence used before/after metadata/range I/O and
+// every dial. Actor, target and fresh provider observations are separate checks.
+func (s *ServeProcess) Check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.life.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-s.done:
+		return ErrServeStopped
+	default:
+	}
+	if err := s.lease.Context().Err(); err != nil {
+		return err
+	}
+	if err := s.lease.Check(ctx); err != nil {
+		if ctx.Err() == nil {
+			s.cancel()
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *ServeProcess) Generation() string { return s.generation }
+
+func (s *ServeProcess) Endpoint(ctx context.Context) (*remotemedia.ServeEndpoint, error) {
+	if err := s.Check(ctx); err != nil {
+		return nil, err
+	}
+	return s.endpoint, nil
+}
+
+func (s *ServeProcess) Metadata(ctx context.Context) (*remotemedia.RcloneMetadata, error) {
+	if err := s.Check(ctx); err != nil {
+		return nil, err
+	}
+	if s.metadata == nil {
+		return nil, ErrServeConfiguration
+	}
+	return s.metadata, nil
+}
+
+// Stop starts shutdown immediately. Wait remains the physical retirement fence;
+// a caller's canceled wait never releases a slot held by a surviving process.
+func (s *ServeProcess) Stop() { s.cancel() }
+
+func (s *ServeProcess) Wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.done:
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.err
+	}
 }
