@@ -1,0 +1,239 @@
+package httpapi
+
+import (
+	"net/http"
+	"portico.local/apikit"
+	"portico.local/server/internal/hosted"
+	"portico.local/server/internal/identity"
+)
+
+type moveStatus struct {
+	Move *identity.AccountMove `json:"move"`
+}
+type moveConfirmation struct {
+	Move   *identity.AccountMove  `json:"move,omitempty"`
+	SignIn *identity.DirectSignIn `json:"signIn,omitempty"`
+}
+type moveRevision struct {
+	ExpectedRevision int64 `json:"expectedRevision"`
+}
+type porticoMoveRedemption struct {
+	Code            string        `json:"code,omitempty"`
+	Ticket          string        `json:"ticket,omitempty"`
+	PorticoIdentity hosted.Signed `json:"porticoIdentity"`
+}
+
+func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
+	d.httpHandle(mux, "GET /v1/admin/sign-in/move", func(w http.ResponseWriter, r *http.Request) {
+		out, e := d.Identity.AccountMove(r.Context(), directBearer(r))
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, moveStatus{out})
+	})
+	d.httpHandle(mux, "POST /v1/admin/sign-in/move/preview", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.MovePreviewRequest
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Identity.PreviewAccountMove(r.Context(), directBearer(r), q)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/admin/sign-in/move/confirm", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.MoveConfirmRequest
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		move, e := d.Identity.AccountMove(r.Context(), directBearer(r))
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		if move == nil || move.ID != q.MoveID {
+			failure(w, identity.ErrProfileChanged)
+			return
+		}
+		if move.To == identity.SignInLocal {
+			out, e := d.Identity.ConfirmLocalMove(r.Context(), directBearer(r), q)
+			if e != nil {
+				failure(w, e)
+				return
+			}
+			if d.Hosted != nil {
+				d.Hosted.MembershipChanged()
+			}
+			writeAuth(w, r, 200, moveConfirmation{SignIn: &out})
+			return
+		}
+		out, e := d.Identity.ConfirmPorticoMove(r.Context(), directBearer(r), q)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, moveConfirmation{Move: &out})
+	})
+	d.httpHandle(mux, "POST /v1/admin/sign-in/move/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		var q moveRevision
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if e := d.Identity.CancelAccountMove(r.Context(), directBearer(r), r.PathValue("id"), q.ExpectedRevision); e != nil {
+			failure(w, e)
+			return
+		}
+		w.WriteHeader(204)
+	})
+	d.httpHandle(mux, "POST /v1/admin/sign-in/move/{id}/finish", func(w http.ResponseWriter, r *http.Request) {
+		var q moveRevision
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if e := d.Identity.FinishAccountMove(r.Context(), directBearer(r), r.PathValue("id"), q.ExpectedRevision); e != nil {
+			failure(w, e)
+			return
+		}
+		w.WriteHeader(204)
+	})
+	d.httpHandle(mux, "POST /v1/admin/sign-in/move/codes", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.MoveCodeRequest
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Identity.MakeMoveCodes(r.Context(), directBearer(r), q)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/auth/move/password", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.MovePasswordRequest
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "move-password", 10); e != nil {
+			setupFailure(w, e)
+			return
+		}
+		out, e := d.Identity.ProveMovePassword(r.Context(), q)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/auth/move/code", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.MoveCodePreviewRequest
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "move-code-preview", 20); e != nil {
+			setupFailure(w, e)
+			return
+		}
+		out, e := d.Identity.PreviewMoveCode(r.Context(), q.Code)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/auth/move/local", func(w http.ResponseWriter, r *http.Request) {
+		var q identity.LocalMoveRedemption
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "move-code", 20); e != nil {
+			setupFailure(w, e)
+			return
+		}
+		out, e := d.Identity.RedeemLocalMove(r.Context(), q)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, out)
+	})
+	d.httpHandle(mux, "POST /v1/auth/move/portico", func(w http.ResponseWriter, r *http.Request) {
+		if e := d.Identity.RequireSignInKind(r.Context(), identity.SignInPortico); e != nil {
+			failure(w, e)
+			return
+		}
+		var q porticoMoveRedemption
+		if e := decode(w, r, &q); e != nil {
+			failure(w, e)
+			return
+		}
+		if d.Hosted == nil {
+			failure(w, identity.ErrUnauthorized)
+			return
+		}
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "move-link", 20); e != nil {
+			setupFailure(w, e)
+			return
+		}
+		who, e := d.Hosted.VerifyIdentity(r.Context(), q.PorticoIdentity, r.Header.Get("X-Portico-Installation-Id"))
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Identity.RedeemPorticoMove(r.Context(), identity.PorticoMoveProof{Code: q.Code, Ticket: q.Ticket, Who: who})
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		writeAuth(w, r, 200, out)
+	})
+}
+func registerAccountMoveContracts(registry *apikit.Registry) error {
+	owner := func(id, method, path string, status int) apikit.Metadata {
+		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Manage the server sign-in move", Access: apikit.Owner, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 16384, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "revision_mismatch", "sign_in_kind_portico", "sign_in_kind_local", "move_collision", "move_confirmation", "move_code_invalid", "internal"}}
+	}
+	if e := apikit.RegisterHTTP[struct{}, moveStatus](registry, owner("get_sign_in_move", "GET", "/v1/admin/sign-in/move", 200)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[identity.MovePreviewRequest, identity.AccountMove](registry, owner("post_sign_in_move_preview", "POST", "/v1/admin/sign-in/move/preview", 200)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[identity.MoveConfirmRequest, moveConfirmation](registry, owner("post_sign_in_move_confirm", "POST", "/v1/admin/sign-in/move/confirm", 200)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[moveRevision, struct{}](registry, owner("post_sign_in_move_cancel", "POST", "/v1/admin/sign-in/move/{id}/cancel", 204)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[moveRevision, struct{}](registry, owner("post_sign_in_move_finish", "POST", "/v1/admin/sign-in/move/{id}/finish", 204)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[identity.MoveCodeRequest, identity.MoveCodes](registry, owner("post_sign_in_move_codes", "POST", "/v1/admin/sign-in/move/codes", 200)); e != nil {
+		return e
+	}
+	public := func(id, path string) apikit.Metadata {
+		m := owner(id, "POST", path, 200)
+		m.Access = apikit.Public
+		m.Admission = laneAuth
+		return m
+	}
+	if e := apikit.RegisterHTTP[identity.LocalMoveRedemption, identity.DirectSignIn](registry, public("post_auth_move_local", "/v1/auth/move/local")); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[identity.MovePasswordRequest, identity.MoveLinkTicket](registry, public("post_auth_move_password", "/v1/auth/move/password")); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[identity.MoveCodePreviewRequest, identity.MoveCodePreview](registry, public("post_auth_move_code", "/v1/auth/move/code")); e != nil {
+		return e
+	}
+	return apikit.RegisterHTTP[porticoMoveRedemption, identity.DirectSignIn](registry, public("post_auth_move_portico", "/v1/auth/move/portico"))
+}

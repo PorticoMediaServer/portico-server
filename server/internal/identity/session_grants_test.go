@@ -29,31 +29,10 @@ func issueCastTarget(t *testing.T, s *Service, ctx context.Context, account, pro
 func TestACastTargetSessionIsAMembersAndOnlyForPlayback(t *testing.T) {
 	ctx := context.Background()
 	s, _, owner := directFixture(t)
-	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-		t.Fatal(err)
-	}
 	linkedMember(t, s, "linked", "acc_linked")
-	pairing, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-cast"})
-	if err != nil || pairing.DeviceApprovalPending {
-		// Under the policy the linked member's own new device waits; approve
-		// it the way an owner would, then sign in.
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if pairing.Session == nil {
-		if _, err = s.db.Exec(`UPDATE identity_devices SET approval_state='approved' WHERE id=?`, pairing.DeviceID); err != nil {
-			t.Fatal(err)
-		}
-		if _, err = s.db.Exec(`UPDATE configuration SET value=? WHERE key=?`, DeviceApprovalAuto, deviceApprovalKey); err != nil {
-			t.Fatal(err)
-		}
-		if pairing, err = s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", SignerKeyID: "key-cast"}); err != nil || pairing.Session == nil {
-			t.Fatalf("%+v %v", pairing, err)
-		}
-		if err = s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
-			t.Fatal(err)
-		}
+	pairing, err := s.PorticoSignIn(ctx, PorticoIdentity{AccountID: "acc_linked", Username: "linked", SignerKeyID: "key-cast"})
+	if err != nil || pairing.Session == nil {
+		t.Fatalf("pairing: %+v %v", pairing, err)
 	}
 	// A member's screen is not held by the approval rule: the paired device vouches for it.
 	screenCtx := onDevice(t, "cast-0000000000000000000000000000000000000001", "Living room TV")

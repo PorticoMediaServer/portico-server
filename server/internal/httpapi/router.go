@@ -273,6 +273,16 @@ func failure(w http.ResponseWriter, e error) {
 		preparedFailure(w, e)
 		return
 	}
+	for _, moveErr := range []struct {
+		err    error
+		code   string
+		status int
+	}{{identity.ErrMoveCollision, "move_collision", 409}, {identity.ErrMoveConfirmation, "move_confirmation", 409}, {identity.ErrMoveCode, "move_code_invalid", 410}, {identity.ErrMoveWaiting, "account_move_waiting", 403}} {
+		if errors.Is(e, moveErr.err) {
+			write(w, moveErr.status, map[string]any{"error": map[string]any{"code": moveErr.code, "message": e.Error(), "retryable": false}})
+			return
+		}
+	}
 	if errors.Is(e, identity.ErrSignInKindPortico) || errors.Is(e, identity.ErrSignInKindLocal) {
 		code := "sign_in_kind_portico"
 		if errors.Is(e, identity.ErrSignInKindLocal) {
@@ -361,12 +371,6 @@ func failure(w http.ResponseWriter, e error) {
 	}
 	if errors.Is(e, identity.ErrDeviceUnknown) {
 		status, code = 404, "device_not_found"
-	}
-	if errors.Is(e, identity.ErrDevicePending) {
-		status, code = 403, "device_approval_pending"
-	}
-	if errors.Is(e, identity.ErrDeviceDenied) {
-		status, code = 403, "device_denied"
 	}
 	if errors.Is(e, identity.ErrRegistrationClosed) {
 		status, code = 403, "registration_closed"
@@ -891,7 +895,12 @@ func New(d Dependencies) http.Handler {
 			failure(w, err)
 			return
 		}
-		write(w, 200, SystemInfo{ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
+		move, err := d.Identity.PublicAccountMove(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		write(w, 200, SystemInfo{Move: move, ID: d.Identity.ID(), Name: d.Identity.Name(), SignIn: kind, SetupRequired: d.Identity.SetupRequired(), HostedConfigured: d.Hosted != nil && d.Hosted.Configured(), HostedAttached: d.Identity.Hosted(), Version: buildinfo.Info()["version"]})
 	})
 	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)

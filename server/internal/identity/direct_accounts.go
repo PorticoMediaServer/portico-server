@@ -60,7 +60,6 @@ type DirectSnapshot struct {
 type DirectSignIn struct {
 	ResetFileOwnerSession  bool   `json:"resetFileOwnerSession,omitempty"`
 	PasswordChangeRequired bool   `json:"passwordChangeRequired,omitempty"`
-	DeviceApprovalPending  bool   `json:"deviceApprovalPending,omitempty"`
 	DeviceID               string `json:"deviceId,omitempty"`
 	InstallationID         string `json:"installationId,omitempty"`
 	DirectSnapshot
@@ -296,9 +295,6 @@ func (s *Service) directSignInTx(ctx context.Context, tx *sql.Tx, c directCaller
 		return out, e
 	}
 	device, e := s.issuingDeviceTx(ctx, tx, "local", c.account.ID)
-	if errors.Is(e, ErrDevicePending) {
-		return DirectSignIn{DeviceApprovalPending: true, DeviceID: device.ID, InstallationID: device.InstallationID}, nil
-	}
 	if e != nil {
 		return out, e
 	}
@@ -479,8 +475,6 @@ func sessionRevocationText(reason string) string {
 		return "Signed out by an administrator"
 	case RevokedMembershipRemoved:
 		return "Signed out: account access was removed"
-	case RevokedDeviceDisapproved:
-		return "Signed out: device was not approved"
 	case RevokedPasswordChange:
 		return "Signed out: account security changed"
 	case RevokedSigningKeyRevoked:
