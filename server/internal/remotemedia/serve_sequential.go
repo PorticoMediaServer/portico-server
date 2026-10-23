@@ -16,6 +16,16 @@ func (s *ServeEndpoint) OpenFromStart(ctx context.Context, relative, etag string
 	if reconnect == nil || relative == "" || !cleanDAVRelative(relative) || strings.Contains(relative, ":") || size < 0 || etag != "" && !serveETag(etag) {
 		return nil, ErrPolicy
 	}
+	ctx, release, err := s.budget.enter(ctx)
+	if err != nil {
+		return nil, err
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			release()
+		}
+	}()
 	if err := reconnect(ctx); err != nil {
 		return nil, err
 	}
@@ -58,5 +68,6 @@ func (s *ServeEndpoint) OpenFromStart(ctx context.Context, relative, etag string
 	// The owner checks current authority after headers. Fresh backend stat here
 	// could wait on the sole provider connection occupied by this live body.
 	good = true
-	return resp.Body, nil
+	transferred = true
+	return retainOperationBody(ctx, resp.Body, release), nil
 }

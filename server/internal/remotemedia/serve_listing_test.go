@@ -14,7 +14,7 @@ func TestServeListingSnapshotNeverReturnsPartialChildren(t *testing.T) {
 	body := `<d:multistatus xmlns:d="DAV:">` + child + `</d:multistatus>`
 	for _, bad := range []string{"", "truncated", "oversized", "duplicate", "traversal"} {
 		t.Run(bad, func(t *testing.T) {
-			s, err := NewServeEndpoint(12345, "private", "secret", 2)
+			s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +52,7 @@ func TestServeListingSnapshotNeverReturnsPartialChildren(t *testing.T) {
 }
 
 func TestServeStatHasExactMemberAndDoesNotInventProviderEvidence(t *testing.T) {
-	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestServeStatHasExactMemberAndDoesNotInventProviderEvidence(t *testing.T) {
 
 func TestServeStatMissingCapturedMemberSignalsChange(t *testing.T) {
 	for _, status := range []int{http.StatusNotFound, http.StatusMultiStatus} {
-		s, err := NewServeEndpoint(12345, "private", "secret", 2)
+		s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -21,6 +21,7 @@ type ServeEndpoint struct {
 	root          url.URL
 	authorization string
 	client        *http.Client
+	budget        *OperationBudget
 }
 
 type serveReconnectKey struct{}
@@ -31,8 +32,12 @@ type serveAdmissionFailure struct{ cause error }
 func (e *serveAdmissionFailure) Error() string { return "remote source admission refused" }
 func (e *serveAdmissionFailure) Unwrap() error { return e.cause }
 
-func NewServeEndpoint(port int, username, password string, connections int) (*ServeEndpoint, error) {
-	if port < 1 || port > 65535 || connections < 1 || connections > 256 || username == "" || password == "" || len(username) > 1024 || len(password) > 8192 || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") {
+func NewServeEndpoint(port int, username, password string, budget *OperationBudget) (*ServeEndpoint, error) {
+	if port < 1 || port > 65535 || budget == nil || username == "" || password == "" || len(username) > 1024 || len(password) > 8192 || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") {
+		return nil, ErrPolicy
+	}
+	connections := budget.Counts().Capacity
+	if budget.life == nil || connections < 1 || connections > 256 {
 		return nil, ErrPolicy
 	}
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
@@ -70,6 +75,7 @@ func NewServeEndpoint(port int, username, password string, connections int) (*Se
 		root:          url.URL{Scheme: "http", Host: address, Path: "/"},
 		authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password)),
 		client:        &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		budget:        budget,
 	}, nil
 }
 
@@ -83,6 +89,11 @@ func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, si
 	if reconnect == nil {
 		return nil, ErrPolicy
 	}
+	ctx, release, err := s.budget.enter(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	if err := reconnect(ctx); err != nil {
 		return nil, err
 	}

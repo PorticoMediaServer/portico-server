@@ -13,7 +13,7 @@ import (
 func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
 	for _, cost := range []string{"fast", "slow", "unknown", "no_time"} {
 		t.Run(cost, func(t *testing.T) {
-			metadata, err := NewRcloneMetadata(12345, "private", "secret", 2, "media:root")
+			metadata, err := NewRcloneMetadata(12345, "private", "secret", NewOperationBudget(context.Background(), 2), "media:root")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +64,7 @@ func TestRcloneMetadataSeparatesFreshFactsAndAvoidsWholeFileHash(t *testing.T) {
 func TestRcloneMetadataRefusesMalformedChangedAndRevokedFacts(t *testing.T) {
 	for _, failure := range []string{"missing", "different_member", "negative_size", "invalid_hash", "oversize", "redirect", "revoked"} {
 		t.Run(failure, func(t *testing.T) {
-			metadata, err := NewRcloneMetadata(12345, "private", "secret", 2, "media:")
+			metadata, err := NewRcloneMetadata(12345, "private", "secret", NewOperationBudget(context.Background(), 2), "media:")
 			if err != nil {
 				t.Fatal(err)
 			}

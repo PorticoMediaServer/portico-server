@@ -17,7 +17,7 @@ func (f serveRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { ret
 func TestServeEndpointRangeContract(t *testing.T) {
 	for _, failure := range []string{"", "200", "redirect", "etag", "length", "short", "extra", "encoding", "extent", "changed"} {
 		t.Run(failure, func(t *testing.T) {
-			s, err := NewServeEndpoint(12345, "private", "secret", 2)
+			s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,7 +70,7 @@ func TestServeEndpointRangeContract(t *testing.T) {
 }
 
 func TestServeEndpointRejectsMembersBeforeDispatch(t *testing.T) {
-	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestAuthenticatedRequestDoesNotHideRetryOrWait(t *testing.T) {
 }
 
 func TestServeDialChecksExactOriginAndReconnectBeforeNetwork(t *testing.T) {
-	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 	if err != nil {
 		t.Fatal(err)
 	}

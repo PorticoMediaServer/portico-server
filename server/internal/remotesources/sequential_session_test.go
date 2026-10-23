@@ -48,7 +48,7 @@ func TestSequentialSessionFencesExtentsWithoutSeekingOrMaterialization(t *testin
 				w.Write([]byte("bookfile"))
 			}))
 			defer server.Close()
-			endpoint, err := remotemedia.NewServeEndpoint(server.Listener.Addr().(*net.TCPAddr).Port, "private", "secret", 1)
+			endpoint, err := remotemedia.NewServeEndpoint(server.Listener.Addr().(*net.TCPAddr).Port, "private", "secret", remotemedia.NewOperationBudget(context.Background(), 1))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,7 +109,7 @@ func TestSequentialCloseCancelsBlockedBodyAndNeverReopens(t *testing.T) {
 		close(bodyClosed)
 	}))
 	defer server.Close()
-	endpoint, _ := remotemedia.NewServeEndpoint(server.Listener.Addr().(*net.TCPAddr).Port, "private", "secret", 1)
+	endpoint, _ := remotemedia.NewServeEndpoint(server.Listener.Addr().(*net.TCPAddr).Port, "private", "secret", remotemedia.NewOperationBudget(context.Background(), 1))
 	defer endpoint.Close()
 	facts := remotemedia.FileObservation{SourceID: "remote", Incarnation: "1", Object: "book.pdf", Size: 8}
 	session, err := OpenSequentialSession(context.Background(), endpoint, SequentialAdmission{Scan: facts, Check: func(ctx context.Context) error { return ctx.Err() }, Observe: func(context.Context) (remotemedia.FileObservation, error) { return facts, nil }, OnChanged: func() {}})

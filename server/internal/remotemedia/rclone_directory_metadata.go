@@ -21,6 +21,11 @@ func (m *RcloneMetadata) VisitDirectory(ctx context.Context, relative string, ch
 	if check == nil || visit == nil || !cleanDAVRelative(relative) || strings.Contains(relative, ":") {
 		return ErrPolicy
 	}
+	ctx, release, err := m.endpoint.budget.enter(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	capability, err := m.Capabilities(ctx, check)

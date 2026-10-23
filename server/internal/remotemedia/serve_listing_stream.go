@@ -20,6 +20,11 @@ func (s *ServeEndpoint) VisitSnapshot(ctx context.Context, relative string, reco
 	if reconnect == nil || visit == nil || !cleanDAVRelative(relative) || strings.Contains(relative, ":") {
 		return ErrPolicy
 	}
+	ctx, release, err := s.budget.enter(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	if err := reconnect(ctx); err != nil {

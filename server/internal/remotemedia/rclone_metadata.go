@@ -35,7 +35,7 @@ type RcloneFileMetadata struct {
 	Hashes    []ProviderHash
 }
 
-func NewRcloneMetadata(port int, username, password string, connections int, filesystem string) (*RcloneMetadata, error) {
+func NewRcloneMetadata(port int, username, password string, budget *OperationBudget, filesystem string) (*RcloneMetadata, error) {
 	// The filesystem is a private named configuration section and root, never a
 	// URL, on-the-fly backend or caller-selected RC filesystem.
 	colon := strings.IndexByte(filesystem, ':')
@@ -47,7 +47,7 @@ func NewRcloneMetadata(port int, username, password string, connections int, fil
 			return nil, ErrPolicy
 		}
 	}
-	endpoint, err := NewServeEndpoint(port, username, password, connections)
+	endpoint, err := NewServeEndpoint(port, username, password, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +102,17 @@ func (m *RcloneMetadata) request(ctx context.Context, operation string, paramete
 }
 
 func (m *RcloneMetadata) Capabilities(ctx context.Context, check func(context.Context) error) (RcloneCapabilities, error) {
+	ctx, release, err := m.endpoint.budget.enter(ctx)
+	if err != nil {
+		return RcloneCapabilities{}, err
+	}
+	defer release()
 	var raw struct {
 		Name     string
 		Hashes   []string
 		Features struct{ SlowHash *bool }
 	}
-	err := m.request(ctx, "operations/fsinfo", map[string]any{"fs": m.fs}, &raw, check)
+	err = m.request(ctx, "operations/fsinfo", map[string]any{"fs": m.fs}, &raw, check)
 	if err != nil {
 		return RcloneCapabilities{}, err
 	}
@@ -125,6 +130,11 @@ func (m *RcloneMetadata) Stat(ctx context.Context, relative string, check func(c
 	if relative == "" || !cleanDAVRelative(relative) || strings.Contains(relative, ":") {
 		return RcloneFileMetadata{}, ErrPolicy
 	}
+	ctx, release, err := m.endpoint.budget.enter(ctx)
+	if err != nil {
+		return RcloneFileMetadata{}, err
+	}
+	defer release()
 	capability, err := m.Capabilities(ctx, check)
 	if err != nil {
 		return RcloneFileMetadata{}, err

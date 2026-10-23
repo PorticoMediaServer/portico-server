@@ -359,6 +359,9 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if peak.Load() != 1 || badAuth.Load() {
 				t.Fatal("upstream source cap/auth", peak.Load(), badAuth.Load())
 			}
+			if counts := process.OperationCounts(); counts.Capacity != 1 || counts.Peak != 1 || counts.Active != 0 {
+				t.Fatal("actual source pools did not share cap1", counts)
+			}
 			if !sequential {
 				metadata, err := process.Metadata(ctx)
 				if err != nil {

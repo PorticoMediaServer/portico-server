@@ -12,7 +12,7 @@ import (
 func TestRcloneDirectoryMetadataReadsActualListWithKnownHashCost(t *testing.T) {
 	for _, hashCost := range []string{"fast", "slow", "unknown"} {
 		t.Run(hashCost, func(t *testing.T) {
-			m, err := NewRcloneMetadata(12345, "private", "secret", 2, "media:")
+			m, err := NewRcloneMetadata(12345, "private", "secret", NewOperationBudget(context.Background(), 2), "media:")
 			if err != nil {
 				t.Fatal(err)
 			}

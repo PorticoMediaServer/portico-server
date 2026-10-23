@@ -24,7 +24,7 @@ func TestServeReconnectPreservesActualAuthorityBeforeAndAfterDial(t *testing.T) 
 			u, _ := url.Parse(server.URL)
 			_, textPort, _ := net.SplitHostPort(u.Host)
 			port, _ := strconv.Atoi(textPort)
-			endpoint, err := NewServeEndpoint(port, "private", "fixture", 1)
+			endpoint, err := NewServeEndpoint(port, "private", "fixture", NewOperationBudget(context.Background(), 1))
 			if err != nil {
 				t.Fatal(err)
 			}

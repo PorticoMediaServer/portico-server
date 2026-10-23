@@ -34,7 +34,7 @@ func TestServeListingStreamsBeyondOldPageBounds(t *testing.T) {
 		done <- err
 	}()
 	defer input.Close()
-	s, err := NewServeEndpoint(12345, "private", "secret", 2)
+	s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestServeListingPrivateSinkAndFinalAuthorityFailuresStayFailures(t *testing
 	sentinel := errors.New("private snapshot refused")
 	for _, test := range []string{"sink", "duplicate", "final-check", "cancel"} {
 		t.Run(test, func(t *testing.T) {
-			s, err := NewServeEndpoint(12345, "private", "secret", 2)
+			s, err := NewServeEndpoint(12345, "private", "secret", NewOperationBudget(context.Background(), 2))
 			if err != nil {
 				t.Fatal(err)
 			}

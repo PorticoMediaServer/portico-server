@@ -109,7 +109,7 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err = os.WriteFile(file, spec.Configuration, 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--use-json-log", "--log-level=DEBUG", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1"}
+	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--use-json-log", "--log-level=DEBUG", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1", "--sftp-connections", strconv.Itoa(spec.Connections)}
 	if spec.SequentialReads {
 		for i, arg := range args {
 			if arg == "--vfs-read-chunk-size=1M" {
@@ -191,12 +191,22 @@ type ServeProcess struct {
 	observer         *remotemedia.ServeEndpoint
 	metadata         *remotemedia.RcloneMetadata
 	reports          *serveReports
+	budget           *remotemedia.OperationBudget
 	lease            ServeProcessLease
 	life             context.Context
 	cancel           context.CancelFunc
 	done             chan struct{}
 	mu               sync.Mutex
 	err              error
+}
+
+// OperationCounts is internal acceptance evidence for the one shared source
+// budget. It is neither a public setting nor actor/source permission.
+func (s *ServeProcess) OperationCounts() remotemedia.OperationCounts {
+	if s == nil {
+		return remotemedia.OperationCounts{}
+	}
+	return s.budget.Counts()
 }
 
 func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lease ServeProcessLease) (*ServeProcess, error) {
@@ -223,14 +233,15 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		cancel()
 		return nil, err
 	}
-	endpoint, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, spec.Connections)
+	budget := remotemedia.NewOperationBudget(life, spec.Connections)
+	endpoint, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, budget)
 	if err != nil {
 		_ = prepared.Loaded()
 		stop()
 		cancel()
 		return nil, err
 	}
-	observer, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, spec.Connections)
+	observer, err := remotemedia.NewServeEndpoint(spec.Port, spec.Username, spec.Password, budget)
 	if err != nil {
 		endpoint.Close()
 		_ = prepared.Loaded()
@@ -238,9 +249,9 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		cancel()
 		return nil, err
 	}
-	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, reports: prepared.reports, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
+	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, reports: prepared.reports, budget: budget, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
 	if spec.MetadataPort != 0 {
-		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, spec.Connections, spec.Remote)
+		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, budget, spec.Remote)
 		if err != nil {
 			observer.Close()
 			endpoint.Close()

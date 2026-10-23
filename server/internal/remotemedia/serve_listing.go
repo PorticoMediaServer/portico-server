@@ -36,6 +36,11 @@ func (s *ServeEndpoint) requestSnapshot(ctx context.Context, relative, depth str
 	if reconnect == nil {
 		return DAVPage{}, ErrPolicy
 	}
+	ctx, release, err := s.budget.enter(ctx)
+	if err != nil {
+		return DAVPage{}, err
+	}
+	defer release()
 	if err := reconnect(ctx); err != nil {
 		return DAVPage{}, err
 	}
