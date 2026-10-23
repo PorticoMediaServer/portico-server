@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,120 @@ import (
 	"portico.local/hosted/internal/serverreturn"
 	"portico.local/hosted/internal/sessions"
 )
+
+// Execute the actual stdin driver with a fresh current-format schema. Its initial
+// credential and every raw HTTP response stay in the child pipe, including on
+// failure. This qualifies the driver lifecycle, not a Server-produced owner pair.
+func TestOwnerContinuationBridgeLifecycle(t *testing.T) {
+	if os.Getenv("PORTICO_TEST_DATABASE_URL_FILE") == "" {
+		t.Skip("isolated PostgreSQL is required")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal("bridge executable unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, executable, "-test.run=^TestOwnerContinuationActualProducerBridge$", "-test.count=1")
+	child.Env = append(os.Environ(), "PORTICO_OWNER_CONTINUATION_BRIDGE=1")
+	stdin, err := child.StdinPipe()
+	if err != nil {
+		t.Fatal("bridge input unavailable")
+	}
+	stdout, err := child.StdoutPipe()
+	if err != nil {
+		t.Fatal("bridge output unavailable")
+	}
+	// Discard stderr rather than risking credentials in a failure report.
+	if err = child.Start(); err != nil {
+		t.Fatal("bridge failed to start")
+	}
+	stopped := false
+	defer func() {
+		if !stopped {
+			_, _ = stdin.Write([]byte("{\"Action\":\"stop\"}\n"))
+			_ = stdin.Close()
+			_ = child.Wait()
+		}
+	}()
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 4096), 128<<10)
+	read := func(out any) {
+		t.Helper()
+		for scanner.Scan() {
+			const prefix = "PORTICO_OWNER_JSON:"
+			if strings.HasPrefix(scanner.Text(), prefix) {
+				if json.Unmarshal([]byte(strings.TrimPrefix(scanner.Text(), prefix)), out) != nil {
+					t.Fatal("invalid private bridge reply")
+				}
+				return
+			}
+		}
+		t.Fatal("private bridge reply unavailable")
+	}
+	send := func(value any) {
+		t.Helper()
+		if json.NewEncoder(stdin).Encode(value) != nil {
+			t.Fatal("private bridge command failed")
+		}
+	}
+	var hello struct{ Root, AccountID, OwnerToken, Audience string }
+	read(&hello)
+	root, err := base64.RawURLEncoding.DecodeString(hello.Root)
+	if err != nil || len(root) != 32 || len(hello.OwnerToken) != 43 || hello.AccountID == "" || hello.Audience != "https://hosted.example" {
+		t.Fatal("invalid bridge initialization")
+	}
+	type reply struct {
+		Status                             int
+		Headers                            http.Header
+		Body                               json.RawMessage
+		BodyEmpty                          bool
+		FinalizeRequests, ExchangeRequests int
+	}
+	send(map[string]any{"Action": "snapshot"})
+	var snapshot reply
+	read(&snapshot)
+	var initial struct {
+		Server      any
+		OwnerStarts []any
+		Operations  []any
+		Counts      map[string]int
+	}
+	if json.Unmarshal(snapshot.Body, &initial) != nil || snapshot.Status != 200 || initial.Server != nil || len(initial.OwnerStarts) != 0 || len(initial.Operations) != 0 || len(initial.Counts) != 6 || snapshot.FinalizeRequests != 0 || snapshot.ExchangeRequests != 0 {
+		t.Fatal("bridge did not start with an empty owner snapshot")
+	}
+	for _, count := range initial.Counts {
+		if count != 0 {
+			t.Fatal("bridge invented owner state during initialization")
+		}
+	}
+	request := func(method, path string) reply {
+		t.Helper()
+		send(map[string]any{"Action": "http", "Method": method, "Path": path, "Token": hello.OwnerToken, "Body": map[string]any{}})
+		var result reply
+		read(&result)
+		if result.Headers.Get("Cache-Control") != "no-store" || result.Headers.Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatal("bridge lost actual HTTP response headers")
+		}
+		return result
+	}
+	if request(http.MethodGet, "/v1/me").Status != 200 {
+		t.Fatal("bridge current family was not authenticated")
+	}
+	logout := request(http.MethodPost, "/v1/sessions/logout-all")
+	if logout.Status != 204 || !logout.BodyEmpty || string(logout.Body) != "null" {
+		t.Fatal("bridge did not preserve the actual empty revocation response")
+	}
+	if request(http.MethodGet, "/v1/me").Status != 401 {
+		t.Fatal("bridge family remained authenticated after canonical revocation")
+	}
+	send(map[string]any{"Action": "stop"})
+	_ = stdin.Close()
+	if child.Wait() != nil {
+		t.Fatal("bridge did not stop cleanly")
+	}
+	stopped = true
+}
 
 func TestOwnerContinuationActualProducerBridge(t *testing.T) {
 	if os.Getenv("PORTICO_OWNER_CONTINUATION_BRIDGE") != "1" {
