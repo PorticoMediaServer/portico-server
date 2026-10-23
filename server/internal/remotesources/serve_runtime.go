@@ -1,0 +1,403 @@
+package remotesources
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/rcloneprogram"
+	"portico.local/server/internal/remotemedia"
+	"portico.local/server/internal/storage"
+)
+
+type sourceNetwork struct {
+	Policy      remotemedia.Policy
+	Fingerprint string
+	Native      *nativeSourceAuthority
+}
+
+// sourceNetworkTx reuses durable owner network approvals. An absent record is
+// the existing public-only policy, never content/actor or decode permission.
+// Only enabled library roots belonging to this exact source contribute rules.
+func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root string) (sourceNetwork, error) {
+	out := sourceNetwork{Policy: remotemedia.Policy{Resolver: s.resolver}}
+	var kind string
+	var config []byte
+	if err := tx.QueryRowContext(ctx, `SELECT kind,config FROM remote_sources WHERE id=? AND root=? AND removed=0`, id, root).Scan(&kind, &config); err != nil {
+		return out, err
+	}
+	if len(config) > 64<<10 {
+		return out, storage.ErrRemoteConfig
+	}
+	evidence := []any{kind, hex.EncodeToString(sha256Sum(config))}
+	if kind == "webdav" {
+		c, err := s.privateDAVConfig(config)
+		if err != nil {
+			return out, err
+		}
+		out.Policy.Approvals = append(out.Policy.Approvals, c.Approval)
+	}
+	if kind == "sftp" || kind == "smb" {
+		var err error
+		out.Native, err = s.readNativeSourceAuthority(kind, config)
+		if err != nil {
+			return out, err
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.root,COALESCE(n.revision,0),COALESCE(n.approvals_json,'[]') FROM library_sources s LEFT JOIN library_network_policy n ON n.library_id=s.library_id WHERE s.kind='remote' AND s.enabled=1 ORDER BY s.id`)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	total := 0
+	for rows.Next() {
+		var id, directory, raw string
+		var revision int64
+		if err = rows.Scan(&id, &directory, &revision, &raw); err != nil {
+			return out, err
+		}
+		relative, e := filepath.Rel(root, directory)
+		if e != nil || !filepath.IsLocal(relative) {
+			continue
+		}
+		total += len(raw)
+		if total > 1<<20 || revision < 0 {
+			return out, storage.ErrRemoteConfig
+		}
+		var approvals []remotemedia.Approval
+		if json.Unmarshal([]byte(raw), &approvals) != nil || len(approvals) > 256 {
+			return out, storage.ErrRemoteConfig
+		}
+		out.Policy.Approvals = append(out.Policy.Approvals, approvals...)
+		evidence = append(evidence, []any{id, directory, revision, raw})
+	}
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		return out, err
+	}
+	out.Fingerprint = hex.EncodeToString(sha256Sum(raw))
+	return out, nil
+}
+func sha256Sum(raw []byte) []byte { h := sha256.Sum256(raw); return h[:] }
+
+func sourceObjectSequentialTx(ctx context.Context, tx *sql.Tx, source, path string) (bool, error) {
+	var sequential bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE path=? AND code='range_unsupported')`, source, path).Scan(&sequential)
+	return sequential, err
+}
+
+func sourceSequentialTx(ctx context.Context, tx *sql.Tx, source, root string) (bool, error) {
+	var sequential bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE code='range_unsupported' AND substr(path,1,length(?)+1)=?||'/')`, source, root, root).Scan(&sequential)
+	return sequential, err
+}
+
+func (s *Service) startReadRuntime(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.serveMu.Lock()
+	defer s.serveMu.Unlock()
+	if s.serveClosed {
+		return storage.ErrRemoteOffline
+	}
+	if s.serveLife != nil {
+		return storage.ErrBusy
+	}
+	s.serveLife = ctx
+	return nil
+}
+
+// ensureSourceServe starts only the one upstream-rclone path from retained
+// config. Caller transactions must be closed before this method is reached.
+// The caller's real purpose/target check runs before and after this method.
+func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBinding, expectedEpoch string) (*rcloneprogram.ServeProcess, error) {
+	s.serveMu.Lock()
+	life := s.serveLife
+	slot := s.serveLeases[binding.Observation.SourceID]
+	if slot != nil {
+		process := slot.process
+		same := slot.generation == binding.Observation.Generation && slot.profile == binding.Profile && slot.root == binding.Root
+		s.serveMu.Unlock()
+		if !same {
+			slot.cancel()
+			return nil, storage.ErrRemoteChanged
+		}
+		if process == nil {
+			return nil, storage.ErrBusy
+		}
+		if expectedEpoch != "" && process.Generation() != expectedEpoch {
+			return nil, storage.ErrRemoteOffline
+		}
+		if err := process.Check(ctx); err != nil {
+			return nil, err
+		}
+		return process, nil
+	}
+	closed := s.serveClosed
+	s.serveMu.Unlock()
+	if closed || life == nil || life.Err() != nil {
+		return nil, storage.ErrRemoteOffline
+	}
+	if expectedEpoch != "" {
+		return nil, storage.ErrRemoteOffline
+	}
+	slot, err := s.reserveSourceProcess(life, binding.Observation.SourceID, binding.Observation.Generation, binding.Profile.Revision)
+	if err != nil {
+		return nil, err
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			slot.Release()
+		}
+	}()
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return nil, err
+	}
+	network, err := s.sourceNetworkTx(ctx, snapshot.Tx(), slot.source, slot.root)
+	if err == nil {
+		slot.sequential, err = sourceSequentialTx(ctx, snapshot.Tx(), slot.source, slot.root)
+	}
+	snapshot.Rollback()
+	if err != nil {
+		return nil, err
+	}
+	slot.networkFingerprint = network.Fingerprint
+	material, err := s.serveMaterial(ctx, slot)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(material.Configuration)
+	backend, host, port, err := serveTransport(material.Configuration, material.Remote)
+	if err != nil {
+		return nil, err
+	}
+	var proxy *remotemedia.PolicyProxy
+	if backend == "sftp" || backend == "smb" {
+		// Direct native-scheme approval from this saved source only. Rechecks
+		// cannot pin rclone's later DNS lookup or see its hidden reconnects.
+		if err = s.checkNativeMaterial(ctx, network.Native, backend, host, port, material.Configuration); err != nil {
+			return nil, err
+		}
+	} else {
+		proxy, err = remotemedia.StartPolicyProxy(slot.life, network.Policy, identity.Token(), identity.Token(), slot.Check)
+		if err != nil {
+			return nil, err
+		}
+		slot.proxy = proxy
+	}
+	endpoint, err := privateServePort()
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := privateServePort()
+	if err != nil {
+		return nil, err
+	}
+	if metadata == endpoint {
+		return nil, storage.ErrBusy
+	}
+	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SequentialReads: slot.sequential,
+		Enforce: func(cmd *exec.Cmd) error {
+			if err := slot.Check(ctx); err != nil {
+				return err
+			}
+			if proxy != nil {
+				cmd.Env = append(cmd.Env, "RCLONE_HTTP_PROXY="+proxy.Locator())
+			} else {
+				cmd.Env = append(cmd.Env, "RCLONE_SFTP_HTTP_PROXY=")
+			}
+			return nil
+		}}
+	// Cache controls are existing source facts. Start-only mode always uses the
+	// upstream no-cache path; neither mode creates Portico whole-file spools.
+	if material.CacheBytes > 0 && !slot.sequential {
+		cache, err := os.MkdirTemp(s.private, "serve-cache-")
+		if err != nil {
+			return nil, err
+		}
+		slot.cache = cache
+		spec.CacheDirectory, spec.CacheBytes, spec.CacheFloor = cache, material.CacheBytes, material.CacheFloor
+	}
+	process, err := rcloneprogram.StartServe(life, material.Program, spec, slot)
+	// StartServe consumes/releases custody on every physical success/failure.
+	transferred = true
+	if err != nil {
+		return nil, mapError(err)
+	}
+	if err = slot.Check(ctx); err != nil {
+		process.Stop()
+		return nil, err
+	}
+	s.serveMu.Lock()
+	if s.serveLeases[slot.source] != slot || slot.CheckLocal() != nil {
+		s.serveMu.Unlock()
+		process.Stop()
+		return nil, storage.ErrRemoteOffline
+	}
+	slot.process = process
+	s.serveMu.Unlock()
+	return process, nil
+}
+func privateServePort() (int, error) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+type serveMaterial struct {
+	Program                rcloneprogram.Program
+	Remote                 string
+	Configuration          []byte
+	ApprovedProgramDigest  string
+	CacheBytes, CacheFloor int64
+}
+
+func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (serveMaterial, error) {
+	var out serveMaterial
+	var kind, mount string
+	var raw []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT kind,mount_id,config FROM remote_sources WHERE id=? AND removed=0`, slot.source).Scan(&kind, &mount, &raw); err != nil {
+		return out, err
+	}
+	if managedSourceKind(kind) {
+		if s.mounts == nil || mount == "" {
+			return out, storage.ErrRemoteConfig
+		}
+		captured, err := s.mounts.CaptureServeSource(ctx, mount, slot.generation)
+		if err != nil {
+			return out, err
+		}
+		return serveMaterial{Program: captured.Program, ApprovedProgramDigest: captured.ApprovedProgramDigest, Remote: captured.Remote, Configuration: captured.Configuration, CacheBytes: captured.CacheBytes, CacheFloor: captured.CacheFloor}, nil
+	}
+	if kind != "webdav" || len(raw) > 64<<10 {
+		return out, storage.ErrRemoteConfig
+	}
+	c, err := s.privateDAVConfig(raw)
+	if err != nil {
+		return out, err
+	}
+	program, err := rcloneprogram.Resolve()
+	if err != nil {
+		return out, err
+	}
+	config := "[portico]\ntype=webdav\nurl=" + c.Root + "\nvendor=other\n"
+	if c.Username != "" || c.Password != "" {
+		config += "headers=Authorization,Basic " + base64.StdEncoding.EncodeToString([]byte(c.Username+":"+c.Password)) + "\n"
+	}
+	return serveMaterial{Program: program, Remote: "portico:", Configuration: []byte(config)}, nil
+}
+
+// privateDAVConfig uses the existing bounded private-format opener. Its current
+// format is plain configuration; it creates no key or replacement auth store.
+func (s *Service) privateDAVConfig(stored []byte) (remotemedia.DAVConfig, error) {
+	var c remotemedia.DAVConfig
+	if s.mounts == nil {
+		return c, storage.ErrRemoteConfig
+	}
+	raw, err := s.mounts.Open(stored)
+	if err != nil {
+		return c, storage.ErrRemoteCredentials
+	}
+	defer clear(raw)
+	if json.Unmarshal(raw, &c) != nil {
+		return c, storage.ErrRemoteConfig
+	}
+	_, err = remotemedia.NewDAV(c, s.resolver)
+	return c, err
+}
+
+// serveTransport follows only configured crypt members to the selected backend.
+// Unsupported command/socket/proxy escape hatches never become a native fallback.
+func serveTransport(raw []byte, remote string) (backend, host, port string, err error) {
+	if len(raw) == 0 || len(raw) > 64<<10 {
+		return "", "", "", storage.ErrRemoteConfig
+	}
+	sections := make(map[string]map[string]string)
+	section := ""
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.ContainsAny(line, "\r\x00") {
+			return "", "", "", storage.ErrRemoteConfig
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
+			if section == "" || sections[section] != nil {
+				return "", "", "", storage.ErrRemoteConfig
+			}
+			sections[section] = make(map[string]string)
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		if !ok || section == "" || key == "" {
+			return "", "", "", storage.ErrRemoteConfig
+		}
+		if _, duplicate := sections[section][key]; duplicate {
+			return "", "", "", storage.ErrRemoteConfig
+		}
+		sections[section][key] = value
+	}
+	seen := make(map[string]bool)
+	for range 8 {
+		name, _, ok := strings.Cut(remote, ":")
+		fields := sections[name]
+		if !ok || name == "" || seen[name] || fields == nil {
+			return "", "", "", storage.ErrRemoteConfig
+		}
+		seen[name] = true
+		for key, value := range fields {
+			if strings.HasPrefix(key, "override.") || strings.Contains(key, "command") || key == "ssh" && value != "" || key == "unix_socket" && value != "" || key == "http_proxy" && value != "" || key == "auth_redirect" && value != "false" && value != "" {
+				return "", "", "", storage.ErrRemoteConfig
+			}
+		}
+		backend = fields["type"]
+		switch backend {
+		case "crypt":
+			remote = fields["remote"]
+			continue
+		case "sftp", "smb":
+			host = fields["host"]
+			port = fields["port"]
+			if port == "" {
+				if backend == "sftp" {
+					port = "22"
+				} else {
+					port = "445"
+				}
+			}
+			n, e := strconv.Atoi(port)
+			if host == "" || len(host) > 255 || strings.ContainsAny(host, "/@\\\r\n\x00") || e != nil || n < 1 || n > 65535 {
+				return "", "", "", storage.ErrRemoteConfig
+			}
+		case "s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http":
+		default:
+			return "", "", "", storage.ErrRemoteConfig
+		}
+		return backend, host, port, nil
+	}
+	return "", "", "", storage.ErrRemoteConfig
+}
