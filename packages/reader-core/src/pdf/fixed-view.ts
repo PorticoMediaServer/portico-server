@@ -16,9 +16,16 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   let zoom:Zoom|undefined,scale=1,fittedScale=1,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),signal=AbortSignal.any([lifetime.signal,options.signal]);
-  const direction=()=>format==='cbz'&&preferences.comicDirection!=='file'?preferences.comicDirection:fileDirection;
-  const fit=()=>zoom?.kind==='fit'?zoom.value:format==='pdf'?(preferences.pdfView==='automatic'?'auto':preferences.pdfView):preferences.comicFit;
-  const plan=(at=page)=>planFixedLayout({format,viewport,page:at,pageCount,twoPages:preferences.twoPages,firstPageAlone:preferences.firstPageAlone,direction:direction(),fit:fit()});
+  const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format==='cbz'&&value!=='file'?value:fileDirection;};
+  const fit=():'auto'|'page'|'width'|'height'|'spread'=>{
+    if(zoom?.kind==='fit')return zoom.value;
+    if(format==='pdf'){const value:FixedPreferences['pdfView']=preferences.pdfView;return value==='automatic'?'auto':value;}
+    return preferences.comicFit;
+  };
+  const plan=(at=page)=>{
+    const layout=planFixedLayout({format,viewport,page:at,pageCount,twoPages:preferences.twoPages,firstPageAlone:preferences.firstPageAlone,direction:direction(),fit:fit()});
+    return format==='pdf'&&preferences.pdfView==='automatic'&&zoom?.kind!=='fit'?{...layout,fit:layout.spread?'spread' as const:'page' as const}:layout;
+  };
   const clean=()=>{for(const fn of cleanup.splice(0))fn();};
   async function render(at:number,taskSignal:AbortSignal):Promise<void>{
     if(closed)throw new Error('reader_closed');taskSignal.throwIfAborted();
@@ -53,6 +60,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean}|undefined;
   let pendingTap:{timer:ReturnType<typeof setTimeout>;x:number;y:number;time:number}|undefined;
   const clearTap=()=>{if(pendingTap){clearTimeout(pendingTap.timer);pendingTap=undefined;}};
+  const gestureZoom=(next:Zoom)=>{void view.setZoom!(next,signal).then(()=>{if(!closed)options.onSurfaceInput?.({kind:'activity'});}).catch(()=>{});};
   const distance=()=>{const a=[...pointers.values()];return a.length===2?Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y):undefined;};
   const onDown=(event:PointerEvent)=>{
     options.onSurfaceInput?.({kind:'activity'});
@@ -65,7 +73,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   const onMove=(event:PointerEvent)=>{
     options.onSurfaceInput?.({kind:'activity'});
     if(!pointers.has(event.pointerId))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
-    if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;void view.setZoom!({kind:'scale',value:next},signal).catch(()=>{});}
+    if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;gestureZoom({kind:'scale',value:next});}
     else if(drag){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
   };
   const onUp=(event:PointerEvent)=>{
@@ -87,8 +95,8 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     const target=event.target as HTMLElement;
     options.onSurfaceInput?.({kind:'key',key:event.key,shift:event.shiftKey,alt:event.altKey,ctrl:event.ctrlKey,meta:event.metaKey,editable:!!target.closest?.('input,textarea,select,[contenteditable=true]')||document.getSelection()?.isCollapsed===false,preventDefault:()=>event.preventDefault()});
   };
-  const onWheel=(event:WheelEvent)=>{if(!event.ctrlKey)return;event.preventDefault();void view.setZoom!({kind:'scale',value:Math.max(.05,Math.min(8,scale*Math.exp(-event.deltaY*.002)))},signal).catch(()=>{});};
-  const onDouble=()=>{void view.setZoom!(zoom?.kind==='scale'?{kind:'fit',value:'page'}:{kind:'scale',value:Math.min(8,scale*2)},signal).catch(()=>{});};
+  const onWheel=(event:WheelEvent)=>{if(!event.ctrlKey)return;event.preventDefault();gestureZoom({kind:'scale',value:Math.max(.05,Math.min(8,scale*Math.exp(-event.deltaY*.002)))});};
+  const onDouble=()=>{gestureZoom(zoom?.kind==='scale'?{kind:'fit',value:'page'}:{kind:'scale',value:Math.min(8,scale*2)});};
   const view:ReaderView<P>={
     async navigate(target,taskSignal){
       mutation++;clearTap();
@@ -96,10 +104,17 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       if(target.kind==='next')at=plan().nextPage??page;
       else if(target.kind==='previous')at=plan().previousPage??page;
       else if(target.kind==='progression'){if(!Number.isFinite(target.value)||target.value<0||target.value>1)throw new Error('page_invalid');at=Math.round(target.value*(pageCount-1));}
-      else{if(target.location.format==='epub'||target.location.format!==format)throw new Error('page_invalid');at=target.location.page;}
+      else if(target.kind==='location'){if(target.location.format==='epub'||target.location.format!==format)throw new Error('page_invalid');at=target.location.page;}
+      else throw new Error('page_invalid');
       await render(at,taskSignal);
     },
-    async applyPreferences(next,taskSignal){const own=++mutation,previous=preferences;preferences=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)preferences=previous;throw error;}},
+    async applyPreferences(next,taskSignal){
+      taskSignal.throwIfAborted();const own=++mutation,previous=preferences,before=plan(),left=host.scrollLeft,top=host.scrollTop;preferences=next;
+      const after=plan(),samePages=before.visualPages.join(',')===after.visualPages.join(',');
+      if(samePages&&before.fit===after.fit)return;
+      try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale'){host.scrollLeft=left;host.scrollTop=top;}}
+      catch(error){if(own===mutation)preferences=previous;throw error;}
+    },
     async resize(next,taskSignal){const own=++mutation,previous=viewport;viewport=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)viewport=previous;throw error;}},
     getLocation(){return location;},
     async setZoom(next,taskSignal){
@@ -108,7 +123,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       try{await render(page,taskSignal);host.scrollLeft=Math.max(0,x*scale-viewport.width/2);host.scrollTop=Math.max(0,y*scale-viewport.height/2);}catch(error){if(own===mutation)zoom=previous;throw error;}
     },
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
-    canTurnAtFit(){return scale<=fittedScale+1e-6;},
+    canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
     async pan(position,taskSignal){taskSignal.throwIfAborted();if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');host.scrollLeft=Math.max(0,position.x);host.scrollTop=Math.max(0,position.y);},
     dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
   };

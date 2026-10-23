@@ -1,6 +1,7 @@
 import type {ReaderSource} from '../ports.ts';
 import type {PDFDocumentProxy,PDFPageProxy,PDFWorker} from 'pdfjs-dist/types/src/display/api.d.ts';
 import {pdfRanges} from './ranges.ts';
+import {pdfSequential,type PdfSequentialOpen} from './sequential.ts';
 
 export class PdfInputError extends Error {
   readonly code:'pdf_invalid'|'pdf_limit'|'page_invalid'|'worker_required'|'closed';
@@ -29,37 +30,56 @@ function abortRace<T>(promise:Promise<T>,signal:AbortSignal):Promise<T>{
   });
 }
 export async function openPdf(source:ReaderSource,signal:AbortSignal,options:PdfOptions={}):Promise<PdfEngine>{
+  if(source.sequential){
+    if(source.read||typeof source.sequential.open!=='function')throw new PdfInputError('pdf_invalid');
+    return openPdfEngine(source,signal,options,s=>source.sequential!.open(s));
+  }
+  return openPdfEngine(source,signal,options);
+}
+/** Distinct progressive mode for an authorised, revision-fenced from-start200
+ * stream. No range closure or whole-body data parameter is manufactured. */
+export async function openPdfFromStart(source:ReaderSource,open:PdfSequentialOpen,signal:AbortSignal,options:PdfOptions={}):Promise<PdfEngine>{
+  if(source.read)throw new PdfInputError('pdf_invalid');return openPdfEngine(source,signal,options,open);
+}
+async function openPdfEngine(source:ReaderSource,signal:AbortSignal,options:PdfOptions,sequentialOpen?:PdfSequentialOpen):Promise<PdfEngine>{
   signal.throwIfAborted();
-  if(typeof source.read!=='function'||!source.id||!source.revision||!Number.isSafeInteger(source.size)||source.size<8||source.size>(options.maxBytes??512*1024*1024))throw new PdfInputError('pdf_limit');
+  if(!sequentialOpen&&typeof source.read!=='function'||!source.id||!source.revision||!Number.isSafeInteger(source.size)||source.size<8||source.size>Math.min(options.maxBytes??512*1024*1024,512*1024*1024))throw new PdfInputError('pdf_limit');
   const id=source.id,revision=source.revision,size=source.size;
   const unchanged=()=>{if(source.id!==id||source.revision!==revision||source.size!==size)throw new PdfInputError('pdf_invalid');};
   const life=new AbortController(),combined=AbortSignal.any([signal,life.signal]);
-  const firstEnd=Math.min(source.size,rangeBytes),initial=await source.read({start:0,endExclusive:firstEnd},combined);combined.throwIfAborted();unchanged();
-  if(!(initial instanceof Uint8Array)||initial.byteLength!==firstEnd||!new TextDecoder('latin1').decode(initial.subarray(0,1024)).includes('%PDF-'))throw new PdfInputError('pdf_invalid');
-  const library=await import('pdfjs-dist/legacy/build/pdf.mjs');combined.throwIfAborted();
+  const sequential=sequentialOpen?await pdfSequential(source,sequentialOpen,combined):undefined;
+  const firstEnd=Math.min(source.size,rangeBytes);let initial:Uint8Array;
+  try{initial=sequential?.initial??await source.read!({start:0,endExclusive:firstEnd},combined);combined.throwIfAborted();unchanged();}catch(error){await sequential?.dispose();throw error;}
+  if(!(initial instanceof Uint8Array)||!sequential&&initial.byteLength!==firstEnd||!new TextDecoder('latin1').decode(initial.subarray(0,1024)).includes('%PDF-')){await sequential?.dispose();throw new PdfInputError('pdf_invalid');}
+  let library:typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+  try{library=await import('pdfjs-dist/legacy/build/pdf.mjs');combined.throwIfAborted();}catch(error){await sequential?.dispose();throw error;}
   let nativeWorker:Worker|undefined,worker:PDFWorker|undefined;
-  if(options.workerUrl){nativeWorker=(options.createWorker??((url)=>new Worker(url,{type:'module'})))(options.workerUrl);worker=library.PDFWorker.create({port:nativeWorker});}
-  else if(typeof window!=='undefined')throw new PdfInputError('worker_required');
-  const transport=new library.PDFDataRangeTransport(source.size,new Uint8Array(initial),true);
+  try{if(options.workerUrl){nativeWorker=(options.createWorker??((url)=>new Worker(url,{type:'module'})))(options.workerUrl);worker=library.PDFWorker.create({port:nativeWorker});}
+    else if(typeof window!=='undefined')throw new PdfInputError('worker_required');
+  }catch(error){worker?.destroy();nativeWorker?.terminate();await sequential?.dispose();throw error;}
+  const transport=new library.PDFDataRangeTransport(source.size,new Uint8Array(initial),!sequential);
+  let resolveReady!:()=>void;const ready=new Promise<void>(resolve=>{resolveReady=resolve;}),transportReady=transport.transportReady.bind(transport);
+  transport.transportReady=listener=>{transportReady(listener);resolveReady();};
   let failed:unknown,closed=false;
   let rejectFatal!:(error:unknown)=>void;const fatal=new Promise<never>((_resolve,reject)=>{rejectFatal=reject;});void fatal.catch(()=>{});
   let loading:ReturnType<typeof library.getDocument>|undefined;
   const fail=(error:unknown)=>{if(failed||closed)return;failed=error;rejectFatal(error);life.abort(error);void loading?.destroy().catch(()=>{});};
-  const ranges=pdfRanges(source,{signal:combined,onRange:(start,bytes)=>transport.onDataRange(start,bytes),onError:fail});
-  transport.requestDataRange=(start,end)=>ranges.request(start,end);
-  transport.abort=()=>ranges.dispose();
+  const ranges=sequential?undefined:pdfRanges(source,{signal:combined,onRange:(start,bytes)=>transport.onDataRange(start,bytes),onError:fail});
+  transport.requestDataRange=(start,end)=>{if(ranges)ranges.request(start,end);else fail(new PdfInputError('pdf_invalid'));};
+  transport.abort=()=>{ranges?.dispose();void sequential?.dispose();};
   const abort=()=>{rejectFatal(combined.reason);void dispose().catch(()=>{});};combined.addEventListener('abort',abort,{once:true});
   let disposed:Promise<void>|undefined;
   const dispose=():Promise<void>=>{
-    if(disposed)return disposed;closed=true;ranges.dispose();combined.removeEventListener('abort',abort);life.abort();
-    disposed=(async()=>{try{await loading?.destroy();}finally{worker?.destroy();nativeWorker?.terminate();}})();return disposed;
+    if(disposed)return disposed;closed=true;ranges?.dispose();combined.removeEventListener('abort',abort);life.abort();
+    disposed=(async()=>{try{await sequential?.dispose();await loading?.destroy();}finally{worker?.destroy();nativeWorker?.terminate();}})();return disposed;
   };
   try{
-    loading=library.getDocument({range:transport,length:source.size,rangeChunkSize:rangeBytes,disableStream:true,disableAutoFetch:true,worker,
+    loading=library.getDocument({range:transport,rangeChunkSize:rangeBytes,disableRange:!!sequential,disableStream:!sequential,disableAutoFetch:!sequential,worker,
       stopAtErrors:true,enableXfa:false,maxImageSize:40_000_000,canvasMaxAreaInBytes:64*1024*1024,
       useWorkerFetch:false,...options.cMapUrl?{cMapUrl:options.cMapUrl,cMapPacked:true}:{},...options.standardFontDataUrl?{standardFontDataUrl:options.standardFontDataUrl}:{},...options.wasmUrl?{wasmUrl:options.wasmUrl}:{}});
     // Password challenges fail closed rather than leaving an unresolved loading task.
     loading.onPassword=()=>fail(new PdfInputError('pdf_invalid'));
+    if(sequential)void abortRace(ready,combined).then(()=>sequential.start({chunk(bytes){transport.onDataProgressiveRead(bytes);},done(){transport.onDataProgressiveDone();},error:fail})).catch(fail);
     const document=await abortRace(Promise.race([loading.promise,fatal]),combined);
     if(!Number.isSafeInteger(document.numPages)||document.numPages<1||document.numPages>(options.maxPages??10000))throw new PdfInputError('pdf_limit');
     return Object.freeze({document,library,signal:life.signal,

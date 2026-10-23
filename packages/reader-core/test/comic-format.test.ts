@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {crc32 as nativeCRC,deflateRawSync} from 'node:zlib';
 import {openComicArchive} from '../src/comic/archive.ts';
+import {createComicAdapter} from '../src/comic/adapter.ts';
 import {comicInfo,rasterInfo} from '../src/comic/image.ts';
 import {archiveLimits,crc32,naturalCompare,readDirectory,readEntry} from '../src/comic/zip.ts';
 
@@ -62,4 +63,14 @@ test('image sniffing and XML metadata reject active markup, bad signatures and h
 test('changed source revision and an absent binary reader cannot splice CBZ pages',async()=>{
   const input=source(zip([{name:'a.png',bytes:png}])),archive=await openComicArchive(input,signal());input.revision='changed';await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'archive_invalid'});archive.dispose();
   await assert.rejects(openComicArchive({...input,read:undefined},signal()),{code:'archive_invalid'});
+});
+test('online comics use only the authorised page provider, fence identity and validate preview bounds before I/O',async()=>{
+  const source={id:'online-comic',revision:'v1',size:10000};let reads=0,disposed=0;
+  const adapter=createComicAdapter({pages:async()=>({id:source.id,revision:source.revision,pageCount:1,metadata:{},async page(index,{signal:taskSignal}){taskSignal.throwIfAborted();reads++;return {index,name:'page.png',bytes:png,image:rasterInfo(png)};},dispose(){disposed++;}})});
+  const document=await adapter.open({source,signal:signal()});
+  await assert.rejects(document.page!(-1,{width:300,signal:signal()}),{code:'page_invalid'});assert.equal(reads,0);
+  const preview=await document.page!(0,{width:300,signal:signal()});assert.equal(preview.mime,'image/png');assert.equal(preview.width,1);assert.notEqual(preview.bytes,png);assert.equal(reads,1);
+  source.size++;await assert.rejects(document.page!(0,{width:300,signal:signal()}),{code:'archive_invalid'});assert.equal(reads,1);
+  await document.dispose();await document.dispose();assert.equal(disposed,1);
+  await assert.rejects(createComicAdapter().open({source,signal:signal()}),/comic_provider_required/);
 });

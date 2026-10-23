@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 import {openPdf,pdfText} from '../src/pdf/engine.ts';
 
 function source(bytes:Uint8Array){return {id:'constitution',revision:'test-1',size:bytes.length,async read(range:{start:number;endExclusive:number},signal:AbortSignal){signal.throwIfAborted();return new Uint8Array(bytes.subarray(range.start,range.endExclusive));}};}
@@ -21,7 +22,7 @@ test('PDF bounds, missing binary source, malformed header, short read and cancel
   const input=source(pdf());input.read=async r=>{input.revision='changed';return pdf().subarray(r.start,r.endExclusive);};await assert.rejects(openPdf(input,signal()),{code:'pdf_invalid'});
 });
 test('pdf.js parses actual PDF pages and text; page bounds, revision change and disposal reject',async()=>{
-  const input=source(pdf()),engine=await openPdf(input,signal());
+  const input=source(pdf()),engine=await openPdf(input,signal(),{standardFontDataUrl:fileURLToPath(new URL('standard_fonts/',import.meta.resolve('pdfjs-dist/package.json')))});
   try{
     assert.equal(engine.document.numPages,2);const page=await engine.page(1,signal());assert.equal(page.getViewport({scale:1}).height,792);
     assert.equal(await pdfText(engine,page,signal()),'We the People of the United States');
@@ -29,4 +30,17 @@ test('pdf.js parses actual PDF pages and text; page bounds, revision change and 
     input.revision='changed';await assert.rejects(engine.page(0,signal()),{code:'pdf_invalid'});
   }finally{await engine.dispose();}
   await assert.rejects(engine.page(0,signal()),{code:'closed'});
+});
+test('pdf.js parses a genuine from-start stream without a range method or reopen',async()=>{
+  const bytes=pdf();let opens=0,at=0;
+  const input={id:'constitution',revision:'sequential-1',size:bytes.length,sequential:{async open(signal:AbortSignal){
+    opens++;signal.throwIfAborted();return new ReadableStream<Uint8Array>({pull(controller){
+      signal.throwIfAborted();if(at===bytes.length){controller.close();return;}
+      const end=Math.min(at+128,bytes.length);controller.enqueue(bytes.slice(at,end));at=end;
+    }},{highWaterMark:0});
+  }}};
+  const engine=await openPdf(input,signal(),{standardFontDataUrl:fileURLToPath(new URL('standard_fonts/',import.meta.resolve('pdfjs-dist/package.json')))});
+  try{assert.equal(engine.document.numPages,2);assert.equal(await pdfText(engine,await engine.page(1,signal()),signal()),'We the People of the United States');assert.equal(opens,1);assert.equal(at,bytes.length);}
+  finally{await engine.dispose();}
+  await assert.rejects(openPdf({...input,read:source(bytes).read},signal()),{code:'pdf_invalid'});
 });

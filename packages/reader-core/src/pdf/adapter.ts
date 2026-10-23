@@ -73,10 +73,10 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
             };
           },{...mountOptions,signal:combined,onLocation(location){mountOptions.onLocation({...location,...location.format==='pdf'&&labels?.[location.page]?{pageLabel:labels[location.page]}:{}});}});}catch(error){life.abort();style.remove();throw error;}
           const onSelection=()=>{
-            const selection=owner.getSelection();if(!selection||selection.isCollapsed||!selection.rangeCount)return;
+            const selection=owner.getSelection();if(!selection||selection.isCollapsed||!selection.rangeCount){mountOptions.onSelection(null);return;}
             const element=selection.anchorNode?.parentElement?.closest<HTMLElement>('[data-reader-text]');
-            if(!element||!mountOptions.container.contains(element)||!element.contains(selection.focusNode))return;
-            const page=Number(element.dataset.readerText),text=selection.toString();if(!text||text.length>65536)return;
+            if(!element||!mountOptions.container.contains(element)||!element.contains(selection.focusNode)){mountOptions.onSelection(null);return;}
+            const page=Number(element.dataset.readerText),text=selection.toString();if(!text||text.length>65536){mountOptions.onSelection(null);return;}
             const rects=Array.from(selection.getRangeAt(0).getClientRects()).slice(0,1024).map(r=>({x:r.x,y:r.y,width:r.width,height:r.height}));
             mountOptions.onSelection?.({text,location:position(page,engine.document.numPages),rects});
           };owner.addEventListener('selectionchange',onSelection,{signal:combined});
