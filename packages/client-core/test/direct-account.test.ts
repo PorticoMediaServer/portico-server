@@ -49,6 +49,15 @@ test('invitation client recovers only code and expiry against the current revisi
  assert.deepEqual(link,{code:'x'.repeat(43),expiresAt:'2026-11-01T12:00:00Z'});assert.deepEqual(calls[0],{path:'/v1/admin/access/invitations/fixture/link',method:'POST',body:{expectedRevision:2}});
  await assert.rejects(c.link({id:'fixture',revision:2,state:'accepted'}));assert.equal(calls.length,1);
 });
+test('invitation link preserves only a canonical supplied expected identity and never substitutes an address',async()=>{
+ const {PeopleInvitationsClient}=await import('../src/direct-account.ts');
+ const serverId='srv_'+'A'.repeat(43),base={code:'x'.repeat(43),expiresAt:'2026-11-01T12:00:00Z'};
+ let raw:unknown={...base,serverId,notes:'private'};
+ const c=new PeopleInvitationsClient({request:async<T>()=>raw as T});
+ assert.deepEqual(await c.link({id:'fixture',revision:2,state:'pending'}),{...base,serverId});
+ raw=base;assert.deepEqual(await c.link({id:'fixture',revision:2,state:'pending'}),base);
+ for(const serverId of [null,'https://server.test','srv_'+'B'.repeat(43)]){raw={...base,serverId};await assert.rejects(c.link({id:'fixture',revision:2,state:'pending'}));}
+});
 test('person identity is username first, profile only when different and Private viewer stays private',async()=>{
  const {personIdentity}=await import('../src/direct-account.ts');
  assert.deepEqual(personIdentity('fixture_user','Kids'),{username:'fixture_user',profileName:'Kids'});

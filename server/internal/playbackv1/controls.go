@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"strconv"
-	"time"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/streamlimits"
 )
 
 type ControlCommand struct {
@@ -200,10 +200,13 @@ func (s *Service) AccountStreamLimit(ctx context.Context, c Caller) (StreamLimit
 		return out, err
 	}
 	defer tx.Rollback()
-	if err = tx.QueryRowContext(ctx, `SELECT per_account_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&out.Limit); err != nil {
-		return out, err
+	streams, e := streamlimits.ReadTx(ctx, tx, c.Principal.AccountID)
+	if e != nil {
+		return out, e
 	}
-	stamp := s.now().UTC().Format(time.RFC3339)
-	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions ps JOIN authorization_access auth ON auth.hash=ps.session_hash WHERE ps.state NOT IN('stopped','ended','failed') AND ps.expires_at>? AND auth.expires_at>? AND auth.revoked=0 AND auth.authority=? AND ps.account_id=? AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id WHERE pp.session_id=ps.id AND owner.state NOT IN('stopped','ended','failed'))`, stamp, stamp, c.Principal.Authority, c.Principal.AccountID).Scan(&out.Playing)
+	if streams.EffectiveLimit != nil {
+		out.Limit = int64(*streams.EffectiveLimit)
+	}
+	out.Playing, err = streamlimits.CountTx(ctx, tx, c.Principal.Authority, c.Principal.AccountID, true, s.now(), "", "")
 	return out, err
 }
