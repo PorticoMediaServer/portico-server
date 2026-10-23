@@ -11,12 +11,25 @@ import (
 	"time"
 )
 
-func TestBackgroundWindowsNeverPauseWork(t *testing.T) {
-	p := workpolicy.Policy{Windows: []workpolicy.Window{{Enabled: true, Days: []string{"monday"}, StartMinute: 23 * 60, DurationMinutes: 120, Timezone: "UTC", Tasks: []string{"analysis"}}}}
-	for _, task := range []string{"analysis", "trickplay", "library-scan", "capture", "playback", "erasure"} {
-		if !workpolicy.Allowed(p, task, time.Now()) {
-			t.Fatal("maintenance window paused work", task)
+func TestHeavyWindowLeavesLightWorkRunning(t *testing.T) {
+	at := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	p := workpolicy.Policy{Windows: []workpolicy.Window{{Enabled: true, Days: []string{"monday"}, StartMinute: 60, DurationMinutes: 300, Timezone: "UTC", Tasks: []string{"analysis", "trickplay"}}}}
+	for _, task := range []string{"analysis", "trickplay"} {
+		if workpolicy.Allowed(p, task, at) {
+			t.Fatal("heavy work outside window", task)
 		}
+		if !workpolicy.Allowed(p, task, at.Add(-10*time.Hour)) {
+			t.Fatal("heavy work inside window refused", task)
+		}
+	}
+	for _, task := range []string{"light-analysis", "library-scan", "metadata-refresh", "capture", "playback", "erasure"} {
+		if !workpolicy.Allowed(p, task, at) {
+			t.Fatal("light work paused", task)
+		}
+	}
+	p.Windows[0].Enabled = false
+	if !workpolicy.Allowed(p, "analysis", at) {
+		t.Fatal("Any time refused")
 	}
 }
 func TestAdmissionReadsDurablePolicyAfterReopen(t *testing.T) {

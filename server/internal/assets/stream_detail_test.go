@@ -39,8 +39,11 @@ func TestStreamDetailParsesPlanningFacts(t *testing.T) {
 func TestDolbyVisionSideData(t *testing.T) {
 	var s probeStreamDetail
 	s.ColorTransfer = "smpte2084"
-	s.SideData = append(s.SideData, probeSideData{Type: "DOVI configuration record", Profile: 8, Level: 6, Compatibility: 1})
+	s.SideData = append(s.SideData, probeSideData{Type: "DOVI configuration record", Profile: 8, Level: 6, Compatibility: 1, RPU: 1, BaseLayer: 1})
 	d := streamDetail("video", "hevc", 3840, 2160, s)
+	if d.DolbyVisionRPU || d.DolbyVisionBaseLayer || d.DolbyVisionMetadataKnown {
+		t.Fatal("configuration flags became actual packet observations")
+	}
 	if d.DynamicRange != RangeDolbyVision || d.DolbyVisionProfile != 8 || d.DolbyVisionCompatibility != 1 {
 		t.Fatalf("dolby vision misread: %+v", d)
 	}
