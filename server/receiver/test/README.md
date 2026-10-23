@@ -31,7 +31,11 @@ The checks require actual decoded video frames, matching HTML/CAF clocks,
 pause stability, seek/resume, Stop, then natural MP3 completion through the
 ordinary server `:advance` response into real FLAC playback. Missing/interrupt
 completion cannot count as natural advance. Grant-bearing media URLs must stay
-out of CAF/custom status. Page errors are failures. Browser shutdown is in
+out of CAF/custom status. When the selected MAIN source includes the composed
+view, read-only DOM observations also require its real VIDEO element without
+controls, catalogue year, pause pill/overlay, Stop idle, distinct next-song
+artist/album, loaded fonts and no CSP violation. A MutationObserver records the
+view transitions; it never calls presentation methods or drives clocks/events. Page errors are failures. Browser shutdown is in
 `finally`; remove the owned scratch directory after the qualification round.
 
 `--diagnostic-empty-style` appends a candidate empty-style hash exception to the
