@@ -113,8 +113,8 @@ export function HomeScreen(bindings: HomeBindings) {
     const timers = [300, 8000].map(delay => setTimeout(() => setElapsed(Date.now() - started), Math.max(0, delay - (Date.now() - started))));
     return () => timers.forEach(clearTimeout);
   }, [snapshot.document, started]);
-  if (!document && snapshot.phase === 'error') return <StateLayout title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning" contentStyle={{top: width >= 1024 ? 470 : 250}}
-    primary={{id: 'retry', icon: 'i-retry', label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}}
+  if (!document && snapshot.phase === 'error') return <StateLayout className={styles.home} title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} icon="i-warn" tone="warning" contentStyle={{top: width >= 1024 ? 470 : 250}}
+    primary={{id: 'retry', icon: width >= 1024 ? 'i-retry' : undefined, label: t('next.states.tryAgain'), onPress: () => { void service.retry(); }}}
     secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.effects.openHome ?? (() => {void service.retry();})}}/>;
   if (!document) return <HomeSkeleton elapsedMs={elapsed} window={{width, height: window.innerHeight, scrollTop: window.scrollY}}
     slowNotice={bindings.serverName ? <div className={styles.slowNotice} role="status"><span className={styles.waitingDot}/><span><b>{t('next.states.stillLoading')}</b>{' '}{t('next.states.slowConnection', {server: bindings.serverName})}</span></div> : undefined}/>;
