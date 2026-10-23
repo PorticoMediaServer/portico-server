@@ -178,7 +178,7 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 			c.SubtitleSelection = "disabled"
 		}
 		_ = tx.QueryRowContext(ctx, `SELECT version_id FROM prepared_media_session_pins WHERE session_id=?`, session).Scan(&c.PreparedVersionID)
-		c.QualityID = "auto"
+		c.QualityID = "original"
 		if plan, planErr := loadDeliveryPlan(tx, session); planErr == nil && plan != nil && plan.QualityID != "" {
 			c.QualityID = plan.QualityID
 		}

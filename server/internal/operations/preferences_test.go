@@ -267,3 +267,40 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 		t.Fatal(effects)
 	}
 }
+
+func TestQualityDefaultsR25StoredOriginalProvenance(t *testing.T) {
+	s, p, a := consoleFixture(t)
+	ctx := context.Background()
+	out, err := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "mobile", ExpectedRevision: 1, IdempotencyKey: "explicit-original", Values: PreferencePatch{"quality.remote": "original"}})
+	if err != nil || out.Effective.Text("quality.remote") != "original" {
+		t.Fatal(out, err)
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	values, sources, _, err := EffectivePreferences(tx, p.Viewer, "mobile")
+	if err != nil || values.Text("quality.home") != "original" || sources["quality.home"] != "default" || sources["quality.remote"] != ScopeDeviceClass {
+		t.Fatal(values, sources, err)
+	}
+}
+
+func TestQualityDefaultsR25ServerCapRegistry(t *testing.T) {
+	defaults := DefaultSettings()
+	if defaults.RemoteBitrateLimitKbps != 0 || defaults.UploadCapacityKbps != 0 {
+		t.Fatal(defaults)
+	}
+	found := 0
+	for _, field := range Registry() {
+		if field.ID == "remoteBitrateLimitKbps" || field.ID == "uploadCapacityKbps" {
+			found++
+			if field.Default != 0 {
+				t.Fatal(field)
+			}
+		}
+	}
+	if found != 2 {
+		t.Fatal(found)
+	}
+}

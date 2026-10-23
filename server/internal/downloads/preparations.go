@@ -35,7 +35,8 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 	if !validID.MatchString(r.OperationID) || (r.VersionID != "" && (!validID.MatchString(r.VersionID) || r.MediaID == "" || len(r.MediaIDs) > 0 || r.NextAfterMediaID != "")) {
 		return out, ErrInput
 	}
-	if e := preparationQuality(r.Quality); e != nil {
+	r.Quality = r.Quality.withDefault()
+	if e := preparationQuality(string(r.Quality)); e != nil {
 		return out, e
 	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassForegroundTransfer)
@@ -162,7 +163,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
-		quality := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), r.Quality, found)
+		quality := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), string(r.Quality), found)
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:

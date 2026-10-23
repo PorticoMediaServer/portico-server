@@ -112,7 +112,7 @@ func OffersRevision(sourceID string, rungs []QualityRung, policy ResolvedDeliver
 // disabled id is refused; the caller republishes the set rather than guessing.
 func SelectedRung(rungs []QualityRung, id string) (QualityRung, bool) {
 	if id == "" {
-		id = "automatic"
+		id = "original"
 	}
 	for _, r := range rungs {
 		if r.ID == id {

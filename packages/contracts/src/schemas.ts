@@ -9638,6 +9638,18 @@ export const schemas = {
         "type": "string"
       },
       "quality": {
+        "default": "original",
+        "enum": [
+          "original",
+          "automatic",
+          "2160p",
+          "1080p-high",
+          "1080p-low",
+          "720p-high",
+          "720p-low",
+          "480p",
+          "240p"
+        ],
         "type": "string"
       },
       "versionId": {
@@ -9645,8 +9657,7 @@ export const schemas = {
       }
     },
     "required": [
-      "operationId",
-      "quality"
+      "operationId"
     ],
     "type": "object"
   },
@@ -9927,6 +9938,18 @@ export const schemas = {
         "type": "object"
       },
       "quality": {
+        "default": "original",
+        "enum": [
+          "original",
+          "automatic",
+          "2160p",
+          "1080p-high",
+          "1080p-low",
+          "720p-high",
+          "720p-low",
+          "480p",
+          "240p"
+        ],
         "type": "string"
       },
       "target": {
@@ -9958,7 +9981,6 @@ export const schemas = {
       "operationId",
       "target",
       "deviceId",
-      "quality",
       "policy"
     ],
     "type": "object"

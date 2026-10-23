@@ -11232,6 +11232,18 @@
             "type": "string"
           },
           "quality": {
+            "default": "original",
+            "enum": [
+              "original",
+              "automatic",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
             "type": "string"
           },
           "versionId": {
@@ -11239,8 +11251,7 @@
           }
         },
         "required": [
-          "operationId",
-          "quality"
+          "operationId"
         ],
         "type": "object"
       },
@@ -11527,6 +11538,18 @@
             "type": "object"
           },
           "quality": {
+            "default": "original",
+            "enum": [
+              "original",
+              "automatic",
+              "2160p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
+              "480p",
+              "240p"
+            ],
             "type": "string"
           },
           "target": {
@@ -11558,7 +11581,6 @@
           "operationId",
           "target",
           "deviceId",
-          "quality",
           "policy"
         ],
         "type": "object"
@@ -275003,6 +275025,18 @@
                     "type": "string"
                   },
                   "quality": {
+                    "default": "original",
+                    "enum": [
+                      "original",
+                      "automatic",
+                      "2160p",
+                      "1080p-high",
+                      "1080p-low",
+                      "720p-high",
+                      "720p-low",
+                      "480p",
+                      "240p"
+                    ],
                     "type": "string"
                   },
                   "versionId": {
@@ -275010,8 +275044,7 @@
                   }
                 },
                 "required": [
-                  "operationId",
-                  "quality"
+                  "operationId"
                 ],
                 "type": "object"
               }
@@ -277949,6 +277982,18 @@
                     "type": "object"
                   },
                   "quality": {
+                    "default": "original",
+                    "enum": [
+                      "original",
+                      "automatic",
+                      "2160p",
+                      "1080p-high",
+                      "1080p-low",
+                      "720p-high",
+                      "720p-low",
+                      "480p",
+                      "240p"
+                    ],
                     "type": "string"
                   },
                   "target": {
@@ -277980,7 +278025,6 @@
                   "operationId",
                   "target",
                   "deviceId",
-                  "quality",
                   "policy"
                 ],
                 "type": "object"

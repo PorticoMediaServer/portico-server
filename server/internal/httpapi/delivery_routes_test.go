@@ -55,7 +55,7 @@ func TestDeliveryPolicyRouteResolvesTheViewersLane(t *testing.T) {
 	if local["preferenceLane"] != playback.QualityHome || local["qualityMode"] != playback.QualityOriginal {
 		t.Fatal(local["preferenceLane"], local["qualityMode"])
 	}
-	// A declared transport is kept for diagnostics and changes no decision.
+	// Transport selects the unsaved cellular video default without changing locality or caps.
 	for _, transport := range []string{"wifi", "cellular"} {
 		if hinted := read("192.168.4.10:51000", transport); hinted["networkClass"] != string(playback.NetworkLocal) || hinted["transportClass"] != transport || hinted["allowHDR"] != true {
 			t.Fatal("a transport hint changed a home-network decision", hinted)

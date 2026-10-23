@@ -249,7 +249,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
-	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), AuthorizeItem: func(ctx context.Context, item string) error {
+	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), TransportClass: d.deliveryContext(q).TransportClass, AuthorizeItem: func(ctx context.Context, item string) error {
 		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
 	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
@@ -297,15 +297,12 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 		return "", err
 	}
 	defer done()
-	values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
+	values, sources, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
 	if err != nil {
 		return "", err
 	}
-	key := "quality." + playback.QualityHome
-	if d.requestIsRemote(q) {
-		key = "quality." + playback.QualityRemote
-	}
-	return values.Text(key), nil
+	class, _ := playback.NetworkClassOf(d.requestIsRemote(q))
+	return playback.SavedQualityPreference(playback.WithPreferenceSources(values, sources), class), nil
 }
 
 // replanCeilingsAt is what admission would allow this caller's connection right
@@ -351,7 +348,7 @@ func (d Dependencies) v1Remote(q *http.Request) bool {
 // v1Reach is a preview's reach: the same remote flag and member cap a start
 // from this connection would get, read without admitting anything.
 func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.Reach {
-	reach := playbackv1.Reach{Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
+	reach := playbackv1.Reach{SavedQuality: playback.QualityOriginal, TransportClass: d.deliveryContext(q).TransportClass, Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
 	if saved, err := d.savedQuality(q, p); err == nil {
 		reach.SavedQuality = saved
 	}

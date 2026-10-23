@@ -321,7 +321,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		p.Engine = EngineNative
 	}
 	if p.QualityID == "" {
-		p.QualityID = "automatic"
+		p.QualityID = "original"
 	}
 	defer func() {
 		if err == nil {
