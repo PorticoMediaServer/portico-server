@@ -43,7 +43,7 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
         <AuthPasswordField name="confirm-password" label={t('web.reset.confirm')} autoComplete="new-password" value={confirm}
           onChange={event => { setConfirm(event.currentTarget.value); setMismatch(false); }} required disabled={busy} error={mismatch ? t('web.reset.mismatch') : undefined} />
         <TextField variant="auth" name="one-time-code" label={<ServicesLabel detail={t('field.optional')}>{t('web.reset.factor')}</ServicesLabel>}
-          autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} placeholder="123 456" disabled={busy}
+          autoComplete="one-time-code" value={factor} onChange={event => setFactor(event.currentTarget.value)} placeholder={t('services.factor.placeholder')} disabled={busy}
           description={<><span className={styles.desktopOnly}>{t('web.reset.factorHelp')}</span><span className={styles.phoneOnly}>{t('services.reset.factorHelpPhone')}</span></>}
           error={factorWrong ? t('signIn.error.codeInvalid') : undefined} />
         {error && !factorWrong && !passwordWrong ? <AuthError error={error} /> : null}

@@ -1,12 +1,12 @@
 import {Fragment, type ReactNode} from 'react';
-import {createI18n, parseMessage} from '@i18n';
+import {createI18n, deviceRegion, resolveRegion, parseMessage} from '@i18n';
 import type {IdentityProvider} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {Icon, type IconName} from '../Icon';
 import {AuthStage} from './AuthStage';
 import styles from './services-auth.module.css';
 
-const t = createI18n().t;
+const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
 export function ServicesAuthStage({children, variant = 'auth'}: {children: ReactNode; variant?: 'auth' | 'signup' | 'reset' | 'state'}) {
   return <AuthStage service legal shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
@@ -44,6 +44,13 @@ export function ServicesDivider({children}: {children: ReactNode}) { return <div
 export function ServicesPair({children}: {children: ReactNode}) { return <div className={styles.pair}>{children}</div>; }
 export function ServicesHint({children}: {children: ReactNode}) { return <p className={styles.hint}>{children}</p>; }
 export function ServicesTerms() {
-  const message = createI18n().t('services.signup.agreement', {terms: '{terms}', privacy: '{privacy}'});
+  const message = t('services.signup.agreement', {terms: '{terms}', privacy: '{privacy}'});
   return <p className={styles.terms}>{parseMessage(message).map((part, index) => part.kind === 'text' ? <Fragment key={index}>{part.value}</Fragment> : part.kind === 'arg' && part.name === 'terms' ? <a key={index} href="https://getportico.tv/terms">{t('services.signup.terms')}</a> : part.kind === 'arg' && part.name === 'privacy' ? <a key={index} href="https://getportico.tv/privacy">{t('services.signup.privacy')}</a> : null)}</p>;
 }
+export function ServicesFacts({items}: {items: readonly {id: string; label: ReactNode; value: ReactNode}[]}) {
+  return <dl className={styles.facts}>{items.map(item => <div key={item.id}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>;
+}
+export function ServicesCodeChip({label, code}: {label: ReactNode; code: string}) {
+  return <div className={styles.codeChip}><Icon name="i-tv" size={18} />{label}<b>{code}</b></div>;
+}
+export function ServicesAccountLine({children}: {children: ReactNode}) { return <p className={styles.accountLine}>{children}</p>; }
