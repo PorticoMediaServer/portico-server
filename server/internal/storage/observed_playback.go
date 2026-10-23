@@ -91,6 +91,10 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 			return nil, err
 		}
 	}
+	managed, err := c.managedRecording(setup, path)
+	if err != nil {
+		return nil, err
+	}
 	timeout := c.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -99,7 +103,7 @@ func (c *Client) OpenObservedPlayback(setup context.Context, lease *RootLease) (
 	stopLease := context.AfterFunc(lease.Lifetime, cancel)
 	input, writer := io.Pipe()
 	f := &ObservedPlaybackReader{owner: lease.Lifetime, life: life, cancel: cancel, input: writer, calls: make(chan observedCall), timeout: timeout}
-	req := request{Operation: "playback-observed", Path: lease.RootPath, ManagedArtifact: c.managedRecording(filepath.Join(lease.RootPath, lease.RelativePath)), ObservedRegistrationID: lease.RegistrationID, ObservedRelativePath: lease.RelativePath}
+	req := request{Operation: "playback-observed", Path: lease.RootPath, ManagedArtifact: managed, ObservedRegistrationID: lease.RegistrationID, ObservedRelativePath: lease.RelativePath}
 	if lease.MountPath != "" {
 		req.MountedRoot, req.ExpectedMountIdentity = lease.MountPath, lease.MountIdentity
 	} else if c.MountedRoot != nil {
