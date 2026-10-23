@@ -236,6 +236,11 @@ func (s *Store) Guide(ctx context.Context, a Authority, q livechannels.GuideQuer
 			out.Channels = append(out.Channels, ch)
 			out.Sources = append(out.Sources, livechannels.GuideSource{ID: p.channel.Config.ID, Name: p.channel.Config.Name, Generation: p.channel.Generation, PublishedAt: time.UnixMilli(published).UTC().Format(time.RFC3339), AvailableStart: time.UnixMilli(start).UTC().Format(time.RFC3339Nano), AvailableEnd: time.UnixMilli(end).UTC().Format(time.RFC3339Nano), Provenance: livechannels.LibraryChannel, RefreshState: p.channel.State})
 		}
+		if q.MarkChannels != nil {
+			if e := q.MarkChannels(ctx, tx, out.Channels); e != nil {
+				return e
+			}
+		}
 		if len(visible) > 0 {
 			flat := []livechannels.Programme{}
 			for _, c := range out.Channels {
