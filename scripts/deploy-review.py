@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--cycle", required=True)
     parser.add_argument("--stage-only", action="store_true")
     parser.add_argument("--activate-only", action="store_true")
+    parser.add_argument("--runtime-root", help="installed qualified full Linux bundle for this fresh stage")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         parser.error("a full published MAIN commit is required")
@@ -29,6 +30,8 @@ def main():
         parser.error("cycle must be a safe review- name")
     if args.stage_only == args.activate_only:
         parser.error("choose --stage-only, then --activate-only after public setup")
+    if args.runtime_root and (not args.stage_only or not re.fullmatch(r"/opt/portico/media-runtimes/[a-z0-9-]{1,64}/bundle", args.runtime_root)):
+        parser.error("runtime root must be a safe installed bundle used only with --stage-only")
     directory = "/opt/portico/demo-releases/" + args.cycle
     state = "/var/lib/portico-" + args.cycle
     environment = "/etc/portico-" + args.cycle + ".env"
@@ -56,7 +59,7 @@ install -d -o portico -g portico -m700 "$2" "$2/cache-home"
         with web.open("rb") as stream:
             subprocess.run(["ssh", "-o", "BatchMode=yes", "portico-demo",
                             "tar -xf - --no-same-owner -C " + shlex.quote(directory + "/web")], stdin=stream, check=True)
-        remote(STAGE, directory, state, environment, args.commit, digest)
+        remote(STAGE, directory, state, environment, args.commit, digest, args.runtime_root or "")
     else:
         remote(ACTIVATE, directory, state, environment, args.commit, args.cycle)
 
@@ -70,8 +73,16 @@ import json,sys
 with open(sys.argv[1],'w') as out:json.dump({'commit':sys.argv[2],'client':'web-next','purpose':'review'},out)
 PY
 umask 077
-ffmpeg=$(sed -n 's/^PORTICO_FFMPEG=//p' /etc/portico-demo-20261017.env)
-ffprobe=$(sed -n 's/^PORTICO_FFPROBE=//p' /etc/portico-demo-20261017.env)
+if [ -n "${6:-}" ]; then
+ runtime=$6
+ test -f "$runtime/toolchain-manifest.json"; test -f "$runtime/corresponding-source.tar.xz"
+ test -f "$runtime/NOTICE.md"; test -f "$runtime/LICENSES/portico-disc.txt"
+ test -x "$runtime/bin/portico-disc"
+ ffmpeg=$runtime/bin/ffmpeg; ffprobe=$runtime/bin/ffprobe
+else
+ ffmpeg=$(sed -n 's/^PORTICO_FFMPEG=//p' /etc/portico-demo-20261017.env)
+ ffprobe=$(sed -n 's/^PORTICO_FFPROBE=//p' /etc/portico-demo-20261017.env)
+fi
 test -x "$ffmpeg"; test -x "$ffprobe"
 install -d -o portico -g portico -m700 /var/cache/portico
 cat > "$environment" <<ENV
