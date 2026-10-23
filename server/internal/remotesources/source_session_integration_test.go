@@ -159,6 +159,19 @@ func TestSourceControllerRealSharedProcessAndScanPublication(t *testing.T) {
 			if observed.Snapshot().Size != int64(len(payload)) || ref.Revision != 1 {
 				t.Fatal(observed.Snapshot(), ref)
 			}
+			b, _, _ := f.s.find(f.file)
+			listingID := "streamed-directory"
+			if _, err = f.s.db.ExecContext(ctx, `INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,created_at) VALUES(?,?,'remote','1',?,0)`, listingID, f.job, b.Root); err != nil {
+				t.Fatal(err)
+			}
+			if err = f.s.buildServeSnapshot(ctx, process, b, "", listingID, "1"); err != nil {
+				t.Fatal("actual inventory streaming snapshot", err)
+			}
+			var ready bool
+			var children int
+			if err = f.s.db.QueryRowContext(ctx, `SELECT ready,(SELECT COUNT(*) FROM remote_listing_entries WHERE listing_id=?) FROM remote_listing_sessions WHERE id=?`, listingID, listingID).Scan(&ready, &children); err != nil || !ready || children != 1 {
+				t.Fatal("incomplete streaming snapshot published", ready, children, err)
+			}
 			first := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 			defer first.Close()
 			second := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})

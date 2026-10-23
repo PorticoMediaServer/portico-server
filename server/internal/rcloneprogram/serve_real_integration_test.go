@@ -74,6 +74,16 @@ func TestLockedRcloneServeLifecycleAndObservableReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	listed := 0
+	if err = endpoint.VisitSnapshot(ctx, "", process.Check, func(entry remotemedia.DAVEntry) error {
+		if entry.Relative != "episode.mkv" || entry.Size != int64(len(before)) || entry.Directory {
+			t.Fatal("real streaming listing changed child facts", entry)
+		}
+		listed++
+		return nil
+	}); err != nil || listed != 1 {
+		t.Fatal("real complete streaming listing", listed, err)
+	}
 	stat, err := endpoint.Stat(ctx, "episode.mkv", process.Check)
 	if err != nil {
 		t.Fatal("real stat", err)
