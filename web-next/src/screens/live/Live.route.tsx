@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
-import {dayStarts, localDayStart, layoutRow, legacyChannel, pxPerMsFor, rulerTicks, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
+import {dayStarts, localDayStart, layoutRow, legacyChannel, legacyChannelRow, legacyProgram, pxPerMsFor, rulerTicks, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {dayPrimeTime} from '@core/channel-guide.ts';
 import type {GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
@@ -22,7 +22,7 @@ import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
 const nowStart = () => Math.floor(Date.now() / halfHour) * halfHour;
-type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme: GuideProgram}>;
+type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme?: GuideProgram}>;
 function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const context = useLibraryScreenContext(captured), search = parseLiveScreenSearch(useSearch({from: '/live'})), width = useShellWidth();
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -46,12 +46,25 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   for (const source of selectedSources) for (const group of source.groupCounts) groupCounts.set(group.name, (groupCounts.get(group.name) ?? 0) + group.count);
   const groups = [...groupCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const searchKey = JSON.stringify(search);
-  const navigate = useCallback((change: Partial<LiveScreenSearch>) => {if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), ...change}, replace: true, resetScroll: false}).catch(context.effects.reportError);}, [context, searchKey]);
+  const navigate = useCallback((change: Partial<LiveScreenSearch>) => {
+    const filtersChanged = ['sourceId', 'kind', 'group', 'favorites', 'q'].some(key => Object.hasOwn(change, key));
+    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), ...(filtersChanged ? {channelId: undefined} : {}), ...change}, replace: true, resetScroll: false}).catch(context.effects.reportError);
+  }, [context, searchKey]);
   const [draft, setDraft] = useState(search.q ?? '');
   useEffect(() => setDraft(search.q ?? ''), [search.q]);
   useEffect(() => {if (draft === (search.q ?? '')) return;const timer = setTimeout(() => navigate({q: draft.trim() || undefined}), 180);return () => clearTimeout(timer);}, [draft, search.q, navigate]);
   const [start, setStart] = useState(nowStart), [now, setNow] = useState(Date.now), [selected, setSelected] = useState<Selected>();
   useEffect(() => {const timer = setInterval(() => setNow(Date.now()), 30_000);return () => clearInterval(timer);}, []);
+  useEffect(() => {
+    if (!search.sourceId || !search.channelId || search.kind !== 'live-source' && search.kind !== 'library-channel') return;
+    const request = new AbortController();
+    void owner.selectedChannel({sourceId: search.sourceId, channelId: search.channelId, provenance: search.kind}, request.signal).then(channel => {
+      if (!channel || request.signal.aborted || !owner.life.current()) return;
+      const time = Date.now(), programme = channel.programmes.find(programme => Date.parse(programme.start) <= time && time < Date.parse(programme.end)) ?? channel.programmes[0];
+      setSelected({owner, channel: legacyChannelRow(channel), ...(programme ? {programme: legacyProgram(programme)} : {})});
+    }).catch(error => {if (!request.signal.aborted) context.effects.reportError(error);});
+    return () => request.abort();
+  }, [context, owner, search.sourceId, search.channelId, search.kind]);
   const viewport = useRef<HTMLDivElement>(null), [windowSize, setWindowSize] = useState({width: 1, height: 480}), [scrollTop, setScrollTop] = useState(0);
   useLayoutEffect(() => {
     const element = viewport.current;if (!element) return;
@@ -95,12 +108,12 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const days = through === undefined ? [] : dayStarts(now, through, timezone);
   const view = search.view ?? 'guide', hasSources = !!sources?.length;
   const body = currentSelection && <>
-    <p className={styles.facts}>{facts(currentSelection.programme).map(part => <span key={part.id}>{part.text}</span>)}</p>
-    {currentSelection.programme.description && <p>{currentSelection.programme.description}</p>}
-    {currentSelection.programme.image && <Artwork source={context.artwork.foreground(currentSelection.programme.image, 640, 16 / 9)} alt=""/>}
+    {currentSelection.programme ? <p className={styles.facts}>{facts(currentSelection.programme).map(part => <span key={part.id}>{part.text}</span>)}</p> : <p>{t('guide.noInformation')}</p>}
+    {currentSelection.programme?.description && <p>{currentSelection.programme.description}</p>}
+    {currentSelection.programme?.image && <Artwork source={context.artwork.foreground(currentSelection.programme.image, 640, 16 / 9)} alt=""/>}
   </>;
   const footer = currentSelection && currentSelection.channel.tuneAvailable && captured.binding.playback
-    ? <Button variant="primary" icon="i-play" onClick={() => play(currentSelection.channel)}>{t(currentSelection.programme.start > now ? 'guide.watchChannel' : 'guide.watchLive')}</Button> : undefined;
+    ? <Button variant="primary" icon="i-play" onClick={() => play(currentSelection.channel)}>{t(!currentSelection.programme || currentSelection.programme.start > now ? 'guide.watchChannel' : 'guide.watchLive')}</Button> : undefined;
   if (authorityFailure) return <ScreenProblem context={context} error={authorityFailure} retry={() => setAttempt(value => value + 1)}/>;
   return <section className={styles.live}>
     <header className={styles.header}><h1>{t('next.home.shell.live')}</h1>
@@ -151,7 +164,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
                       {now >= start && now < end && <i className={styles.nowLine} style={{left: (now - start) * scale}}/>}
                       {cells.map(cell => <button key={`${cell.start}:${cell.end}`} className={styles.cell} data-state={cell.state} data-gap={cell.kind === 'gap' || undefined} data-tier={cell.tier}
                         style={{left: cell.x, width: cell.width}} type="button" aria-label={cell.program?.title ?? t('guide.noInformation')}
-                        onClick={() => {if (cell.program && owner.life.current()) setSelected({owner, channel, programme: cell.program});}}>
+                        onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme: cell.program});}}>
                         <b>{cell.program?.title ?? t('guide.noInformation')}</b>{cell.tier === 'full' && cell.program && <small>{facts(cell.program).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new', 'premiere', 'recording'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</small>}
                       </button>)}
                     </> : <div className={styles.listPrograms}>{programs.filter(programme => programme.end > now).slice(0, 3).map(programme => <button key={programme.id} type="button" onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme});}}><small>{defaultI18n.time(programme.start)}</small><b>{programme.title}</b><span>{facts(programme).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</span></button>)}</div>}</div>
@@ -161,8 +174,8 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
             </div>
           </div>
         </>}
-    {phone ? <BottomSheet open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme.title} description={currentSelection?.channel.name} footer={footer}>{body}</BottomSheet>
-      : <SidePanel open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme.title} description={currentSelection?.channel.name} footer={footer}>{body}</SidePanel>}
+    {phone ? <BottomSheet open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</BottomSheet>
+      : <SidePanel open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</SidePanel>}
   </section>;
 }
 function LiveRouteScreen() {
