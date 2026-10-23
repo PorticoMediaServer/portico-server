@@ -93,6 +93,16 @@ test('provider options expose per-app Apple configuration without granting an as
  const tx={transactionId:'tx_A',provider:'apple',mode:'login',status:'verified',expiresAt:'2030-01-01T00:00:00Z',contactVerified:true,needsUsername:true,onboardingToken:'opaque'};
  assert.equal(parseIdentityTransaction(tx,'tx_A').onboardingToken,'opaque');assert.throws(()=>parseIdentityTransaction(tx,'tx_B'));
 });
+test('provider email is optional and comes only from a verified current transaction fact',()=>{
+ const tx={transactionId:'tx_A',provider:'apple',mode:'login',status:'onboarding',expiresAt:'2030-01-01T00:00:00Z',contactVerified:true,needsUsername:true};
+ assert.equal(parseIdentityTransaction({...tx,verifiedEmail:'actual@privaterelay.appleid.com'},'tx_A').verifiedEmail,'actual@privaterelay.appleid.com');
+ assert.equal(Object.hasOwn(parseIdentityTransaction({...tx,contactAddress:'account-primary@example.test',email:'raw-provider@example.test'}),'verifiedEmail'),false);
+ assert.equal(Object.hasOwn(parseIdentityTransaction({...tx,contactVerified:false}),'verifiedEmail'),false);
+ for(const verifiedEmail of ['',null,42,'x'.repeat(321),'address\n@example.test'])assert.throws(()=>parseIdentityTransaction({...tx,verifiedEmail}));
+ for(const status of ['started','exchanging','contact_pending','failed'])assert.throws(()=>parseIdentityTransaction({...tx,status,verifiedEmail:'actual@example.test'}));
+ assert.throws(()=>parseIdentityTransaction({...tx,contactVerified:false,verifiedEmail:'actual@example.test'}));
+ assert.throws(()=>parseIdentityTransaction({...tx,verifiedEmail:'actual@example.test'},'tx_B'));
+});
 test('account requests keep the session mode and continuation shape at the API boundary',async()=>{
  const calls:{path:string;method:string;body:unknown}[]=[];
  const client=new HostedAccountClient('https://accounts.example.test','native',async(path,method,body)=>{calls.push({path,method,body});if(path==='/v1/sessions')return session;return {kind:'registration',registrationId:'reg_A',status:'contact_pending',revision:'1',maskedAddress:'a***@example.test',expiresAt:'2030-01-01T00:00:00Z',contactVerified:false};},'a'.repeat(43));
