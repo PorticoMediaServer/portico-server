@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/metadatalanguage"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/subtitles"
 )
@@ -227,4 +228,11 @@ func valuesBool(values DeliveryPreferenceReader, key string, fallback bool) bool
 		return v.Bool(key)
 	}
 	return fallback
+}
+
+// publishedOriginalLanguageTx is server-only composition. Its caller must
+// already have authorized this title in the same snapshot; neither the edge
+// DeliveryContext nor a client track choice can supply or override the fact.
+func publishedOriginalLanguageTx(ctx context.Context, tx *sql.Tx, item string) (string, error) {
+	return metadatalanguage.Published(ctx, tx, item)
 }

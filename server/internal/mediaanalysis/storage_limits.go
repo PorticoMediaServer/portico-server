@@ -12,8 +12,17 @@ func (s *Service) storageLimit(ctx context.Context, key string, unit, fallback i
 	if s.db == nil {
 		return fallback
 	}
+	var query string
+	switch key {
+	case "analysisStorageGiB":
+		query = `SELECT settings."analysisStorageGiB" FROM server_settings AS settings WHERE settings.singleton=1`
+	case "analysisStageStorageMiB":
+		query = `SELECT settings."analysisStageStorageMiB" FROM server_settings AS settings WHERE settings.singleton=1`
+	default:
+		return fallback
+	}
 	var value sql.NullInt64
-	if dbwork.QueryRow(ctx, s.db, `SELECT json_extract(body,?) FROM console_documents WHERE scope='server'`, "$."+key).Scan(&value) != nil || !value.Valid || value.Int64 < 1 {
+	if dbwork.QueryRow(ctx, s.db, query).Scan(&value) != nil || !value.Valid || value.Int64 < 1 {
 		return fallback
 	}
 	return value.Int64 * unit

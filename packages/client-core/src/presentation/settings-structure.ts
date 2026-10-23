@@ -428,7 +428,6 @@ const serverPages: readonly AuthoredPage[] = [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts', administrators: true}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
       // Holding new devices until the owner approves them, and every device that has signed in, newest first.
-      {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
       panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web', 'phone'], administrators: true}),
     ]},
   // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
@@ -439,11 +438,6 @@ const serverPages: readonly AuthoredPage[] = [
       panel('apiKeys', 'server.apiKeys', 'settings.server.apiKeys', {tab: 'keys'}),
       {id: 'apiLimits', tab: 'keys', title: 'settings.server.apiLimits', rows: [
         setting('runtime', 'apiRequestsPerMinute', 'settings.server.apiRate', {type: 'number', min: 1, max: 100000, unit: 'settings.unit.perMinute', empty: {stores: 0, placeholder: 'settings.server.apiRateUsual'}}, {help: 'settings.server.apiRateHelp'}),
-      ]},
-      panel('memberTokens', 'server.memberTokens', 'settings.server.memberTokens', {tab: 'tokens'}),
-      {id: 'tokenRules', tab: 'tokens', rows: [
-        // Stored as "blocked"; asked the way a person thinks of it.
-        setting('runtime', 'blockMemberAccessTokens', 'settings.server.memberTokensMay', {type: 'choice', choices: [{value: false, label: 'settings.server.memberTokensMay.yes'}, {value: true, label: 'settings.server.memberTokensMay.no'}]}, {help: 'settings.server.memberTokensMayHelp'}),
       ]},
       panel('webhooks', 'server.webhooks', 'api.webhooks.title', {tab: 'webhooks'}),
       panel('assistants', 'server.assistants', 'settings.server.assistants', {tab: 'assistants'}),

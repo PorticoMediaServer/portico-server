@@ -461,7 +461,7 @@ func (s *Service) countEntryPlays(profile string, entries []ContentEntry) error 
 // any viewer sees what the whole server plays.
 func (s *Service) serverWidePlays() bool {
 	var on sql.NullBool
-	if err := s.read().QueryRow(`SELECT json_extract(body,'$."home.communityActivityEnabled"') FROM console_documents WHERE scope='server'`).Scan(&on); err != nil {
+	if err := s.read().QueryRow(`SELECT settings."home.communityActivityEnabled" FROM server_settings AS settings WHERE settings.singleton=1`).Scan(&on); err != nil {
 		return false
 	}
 	return on.Valid && on.Bool

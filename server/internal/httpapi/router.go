@@ -74,7 +74,8 @@ type Dependencies struct {
 	LocalHTTPURL string
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
-	SettingsApplied func(context.Context)
+	SettingsApplied               func(context.Context)
+	configurationOwnsLiveSettings bool
 	// PlaybackV1 is the Playback Protocol v1 service; nil builds one from DB,
 	// Playback and Subtitles (tests pass one to shorten leases).
 	PlaybackV1 *playbackv1.Service
@@ -789,6 +790,18 @@ func New(d Dependencies) http.Handler {
 	// installed first.
 	if d.Console == nil && d.DB != nil {
 		d.Console = operations.New(d.DB)
+	}
+	if d.Console != nil && d.Console.ConfigFile != nil {
+		prior := d.Console.ConfigChanged
+		d.configurationOwnsLiveSettings = true
+		d.Console.ConfigChanged = func(ctx context.Context) {
+			if prior != nil {
+				prior(ctx)
+			}
+			if err := d.applyLiveSettings(ctx); err != nil {
+				log.Printf("Settings runtime projection could not refresh: %v", err)
+			}
+		}
 	}
 	if d.Scheduler != nil && d.Catalog != nil {
 		found := false

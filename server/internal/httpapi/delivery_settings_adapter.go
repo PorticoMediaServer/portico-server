@@ -26,6 +26,7 @@ var _ playback.DeliverySettings = (*RegistryDeliverySettings)(nil)
 func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
 	s, bitrate := a.current()
 	return playback.DeliveryConfiguration{
+		ConversionMode: s.ConversionMode, OutputFormat: s.OutputFormat, DownloadMaxQuality: s.DownloadMaxQuality, MaxMusicQuality: s.MaxMusicQuality,
 		MaxVideoBitrateBPS:     bitrate,
 		SessionStorageMiB:      s.SessionStorageMiB,
 		HardwareBackend:        s.HardwareBackend,

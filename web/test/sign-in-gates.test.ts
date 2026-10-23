@@ -125,8 +125,8 @@ test('gate 3: the codes the INT review named get their own sentence', () => {
   assert.equal(say(new ApiError(400, 'invalid_request', 'x'), 'password').messageId, 'web.signIn.error.details');
   assert.equal(say(new ApiError(422, 'invalid_request', 'x'), 'new-password').messageId, 'web.signIn.error.newPassword');
   assert.equal(say(new CodedError('invalid_response', 'unreadable')).messageId, 'web.signIn.error.unreadable');
-  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'web.signIn.error.identity');
-  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'web.portico.notProven');
+  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'portico.failure.identity.body');
+  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'portico.failure.identity.body');
   assert.equal(say(new DOMException('The operation timed out.', 'TimeoutError')).messageId, 'web.signIn.error.timeout');
   assert.equal(say(new ApiError(429, 'rate_limited', 'x', true, 30), 'password').text, 'Too many sign-in attempts. Try again in 30 seconds.');
   assert.equal(say(superseded()).silent, true, 'a sign-in the person moved on from says nothing');
@@ -170,44 +170,53 @@ test('gate 3: sign-in paths use the sign-in presenter, not the generic one', () 
 async function deviceModule(announce: () => Promise<string>, session: object) {
   const h = hooks();
   const effects: (() => unknown)[] = [];
+  const remembered: unknown[][] = [];
+  let token = 'test-access-token';
   h.react.useEffect = (fn: () => unknown) => { effects.push(fn); };
   (h.react as any).default.useEffect = h.react.useEffect;
   const m = await componentModule(new URL('../src/app/device.tsx', import.meta.url), {
     react: h.react, './i18n': {useI18n: () => ({t: (id: string, v?: Record<string, string>) => (v ? `${id}:${JSON.stringify(v)}` : id)})},
-    '@core/index.ts': {IdentityClient: class { rememberAccount() { return Promise.resolve(); } }, announceDevice: announce},
+    '@core/index.ts': {IdentityClient: class { rememberAccount(...args: unknown[]) { remembered.push(args); return Promise.resolve(); } }, announceDevice: announce},
     '../bridge/client-profile': {keepBrowserProfilePublished: () => undefined}, '../bridge/profile-trust': {browserInstallation: () => 'i'.repeat(36)},
-    '../ui': {StateView: 'StateView'}, '@core/presentation/index.ts': {friendlyHost: () => 'den.local'}, './session': {useSession: () => session, currentAccessToken: () => 'test-access-token'},
+    '../ui': {StateView: 'StateView'}, '@core/presentation/index.ts': {friendlyHost: () => 'den.local'}, './session': {useSession: () => session, currentAccessToken: () => token},
   }) as any;
-  return {m, h, effects};
+  return {m, h, effects, remembered, replaceToken: () => {token = 'replacement-access-token';}};
 }
 
-test('gate 3: a device the owner denied or has yet to approve is held inside the shell with Check again and Sign out', async () => {
-  let signedOut = 0;
-  const session = {api: {}, session: {sessionFamilyId: 'fam', viewer: {authority: 'local'}}, signOut: () => signedOut++, system: {name: 'Den'}};
-  for (const outcome of ['pending', 'denied'] as const) {
-    let calls = 0;
-    const {m, h, effects} = await deviceModule(async () => { calls++; return outcome; }, session);
-    const render = () => h.render(() => m.DeviceGate({children: 'app', blocked: (access: any) => ({type: 'Shell', access})}));
-    assert.deepEqual(render().props.children, ['app'], 'the app shows while the device is announced');
+test('device publication preserves the admitted viewer and remembers only a bound current local account', async () => {
+  const session = {api: {}, session: {sessionFamilyId: 'fam', viewer: {authority: 'local'}}, local: {canManage: true, managementFamily: 'fam'}};
+  for (const outcome of ['bound', 'skipped'] as const) {
+    let calls = 0, blocked = 0;
+    const {m, h, effects, remembered} = await deviceModule(async () => {calls++;return outcome;}, session);
+    const render = () => h.render(() => m.DeviceGate({children: 'app', blocked: () => {blocked++;return 'held';}}));
+    assert.deepEqual(render().props.children, ['app']);
     await effects[0]();
-    const held = render().props.children[0];
-    assert.equal(held.type, 'Shell');
-    const access = held.access;
-    assert.equal(access.state, outcome);
-    const block = h.render(() => m.DeviceBlock({access}));
-    assert.equal(block.type, 'StateView');
-    assert.equal(block.props.title, outcome === 'denied' ? 'web.device.deniedTitle' : 'device.approval.title');
-    if (outcome === 'denied') assert.match(block.props.body, /"server":"Den"/);
-    assert.equal(block.props.action.label, 'device.approval.checkAgain');
-    block.props.action.onClick();
-    assert.equal(calls, 2, 'Check again asks the server again');
-    block.props.secondaryAction.onClick();
+    assert.deepEqual(render().props.children, ['app'], 'device bookkeeping never replaces the admitted viewer with approval UI');
+    assert.equal(calls, 1);
+    assert.equal(blocked, 0);
+    assert.deepEqual(remembered, outcome === 'bound' ? [['i'.repeat(36), false]] : []);
   }
-  assert.equal(signedOut, 2);
-  const {m, h, effects} = await deviceModule(async () => 'skipped', session);
+});
+
+test('a late device bind cannot remember an account after the credential changes', async () => {
+  let finish!: (value: string) => void;
+  const session = {api: {}, session: {sessionFamilyId: 'fam', viewer: {authority: 'local'}}, local: {canManage: true, managementFamily: 'fam'}};
+  const {m, h, effects, remembered, replaceToken} = await deviceModule(() => new Promise(resolve => {finish = resolve;}), session);
   h.render(() => m.DeviceGate({children: 'app', blocked: () => 'held'}));
-  await effects[0]();
-  assert.deepEqual(h.render(() => m.DeviceGate({children: 'app', blocked: () => 'held'})).props.children, ['app'], 'an incomplete device list never costs the sign-in');
+  effects[0]();replaceToken();finish('bound');await Promise.resolve();
+  assert.deepEqual(remembered, []);
+});
+
+test('device publication cannot remember a different management family and skips absent sessions', async () => {
+  for (const family of ['fam', '']) {
+    let calls = 0;
+    const {m, h, effects, remembered} = await deviceModule(async () => {calls++;return 'bound';},
+      {api: {}, session: {sessionFamilyId: family, viewer: {authority: 'local'}}, local: {canManage: true, managementFamily: 'other'}});
+    h.render(() => m.DeviceGate({children: 'app', blocked: () => 'held'}));
+    await effects[0]();
+    assert.equal(calls, family ? 1 : 0);
+    assert.deepEqual(remembered, []);
+  }
 });
 
 test('gate 3: device pending and a direct step show inside the shell, not as a page', () => {

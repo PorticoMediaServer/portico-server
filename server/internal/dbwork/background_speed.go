@@ -3,7 +3,6 @@ package dbwork
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 )
 
 type backgroundSpeedKey struct{}
@@ -29,20 +28,14 @@ func BackgroundSpeed(ctx context.Context) string {
 	return speed
 }
 
-// ReadBackgroundSpeed consumes the shared owner maintenance document. Call once
-// per bounded batch, outside a writer transaction.
+// ReadBackgroundSpeed consumes the same normalized value saved by the owner
+// form and TOML import. Call once per bounded batch, outside a writer transaction.
 func ReadBackgroundSpeed(ctx context.Context, db *sql.DB) string {
-	var raw string
-	if QueryRow(ctx, db, `SELECT body FROM admin_documents WHERE scope='maintenance'`).Scan(&raw) != nil {
+	var speed string
+	if QueryRow(ctx, db, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&speed) != nil || !ValidBackgroundSpeed(speed) {
 		return SpeedNormal
 	}
-	var settings struct {
-		BackgroundSpeed string `json:"backgroundSpeed"`
-	}
-	if json.Unmarshal([]byte(raw), &settings) != nil || !ValidBackgroundSpeed(settings.BackgroundSpeed) {
-		return SpeedNormal
-	}
-	return settings.BackgroundSpeed
+	return speed
 }
 func BackgroundConcurrency(ctx context.Context) int {
 	switch BackgroundSpeed(ctx) {
