@@ -2,6 +2,7 @@ import {createEpubAdapter,createReadingController,loadLiterataFont,sourceFromBlo
 import {parsePreferenceSnapshot,readingPreferences,readingPreferencesPatch,type PreferenceSnapshot,type ReadingPreferencesChange} from '@portico/client-core';
 import bootstrap from '../../../../server/testdata/contracts/get-bootstrap.json';
 import manropeUrl from '../../../../web-next/src/kit/fonts/manrope-var-latin.woff2?url';
+import {sha256} from '@noble/hashes/sha2.js';
 
 // Verification fixture only: these are controlled confirmed snapshots of the
 // actual recorded registry, not HTTP saves or a product Settings store.
@@ -21,9 +22,10 @@ async function run() {
   const checks:string[]=[],errors:string[]=[],surface=document.querySelector<HTMLElement>('#surface')!;
   let snapshot=parsePreferenceSnapshot(bootstrap.response.preferences);
   const book=await fetch('/publication.epub',{credentials:'omit'}).then(response=>{assert(response.ok,'lawful fixture response');return response.blob();});
+  const revision=Array.from(sha256(new Uint8Array(await book.arrayBuffer())),byte=>byte.toString(16).padStart(2,'0')).join('');
   const [literata,manrope]=await Promise.all([loadLiterataFont(),fetch(manropeUrl,{credentials:'omit'}).then(response=>response.blob())]);
   const reader=createReadingController({adapters:[createEpubAdapter({fonts:{literata,manrope}})],preferenceSnapshot:snapshot});
-  const options={source:sourceFromBlob(book,'lawful-gatsby-fixture','remote-recorded-sha'),format:'epub' as const,container:surface,viewport:{width:1180,height:820}};
+  const options={source:sourceFromBlob(book,'lawful-gatsby-fixture',revision),format:'epub' as const,container:surface,viewport:{width:1180,height:820}};
   type Paginator=HTMLElement&{getContents():{doc:Document}[]};
   const observed=async()=>{
     await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
@@ -56,7 +58,7 @@ async function run() {
     after=await observed();assert(reader.getSnapshot().preferences.theme==='black'&&reader.getSnapshot().preferences.textSize===6,'book override precedence');assert(after.family.includes('Literata'),'unoverridden live font');checks.push('actual book-local theme/size overrides retain precedence while unoverridden live font applies');
     await reader.close();assert(surface.children.length===0,'close clears DOM');assert(reader.getSnapshot().overriddenKeys.length===0,'close clears overrides');
     await reader.open(options);assert(reader.getSnapshot().preferences.theme===readingPreferences(snapshot).theme&&reader.getSnapshot().preferences.textSize===2,'new book reads latest confirmed snapshot');checks.push('close resets overrides and next open reads latest confirmed Settings snapshot');
-    return {status:'pass',checks,hits:results.length,environment:{origin:location.origin,isSecureContext,hasSubtle:!!globalThis.crypto?.subtle},qualification:'Actual EPUB effects with controlled confirmed snapshots from real recorded registry. No HTTP save, public Read authorization, full chrome/frame or hardware acceptance.'};
+    return {status:'pass',checks,hits:results.length,sourceRevision:revision,environment:{origin:location.origin,isSecureContext,hasSubtle:!!globalThis.crypto?.subtle},qualification:'Actual EPUB effects with controlled confirmed snapshots from real recorded registry. No HTTP save, public Read authorization, full chrome/frame or hardware acceptance.'};
   }catch(error){errors.push(String(error));throw error;}
   finally{await reader.close();(window as unknown as {readerCleanup:unknown}).readerCleanup={surfaceChildren:surface.children.length,overrides:reader.getSnapshot().overriddenKeys.length,errors};}
 }
