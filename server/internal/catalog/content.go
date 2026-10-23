@@ -46,6 +46,8 @@ func contentItem(item Item) ContentEntry {
 	}
 	if item.Episode != nil {
 		entry.Subtitle = item.Episode.ShowTitle
+		entry.Show = &ContentEntityRef{ID: item.Episode.ShowID, Name: item.Episode.ShowTitle}
+		entry.AirDate = item.Episode.AirDate
 		entry.EpisodeNumber = &item.Episode.Number
 		entry.DateBased = item.Episode.Numbering == "date"
 		entry.Special = item.Episode.SeasonNumber != nil && *item.Episode.SeasonNumber == 0

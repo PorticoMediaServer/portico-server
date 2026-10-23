@@ -660,9 +660,6 @@ func (s *Service) homeEntries(profile string, ids []string) ([]ContentEntry, err
 	loaded := map[string]ContentEntry{}
 	for _, item := range items {
 		row := contentItem(item)
-		if item.Episode != nil {
-			row.Show = &ContentEntityRef{ID: item.Episode.ShowID, Name: item.Episode.ShowTitle}
-		}
 		if row.Playback != nil && item.ProgressSeconds > 0 {
 			p := item.ProgressSeconds
 			row.Playback.StartSeconds = &p
