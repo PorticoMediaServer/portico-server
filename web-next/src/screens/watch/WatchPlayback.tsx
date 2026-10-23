@@ -13,6 +13,7 @@ import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import {createWatchPlayOn, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
+import {settingsPlatform} from '../../platform/settings-platform';
 import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
@@ -35,7 +36,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const castAnchor = useRef<HTMLElement | null>(null);
   const [castOwner, setCastOwner] = useState<{runtime: WebShellPlaybackRuntime; context: WatchPlaybackContext; value: WatchPlayOnBinding} | null>(null);
   useEffect(() => {
-    if (!binding || !context || !video.current || !context.isCurrent()) return;
+    // Desktop's native media owner has no browser-video Cast/AirPlay transport. Its real
+    // platform is installed before the unchanged web entry, never inferred from the UA.
+    if (!binding || !context || !video.current || !context.isCurrent() || settingsPlatform()?.environment.platform === 'desktop') return;
     const value = createWatchPlayOn(context, binding, video.current, import.meta.env.VITE_CAST_APPLICATION_ID);
     setCastOwner({runtime: binding.runtime, context, value});
     return value.dispose;
