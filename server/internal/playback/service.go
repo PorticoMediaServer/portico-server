@@ -444,7 +444,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		delivery.OutputVideoCodec = "h264"
 	}
 	// Enforce policy against the final plan, including finite-timeline conversion.
-	if !ownerTranscoding && (delivery.AudioAction == "convert" || delivery.VideoAction == "convert") {
+	if delivery.AudioAction == "convert" && !cfg.AudioConversionAllowed(ownerTranscoding) || delivery.VideoAction == "convert" && !cfg.VideoConversionAllowed(ownerTranscoding) {
 		return Session{}, ErrTranscodingDisabled
 	}
 	if e = tx.QueryRow(`SELECT a.size,a.modified_ns,COALESCE((SELECT f.revision FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, aid).Scan(&delivery.SourceSize, &delivery.SourceModifiedNS, &delivery.FactsRevision); e != nil {

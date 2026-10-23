@@ -2118,6 +2118,7 @@ export {highestRatingChoices} from './profile-limits.ts';
 
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
+export {buildHostedSignInStartURL, parseHostedSignInStartURL} from './hosted-sign-in-start.ts';
 
 export * from './report-context.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
