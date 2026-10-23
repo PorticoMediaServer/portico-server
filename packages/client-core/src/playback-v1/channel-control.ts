@@ -26,7 +26,7 @@ export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?:
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
 export type ChannelViewSink = {state: (value: ChannelView) => void; error: (message: string, terminal: boolean) => void};
-export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'}>;
+export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'; signal?: AbortSignal; isCurrent?: () => boolean}>;
 
 /** The service's channel control, whichever protocol (the /v2 `ChannelControl` or this). */
 export interface ChannelPlayback {
@@ -166,23 +166,28 @@ export class V1ChannelControl implements ChannelPlayback {
   async open(channel: ChannelReference, sink: ChannelViewSink, options:ChannelStartOptions={}): Promise<void> {
     const state=options.state??'playing';
     if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
+    const starting = () => !options.signal?.aborted && options.isCurrent?.() !== false;
+    if (!starting()) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
     this.close();
     this.sink = sink;
     this.wanted = state;
     const a: Active = {serial: ++this.serial, channel, joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
     this.active = a;
+    const cancel = () => {if (this.current(a)) this.close();};
+    options.signal?.addEventListener('abort', cancel, {once: true});
     try {
       await this.stopping.catch(() => {});
-      if (!this.current(a)) return;
-      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: this.wanted}});
+      if (!this.current(a) || !starting()) {cancel();return;}
+      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: this.wanted}, signal: options.signal});
       const s = parseChannelSession(r.body);
-      if (!this.current(a)) { void this.stop(s.id); return; }
+      if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
       a.id = s.id;
       this.accept(a, s);
       this.schedule(a);
     } catch (e) {
+      if (!starting()) {cancel();return;}
       if (this.current(a)) { this.active = undefined; sink.error(message(e), true); }
-    }
+    } finally {options.signal?.removeEventListener('abort', cancel);}
   }
 
   private accept(a: Active, s: Session) {

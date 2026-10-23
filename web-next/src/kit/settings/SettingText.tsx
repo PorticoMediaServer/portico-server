@@ -6,6 +6,6 @@ export function SettingText({label, value, placeholder, disabled, secret = false
   const [draft, setDraft] = useState(value);
   useEffect(() => {setDraft(value);}, [value]);
   const commit = () => {if (!disabled && draft !== value) onCommit(draft);};
-  return <TextField aria-label={label} value={draft} type={secret ? 'password' : 'text'} autoComplete={secret ? 'new-password' : undefined} disabled={disabled} placeholder={placeholder}
+  return <TextField variant="setting" aria-label={label} value={draft} type={secret ? 'password' : 'text'} autoComplete={secret ? 'new-password' : undefined} disabled={disabled} placeholder={placeholder}
     onChange={event => setDraft(event.currentTarget.value)} onBlur={commit} onKeyDown={event => {if (event.key === 'Enter') {event.preventDefault(); event.currentTarget.blur();} else if (event.key === 'Escape') setDraft(value);}} />;
 }

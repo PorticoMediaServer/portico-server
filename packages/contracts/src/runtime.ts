@@ -52,7 +52,7 @@ function value(schema: Schema, input: unknown, path: string): unknown {
       } else {
         for (const [key, field] of Object.entries(schema.properties ?? {})) {
           const required = schema.required?.includes(key) ?? false;
-          if (!required && (source[key] === undefined || (source[key] === null && !acceptsNull(field)))) continue;
+          if (!required && (source[key] === undefined || (source[key] === null && schema.additionalProperties !== false && !acceptsNull(field)))) continue;
           result[key] = value(field, source[key], `${path}.${key}`);
         }
       }

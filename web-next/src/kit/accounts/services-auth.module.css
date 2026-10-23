@@ -34,8 +34,16 @@
 .deviceAnother button { border: 0; padding: 0; background: none; font: inherit; color: var(--color-text-secondary); cursor: pointer; }
 .devicePhone { display: none; }
 .signup { width: 480px; align-self: stretch; justify-content: flex-start; padding-top: 80px; padding-bottom: 80px; }
+.providerOnboarding { width: 480px; align-self: stretch; justify-content: flex-start; padding-top: 88px; padding-bottom: 80px; }
+.providerOnboarding .lead { margin-bottom: 24px; }
+.providerContext b { letter-spacing: 0; }
+.providerContext > span { display: contents; }
+.backAction { display: inline-flex; align-items: center; gap: 6px; }
+.invitationCredentials [data-variant="auth"] > label { display: none; }
+.invitationCredentials form { gap: 10px; }
+.invitationCredentials .provider { height: 46px; }
 .heading { font-size: 64px; line-height: .98; font-weight: 800; letter-spacing: -.045em; margin: 0 0 14px; text-wrap: balance; }
-.reset .heading, .signup .heading { font-size: 52px; }
+.reset .heading, .signup .heading, .providerOnboarding .heading { font-size: 52px; }
 .heading[data-single-line] { white-space: nowrap; }
 .lead { font-size: 17px; line-height: 1.5; color: var(--color-text-secondary); margin: 0 0 28px; }
 .reset .lead { margin-bottom: 26px; }
@@ -101,8 +109,8 @@
   .stage[data-layout="center"] > header { display: none; }
   .stage[data-layout="center"] [data-auth-content] { padding: 0 28px; justify-content: center; }
   .content { max-width: none; width: 100%; }
-  .reset, .signup { padding: 0; align-self: stretch; }
-  .heading, .reset .heading, .signup .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
+  .reset, .signup, .providerOnboarding { padding: 0; align-self: stretch; }
+  .heading, .reset .heading, .signup .heading, .providerOnboarding .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
   .lead, .reset .lead { font-size: 14.5px; line-height: 1.5; margin-bottom: 18px; }
   .quiet { font-size: 12.5px; margin-top: 14px; }
   .label small { font-size: 13px; }
@@ -138,6 +146,11 @@
   .facts { font-size: 14.5px; padding: 14px 16px; margin-bottom: 14px; }
   .facts > div { grid-template-columns: 96px 1fr; gap: 10px 12px; }
   .codeChip { height: 36px; font-size: 13.5px; margin-bottom: 18px; }
+  .providerContext { height: auto; max-width: 100%; padding: 10px 14px 10px 12px; align-items: flex-start; }
+  .providerContext > svg { margin-top: 1px; }
+  .providerContext > span { display: block; line-height: 1.35; overflow-wrap: anywhere; }
+  .providerContext b { display: block; }
+  .providerOnboarding .lead { margin-bottom: 16px; }
   .accountLine { font-size: 13.5px; margin: -4px 0 16px; }
   .strength { margin-top: 8px; }
   .actions > button { height: 48px; font-size: 16px; line-height: normal; letter-spacing: normal; border-radius: 11px; padding: 0 20px; }

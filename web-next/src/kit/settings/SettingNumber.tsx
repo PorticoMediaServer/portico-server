@@ -19,7 +19,7 @@ export function SettingNumber({label, value, optional, min, max, step = 1, unit,
   const change = (direction: number) => commit(String(Math.round(((value ?? min) + direction * step) * 1000000) / 1000000));
   return <span className={styles.number} data-plain={plain || undefined}>
     {!plain && <Button size="xs" variant="icon" disabled={disabled || value !== null && value <= min} aria-label={defaultI18n.t('next.settings.decrease', {name: label})} onClick={() => change(-1)}><span aria-hidden="true">−</span></Button>}
-    <TextField aria-label={label} type="text" inputMode="decimal" value={draft} placeholder={placeholder} disabled={disabled} onChange={event => setDraft(event.currentTarget.value)}
+    <TextField variant="setting" aria-label={label} type="text" inputMode="decimal" value={draft} placeholder={placeholder} disabled={disabled} onChange={event => setDraft(event.currentTarget.value)}
       onBlur={event => commit(event.currentTarget.value)} onKeyDown={event => {
         if (event.key === 'Enter') {event.preventDefault(); commit(draft);}
         if (event.key === 'Escape') {event.preventDefault(); setDraft(value === null ? '' : String(value));}

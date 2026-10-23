@@ -43,3 +43,17 @@ test('closing the current book revokes an already delivered preview without a se
   t.after(image.dispose); await f.controller.close();
   await assert.rejects(fetch(image.url)); assert.equal(f.listeners.size, 0);
 });
+
+test('preview ownership and parent cancellation work without modern AbortSignal helpers', async t => {
+  const any = Object.getOwnPropertyDescriptor(AbortSignal, 'any'), throwing = Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'throwIfAborted');
+  Object.defineProperty(AbortSignal, 'any', {value: undefined, configurable: true});
+  Object.defineProperty(AbortSignal.prototype, 'throwIfAborted', {value: undefined, configurable: true});
+  t.after(() => {if (any) Object.defineProperty(AbortSignal, 'any', any); if (throwing) Object.defineProperty(AbortSignal.prototype, 'throwIfAborted', throwing);});
+  const f = fixture(); await open(f.controller); t.after(() => f.controller.close());
+  const parent = new AbortController();
+  const image = await loadReadPagePreview({controller: f.controller, index: 0, width: 300, authority: f.authority, signal: parent.signal});
+  t.after(image.dispose); parent.abort(); await assert.rejects(fetch(image.url)); assert.equal(f.listeners.size, 0);
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(loadReadPagePreview({controller: f.controller, index: 0, width: 300, authority: f.authority, signal: aborted.signal}));
+  assert.equal(f.listeners.size, 0);
+});

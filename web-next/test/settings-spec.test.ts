@@ -4,7 +4,7 @@ import {settingsSpec, settingsRowIndex, settingsDesignRevision} from '../../pack
 import {settingsSpecMessages} from '../../packages/i18n/src/catalog/en-US/next/settings-spec.ts';
 
 test('the approved structure preserves all sections and the exact General-first server order', () => {
-  assert.equal(settingsDesignRevision, '14a9a192975eb2b659be1f2c99fa52791f128f84');
+  assert.equal(settingsDesignRevision, '812dacacc70e296ac870ec36d1a37a485eaeb8ed');
   assert.equal(settingsSpec.length, 25);
   assert.deepEqual(settingsSpec.filter(section => section.scope === 'server').map(section => section.id), ['general','dashboard','history','libraries','remote-sources','metadata','segments','live','people','signin','remote','integrations','streaming','storage','troubleshooting']);
   assert.ok(settingsRowIndex.size > 400);

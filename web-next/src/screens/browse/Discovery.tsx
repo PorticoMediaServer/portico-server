@@ -9,16 +9,19 @@ import {useShellWidth} from '../../shell/viewport';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
 import {PagedShelf} from './PagedShelf';
 import type {BrowsePresentation} from './Library';
+import {browsePresentation, type ScreenAppearance} from './appearance';
 
 export type DiscoveryBindings = Readonly<{
   service: LibraryContentService; route: ContentRoute; artwork: ShellArtwork; env: TextEnvironment; appearance: BrowsePresentation; reducedMotion: boolean;
+  preferences?: ScreenAppearance;
   header: ReactNode; empty: ReactNode; selectionToolbar?: ReactNode;
   actions: (section: ContentSection, entry: ContentEntry, index: number) => BrowseItemActions;
-  registerWindow: (section: ContentSection, first: number, last: number) => void;
+  registerWindow?: (section: ContentSection, first: number, last: number) => void;
   onSeeAll: (section: ContentSection) => void;
 }>;
 /** Sections and cursors are the authorized library projection, never a client-composed library scan. */
-export function LibraryDiscoveryScreen({service, route, header, empty, artwork, env, appearance, reducedMotion, actions, registerWindow, selectionToolbar, onSeeAll}: DiscoveryBindings) {
+export function LibraryDiscoveryScreen({service, route, header, empty, artwork, env, appearance: base, preferences, reducedMotion, actions, registerWindow, selectionToolbar, onSeeAll}: DiscoveryBindings) {
+  const appearance = browsePresentation(base, preferences);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), width = useShellWidth();
   const routeKey = JSON.stringify(route);
   const selected = useRef<Readonly<{service: LibraryContentService; key: string}> | undefined>(undefined);
@@ -34,9 +37,9 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
       const cardWidth = appearance.cardWidth, musicGenres = snapshot.projection!.scope.libraryKind === 'music' && section.id === 'genres';
       const shape = musicGenres ? cardWidth / 152 : square ? 1 : 2 / 3;
       return <PagedShelf key={section.id} heading={serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params})}
-        platform={width >= 1024 ? 'desktop' : 'phone-web'} reducedMotion={reducedMotion} items={section.entries} getKey={entry => entry.id} cardWidth={cardWidth} artworkRatio={shape}
+        platform={width >= 1024 ? 'desktop' : 'phone-web'} reducedMotion={preferences?.reducedMotion ?? reducedMotion} items={section.entries} getKey={entry => entry.id} cardWidth={cardWidth} artworkRatio={shape}
         hasMore={!!section.nextCursor} continuation={section.nextCursor} onMore={() => {void service.next(section.id);}} onSeeAll={section.seeAll ? () => onSeeAll(section) : undefined}
-        onVisibleRange={(first, last) => registerWindow(section, first, last)} renderItem={(entry, context) => <BrowseEntryCard entry={entry} artwork={artwork} env={env} width={cardWidth}
+        onVisibleRange={registerWindow ? (first, last) => registerWindow(section, first, last) : undefined} renderItem={(entry, context) => <BrowseEntryCard entry={entry} artwork={artwork} env={env} width={cardWidth}
           group={section.id} order={context.index} visible family={snapshot.projection!.scope.libraryKind} backdrops={appearance.backdrops} actions={actions(section, entry, context.index)}/>}/>;
     })}</>;
 }

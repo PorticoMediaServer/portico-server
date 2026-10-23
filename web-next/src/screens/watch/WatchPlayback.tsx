@@ -9,10 +9,12 @@ import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeDat
 import {WatchScreen} from './WatchScreen';
 import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
+import {WatchUpNextPrompt} from './UpNextPrompt';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import {createWatchPlayOn, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
+import {settingsPlatform} from '../../platform/settings-platform';
 import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from '../../shell/playback-model';
 import {PlaybackMediaOwner} from '../../shell/playback-media-owner';
 import {useShellWidth} from '../../shell/viewport';
@@ -35,7 +37,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const castAnchor = useRef<HTMLElement | null>(null);
   const [castOwner, setCastOwner] = useState<{runtime: WebShellPlaybackRuntime; context: WatchPlaybackContext; value: WatchPlayOnBinding} | null>(null);
   useEffect(() => {
-    if (!binding || !context || !video.current || !context.isCurrent()) return;
+    // Desktop's native media owner has no browser-video Cast/AirPlay transport. Its real
+    // platform is installed before the unchanged web entry, never inferred from the UA.
+    if (!binding || !context || !video.current || !context.isCurrent() || settingsPlatform()?.environment.platform === 'desktop') return;
     const value = createWatchPlayOn(context, binding, video.current, import.meta.env.VITE_CAST_APPLICATION_ID);
     setCastOwner({runtime: binding.runtime, context, value});
     return value.dispose;
@@ -74,7 +78,6 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   }, [expanded, activeVideo, binding]);
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
-  const leaving = useRef<string | undefined>(undefined);
   useLayoutEffect(() => { setNotice(null); previous.current = {}; }, [runtime]);
   useLayoutEffect(() => {
     const unmount = media.adopt(runtime, video.current!);
@@ -100,20 +103,14 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     return () => timers.forEach(clearTimeout);
   }, [currentNotice]);
   useEffect(() => {
-    if (!binding) { leaving.current = undefined; return; }
-    if (expanded && router.state.location.pathname !== '/player') {
-      leaving.current = router.state.location.href;
-      void router.navigate({to: '/player'}).catch(binding.reportError);
-    } else if (!expanded && router.state.location.pathname === '/player' && leaving.current) {
-      const href = leaving.current; leaving.current = undefined;
-      void router.navigate({href, replace: true}).catch(binding.reportError);
-    }
-  }, [expanded, binding]);
-  useEffect(() => {
     if (!runtime) return;
+    let previous = router.state.location.href;
     return router.subscribe('onResolved', () => {
+      const href = router.state.location.href, navigated = href !== previous; previous = href;
       const current = runtime.getSnapshot();
-      if (current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
+      // Expansion and posture never navigate: the underlying route's real DOM/services stay
+      // alive. Only a subsequent explicit destination change collapses the local overlay.
+      if (navigated && current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
     });
   }, [runtime]);
   const collapse = () => {
@@ -137,7 +134,8 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const drawnSurfaces: WatchSurfaces = {...surfaces, available: [...new Set([...(surfaces?.available ?? []), ...(castAvailable ? ['play-on' as const] : [])])], render: surfaces?.render ?? (() => null),
     playOn: cast && castAvailable ? {active: remoteState?.panel === 'play-on', open: anchor => {castAnchor.current = anchor ?? null;cast.controller.openPlayOn();}, close: () => cast.controller.closePanel()} : surfaces?.playOn,
     prompts: <>{surfaces?.prompts}{policy && snapshot && <><WatchSkipPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
-      <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} /></>}</>};
+      <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
+      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} layout={layout} artwork={binding!.artwork} environment={binding!.environment} /></>}</>};
   const remote = remoteState?.remote;
   const visualId = remote?.phase === 'playing' ? remoteState?.cast.receiver?.itemId : remote?.itemId;
   const item = visualId ? cast?.item(visualId) : undefined;

@@ -1,6 +1,7 @@
 import {routePath,routeBody} from '../../contracts/src/routes.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-management.ts';
 import {identityCode} from './route-identity.ts';
+import {parseTwoFactorState} from './identity-restrictions.ts';
 
 export type ResetFileLocation=Readonly<{systemKind:'linux'|'windows'|'macos'|'docker';dataDirectory:string;fileDirectory:string;fileName:'reset-code.txt';retryAfterSeconds:number}>;
 export function parseResetFileLocation(raw:unknown):ResetFileLocation {
@@ -32,4 +33,24 @@ export async function verifyMemberResetCode(api:ProfileAPI,username:string,code:
  * Keeping two-step verification requires its ordinary authenticator/recovery proof. */
 export async function changeResetPassword(api:ProfileAPI,newPassword:string,secondFactorCode='',signal?:AbortSignal):Promise<void>{
  await api.request(routePath('post_direct_password'),'POST',routeBody('post_direct_password',{currentPassword:'',newPassword,code:secondFactorCode.trim()}),signal);
+}
+
+function ownerPasswordGrant(grant:DirectSignIn){
+ if(grant.kind!=='signed-in'||!grant.passwordChangeRequired||!grant.accountScoped||grant.session.refreshToken||grant.snapshot.account.role!=='owner'||grant.resetFileOwnerSession)throw new Error('The owner reset proof is not current.');
+ return grant;
+}
+/** Existing security read, after the one-use file was proved. The API must be
+ * bound to that restricted grant; this helper never publishes or replaces it. */
+export async function ownerResetSecurity(api:ProfileAPI,grant:DirectSignIn,signal?:AbortSignal):Promise<Readonly<{username:string;twoStepEnabled:boolean}>>{
+ const current=ownerPasswordGrant(grant);
+ const state=parseTwoFactorState(await api.request(routePath('get_direct_two_factor'),'GET',undefined,signal));
+ return Object.freeze({username:current.snapshot.account.username,twoStepEnabled:state.enabled});
+}
+/** The existing password command commits this choice and the new password in
+ * one writer. Fresh sign-in still needs the preserved factor when left on. */
+export async function finishOwnerResetPassword(api:ProfileAPI,grant:DirectSignIn,newPassword:string,turnOffTwoStep:boolean,signal?:AbortSignal):Promise<void>{
+ ownerPasswordGrant(grant);
+ if(typeof turnOffTwoStep!=='boolean')throw new Error('The two-step choice is invalid.');
+ const body={currentPassword:'',newPassword,code:'',turnOffTwoStep};
+ await api.request(routePath('post_direct_password'),'POST',routeBody('post_direct_password',body),signal);
 }

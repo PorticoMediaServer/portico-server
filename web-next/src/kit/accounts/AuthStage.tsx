@@ -1,4 +1,4 @@
-import {useId, useRef, useState, type ReactNode} from 'react';
+import {forwardRef, useId, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {presentError} from '@core/presentation/errors.ts';
 import {ColourBackdrop} from '../artwork';
@@ -9,12 +9,13 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 /** The public auth surface has colour only. It never accepts library artwork. */
-export function AuthStage({children, shape = 'side', layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
-  children: ReactNode; shape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
+export function AuthStage({children, shape = 'side', phoneShape, layout = 'column', service = false, topRight, legal = true, className, contentClassName}: {
+  children: ReactNode; shape?: 'side' | 'round' | 'top'; phoneShape?: 'side' | 'round' | 'top'; layout?: 'column' | 'center'; service?: boolean; topRight?: ReactNode; legal?: boolean;
   className?: string; contentClassName?: string;
 }) {
-  return <section className={[styles.stage, className].filter(Boolean).join(' ')} data-layout={layout}>
-    <ColourBackdrop shape={shape} />
+  return <section className={[styles.stage, phoneShape && styles.hasPhoneBackdrop, className].filter(Boolean).join(' ')} data-layout={layout}>
+    <ColourBackdrop shape={shape} className={styles.standardBackdrop} />
+    {phoneShape && <ColourBackdrop shape={phoneShape} className={styles.phoneBackdrop} />}
     <header className={styles.brand}><img src={wordmark} alt={t('accounts.brand')} />{service && <span>{t('next.shell.account')}</span>}</header>
     {topRight && <div className={styles.topRight}>{topRight}</div>}
     <div className={[styles.content, contentClassName].filter(Boolean).join(' ')} data-auth-content>{children}</div>
@@ -24,23 +25,23 @@ export function AuthStage({children, shape = 'side', layout = 'column', service 
 export function AuthLinks({children}: {children: ReactNode}) { return <div className={styles.links}>{children}</div>; }
 
 /** One real password input retains browser autofill and native password-manager support. */
-export function AuthPasswordField(props: Omit<TextFieldProps, 'type' | 'trailing'>) {
+export const AuthPasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'trailing'>>(function AuthPasswordField(props, ref) {
   const [shown, setShown] = useState(false);
-  return <TextField {...props} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
+  return <TextField {...props} ref={ref} variant="auth" type={shown ? 'text' : 'password'} trailing={<button type="button" className={styles.reveal}
     aria-label={t(shown ? 'field.hidePassword' : 'field.showPassword')} aria-pressed={shown} onClick={() => setShown(value => !value)}>
     <Icon name="i-eye" size={20} />{!shown && <span>{t('accounts.signIn.showPassword')}</span>}
   </button>} />;
-}
+});
 
 /** A single accessible input owns typing, paste, selection and one-time-code autofill.
  * The boxes are visual only; completing a value never moves focus to another field. */
-export function AuthCodeBoxes({length, value, onChange, onComplete, label, error, disabled = false, autoFocus = false}: {
+export function AuthCodeBoxes({length, value, onChange, onComplete, label, error, disabled = false, autoFocus = false, grouped = false}: {
   length: 4 | 6; value: string; onChange: (value: string) => void; onComplete: (value: string) => void;
-  label: string; error?: ReactNode; disabled?: boolean; autoFocus?: boolean;
+  label: string; error?: ReactNode; disabled?: boolean; autoFocus?: boolean; grouped?: boolean;
 }) {
   const id = useId(), input = useRef<HTMLInputElement>(null), [focused, setFocused] = useState(false);
   return <div className={styles.codeGroup}>
-    <div className={styles.codeBoxes} data-error={Boolean(error) || undefined} data-focused={focused || undefined} onClick={() => input.current?.focus()}>
+    <div className={styles.codeBoxes} data-error={Boolean(error) || undefined} data-focused={focused || undefined} data-grouped={length === 6 && grouped || undefined} onClick={() => input.current?.focus()}>
       <input ref={input} type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={length}
         autoFocus={autoFocus} disabled={disabled} aria-label={label} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? id : undefined}
         value={value} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={event => {
