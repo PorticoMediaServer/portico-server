@@ -321,7 +321,13 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 	}
 	defer input.File.Close()
 	dir := filepath.Join(f.h.root, id, "work", strconv.FormatInt(generation, 10))
-	window, err := f.encoder.Encode(a.ctx, a.source, input, vod.Request{Index: index, GenerationDir: dir})
+	var mediaGeneration int
+	if err = f.h.db.QueryRowContext(a.ctx, `SELECT generation FROM playback_sessions WHERE id=?`, id).Scan(&mediaGeneration); err != nil {
+		return err
+	}
+	observe, finish := f.h.observeConversion(a.ctx, id, mediaGeneration)
+	defer finish()
+	window, err := f.encoder.Encode(a.ctx, a.source, input, vod.Request{Index: index, GenerationDir: dir, ObserveConversion: observe})
 	if err != nil {
 		return err
 	}

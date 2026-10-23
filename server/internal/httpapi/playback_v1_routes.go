@@ -237,7 +237,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 				}
 				limit = n
 			}
-			return d.playbackV1().AdminSessions(ctx, limit, q.URL.Query().Get("cursor"))
+			return d.dashboardSessions(ctx, q, limit, q.URL.Query().Get("cursor"))
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "terminate_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}:terminate", Summary: "End a viewer's playback, showing them an optional message; idempotent",
 		Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},

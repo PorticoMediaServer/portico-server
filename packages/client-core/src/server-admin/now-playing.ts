@@ -100,7 +100,7 @@ export function stopMessage(text: string): string | undefined {
 
 type Translate = (id: MessageId, values?: MessageValues) => string;
 
-/** Who is watching: the profile, with its account when they differ. */
+/** Username first, followed by the session profile only when it differs. */
 export function sessionViewer(x: AdminSession, t: Translate): string {
   return x.profile && x.user && x.profile !== x.user ? t('web.nowPlaying.viewerWithAccount', {profile: x.profile, account: x.user}) : x.profile || x.user || t('web.nowPlaying.viewer');
 }
@@ -118,7 +118,7 @@ export function sessionFacts(x: AdminSession, t: Translate): string {
   if (rate) parts.push(t('web.nowPlaying.rate', {rate}));
   const started = x.startedAt ? Date.parse(x.startedAt) : NaN;
   if (Number.isFinite(started)) parts.push(t('web.nowPlaying.started', {time: when(started)}));
-  return parts.join(' · ');
+  return parts.join('  ');
 }
 
 // ── Pause, resume and seek on somebody else's playback ─────────────────────────────────────

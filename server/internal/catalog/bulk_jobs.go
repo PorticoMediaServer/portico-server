@@ -249,7 +249,7 @@ func bulkEvent(tx *sql.Tx, p identity.Principal, id string) error {
 	if jobOwnerCommand(j.Command) {
 		return apievents.Append(tx, "admin", "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
 	}
-	return nil
+	return operations.AppendActivityProgressTx(tx, "job.updated", "job", id, strconv.FormatInt(revision, 10), j.State != "running" && j.State != "queued")
 }
 
 func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Viewer, in JobRequest, scheduler *operations.Scheduler, access BulkAccess) (out BulkJob, err error) {
@@ -433,7 +433,13 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 			if state == "complete" || state == "partial" {
 				state = "succeeded"
 			}
-			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, ErrorCode: j.ErrorCode}, nil
+			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, Total: func() *int64 {
+				if j.TotalKnown {
+					n := j.Total
+					return &n
+				}
+				return nil
+			}(), ErrorCode: j.ErrorCode}, nil
 		}}
 }
 

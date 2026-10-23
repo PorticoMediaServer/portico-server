@@ -298,12 +298,13 @@ export type AdminSession = Readonly<{
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>; bitrateKbps?: number; bandwidthKbps?: number;
   /** The player engine the device is playing with and the quality in force (absent for a channel). */
   engine?: PlaybackEngine; quality?: QualityInForce;
-  transcode?: Readonly<{speed?: number; hardware: boolean; throttled: boolean}>; location: 'local' | 'remote' | 'other'; startedAt?: string;
+  problem?:'buffering'|'behind';bufferingSince?:string;
+  transcode?: Readonly<{speed?: number;observedAt?:string;cadenceMs?:number;hardware?: boolean; throttled?: boolean}>; location: 'local' | 'remote' | 'other'; startedAt?: string;
 }>;
 export function parseAdminSession(v: unknown): AdminSession {
   if (!obj(v)) throw new ContractError('admin session');
   const d = obj(v.decision) ? v.decision : {};
-  const named = (x: unknown) => (obj(x) ? str(x.name, str(x.id)) : str(x));
+  const named = (x: unknown) => (obj(x) ? str(x.name) : str(x));
   return Object.freeze({
     id: id(v.id, 'session id'), user: named(v.user), profile: named(v.profile), device: named(v.device),
     itemId: obj(v.item) && typeof v.item.id === 'string' ? v.item.id : typeof v.itemId === 'string' ? v.itemId : undefined,
@@ -313,7 +314,8 @@ export function parseAdminSession(v: unknown): AdminSession {
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(v.bitrateKbps), bandwidthKbps: optNum(v.bandwidthKbps),
     engine: typeof v.engine === 'string' && v.engine ? engineOf(v.engine) : undefined, quality: obj(v.quality) ? parseQuality(v.quality) : undefined,
-    transcode: obj(v.transcode) ? Object.freeze({speed: optNum(v.transcode.speed), hardware: bool(v.transcode.hardware), throttled: bool(v.transcode.throttled)}) : undefined,
+    transcode: obj(v.transcode) ? Object.freeze({speed: optNum(v.transcode.speed),observedAt:typeof v.transcode.observedAt==='string'?v.transcode.observedAt:undefined,cadenceMs:optNum(v.transcode.cadenceMs), ...(typeof v.transcode.hardware==='boolean'?{hardware:v.transcode.hardware}:{}),...(typeof v.transcode.throttled==='boolean'?{throttled:v.transcode.throttled}:{})}) : undefined,
+    problem: v.problem==='buffering' || v.problem==='behind'?v.problem:undefined,bufferingSince:typeof v.bufferingSince==='string'?v.bufferingSince:undefined,
     location: oneOf(v.location, ['local', 'remote'] as const, 'other' as never), startedAt: typeof v.startedAt === 'string' ? v.startedAt : undefined,
   });
 }

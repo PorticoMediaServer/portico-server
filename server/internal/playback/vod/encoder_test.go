@@ -106,7 +106,7 @@ func TestRealFiniteWindowsGlobalMarkersAndPacketEdges(t *testing.T) {
 				reference = decodeAudio(t, path)
 			}
 			for n, index := range []int{0, 5, 1, 7, 5} {
-				w, e := enc.Encode(context.Background(), s, input, Request{index, filepath.Join(t.TempDir(), fmt.Sprint("generation", n))})
+				w, e := enc.Encode(context.Background(), s, input, Request{Index: index, GenerationDir: filepath.Join(t.TempDir(), fmt.Sprint("generation", n))})
 				if e != nil {
 					t.Fatal("window", index, e)
 				}

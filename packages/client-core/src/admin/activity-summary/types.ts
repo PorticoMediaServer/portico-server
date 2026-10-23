@@ -1,4 +1,4 @@
-import type {GetAdminActivityResponse} from '../../../../contracts/src/types.ts';
+import type {GetAdminActivityResponse,ListAdminSessionsResponse} from '../../../../contracts/src/types.ts';
 import type {V1Http} from '../../playback-v1/http.ts';
 
 type Immutable<T> = T extends readonly (infer V)[] ? readonly Immutable<V>[] : T extends object ? {readonly [K in keyof T]: Immutable<T[K]>} : T;
@@ -35,3 +35,6 @@ export type ActivitySummaryTimers = Readonly<{
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(timer: unknown): void;
 }>;
+
+export type DashboardSessionsPage=Immutable<ListAdminSessionsResponse>;
+export type DashboardSessionsSnapshot=Readonly<{phase:'unavailable'|'idle'|'loading'|'ready'|'error';document?:DashboardSessionsPage;error?:Readonly<{code:ActivitySummaryErrorCode;retryAfterMs?:number}>}>;

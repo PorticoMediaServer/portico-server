@@ -90,6 +90,7 @@ test('a controls document keeps only the actions this client knows, and a positi
 test('a row says where playback is when there is a timeline to be somewhere on', () => {
   const {t} = createI18n();
   const session = {id: 's', user: 'Ada', profile: 'Ada', device: 'Living room TV', title: 'Film', kind: 'vod', state: 'paused', positionMs: 754_000, decision: {}, location: 'local'} as never;
-  assert.equal(sessionFacts(session, t), 'Ada · on Living room TV · Paused · At 12:34 · Home network');
-  assert.equal(sessionFacts({...(session as object), kind: 'channel'} as never, t), 'Ada · on Living room TV · Paused · Home network');
+  assert.equal(sessionFacts(session, t), 'Ada  on Living room TV  Paused  At 12:34  Home network');
+  assert.equal(sessionFacts({...(session as object), kind: 'channel'} as never, t), 'Ada  on Living room TV  Paused  Home network');
+  assert.ok(sessionFacts({...(session as object),user:'sam_k',profile:'Kids'} as never,t).startsWith('sam_k Kids  on Living room TV'));
 });

@@ -2,19 +2,19 @@ import {routePath} from '../../../../contracts/src/routes.ts';
 import {utcOrderKey} from '../../local-session.ts';
 import {call} from '../../playback-v1/http.ts';
 import type {EventsClient} from '../../playback-v1/events.ts';
-import {parseActivitySummary} from './parser.ts';
-import type {ActivitySummaryErrorCode, ActivitySummaryScope, ActivitySummarySnapshot, ActivitySummarySource, ActivitySummarySourceStore, ActivitySummaryTimers, OwnerActivitySummary} from './types.ts';
+import {parseActivitySummary,parseDashboardSessions} from './parser.ts';
+import type {DashboardSessionsSnapshot, ActivitySummaryErrorCode, ActivitySummaryScope, ActivitySummarySnapshot, ActivitySummarySource, ActivitySummarySourceStore, ActivitySummaryTimers, OwnerActivitySummary} from './types.ts';
 
-const hintTypes = ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.update'] as const;
+const hintTypes = ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated', 'list.changed'] as const;
 const scopeKeys = ['serverId', 'accountId', 'profileId', 'authority', 'role', 'sessionFamilyId', 'authorizationEpoch'] as const;
-const unavailable: ActivitySummarySnapshot = Object.freeze({phase: 'unavailable'});
+const unavailable = Object.freeze({phase: 'unavailable'} as const);
 const defaults: ActivitySummaryTimers = {
   now: Date.now,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: timer => clearTimeout(timer as ReturnType<typeof setTimeout>),
 };
-function owner(source: ActivitySummarySource | null): source is ActivitySummarySource {
-  return !!source && typeof source.http?.send === 'function' && !!source.scope && scopeKeys.every(k => typeof source.scope[k] === 'string' && source.scope[k].length > 0 && source.scope[k].length <= 1024 && !/[\x00-\x1f\x7f]/.test(source.scope[k])) && source.scope.role === 'owner' && ['local', 'hosted'].includes(source.scope.authority);
+function owner(source: ActivitySummarySource | null,roles:readonly string[]=['owner']): source is ActivitySummarySource {
+  return !!source && typeof source.http?.send === 'function' && !!source.scope && scopeKeys.every(k => typeof source.scope[k] === 'string' && source.scope[k].length > 0 && source.scope[k].length <= 1024 && !/[\x00-\x1f\x7f]/.test(source.scope[k])) && roles.includes(source.scope.role) && ['local', 'hosted'].includes(source.scope.authority);
 }
 const same = (a?: ActivitySummarySource | null, b?: ActivitySummarySource | null) => a === b || !!a && !!b && a.http === b.http && scopeKeys.every(k => a.scope[k] === b.scope[k]);
 const failure = (code: ActivitySummaryErrorCode) => Object.assign(new Error(code), {code});
@@ -200,4 +200,81 @@ export class ActivitySummaryService {
     this.current = undefined; this.fence = undefined; this.observed = undefined;
     this.disposed = true; this.publish(unavailable); this.listeners.clear();
   }
+}
+
+/** Current owner/admin page for a windowed Dashboard. No owner panels or feed
+ * are fetched here. The shell clears scope synchronously on authority changes. */
+export class DashboardSessionsService {
+ private source:ActivitySummarySourceStore;
+ private timers:ActivitySummaryTimers;
+ private current?:ActivitySummarySource;
+ private release:()=>void;
+ private feed:(()=>void)[]=[];
+ private state:DashboardSessionsSnapshot=unavailable;
+ private listeners=new Set<()=>void>();
+ private active=false;
+ private disposed=false;
+ private epoch=0;
+ private serial=0;
+ private controller?:AbortController;
+ private timer?:unknown;
+ private last=-Infinity;
+ private fence?:string;
+ private observed?:string;
+ private blocked=false;
+ private retryAt=-Infinity;
+ constructor(options:{source:ActivitySummarySourceStore;timers?:ActivitySummaryTimers}) {
+  this.source=options.source;this.timers=options.timers??defaults;this.sync();
+  this.release=this.source.subscribe(()=>{if(this.sync() && this.active && this.current)this.invalidate();});
+ }
+ private publish(value:DashboardSessionsSnapshot){this.state=Object.freeze(value);for(const fn of [...this.listeners])fn();}
+ private stop(){this.epoch++;this.controller?.abort();this.controller=undefined;if(this.timer!==undefined)this.timers.clearTimer(this.timer);this.timer=undefined;}
+ private sync():boolean {
+  if(this.disposed)return false;
+  const value=this.source.getSnapshot(),next=owner(value,['owner','admin'])?value:undefined;
+  if(same(this.current,next))return false;
+  this.stop();for(const fn of this.feed)fn();this.feed=[];
+  this.current=next?Object.freeze({http:next.http,scope:Object.freeze({...next.scope})}):undefined;
+  this.fence=undefined;this.observed=undefined;this.blocked=false;this.last=-Infinity;this.retryAt=-Infinity;
+  this.publish(this.active && this.current?{phase:'idle'}:unavailable);return true;
+ }
+ getSnapshot=():DashboardSessionsSnapshot=>{this.sync();return this.state;};
+ subscribe=(fn:()=>void):(()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
+ setActive(value:boolean):void {this.sync();if(value===this.active || this.disposed)return;this.active=value;if(!value){this.stop();for(const fn of this.feed)fn();this.feed=[];this.publish(unavailable);}else if(this.current)this.publish({phase:'idle'});}
+ attach(events:Pick<EventsClient,'on'|'onResync'>|null):void {
+  this.sync();for(const fn of this.feed)fn();this.feed=[];
+  if(!events || !this.active || !this.current || this.blocked || this.disposed)return;
+  const epoch=this.epoch;const hint=()=>{this.sync();if(epoch===this.epoch)this.invalidate();};
+  this.feed=[events.on('admin.sessions',hint),events.onResync(hint)];
+ }
+ private invalidate():void {
+  if(this.timer!==undefined || !this.active || !this.current || this.blocked || this.disposed)return;
+  this.timer=this.timers.setTimer(()=>{this.timer=undefined;void this.load();},Math.max(0,this.last+1000-this.timers.now(),this.retryAt-this.timers.now()));
+ }
+ async load(cursor?:string,limit=10):Promise<void> {
+  this.sync();if(!this.active || !this.current || this.blocked || this.disposed)return;
+  if(!Number.isSafeInteger(limit) || limit<1 || limit>200)throw new Error('invalid_activity_limit');
+  this.controller?.abort();const source=this.current,epoch=this.epoch,serial=++this.serial,controller=new AbortController();this.controller=controller;this.last=this.timers.now();
+  let rejectTimeout!:(error:Error)=>void;
+  const timedOut=new Promise<never>((_,reject)=>{rejectTimeout=reject;controller.signal.addEventListener('abort',()=>reject(failure('request_timeout')),{once:true});});
+  void timedOut.catch(()=>{});
+  const timeout=this.timers.setTimer(()=>{controller.abort();rejectTimeout(failure('request_timeout'));},10000);
+  this.publish({phase:'loading'});
+  try {
+   this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
+   const query=new URLSearchParams({limit:String(limit)});if(cursor)query.set('cursor',cursor);
+   const response=await Promise.race([call(source.http,{method:'GET',path:routePath('list_admin_sessions')+'?'+query,signal:controller.signal}),timedOut]);
+   this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
+   const document=parseDashboardSessions(response.body);
+   if(document.scope.serverId!==source.scope.serverId || this.fence && this.fence!==document.scope.viewerFence || this.observed && utcOrderKey(document.observedAt)<utcOrderKey(this.observed))throw failure('permission_changed');
+   this.fence=document.scope.viewerFence;this.observed=document.observedAt;this.publish({phase:'ready',document});
+  } catch(error) {
+   this.sync();if(epoch!==this.epoch || serial!==this.serial || !same(source,this.current))return;
+   const safe=safeError(controller.signal.aborted?failure('request_timeout'):error);
+   if(safe.retryAfterMs)this.retryAt=this.timers.now()+safe.retryAfterMs;
+   if(safe.code==='not_permitted' || safe.code==='permission_changed')this.blocked=true;
+   this.publish({phase:'error',error:safe});
+  } finally {this.timers.clearTimer(timeout);if(epoch===this.epoch && serial===this.serial)this.controller=undefined;}
+ }
+ dispose():void {if(this.disposed)return;this.stop();for(const fn of this.feed)fn();this.feed=[];this.release();this.current=undefined;this.disposed=true;this.publish(unavailable);this.listeners.clear();}
 }

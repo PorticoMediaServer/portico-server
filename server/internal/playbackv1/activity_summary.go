@@ -2,34 +2,44 @@ package playbackv1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"strings"
-
-	"portico.local/server/internal/dbwork"
 )
 
 // ActivitySession is a read-only display projection. It never includes the
 // presentation URL, file paths, transport controls, or capability tokens.
 type ActivitySession struct {
-	ID          string        `json:"id"`
-	User        ActivityUser  `json:"user"`
-	Profile     AdminName     `json:"profile"`
-	Device      AdminName     `json:"device"`
-	Item        *ActivityItem `json:"item,omitempty"`
-	Kind        string        `json:"kind"`
-	State       string        `json:"state"`
-	StartedAt   string        `json:"startedAt"`
-	Problem     bool          `json:"problem"`
-	Converting  bool          `json:"converting"`
-	PositionMs  int64         `json:"positionMs"`
-	DurationMs  int64         `json:"durationMs,omitempty"`
-	Decision    Decisions     `json:"decision"`
-	Quality     *Quality      `json:"quality,omitempty"`
-	VideoHeight int           `json:"videoHeight,omitempty"`
+	ID             string                 `json:"id"`
+	User           ActivityUser           `json:"user"`
+	Profile        AdminName              `json:"profile"`
+	Device         AdminName              `json:"device"`
+	Item           *ActivityItem          `json:"item,omitempty"`
+	Kind           string                 `json:"kind"`
+	State          string                 `json:"state"`
+	StartedAt      string                 `json:"startedAt"`
+	Problem        string                 `json:"problem,omitempty"`
+	BufferingSince string                 `json:"bufferingSince,omitempty"`
+	Channel        *ActivityChannel       `json:"channel,omitempty"`
+	Programme      *ActivityProgramme     `json:"programme,omitempty"`
+	Transcode      *ConversionObservation `json:"transcode,omitempty"`
+	Converting     bool                   `json:"converting"`
+	PositionMs     int64                  `json:"positionMs"`
+	DurationMs     int64                  `json:"durationMs,omitempty"`
+	Decision       Decisions              `json:"decision"`
+	Quality        *Quality               `json:"quality,omitempty"`
+	VideoHeight    int                    `json:"videoHeight,omitempty"`
+}
+type ActivityChannel struct {
+	Name   string `json:"name"`
+	Number string `json:"number,omitempty"`
+}
+type ActivityProgramme struct {
+	Title  string `json:"title"`
+	EndsAt string `json:"endsAt"`
 }
 type ActivityUser struct {
 	ID string `json:"id"`
-	// Username is absent when the session authority has no local username.
+	// Username is absent without a validated canonical membership username.
 	// Neither the account ID nor its profile is a substitute.
 	Username string `json:"username,omitempty"`
 }
@@ -74,81 +84,37 @@ const activityConverting = `CASE WHEN json_valid(v.presentation) THEN CASE WHEN
  json_extract(v.presentation,'$.decision.audio.action')='transcode' OR
  json_extract(v.presentation,'$.decision.subtitles.action')='burn'
  THEN 1 ELSE 0 END ELSE 0 END`
-const activityProblem = `v.state IN ('error','buffering')`
 
-// ActivitySummarySessions ranks the entire indexed active set before capping
-// at three. Totals and visible selection share one snapshot; only the chosen
-// page receives duration/catalogue/artwork enrichment.
+// ActivitySummarySessions and Dashboard share qualification, totals and order.
 func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions, error) {
-	out := ActivitySessions{Items: []ActivitySession{}}
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	page, err := s.activitySessionPage(ctx, 3, "", true)
+	out := ActivitySessions{Count: page.Totals.Streams, ConvertingCount: page.Totals.Converting, Items: []ActivitySession{}}
 	if err != nil {
 		return out, err
 	}
-	defer done()
-	now := s.now().UnixMilli()
-	if err = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(SUM(`+activityConverting+`),0)
- FROM playback_v1_sessions v INDEXED BY playback_v1_sessions_active WHERE `+adminActiveV1, now).Scan(&out.Count, &out.ConvertingCount); err != nil {
-		return out, err
-	}
-	rows, err := tx.QueryContext(ctx, `WITH chosen AS MATERIALIZED (
- SELECT v.id,v.created_ms,CASE WHEN `+activityProblem+` THEN 0 WHEN `+activityConverting+`=1 THEN 1 ELSE 2 END priority
- FROM playback_v1_sessions v INDEXED BY playback_v1_sessions_active WHERE `+adminActiveV1+`
- ORDER BY priority,v.created_ms DESC,v.id LIMIT 3
- ) `+adminV1Projection+` FROM chosen CROSS JOIN playback_v1_sessions v ON v.id=chosen.id`+adminV1Joins+`
- ORDER BY chosen.priority,chosen.created_ms DESC,chosen.id`, now)
-	if err != nil {
-		return out, err
-	}
-	ids := []string{}
-	lengths := []durationKey{}
-	for rows.Next() {
-		a, length, _, e := readAdminSession(rows, false)
-		if e != nil {
-			rows.Close()
-			return out, e
-		}
-		user := ActivityUser{ID: a.User.ID}
-		if strings.TrimSpace(a.User.Name) != "" {
-			user.Username = a.User.Name
-		}
-		v := ActivitySession{ID: a.ID, User: user, Profile: a.Profile, Device: a.Device, Kind: a.Kind, State: a.State,
-			StartedAt: a.StartedAt, Problem: a.State == "error" || a.State == "buffering",
-			PositionMs: a.PositionMs, Decision: a.Decision, Quality: a.Quality, VideoHeight: a.VideoHeight}
-		v.Converting = a.Decision.Video != nil && (a.Decision.Video.Action == "transcode" || a.Decision.Video.Action == "burn") ||
-			a.Decision.Audio != nil && a.Decision.Audio.Action == "transcode" ||
-			a.Decision.Subtitles != nil && a.Decision.Subtitles.Action == "burn"
-		if a.Item != nil {
-			v.Item = &ActivityItem{ID: a.Item.ID, Title: a.Item.Title, Kind: a.Kind, Art: []ActivityArt{}}
-			if a.Kind != "channel" {
-				ids = append(ids, a.Item.ID)
-			}
-		}
+	out.Overflow = ActivitySessionOverflow{Count: out.Count - int64(len(page.Items)), ConvertingCount: out.ConvertingCount}
+	for _, a := range page.Items {
+		v := ActivitySession{ID: a.ID, User: ActivityUser{ID: a.User.ID, Username: a.User.Name}, Profile: a.Profile, Device: a.Device, Item: a.Item, Kind: a.Kind, State: a.State, StartedAt: a.StartedAt, Problem: a.Problem, BufferingSince: a.BufferingSince, Channel: a.Channel, Programme: a.Programme, Transcode: a.Transcode, Converting: convertingDecision(a.Decision), PositionMs: a.PositionMs, DurationMs: a.DurationMs, Decision: a.Decision, Quality: a.Quality, VideoHeight: a.VideoHeight}
 		out.Items = append(out.Items, v)
-		lengths = append(lengths, length)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	durations, err := durationsOf(ctx, tx, lengths)
-	if err != nil {
-		return out, err
-	}
-	out.Overflow.Count = out.Count - int64(len(out.Items))
-	out.Overflow.ConvertingCount = out.ConvertingCount
-	for i := range out.Items {
-		out.Items[i].DurationMs = durations[lengths[i]]
-		if out.Items[i].Converting {
+		if v.Converting {
 			out.Overflow.ConvertingCount--
 		}
 	}
+	return out, nil
+}
+
+func enrichActivityItems(ctx context.Context, tx *sql.Tx, items []AdminSession, artwork bool) error {
+	ids := []string{}
+	for _, a := range items {
+		if a.Item != nil && a.Kind != "channel" {
+			ids = append(ids, a.Item.ID)
+		}
+	}
 	if len(ids) == 0 {
-		return out, nil
+		return nil
 	}
 	raw, _ := json.Marshal(ids)
-	rows, err = tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.year,COALESCE(pid(sh.public_id),''),COALESCE(sh.title,''),se.number,ep.number,COALESCE(ep.numbering,''),COALESCE(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch'),''),COALESCE(ar.title,''),COALESCE(al.title,'')
+	rows, err := tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.year,COALESCE(pid(sh.public_id),''),COALESCE(sh.title,''),se.number,ep.number,COALESCE(ep.numbering,''),COALESCE(strftime('%Y-%m-%d',ep.air_date*86400,'unixepoch'),''),COALESCE(ar.title,''),COALESCE(al.title,'')
  FROM json_each(?) wanted CROSS JOIN catalog_entities i ON i.public_id=pid_blob(wanted.value)
  CROSS JOIN catalog_kinds k ON k.id=i.kind
  LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id LEFT JOIN catalog_entities sh ON sh.id=ep.show_id
@@ -156,7 +122,7 @@ func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions
  LEFT JOIN catalog_songs so ON so.entity_id=i.id LEFT JOIN catalog_entities al ON al.id=so.album_id
  LEFT JOIN catalog_albums ad ON ad.entity_id=al.id LEFT JOIN catalog_entities ar ON ar.id=ad.artist_id`, string(raw))
 	if err != nil {
-		return out, err
+		return err
 	}
 	for rows.Next() {
 		var id, kind, showID, show, numbering, airDate, artist, album string
@@ -165,8 +131,8 @@ func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions
 		if err = rows.Scan(&id, &kind, &year, &showID, &show, &season, &episode, &numbering, &airDate, &artist, &album); err != nil {
 			break
 		}
-		for n := range out.Items {
-			if it := out.Items[n].Item; it != nil && it.ID == id {
+		for n := range items {
+			if it := items[n].Item; it != nil && it.ID == id {
 				it.Kind, it.ShowID, it.EpisodeNumbering, it.AirDate = kind, showID, numbering, airDate
 				it.Year, it.ShowTitle, it.SeasonNumber, it.EpisodeNumber, it.Artist, it.Album = year, show, season, episode, artist, album
 			}
@@ -177,7 +143,10 @@ func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions
 	}
 	rows.Close()
 	if err != nil {
-		return out, err
+		return err
+	}
+	if !artwork {
+		return nil
 	}
 	// Keyed entity/parent joins and ready-object checks keep artwork work bounded
 	// by this page, including an episode's show and a song's album fallback.
@@ -194,20 +163,20 @@ func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions
  CROSS JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' CROSS JOIN catalog_entities e ON e.id=a.entity_id
  ) SELECT public_id,kind,art_id,role,digest FROM ranked WHERE rank=1 ORDER BY public_id,role`, string(raw))
 	if err != nil {
-		return out, err
+		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id string
 		var a ActivityArt
 		if err = rows.Scan(&id, &a.Kind, &a.ID, &a.Role, &a.Revision); err != nil {
-			return out, err
+			return err
 		}
-		for n := range out.Items {
-			if it := out.Items[n].Item; it != nil && it.ID == id {
+		for n := range items {
+			if it := items[n].Item; it != nil && it.ID == id {
 				it.Art = append(it.Art, a)
 			}
 		}
 	}
-	return out, rows.Err()
+	return rows.Err()
 }

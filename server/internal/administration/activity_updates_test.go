@@ -20,7 +20,7 @@ func TestActivityCachedUpdateTransitionHintsContainNoReleaseFacts(t *testing.T) 
 		}
 	}
 	var count int
-	if e := db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='server.update' AND data=''`).Scan(&count); e != nil || count != 2 {
+	if e := db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='server.updated' AND data=''`).Scan(&count); e != nil || count != 2 {
 		t.Fatal(count, e)
 	}
 }
@@ -35,7 +35,7 @@ func TestActivityCachedCheckPublishesAfterBackgroundCompletion(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		var count int
-		if e := db.QueryRow(`SELECT count(*) FROM api_events WHERE type='server.update' AND audience='admin'`).Scan(&count); e != nil {
+		if e := db.QueryRow(`SELECT count(*) FROM api_events WHERE type='server.updated' AND audience='admin'`).Scan(&count); e != nil {
 			t.Fatal(e)
 		}
 		if count == 1 {

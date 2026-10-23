@@ -16085,6 +16085,48 @@ export const schemas = {
       "lastScanFinishedAt": {
         "type": "string"
       },
+      "majorIssues": {
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "destination": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "severity": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "code",
+            "severity",
+            "subject",
+            "destination"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "observedAt": {
         "type": "string"
       },
@@ -16167,6 +16209,23 @@ export const schemas = {
           "items": {
             "items": {
               "properties": {
+                "bufferingSince": {
+                  "type": "string"
+                },
+                "channel": {
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
                 "converting": {
                   "type": "boolean"
                 },
@@ -16365,7 +16424,7 @@ export const schemas = {
                   "type": "integer"
                 },
                 "problem": {
-                  "type": "boolean"
+                  "type": "string"
                 },
                 "profile": {
                   "properties": {
@@ -16379,6 +16438,21 @@ export const schemas = {
                   "required": [
                     "id",
                     "name"
+                  ],
+                  "type": "object"
+                },
+                "programme": {
+                  "properties": {
+                    "endsAt": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "endsAt"
                   ],
                   "type": "object"
                 },
@@ -16420,6 +16494,27 @@ export const schemas = {
                 "state": {
                   "type": "string"
                 },
+                "transcode": {
+                  "properties": {
+                    "cadenceMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "observedAt": {
+                      "type": "string"
+                    },
+                    "speed": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "speed",
+                    "observedAt",
+                    "cadenceMs"
+                  ],
+                  "type": "object"
+                },
                 "user": {
                   "properties": {
                     "id": {
@@ -16448,7 +16543,6 @@ export const schemas = {
                 "kind",
                 "state",
                 "startedAt",
-                "problem",
                 "converting",
                 "positionMs",
                 "decision"
@@ -16577,7 +16671,8 @@ export const schemas = {
       "scans",
       "tasks",
       "update",
-      "health"
+      "health",
+      "majorIssues"
     ],
     "type": "object"
   },
@@ -17023,6 +17118,12 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "params": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
             "revision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -17043,7 +17144,8 @@ export const schemas = {
             "firstAt",
             "lastAt",
             "occurrences",
-            "revision"
+            "revision",
+            "params"
           ],
           "type": "object"
         },
@@ -17771,6 +17873,11 @@ export const schemas = {
                 },
                 "state": {
                   "type": "string"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "trigger": {
                   "type": "string"
@@ -138474,6 +138581,23 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "bufferingSince": {
+              "type": "string"
+            },
+            "channel": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
             "decision": {
               "properties": {
                 "audio": {
@@ -138586,16 +138710,80 @@ export const schemas = {
             },
             "item": {
               "properties": {
+                "airDate": {
+                  "type": "string"
+                },
+                "album": {
+                  "type": "string"
+                },
+                "art": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "role",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "artist": {
+                  "type": "string"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "episodeNumbering": {
+                  "type": "string"
+                },
                 "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "showId": {
+                  "type": "string"
+                },
+                "showTitle": {
                   "type": "string"
                 },
                 "title": {
                   "type": "string"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "id",
-                "title"
+                "title",
+                "kind",
+                "art"
               ],
               "type": "object"
             },
@@ -138610,6 +138798,9 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "problem": {
+              "type": "string"
+            },
             "profile": {
               "properties": {
                 "id": {
@@ -138622,6 +138813,21 @@ export const schemas = {
               "required": [
                 "id",
                 "name"
+              ],
+              "type": "object"
+            },
+            "programme": {
+              "properties": {
+                "endsAt": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "endsAt"
               ],
               "type": "object"
             },
@@ -138666,6 +138872,27 @@ export const schemas = {
             "state": {
               "type": "string"
             },
+            "transcode": {
+              "properties": {
+                "cadenceMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "speed": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "speed",
+                "observedAt",
+                "cadenceMs"
+              ],
+              "type": "object"
+            },
             "user": {
               "properties": {
                 "id": {
@@ -138704,6 +138931,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "observedAt": {
+        "type": "string"
+      },
       "page": {
         "properties": {
           "limit": {
@@ -138735,11 +138965,78 @@ export const schemas = {
           "revision"
         ],
         "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "totals": {
+        "properties": {
+          "atHome": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "away": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "bandwidthKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "converting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "paused": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "people": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "streams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "streams",
+          "paused",
+          "converting",
+          "bandwidthKbps",
+          "people",
+          "atHome",
+          "away"
+        ],
+        "type": "object"
       }
     },
     "required": [
+      "scope",
+      "observedAt",
       "items",
-      "page"
+      "page",
+      "totals"
     ],
     "type": "object"
   },
@@ -145187,6 +145484,11 @@ export const schemas = {
           "state": {
             "type": "string"
           },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "trigger": {
             "type": "string"
           },
@@ -145318,6 +145620,11 @@ export const schemas = {
           },
           "state": {
             "type": "string"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "trigger": {
             "type": "string"
@@ -159729,6 +160036,11 @@ export const schemas = {
       },
       "state": {
         "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "trigger": {
         "type": "string"

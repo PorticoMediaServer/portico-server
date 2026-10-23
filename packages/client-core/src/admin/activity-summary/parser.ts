@@ -1,5 +1,5 @@
 import {currentUTCTimestamp, utcOrderKey} from '../../local-session.ts';
-import type {OwnerActivitySummary} from './types.ts';
+import type {OwnerActivitySummary, DashboardSessionsPage} from './types.ts';
 
 type Reader = (value: unknown) => unknown;
 type ObjectValue = Record<string, unknown>;
@@ -59,14 +59,26 @@ const username: Reader = value => {
   const out = text(256, true)(value) as string;
   return out.trim() ? out : invalid();
 };
+const choice = (values: readonly string[]): Reader => v => typeof v === 'string' && values.includes(v) ? v : invalid();
+const finite: Reader = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : invalid();
+const conversion = record({speed:finite, observedAt:timestamp, cadenceMs:integer(1000,1000)});
+const problemCode=choice(['buffering','behind']);
+const channel=record({name:words},{number:words});
+const programme=record({title:words,endsAt:timestamp});
 const sessionShape = record({id, user: record({id}, {username}), profile: named, device: named, kind: label, state: label,
-  startedAt: timestamp, problem: bool, converting: bool, positionMs: count, decision: decisions},
-  {durationMs: integer(Number.MAX_SAFE_INTEGER, 1), item, quality, videoHeight: integer(Number.MAX_SAFE_INTEGER, 1)});
+  startedAt: timestamp, converting: bool, positionMs: count, decision: decisions},
+  {durationMs: integer(Number.MAX_SAFE_INTEGER, 1), item, quality, videoHeight: integer(Number.MAX_SAFE_INTEGER, 1), problem: problemCode, bufferingSince:timestamp, transcode:conversion, channel, programme});
+function qualifyProblem(out:ObjectValue,converting:boolean):void {
+ if (out.problem==='buffering' && (out.state!=='buffering' || !out.bufferingSince)) invalid();
+ if (out.problem==='behind' && (!['playing','buffering'].includes(out.state as string) || !converting || !(out.transcode as {speed?:number}|undefined) || ((out.transcode as {speed:number}).speed>=1))) invalid();
+ if (out.transcode && !converting) invalid();
+}
 const session: Reader = value => {
   const out = sessionShape(value) as ObjectValue;
   const decision = out.decision as {video?: {action: string}; audio?: {action: string}; subtitles?: {action: string}};
   const converting = ['transcode', 'burn'].includes(decision.video?.action ?? '') || decision.audio?.action === 'transcode' || decision.subtitles?.action === 'burn';
-  if (out.problem !== ['error', 'buffering'].includes(out.state as string) || out.converting !== converting) invalid();
+  if (out.converting !== converting) invalid();
+  qualifyProblem(out,converting);
   return out;
 };
 const streams: Reader = value => {
@@ -111,15 +123,44 @@ const update: Reader = v => {
   if (!['unconfigured', 'unavailable', 'current', 'available'].includes(out.state as string) || out.available !== (out.state === 'available') || out.available && out.latest === undefined) invalid();
   return out;
 };
+const majorIssueShape=record({kind:choice(['library','storage','backups','networking','remote-source']),code:choice(['library_unreachable','storage_nearly_full','backup_failed','secure_renewal_failed','remote_unreachable','remote_program_unavailable']),severity:choice(['playback_stop','data_risk']),subject:words,destination:record({kind:label,target:words})});
+const majorIssue:Reader=v=>{
+ const out=majorIssueShape(v) as ObjectValue,d=out.destination as {kind:string;target:string};
+ const expected:Record<string,readonly[string,string,string,string|undefined]>={library_unreachable:['library','playback_stop','library-source',undefined],remote_unreachable:['remote-source','playback_stop','remote-source',undefined],remote_program_unavailable:['remote-source','playback_stop','remote-source',undefined],storage_nearly_full:['storage','data_risk','storage','state'],backup_failed:['backups','data_risk','backups',''],secure_renewal_failed:['networking','data_risk','networking','certificate']};
+ const e=expected[out.code as string];if(out.kind!==e[0] || out.severity!==e[1] || d.kind!==e[2] || e[3]===undefined && !d.target || e[3]!==undefined && d.target!==e[3])invalid();return out;
+};
 const summary = record({
   scope: record({serverId: id, viewerFence: text(64, true)}), observedAt: timestamp, serverName: words,
   streams, scans: list(scan, Number.MAX_SAFE_INTEGER, 'libraryId'), tasks: capped(task, 3),
   update, health: record({degraded: bool}),
+ majorIssues:list(majorIssue,20),
 }, {lastScanFinishedAt: timestamp});
 
 /** One current owner document; no tolerant defaults, joined captions or invented denominators. */
 export function parseActivitySummary(value: unknown): OwnerActivitySummary {
   const out = summary(value) as OwnerActivitySummary;
   if (!/^[a-f0-9]{64}$/.test(out.scope.viewerFence)) invalid();
+  for (const item of out.streams.items) freshSession(item as ObjectValue,out.observedAt);
   return out;
+}
+
+function freshSession(item:ObjectValue,observedAt:string):void {
+ const at=Date.parse(observedAt);
+ if (item.transcode) {const stamp=Date.parse((item.transcode as {observedAt:string}).observedAt);if(stamp>at || at-stamp>5000)invalid();}
+ if (item.problem==='buffering' && at-Date.parse(item.bufferingSince as string)<10000)invalid();
+}
+const adminSession:Reader=v=>{
+ const out=record({id,protocol:choice(['v1']),user:named,profile:named,device:named,kind:label,state:label,positionMs:count,decision:decisions,location:label,startedAt:timestamp},{item,durationMs:integer(Number.MAX_SAFE_INTEGER,1),bitrateKbps:integer(Number.MAX_SAFE_INTEGER,1),bandwidthKbps:integer(Number.MAX_SAFE_INTEGER,1),engine:label,quality,videoHeight:integer(Number.MAX_SAFE_INTEGER,1),problem:problemCode,bufferingSince:timestamp,transcode:conversion,channel,programme})(v) as ObjectValue;
+ const d=out.decision as {video?:{action:string};audio?:{action:string};subtitles?:{action:string}};
+ qualifyProblem(out,['transcode','burn'].includes(d.video?.action??'') || d.audio?.action==='transcode' || d.subtitles?.action==='burn');
+ return out;
+};
+/** Server-composed, bounded current page; never fetches or reorders hidden pages. */
+export function parseDashboardSessions(value:unknown):DashboardSessionsPage {
+ const out=record({scope:record({serverId:id,viewerFence:text(64,true)}),observedAt:timestamp,items:list(adminSession,200,'id'),page:record({limit:integer(200,1),total:count,start:count,revision:text(1024)},{nextCursor:text(2048,true)}),totals:record({streams:count,paused:count,converting:count,bandwidthKbps:count,people:count,atHome:count,away:count})})(value) as DashboardSessionsPage;
+ if(!/^[a-f0-9]{64}$/.test(out.scope.viewerFence) || out.page.total!==out.totals.streams || out.items.length>out.page.limit || out.items.length>out.totals.streams || out.totals.paused>out.totals.streams || out.totals.converting>out.totals.streams || out.totals.people>out.totals.streams || out.totals.atHome+out.totals.away>out.totals.streams)invalid();
+ let previous:ObjectValue|undefined;
+ const priority=(v:ObjectValue)=>v.problem?0:(()=>{const d=v.decision as any;return ['transcode','burn'].includes(d.video?.action??'') || d.audio?.action==='transcode' || d.subtitles?.action==='burn'?1:2;})();
+ for(const raw of out.items){const item=raw as ObjectValue;freshSession(item,out.observedAt);if(previous){const p=priority(previous),c=priority(item),pt=utcOrderKey(previous.startedAt as string),ct=utcOrderKey(item.startedAt as string);if(p>c || p===c && (pt<ct || pt===ct && (previous.id as string)>(item.id as string)))invalid();}previous=item;}
+ return out;
 }

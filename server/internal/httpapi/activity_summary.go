@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"portico.local/apikit"
@@ -16,6 +17,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
+	"portico.local/server/internal/telemetry"
 )
 
 type ActivitySummary struct {
@@ -27,6 +29,7 @@ type ActivitySummary struct {
 	Tasks              ActivitySummaryTasks        `json:"tasks"`
 	Update             ActivitySummaryUpdate       `json:"update"`
 	Health             ActivitySummaryHealth       `json:"health"`
+	MajorIssues        []telemetry.MajorIssue      `json:"majorIssues"`
 	LastScanFinishedAt string                      `json:"lastScanFinishedAt,omitempty"`
 }
 type ActivitySummaryScan struct {
@@ -86,7 +89,7 @@ func registerActivitySummary(registry *apikit.Registry, d Dependencies) error {
 	}})
 }
 func (d Dependencies) readActivitySummary(ctx context.Context, p identity.Principal) (ActivitySummary, error) {
-	out := ActivitySummary{ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), ServerName: d.Identity.Name(), Scans: []ActivitySummaryScan{}, Tasks: ActivitySummaryTasks{Items: []ActivitySummaryTask{}}}
+	out := ActivitySummary{MajorIssues: []telemetry.MajorIssue{}, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano), ServerName: d.Identity.Name(), Scans: []ActivitySummaryScan{}, Tasks: ActivitySummaryTasks{Items: []ActivitySummaryTask{}}}
 	out.Scope = playback.ActivityScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}
 	service := d.v1
 	if service == nil {
@@ -114,6 +117,9 @@ func (d Dependencies) readActivitySummary(ctx context.Context, p identity.Princi
 	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX((SELECT r.finished_at FROM inventory_runs r WHERE r.source_id=s.id AND r.finished_at<>'' ORDER BY r.finished_at DESC LIMIT 1)),'') FROM library_sources s`).Scan(&out.LastScanFinishedAt); e != nil {
 		return out, e
 	}
+	if e = d.activityMajorIssues(ctx, tx, &out); e != nil {
+		return out, e
+	}
 	if e = gate.Commit(); e != nil {
 		return out, e
 	}
@@ -131,6 +137,7 @@ func (d Dependencies) readActivitySummary(ctx context.Context, p identity.Princi
 	if d.Watchdog != nil {
 		out.Health.Degraded = d.Watchdog.Report().State != dbwork.HealthyState
 	}
+	out.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	return out, nil
 }
 func (d Dependencies) activitySummaryScans(ctx context.Context, tx *sql.Tx, out *ActivitySummary) error {
@@ -184,10 +191,10 @@ func (d Dependencies) activitySummaryScans(ctx context.Context, tx *sql.Tx, out 
 const activityTasksCTE = `WITH tasks AS (
  SELECT c.id,c.kind,COALESCE(l.id,'') library_id,COALESCE(l.name,'') library_name,c.state,c.phase,
  CASE WHEN p.id IS NOT NULL THEN p.done+p.failed ELSE c.processed END processed,
- CASE WHEN p.selection_complete=1 THEN p.total END total,CASE WHEN p.id IS NOT NULL THEN 'items' ELSE '' END unit,c.created_ms ordering
+ CASE WHEN p.selection_complete=1 THEN p.total ELSE (SELECT total FROM console_operation_totals WHERE operation_id=c.id) END total,CASE WHEN p.id IS NOT NULL THEN 'items' ELSE '' END unit,c.created_ms ordering
  FROM console_operations c INDEXED BY console_active_work LEFT JOIN libraries l ON l.id=c.resource LEFT JOIN personal_jobs p ON p.id=c.resource
  WHERE c.state IN ('queued','running','cancellation-requested','reconciling','paused')
- AND c.state IN('queued','running','reconciling') AND c.kind<>'library-scan'
+ AND c.kind<>'library-scan'
  UNION ALL
  SELECT 'analysis:'||a.job_id||':'||a.object_id||':'||a.stage,a.stage,l.id,l.name,'running',a.stage,a.processed_bytes,
  CASE WHEN a.stage='checksum' AND lower(substr(o.relative_path,-5))<>'.strm' AND asset.container<>'strm' THEN o.size END,'bytes',a.updated_ms
@@ -219,4 +226,100 @@ func (d Dependencies) activitySummaryTasks(ctx context.Context, tx *sql.Tx, out 
 		out.Tasks.Items = append(out.Tasks.Items, v)
 	}
 	return rows.Err()
+}
+
+// This is an owner-only projection of measured state, not Attention's wider
+// diagnostic list. Unknown/unconfigured remote, backup or certificate facts
+// cannot manufacture a warning. Future remote producers use the same shape.
+func (d Dependencies) activityMajorIssues(ctx context.Context, tx *sql.Tx, out *ActivitySummary) error {
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,COALESCE(NULLIF(s.name,''),l.name) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.enabled=1 AND s.health IN('offline','root_changed') ORDER BY s.id LIMIT 20`)
+	if err != nil {
+		return err
+	}
+	unreachable := []telemetry.NamedRecord{}
+	for rows.Next() {
+		var v telemetry.NamedRecord
+		if err = rows.Scan(&v.ID, &v.Name); err != nil {
+			rows.Close()
+			return err
+		}
+		unreachable = append(unreachable, v)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	var backupFailed bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM console_alerts WHERE code='backup-failed' AND status!='resolved')`).Scan(&backupFailed); err != nil {
+		return err
+	}
+	nearlyFull := false
+	if free, total, ok := telemetry.VolumeUsage(d.stateDirectory()); ok && total > 0 {
+		nearlyFull = float64(free)/float64(total) < telemetry.StorageWarningRatio
+	}
+	renewalFailed := false
+	if d.Networking != nil && d.Networking.Certificates() != nil {
+		status, e := d.Networking.Certificates().Status(ctx)
+		if e == nil && status.Config.Enabled && status.NotAfter != nil && status.ErrorCode != "" && status.RenewAt != nil && !status.RenewAt.After(time.Now()) {
+			renewalFailed = true
+		}
+	}
+	out.MajorIssues = telemetry.MajorIssues(unreachable, nearlyFull, backupFailed, renewalFailed)
+	remotes, e := tx.QueryContext(ctx, `SELECT id,name FROM remote_sources WHERE removed=0 AND state='offline' ORDER BY id LIMIT 20`)
+	if e != nil {
+		return e
+	}
+	defer remotes.Close()
+	for remotes.Next() {
+		var id, name string
+		if e = remotes.Scan(&id, &name); e != nil {
+			return e
+		}
+		if len(out.MajorIssues) < 20 {
+			out.MajorIssues = append(out.MajorIssues, telemetry.MajorIssue{Kind: "remote-source", Code: "remote_unreachable", Severity: "playback_stop", Subject: name, Destination: telemetry.Action{Kind: "remote-source", Target: id}})
+		}
+	}
+	if e = remotes.Err(); e != nil {
+		return e
+	}
+	return nil
+}
+
+// Dashboard exposes only playback facts to scoped administrators. Neither an
+// owner-only panel nor a stale profile's paging cursor can cross this boundary.
+func (d Dependencies) dashboardSessions(ctx context.Context, r *http.Request, limit int, cursor string) (playbackv1.AdminSessionPage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	metadata := apikit.Metadata{Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "playback"}
+	admitted, err := d.v1Authorize(ctx, r, metadata)
+	if err != nil {
+		return playbackv1.AdminSessionPage{}, err
+	}
+	p := callerFrom(admitted).Principal
+	scope := playback.ActivityScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}
+	if cursor != "" {
+		prefix := scope.ViewerFence + "~"
+		if !strings.HasPrefix(cursor, prefix) {
+			return playbackv1.AdminSessionPage{}, &playbackv1.FieldError{Path: "cursor"}
+		}
+		cursor = strings.TrimPrefix(cursor, prefix)
+	}
+	out, err := d.playbackV1().AdminSessions(admitted, limit, cursor)
+	if err != nil {
+		return out, err
+	}
+	current, err := d.v1Authorize(ctx, r, metadata)
+	if err != nil {
+		return playbackv1.AdminSessionPage{}, err
+	}
+	fresh := callerFrom(current).Principal
+	if presentationIdentity(p) != presentationIdentity(fresh) || p.Epoch != fresh.Epoch {
+		return playbackv1.AdminSessionPage{}, &apierror.Error{Code: "not_permitted"}
+	}
+	out.Scope = scope
+	if out.Page.NextCursor != "" {
+		out.Page.NextCursor = scope.ViewerFence + "~" + out.Page.NextCursor
+	}
+	return out, nil
 }

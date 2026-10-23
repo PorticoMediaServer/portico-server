@@ -254,7 +254,7 @@ export class FakePlaybackServer {
         generation: s.generation, mode: 'stream', url: encodedRoutePath('get_media_grant_file',{grant:'grant-'+s.id,file:String(s.generation)})+'/master.m3u8', startPositionMs: s.positionMs,
         engine: this.o.engine ?? 'native', quality, audioTrackId: (s.audio as {trackId?: string} | undefined)?.trackId ?? 'a1', subtitle: {trackId: 's4', kind: 'text', delivery: 'sidecar'},
         subtitles: [{trackId: 's4', format: 'webvtt', url: encodedRoutePath('get_v1_media_subtitles_grant_resource_revision_vtt',{grant:'grant-'+s.id,resource:'s4',revision:String(s.generation)})}],
-        decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar'}},
+        decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar',reasons:[]}},
         ...(s.kind === 'audio' ? {audioRender: this.renderPlan(s.id, s.generation, s.itemId)} : {}),
       },
     };
@@ -809,13 +809,14 @@ export class FakePlaybackServer {
   // ── Admin (§14) ─────────────────────────────────────────────────
   private adminList(q: URLSearchParams): FakeResponse {
     const active = [...this.sessions.values()].filter(s => { this.expire(s); return !s.ended; });
-    const limit = Math.max(1, Math.min(Number(q.get('limit') ?? 50), 200));
+    const limit = Math.max(1, Math.min(Number(q.get('limit') ?? 10), 200));
     const start = Number((q.get('cursor') ?? 'at:0').split(':')[1]);
+    active.sort((a,b)=>b.startedAt-a.startedAt || a.id.localeCompare(b.id));
     const page = active.slice(start, start + limit).map(s => ({
-      id: s.id, user: {id: 'u1', name: 'demo'}, profile: {id: 'p1', name: 'Admin'}, device: {id: s.deviceId, name: s.deviceId}, item: {id: s.itemId, title: `Title ${s.itemId}`},
+      protocol:'v1',id: s.id, user: {id: 'u1', name: 'demo'}, profile: {id: 'p1', name: 'Admin'}, device: {id: s.deviceId, name: s.deviceId}, item: {id: s.itemId, title: `Title ${s.itemId}`,kind:s.kind,art:[]},
       kind: s.kind, state: s.state, positionMs: s.positionMs, decision: this.view(s).presentation.decision, bitrateKbps: 8000, location: 'local', startedAt: new Date(s.startedAt).toISOString(),
     }));
-    return {status: 200, headers: {}, body: {items: page, page: {limit, total: active.length, ...(start + limit < active.length ? {nextCursor: `at:${start + limit}`} : {})}}};
+    return {status: 200, headers: {}, body: {scope:{serverId:'fake-server',viewerFence:'a'.repeat(64)},observedAt:new Date(this.now()).toISOString(),totals:{streams:active.length,paused:active.filter(s=>s.state==='paused').length,converting:active.filter(s=>{const d=this.view(s).presentation.decision;return d.video?.action==='transcode' || d.audio?.action==='transcode';}).length,bandwidthKbps:active.length*8000,people:active.length?1:0,atHome:active.length,away:0},items: page, page: {start,revision:'',limit, total: active.length, ...(start + limit < active.length ? {nextCursor: `at:${start + limit}`} : {})}}};
   }
 
   private terminate(id: string, body: Record<string, unknown>): FakeResponse {

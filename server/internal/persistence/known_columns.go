@@ -1524,6 +1524,9 @@ compact_visibility_unavailable_counts.library_id
 compact_visibility_unavailable_counts.total
 configuration.key
 configuration.value
+console_alert_params.alert_id
+console_alert_params.key
+console_alert_params.value
 console_alerts.code
 console_alerts.first_ms
 console_alerts.id
@@ -1558,6 +1561,8 @@ console_notifications.read_ms
 console_notifications.scope
 console_notifications.sequence
 console_notifications.target_id
+console_operation_totals.operation_id
+console_operation_totals.total
 console_operations.actor
 console_operations.attempt
 console_operations.created_ms
@@ -3608,6 +3613,11 @@ playback_conversion_failures.sequence
 playback_conversion_failures.session_id
 playback_conversion_failures.strategy
 playback_conversion_failures.video
+playback_conversion_observations.generation
+playback_conversion_observations.observed_ms
+playback_conversion_observations.producer
+playback_conversion_observations.session_id
+playback_conversion_observations.speed
 playback_conversion_targets.generation
 playback_conversion_targets.hardware_json
 playback_conversion_targets.session_id
@@ -3863,6 +3873,7 @@ playback_v1_sessions.account_id
 playback_v1_sessions.audio_track_id
 playback_v1_sessions.authority
 playback_v1_sessions.bandwidth_kbps
+playback_v1_sessions.buffering_since_ms
 playback_v1_sessions.channel_id
 playback_v1_sessions.created_ms
 playback_v1_sessions.device_id

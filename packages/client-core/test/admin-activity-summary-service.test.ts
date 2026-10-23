@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {routePath} from '../../contracts/src/routes.ts';
-import {ActivitySummaryService} from '../src/admin/activity-summary/service.ts';
+import {ActivitySummaryService,DashboardSessionsService} from '../src/admin/activity-summary/service.ts';
 import type {ActivitySummaryScope, ActivitySummarySource, ActivitySummaryTimers} from '../src/admin/activity-summary/types.ts';
 import type {ServerEvent} from '../src/playback-v1/types.ts';
 import type {V1Http, V1Request, V1Response} from '../src/playback-v1/http.ts';
 
 const scope: ActivitySummaryScope = {serverId: 'server', accountId: 'owner-account', profileId: 'owner-profile', authority: 'local', role: 'owner', sessionFamilyId: 'family', authorizationEpoch: '1'};
-const wire = (extra: Record<string, unknown> = {}): any => ({scope: {serverId: 'server', viewerFence: 'a'.repeat(64)}, observedAt: '2026-10-22T07:00:00.000000001Z', serverName: 'Private server', streams: {count: 0, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: []}, scans: [{libraryId: 'movies', libraryName: 'Movies', kind: 'movie', phase: 'discovering', discovered: 12, analyzed: 4, current: 'private-film.mkv'}], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: '0.1.0-dev'}, health: {degraded: false}, ...extra});
+const wire = (extra: Record<string, unknown> = {}): any => ({scope: {serverId: 'server', viewerFence: 'a'.repeat(64)}, observedAt: '2026-10-22T07:00:00.000000001Z', serverName: 'Private server', streams: {count: 0, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: []}, scans: [{libraryId: 'movies', libraryName: 'Movies', kind: 'movie', phase: 'discovering', discovered: 12, analyzed: 4, current: 'private-film.mkv'}], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: '0.1.0-dev'}, majorIssues:[], health: {degraded: false}, ...extra});
 const ok = (body = wire()): V1Response => ({status: 200, headers: {}, body});
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => {resolve = a; reject = b;}); return {promise, resolve, reject}; }
 async function flush() { for (let n = 0; n < 12; n++) await Promise.resolve(); }
@@ -135,7 +135,7 @@ test('settled quiet completion rechecks actual source after waiting for input', 
 });
 test('real administrative hint types coalesce at most once per second and resync rereads without opening a feed', async () => {
   const h = harness(); h.activate(); await h.service.load();
-  for (const type of ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.update']) h.feed.emit(type);
+  for (const type of ['admin.sessions', 'library.scan.updated', 'job.updated', 'operation.updated', 'server.updated', 'list.changed']) h.feed.emit(type);
   await h.clock.advance(999); assert.equal(h.requests.length, 1);
   await h.clock.advance(1); assert.equal(h.requests.length, 2);
   for (const fn of h.feed.resync) fn(); await h.clock.advance(999); assert.equal(h.requests.length, 2);
@@ -179,4 +179,42 @@ test('a completed cancelled read cannot overwrite a new current-source read', as
 test('a listener changing authority during loading prevents even the old transport dispatch', async () => {
   const h = harness(); h.activate(); const release = h.service.subscribe(() => {if (h.service.getSnapshot().phase === 'loading') h.source.set(null);});
   await h.service.load(); assert.equal(h.requests.length, 0); assert.deepEqual(h.service.getSnapshot(), {phase: 'unavailable'}); release(); h.service.dispose();
+});
+
+const dashboardWire=(extra:Record<string,unknown>={}):any=>({scope:{serverId:'server',viewerFence:'a'.repeat(64)},observedAt:'2026-10-22T07:00:00Z',items:[],page:{limit:10,total:58,start:0,revision:'',nextCursor:'cursor'},totals:{streams:58,paused:4,converting:7,bandwidthKbps:312000,people:20,atHome:10,away:48},...extra});
+function dashboardHarness(handler:(request:V1Request,index:number)=>V1Response|Promise<V1Response>=()=>ok(dashboardWire()),role='admin'){
+ const source=new Source({http:{send:async request=>{requests.push(request);return handler(request,requests.length-1);}},scope:{...scope,role}}),clock=new Clock(),feed=new Feed(),requests:V1Request[]=[];
+ const service=new DashboardSessionsService({source,timers:clock});service.setActive(true);service.attach(feed);
+ return {service,source,clock,feed,requests};
+}
+test('Dashboard admin reads only a bounded current page with global totals and explicit Show all paging',async()=>{
+ const h=dashboardHarness();await h.service.load();assert.equal(h.requests.length,1);assert.equal(h.requests[0].path,routePath('list_admin_sessions')+'?limit=10');
+ assert.equal(h.service.getSnapshot().document?.totals.streams,58);assert.equal(h.service.getSnapshot().document?.totals.bandwidthKbps,312000);
+ await h.service.load('cursor');assert.equal(h.requests.length,2);assert.ok(h.requests[1].path.endsWith('?limit=10&cursor=cursor'));
+ assert.equal(h.service.getSnapshot().document?.page.nextCursor,'cursor');h.service.dispose();assert.equal(h.feed.count(),0);assert.equal(h.clock.tasks.size,0);
+});
+test('Dashboard member makes no read, no owner panels, no private error body or stale authority completion',async()=>{
+ const member=dashboardHarness(undefined,'member');await member.service.load();assert.equal(member.requests.length,0);assert.equal(member.feed.count(),0);member.service.dispose();
+ for(const role of ['owner','admin']){
+  const pending=deferred<V1Response>(),h=dashboardHarness(()=>pending.promise,role);const read=h.service.load();
+  h.source.set({...h.source.value!,scope:{...h.source.value!.scope,profileId:'other-profile'}});
+  assert.equal(h.requests[0].signal?.aborted,true);assert.equal(h.service.getSnapshot().document,undefined);pending.resolve(ok(dashboardWire()));await read;
+  assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();assert.equal(h.clock.tasks.size,0);
+ }
+ const denied=dashboardHarness(()=>({status:403,headers:{},body:{current:'private'}}));await denied.service.load();assert.deepEqual(denied.service.getSnapshot(),{phase:'error',error:{code:'not_permitted'}});denied.feed.emit('admin.sessions');await denied.clock.advance(10000);assert.equal(denied.requests.length,1);denied.service.dispose();
+});
+test('Dashboard uses the existing feed and one-second cadence after loading; no all-page fanout or polling',async()=>{
+ const h=dashboardHarness();await h.service.load();for(let n=0;n<20;n++)h.feed.emit('admin.sessions');await h.clock.advance(999);assert.equal(h.requests.length,1);await h.clock.advance(1);assert.equal(h.requests.length,2);
+ await h.clock.advance(10000);assert.equal(h.requests.length,2);h.service.setActive(false);assert.equal(h.feed.count(),0);assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();
+});
+test('Dashboard read deadline and listener-triggered sign-out release no private completion',async()=>{
+ const pending=deferred<V1Response>(),h=dashboardHarness(()=>pending.promise);const read=h.service.load();await h.clock.advance(10000);await read;
+ assert.deepEqual(h.service.getSnapshot(),{phase:'error',error:{code:'request_timeout'}});pending.resolve(ok(dashboardWire()));await flush();assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();assert.equal(h.clock.tasks.size,0);
+ const signedOut=dashboardHarness();signedOut.service.subscribe(()=>{if(signedOut.service.getSnapshot().phase==='loading')signedOut.source.set(null);});await signedOut.service.load();assert.equal(signedOut.requests.length,0);assert.equal(signedOut.service.getSnapshot().document,undefined);signedOut.service.dispose();
+});
+test('Dashboard rejects owner-only payload additions, inconsistent totals, wrong server and fence replacement',async()=>{
+ for(const body of [dashboardWire({serverName:'private'}),dashboardWire({totals:{streams:59,paused:0,converting:0,bandwidthKbps:0,people:1,atHome:0,away:0}}),dashboardWire({scope:{serverId:'other-server',viewerFence:'a'.repeat(64)}})]){
+  const h=dashboardHarness(()=>ok(body));await h.service.load();assert.equal(h.service.getSnapshot().phase,'error');assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();
+ }
+ const h=dashboardHarness((_,n)=>ok(dashboardWire(n?{scope:{serverId:'server',viewerFence:'b'.repeat(64)}}:{})));await h.service.load();await h.service.load();assert.equal(h.service.getSnapshot().error?.code,'permission_changed');assert.equal(h.service.getSnapshot().document,undefined);h.service.dispose();
 });
