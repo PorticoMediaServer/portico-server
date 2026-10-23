@@ -36,8 +36,8 @@ export function url(v: unknown, what: string): string {
 }
 
 // ── Options (spec §4.1) ─────────────────────────────────────────────
-export type VideoStream = Readonly<{interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
-export type AudioStream = Readonly<{id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
+export type VideoStream = Readonly<{hdr10Plus?: boolean; interlaced?: boolean; id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
+export type AudioStream = Readonly<{profile?: string; variant?: string; objectAudio?: string; dtsx?: boolean; sampleRate?: number; bitDepth?: number; id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
 export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
 export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
