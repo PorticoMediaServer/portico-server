@@ -171,3 +171,90 @@ func TestLibraryClosureCacheConcurrentReads(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestLibrariesForRevalidatesRemovedExtra(t *testing.T) {
+	tool := copyCacheELF(t)
+	extra := filepath.Join(t.TempDir(), "selected-extra")
+	if err := os.WriteFile(extra, []byte("trusted explicit dependency"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := librariesFor(tool, []string{extra}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(extra); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := librariesFor(tool, []string{extra}); err == nil {
+		t.Fatal("outer sandbox cache bypassed dependency revalidation")
+	}
+}
+
+func TestLibraryClosureCacheRejectsRestoredTimestamp(t *testing.T) {
+	tool := copyCacheELF(t)
+	before, err := os.Stat(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ResolveLibraries(tool, tool, nil); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[0] = 0 // Same length and restored mtime; no longer a valid ELF.
+	if err = os.WriteFile(tool, raw, before.Mode()); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(tool, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ResolveLibraries(tool, tool, nil); err == nil {
+		t.Fatal("same-size restored-mtime replacement retained its cached ELF closure")
+	}
+}
+
+func TestLibraryClosureCacheFollowsAliasToSameInode(t *testing.T) {
+	tool := copyCacheELF(t)
+	alternate := filepath.Join(t.TempDir(), "other-origin")
+	if err := os.Link(tool, alternate); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "tool")
+	if err := os.Symlink(tool, alias); err != nil {
+		t.Fatal(err)
+	}
+	first, err := ResolveLibraries(alias, alias, nil)
+	if err != nil || !slices.Contains(first, tool) {
+		t.Fatal(first, err)
+	}
+	if err = os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(alternate, alias); err != nil {
+		t.Fatal(err)
+	}
+	next, err := ResolveLibraries(alias, alias, nil)
+	if err != nil || !slices.Contains(next, alternate) || slices.Contains(next, tool) {
+		t.Fatal("same inode retained the wrong loader origin", next, err)
+	}
+}
+
+func TestLibraryWatchNoticesResolvedDanglingCandidate(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "new-library")
+	alias := filepath.Join(t.TempDir(), "earlier-candidate.so")
+	if err := os.Symlink(target, alias); err != nil {
+		t.Fatal(err)
+	}
+	watch := libraryWatch{}
+	watch.record(alias)
+	if !watch.unchanged() {
+		t.Fatal("unchanged missing target was not recorded")
+	}
+	if err := os.WriteFile(target, []byte("new higher-priority dependency"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if watch.unchanged() {
+		t.Fatal("resolved earlier candidate failed to invalidate the library closure")
+	}
+}
