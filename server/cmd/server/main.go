@@ -391,6 +391,7 @@ func run() (runErr error) {
 	}
 	defer db.Close()
 	configurationStore := operations.New(db)
+	configurationStore.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}}
 	if e = configurationStore.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
@@ -431,6 +432,13 @@ func run() (runErr error) {
 	}
 	workAdmission := workpolicy.Service{DB: db}
 	adminOperations := adminops.NewAt(db, state)
+	adminOperations.ConfigurationCommitted = func(ctx context.Context) error {
+		err := configurationStore.FlushConfiguration(ctx)
+		if configurationStore.ConfigChanged != nil {
+			configurationStore.ConfigChanged(ctx)
+		}
+		return err
+	}
 	adminOperations.ApplyBackgroundPolicy(ctx)
 	adminOperations.LogoFetch = func(ctx context.Context, locator string) ([]byte, error) {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
