@@ -88,18 +88,19 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
-	Backend        HardwareBackend `json:"backend"`
-	Available      bool            `json:"available"`
-	Reason         string          `json:"reason"`
-	Encoder        string          `json:"encoder,omitempty"`
-	NativeFilters  bool            `json:"nativeFilters"`
-	ScaleFilters   bool            `json:"scaleFilters"`
-	ToneMapFilters bool            `json:"toneMapFilters"`
-	OutputEncoders map[string]bool `json:"outputEncoders,omitempty"`
-	OutputQuality  map[string]bool `json:"outputQuality,omitempty"`
-	Device         string          `json:"device,omitempty"`
-	Identity       string          `json:"identity"`
-	DurationMS     int64           `json:"durationMs"`
+	SelectedDeviceID string          `json:"-"`
+	Backend          HardwareBackend `json:"backend"`
+	Available        bool            `json:"available"`
+	Reason           string          `json:"reason"`
+	Encoder          string          `json:"encoder,omitempty"`
+	NativeFilters    bool            `json:"nativeFilters"`
+	ScaleFilters     bool            `json:"scaleFilters"`
+	ToneMapFilters   bool            `json:"toneMapFilters"`
+	OutputEncoders   map[string]bool `json:"outputEncoders,omitempty"`
+	OutputQuality    map[string]bool `json:"outputQuality,omitempty"`
+	Device           string          `json:"device,omitempty"`
+	Identity         string          `json:"identity"`
+	DurationMS       int64           `json:"durationMs"`
 }
 
 type backendSpec struct {
@@ -220,6 +221,8 @@ func SoftwareToneMap(algorithm string) string {
 // verdict. The cache key is the ffmpeg binary identity plus backend and device,
 // so replacing ffmpeg re-probes without a restart.
 type HardwareDetector struct {
+	// Devices supplies physical discovery only; candidates still require probes.
+	Devices func(context.Context) []HardwareDevice
 	// Timeout bounds one probe encode. Zero uses the default.
 	Timeout time.Duration
 	// Libraries are the confinement's readable dependency files, as resolved by

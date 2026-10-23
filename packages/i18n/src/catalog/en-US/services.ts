@@ -1,5 +1,8 @@
 /** Hosted-only copy drawn in auth/account/connect at design 69f2d45. */
 export const servicesMessages = {
+  'services.return.lead': 'Sign in with your Portico Account and you go straight back to {server}.',
+  'services.return.back': 'Back to {server}',
+  'services.return.signedIn': 'Signed in as {username}',
   'services.provider.apple': 'Continue with Apple',
   'services.provider.google': 'Continue with Google',
   'services.provider.createDivider': 'or use your email',
