@@ -30,6 +30,7 @@ export type ShellProps = Readonly<{
   OwnerActivity: ComponentType<OwnerActivityProps>;
   dockVisible: boolean;
   onSignOut: () => void; onSignOutPorticoAccount?: () => void; onSwitchProfile?:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; onSwitchServer?:(serverId:string)=>Promise<void>; savedServers?:readonly {id:string;label:string}[];
+  onFeedback?: () => void;
   overlays?: ReactNode;
   windowChrome?: ReactNode;
   phoneSelection?: ReactNode;
@@ -39,7 +40,7 @@ const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
 const collapseMemoryKey = 'portico.next.sidebar-collapsed';
 
-export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers, phoneSelection, overlays, windowChrome, children}: ShellProps) {
+export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers,onFeedback, phoneSelection, overlays, windowChrome, children}: ShellProps) {
   useWindowScrollAnchor();
   const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
   const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
@@ -91,7 +92,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
       switchProfile: profile => {if(onSwitchProfile){setProfilePin('');setProfileError(undefined);setProfileChoice(profile);if(!profile.pinRequired)void chooseProfile(profile);}else{void navigate({to: '/profiles', search: {profileId: profile.id}});}},
       switchServer: () => { void navigate({to: '/servers'}); }, settings: () => { void navigate({to: '/settings'}); },
       ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
-      watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: () => { void navigate({to: '/feedback'}); },
+      watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: onFeedback,
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,signOutPorticoAccount:onSignOutPorticoAccount,
     }} trigger={navigation === 'sidebar' ? <button type="button" className={styles.profileRow} aria-label={[t('web.account.switchProfileOrServer'), identity.username || t('next.shell.usernameUnavailable'), identity.serverName].join(', ')}>
       <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={34} />
