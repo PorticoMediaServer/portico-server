@@ -37,7 +37,6 @@ func parseRecordingTemplate(value string) ([]recordingTemplatePart, bool) {
 		}
 	}
 	parts := []recordingTemplatePart{}
-	varies := false
 	for len(value) > 0 {
 		before, tail, found := strings.Cut(value, "{")
 		if strings.ContainsAny(before, "}\\:*?\"<>|") {
@@ -58,13 +57,10 @@ func parseRecordingTemplate(value string) ([]recordingTemplatePart, bool) {
 		if !known || padded && (pad != "02" || !supports) {
 			return nil, false
 		}
-		if token == "title" || token == "episode" || token == "date" {
-			varies = true
-		}
 		parts = append(parts, recordingTemplatePart{token: token, padded: padded})
 		value = after
 	}
-	return parts, varies
+	return parts, true
 }
 
 // ValidRecordingTemplate accepts the drawn presets and documented vocabulary.

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/artifactlease"
+	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/storage"
 )
@@ -21,6 +22,7 @@ import (
 // The scheduler must reserve the exact target for this occurrence durably before
 // linkLayout. A matching digest alone never establishes target ownership.
 type layoutBinding struct {
+	allowExisting                                bool // only a prior durable prepared reservation permits crash recovery
 	OwnerKey, RecordingID, ArtifactKey           string
 	RootIdentity, SourceIdentity, TargetIdentity string
 	Source, Target                               string // relative to the already selected recording root
@@ -67,7 +69,7 @@ func (b layoutBinding) valid() bool {
 		return false
 	}
 	parts := strings.Split(b.Target, "/")
-	return len(parts) >= 2 && parts[0] == b.OwnerKey && parts[1] != "captures" && !strings.HasPrefix(parts[1], ".") && b.Source != b.Target
+	return len(parts) >= 1 && !(recordingID.MatchString(parts[0]) && len(parts) > 1 && (parts[1] == "captures" || parts[1] == "objects")) && b.Source != b.Target
 }
 func parseLayoutGeneration(s string) int64 {
 	var n int64
@@ -179,15 +181,25 @@ func linkLayout(ctx context.Context, rootPath string, b layoutBinding) (layoutBi
 		return b, err
 	}
 	err = target.link(source, old, name)
-	if err != nil && !errors.Is(err, os.ErrExist) {
+	existed := errors.Is(err, os.ErrExist)
+	if existed && b.TargetIdentity == "" && !b.allowExisting {
+		return b, dvr.ErrRecordingLayoutCollision
+	}
+	if err != nil && !existed {
 		return b, err
 	}
 	linked, err := target.open(name)
 	if err != nil {
+		if existed {
+			return b, dvr.ErrRecordingLayoutCollision
+		}
 		return b, err
 	}
 	defer linked.Close()
 	if err = layoutIdentity(linked, b.SourceIdentity); err != nil {
+		if existed && b.TargetIdentity == "" {
+			return b, dvr.ErrRecordingLayoutCollision
+		}
 		return b, err
 	}
 	if b.TargetIdentity != "" {

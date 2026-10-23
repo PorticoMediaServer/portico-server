@@ -12,6 +12,7 @@ import (
 
 	"portico.local/server/internal/artifactlease"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/storage"
 )
@@ -59,7 +60,7 @@ func layoutFixture(t *testing.T) (string, layoutBinding) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, layoutBinding{OwnerKey: owner.Key(), RecordingID: id, ArtifactKey: id + ".1", RootIdentity: rootID, SourceIdentity: sourceID, Source: owner.Key() + "/captures/" + id + "/objects/" + object.Digest, Target: owner.Key() + "/Example/Season 03/Example S03E07.ts", Object: object}
+	return root, layoutBinding{OwnerKey: owner.Key(), RecordingID: id, ArtifactKey: id + ".1", RootIdentity: rootID, SourceIdentity: sourceID, Source: owner.Key() + "/captures/" + id + "/objects/" + object.Digest, Target: "Example/Season 03/Example S03E07.ts", Object: object}
 }
 func TestLayoutAtomicLinkRetiresOnlyExactOccurrence(t *testing.T) {
 	root, b := layoutFixture(t)
@@ -79,6 +80,7 @@ func TestLayoutAtomicLinkRetiresOnlyExactOccurrence(t *testing.T) {
 	if _, err = linkLayout(ctx, root, out); err != nil {
 		t.Fatalf("idempotent retry: %v", err)
 	}
+	b.allowExisting = true
 	if _, err = linkLayout(ctx, root, b); err != nil {
 		t.Fatalf("prepared recovery: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestLayoutRefusesUnownedEqualByteCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := os.Stat(path)
-	if _, err = linkLayout(context.Background(), root, b); !errors.Is(err, mediaartifact.ErrIdentity) {
+	if _, err = linkLayout(context.Background(), root, b); !errors.Is(err, dvr.ErrRecordingLayoutCollision) {
 		t.Fatalf("adopted collision: %v", err)
 	}
 	after, _ := os.Stat(path)
@@ -149,7 +151,7 @@ func TestLayoutRejectsSymlinksAndEscapesWithoutTouchingOutside(t *testing.T) {
 				}
 				root = link
 			case "ancestor":
-				if err := os.Symlink(outside, filepath.Join(root, b.OwnerKey, "Example")); err != nil {
+				if err := os.Symlink(outside, filepath.Join(root, "Example")); err != nil {
 					t.Fatal(err)
 				}
 			case "leaf":
@@ -369,5 +371,46 @@ func TestLayoutMeasureCountsPhysicalPayloadOnceAcrossAllNames(t *testing.T) {
 	}
 	if final.UsedBytes != 0 {
 		t.Fatal("final payload bytes not reclaimed")
+	}
+}
+
+func TestRecordingLayoutDriverPreparesBeforeIOAndRecoversExactLink(t *testing.T) {
+	root, b := layoutFixture(t)
+	driver, err := New(root, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Close()
+	owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "first"}
+	in := dvr.CaptureRequest{Owner: owner, Recording: dvr.Recording{ID: b.RecordingID}, ArtifactKey: b.ArtifactKey}
+	result := dvr.CaptureResult{CaptureCheckpoint: dvr.CaptureCheckpoint{Object: b.Object, WriterRetired: true}, Root: filepath.Join(root, owner.Key()), Path: filepath.Join(root, b.Source)}
+	prepared, err := driver.PrepareRecordingLayout(context.Background(), in, result, b.Target, 7)
+	if err != nil || !prepared.Valid() {
+		t.Fatal(prepared, err)
+	}
+	if _, err = os.Stat(filepath.Join(root, b.Target)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("prepare wrote target")
+	}
+	linked, err := driver.LinkRecordingLayout(context.Background(), prepared, false)
+	if err != nil || linked.Phase != "linked" || linked.TargetIdentity != prepared.SourceIdentity {
+		t.Fatal(linked, err)
+	}
+	// A brand-new reservation cannot adopt a preexisting path, even a hard link
+	// to the same payload. Only replay of the durable prior reservation may.
+	if _, err = driver.LinkRecordingLayout(context.Background(), prepared, false); !errors.Is(err, dvr.ErrRecordingLayoutCollision) {
+		t.Fatal("new reservation adopted existing same inode", err)
+	}
+	if _, err = driver.LinkRecordingLayout(context.Background(), prepared, true); err != nil {
+		t.Fatal("prior prepared crash recovery failed", err)
+	}
+	if err = driver.RemoveRecordingLayout(context.Background(), prepared); err != nil {
+		t.Fatal("prepared crash cleanup failed", err)
+	}
+	if _, err = os.Stat(filepath.Join(root, b.Source)); err != nil {
+		t.Fatal("cleanup lost source", err)
+	}
+	result.WriterRetired = false
+	if _, err = driver.PrepareRecordingLayout(context.Background(), in, result, b.Target, 7); err == nil {
+		t.Fatal("accepted unretired writer")
 	}
 }
