@@ -119,3 +119,31 @@ test('settings updates during initial apply queue behind that apply',async()=>{
   const updating=f.controller.updatePreferences({theme:'light',textSize:3,twoPages:false});
   pending.resolve();await Promise.all([opening,updating]);assert.equal(peak,1);assert.equal(f.seen.at(-1)?.theme,'light');await f.controller.close();
 });
+test('gesture activity publishes changed measured zoom before forwarding and preserves no-op snapshot identity',async()=>{
+  const f=fixture();let scale=1,fit:'page'|'width'|undefined='page',canTurn=true,publications=0,inputs=0;
+  f.view.getZoom=()=>({scale,...(fit?{fit}:{})});f.view.canTurnAtFit=()=>canTurn;
+  await f.controller.open({source,format:'epub',container});
+  const oldMount=f.mount;
+  f.controller.subscribe(()=>publications++);
+  f.controller.subscribeSurfaceInput(()=>{
+    inputs++;assert.equal(f.controller.getSnapshot().zoom?.scale,scale);
+    assert.equal(f.controller.getSnapshot().zoom?.fit,fit);
+    assert.equal(f.controller.getSnapshot().canTurnAtFit,canTurn);
+  });
+  const before=f.controller.getSnapshot();
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),before);assert.equal(publications,0);assert.equal(inputs,1);
+  scale=2;fit=undefined;canTurn=false;
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(publications,1);assert.equal(inputs,2);assert.ok(Object.isFrozen(f.controller.getSnapshot().zoom));
+  const changed=f.controller.getSnapshot();oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),changed);assert.equal(publications,1);
+  fit='width';canTurn=true;oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(publications,2);assert.equal(inputs,4);
+  await f.controller.open({source,format:'epub',container});
+  const replacement=f.controller.getSnapshot(),inputCount=inputs;
+  oldMount.onSurfaceInput?.({kind:'activity'});
+  assert.equal(f.controller.getSnapshot(),replacement);assert.equal(inputs,inputCount);
+  await f.controller.close();const closed=f.controller.getSnapshot();
+  f.mount.onSurfaceInput?.({kind:'activity'});assert.equal(f.controller.getSnapshot(),closed);assert.equal(inputs,inputCount);
+});
