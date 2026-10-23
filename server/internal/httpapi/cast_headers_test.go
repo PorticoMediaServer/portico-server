@@ -44,11 +44,13 @@ func TestCastReceiverSecurityHeaders(t *testing.T) {
 		}
 	}
 	const shaka = " https://ajax.googleapis.com/ajax/libs/shaka-player/4.15.56/"
-	if strings.Replace(castReceiverPageCSP, shaka, "", 1) != castReceiverCSP || strings.Contains(castReceiverCSP, "googleapis") {
-		t.Fatal("only the receiver document gains the checked Google script path")
+	const caption = "style-src 'self'; style-src-elem 'self' https://www.gstatic.com 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=';"
+	withoutExceptions := strings.Replace(strings.Replace(castReceiverPageCSP, shaka, "", 1), caption, "style-src 'self' 'unsafe-inline';", 1)
+	if withoutExceptions != castReceiverCSP || strings.Contains(castReceiverCSP, "googleapis") {
+		t.Fatal("only the receiver document gains the checked Google script path and empty caption style")
 	}
 	for _, directive := range strings.Split(castReceiverPageCSP, ";") {
-		if strings.Contains(directive, "script-src") && (strings.Contains(directive, "unsafe-") || strings.Contains(directive, "*")) {
+		if strings.Contains(directive, "unsafe-") || strings.Contains(directive, "*") {
 			t.Fatal(directive)
 		}
 	}
