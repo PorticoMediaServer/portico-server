@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"portico.local/server/internal/dbwork"
@@ -49,7 +50,15 @@ func (s *Service) RepairMissingArtworkStep(ctx context.Context) error {
 			}
 			return err
 		}
-		if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE artwork_jobs SET status='pending',attempts=0,next_attempt='' WHERE kind=? AND entity_id=? AND role=? AND subject=? AND status='complete'`, v.Target.Kind, entity, v.Role, v.Subject); err != nil {
+		if err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='pending',attempts=0,next_attempt='' WHERE kind=? AND entity_id=? AND role=? AND subject=? AND status='complete'`, v.Target.Kind, entity, v.Role, v.Subject); err != nil {
+				return err
+			}
+			// Cold local migration has no completed job yet. Reseeding reuses
+			// the recorded local origin and all normal policy/selection fences.
+			_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO artwork_dirty(kind,entity_id) VALUES(?,?)`, v.Target.Kind, entity)
+			return err
+		}); err != nil {
 			for _, pending := range batch[i:] {
 				s.queueMissingArtwork(pending.Target, pending.Role, pending.Subject)
 			}

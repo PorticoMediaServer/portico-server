@@ -54,7 +54,13 @@ func (s *Service) acquireArtworkObjects(ctx context.Context, j artworkWork) (art
 	if e != nil {
 		return a, b, e
 	}
-	original, thumb, w, h, e := normalizeArtworkFormatsContext(ctx, raw, map[string]bool{"jpeg": true, "png": true})
+	formats := map[string]bool{"jpeg": true, "png": true}
+	// Ingestion already accepts WebP from local folders, just like uploads.
+	// Provider acquisition keeps its existing narrower format allowlist.
+	if j.provider == "local" {
+		formats["webp"] = true
+	}
+	original, thumb, w, h, e := normalizeArtworkFormatsContext(ctx, raw, formats)
 	if e != nil {
 		return a, b, e
 	}

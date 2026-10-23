@@ -232,7 +232,9 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 	if width == ArtworkAmbientEdge {
 		return nil, "", ErrArtworkPending
 	}
-	// Already installed local evidence remains available during initial migration.
+	// Legacy local originals must pass through the same current-size storage
+	// and serving variants as every other picture. Reads only enqueue a bounded
+	// repair hint; they never serve original bytes or acquire a writer gate.
 	// Remote URLs are never followed, including when the worker is not configured.
 	if t.Kind == "item" && (role == "poster" || role == "backdrop") && s.LocalArtwork != nil {
 		column := "poster_url"
@@ -247,7 +249,8 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 			if err = gated.Commit(); err != nil {
 				return nil, "", err
 			}
-			return s.LocalArtwork(strings.TrimPrefix(value, "local:"))
+			s.queueMissingArtwork(t, role, subject)
+			return nil, "", ErrArtworkPending
 		}
 	}
 	return nil, "", ErrArtworkPending

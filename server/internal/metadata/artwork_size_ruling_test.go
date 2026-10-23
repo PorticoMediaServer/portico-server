@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"image"
 	"io"
 	"net/http"
@@ -336,5 +337,67 @@ func TestLargerFolderPictureReadsOriginalLocalBytesAgain(t *testing.T) {
 	}
 	if reads != 1 || edge != 2560 {
 		t.Fatal("local bytes were not read again under Larger", reads, edge)
+	}
+}
+
+func TestLegacyLocalReadQueuesBoundedPictureWithoutServingOriginal(t *testing.T) {
+	s, db, target := repairFixture(t)
+	ctx := context.Background()
+	small := 1280
+	off := false
+	saveGlobal(t, s, func(in *MetadataSettingsUpdate) { in.ArtworkMaxEdge = &small; in.OnlineLookups = &off })
+	raw := p08cPNG(t, 2700, 1350)
+	digest := sha256.Sum256(raw)
+	key := hex.EncodeToString(digest[:])
+	path := filepath.Join(t.TempDir(), "original.png")
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	s.LocalArtwork = func(requested string) (*os.File, string, error) {
+		reads++
+		if requested != key {
+			t.Error("wrong local original", requested)
+		}
+		f, e := os.Open(path)
+		return f, "image/png", e
+	}
+	// This is the pre-selection migration shape, not an already published image.
+	if _, err := db.Exec(`UPDATE catalog_item_details SET poster_url=? WHERE entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, "local:"+key, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM artwork_dirty`); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", 400, "")
+	if f != nil {
+		f.Close()
+		t.Fatal("legacy original was served")
+	}
+	if !errors.Is(err, ErrArtworkPending) || reads != 0 {
+		t.Fatal("cold read bypassed bounded publication", err, reads)
+	}
+	if err = s.RepairMissingArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ArtworkStep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err = s.EntityArtworkVariant(ctx, target, "poster", "", 400, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := artworkFileEdge(t, f); got != 400 {
+		t.Fatal("cold fallback ignored serving bucket", got)
+	}
+	f, _, err = s.EntityArtworkVariant(ctx, target, "poster", "", 2560, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := artworkFileEdge(t, f); got != 1280 {
+		t.Fatal("cold fallback ignored stored edge", got)
+	}
+	if reads != 1 {
+		t.Fatal("local source was reread on the serving path", reads)
 	}
 }
