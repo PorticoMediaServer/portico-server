@@ -87,8 +87,31 @@ export class BrowserProtectedStore<RecordType> {
  });}
 }
 let sessions:AppSessionStore|undefined;
+const sessionListeners=new Set<()=>void>();let sessionChannel:BroadcastChannel|undefined;
+const notifySessions=()=>{for(const listener of [...sessionListeners]){try{listener();}catch{/* A read hint cannot fail an already committed credential write. */}}};
+function listenForSessionChanges(){
+ if(typeof window==='undefined'||sessionChannel||typeof BroadcastChannel==='undefined')return;
+ try{
+  sessionChannel=new BroadcastChannel('portico.app-session-change.v1');
+  sessionChannel.addEventListener('message',event=>{if(event.data==='changed')notifySessions();});
+ }catch{/* Focus/pageshow still re-read storage when cross-tab messaging is unavailable. */}
+}
+/** A noncredential read hint only. Consumers re-read the canonical selection
+ * and compare their captured scope; token rotation alone is not retirement. */
+export function observeBrowserSessionChanges(changed:()=>void){
+ listenForSessionChanges();sessionListeners.add(changed);
+ window.addEventListener('focus',changed);window.addEventListener('pageshow',changed);
+ return()=>{sessionListeners.delete(changed);window.removeEventListener('focus',changed);window.removeEventListener('pageshow',changed);};
+}
 export function browserAppSessions():AppSessionStore {
- return sessions ??= new AppSessionStore(new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024));
+ if(sessions)return sessions;
+ const vault=new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024);
+ listenForSessionChanges();
+ return sessions=new AppSessionStore({read:()=>vault.read(),change:async update=>{
+  let changed=false;
+  await vault.change(current=>{const next=update(current);changed=next!==current;return next;});
+  if(changed){notifySessions();try{sessionChannel?.postMessage('changed');}catch{/* The durable write remains successful. */}}
+ }});
 }
 let listening=false,active:RouteConnection|undefined,networkRevision=0;
 export function browserConnectionEnvironment(serverId?:string,admission?:NewServerConnection):ConnectionEnvironment {
