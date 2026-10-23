@@ -39,11 +39,15 @@ export type SavedLocalDownloadGroup = Readonly<{
   count: number;
   bytes: number;
   bytesDone: number;
+  /** Present only when the same nonempty scalar exists on EVERY native member. */
+  parentTitle?: string;
+  artist?: string;
   /** Summary facts appear only when uniform across every native member. */
   quality?: string;
   qualityLabel?: string;
   state?: SavedLocalDownload['state'];
   held?: boolean;
+  offlineAccess?: SavedLocalDownload['offlineAccess'];
   /** An actual member with persisted raster, resolved opaquely by getArtwork. */
   artworkId?: string;
   /** Native fingerprint of the complete ordered member IDs and row revisions. */
