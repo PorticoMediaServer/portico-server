@@ -37,6 +37,7 @@
 .listPrograms button { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px; padding: 0 12px; border: 0; background: transparent; color: var(--color-text); overflow: hidden; text-align: left; cursor: pointer; }
 .listPrograms b { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .listPrograms small, .listPrograms button > span { display: flex; gap: 7px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) - .5px); }
+.listGap { display: flex; align-items: center; padding-inline: 12px; color: var(--color-text-tertiary); font-size: calc(var(--type-body-size) - .5px); }
 .facts { display: flex; flex-wrap: wrap; gap: 10px; color: var(--color-text-secondary); }
 .dockedNow { padding: 0; }
 @media (max-width: 1023px) {
@@ -64,5 +65,5 @@
   .channel small { font-size: calc(var(--type-label-size) - 2px); }
   .ruler > span { padding-left: 10px; font-size: calc(var(--type-label-size) - 2px); }
   .listPrograms { grid-template-columns: 1fr; gap: 0; }
-  .listPrograms button:not(:first-child) { display: none; }
+  .listPrograms > :not(:first-child) { display: none; }
 }
