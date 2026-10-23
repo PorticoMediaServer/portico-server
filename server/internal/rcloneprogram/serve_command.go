@@ -302,6 +302,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		attempt, attemptCancel := context.WithTimeout(ready, time.Second)
 		var entry remotemedia.DAVEntry
 		entry, err = endpoint.Stat(attempt, "", s.Check)
+		attemptExpired := errors.Is(attempt.Err(), context.DeadlineExceeded)
 		attemptCancel()
 		if err == nil {
 			if !entry.Directory {
@@ -318,7 +319,12 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 				break
 			}
 		}
-		if !errors.Is(err, remotemedia.ErrUnavailable) || ready.Err() != nil {
+		// A scheduled-out one-second probe is not proof the admitted child is
+		// dead. Retry within the unchanged overall20s readiness budget, only
+		// while its actual source/process lease is still current. Authentication
+		// and malformed representation failures remain terminal.
+		retryExpiredProbe := attemptExpired && errors.Is(err, context.DeadlineExceeded) && s.CheckLocal(ready) == nil
+		if !errors.Is(err, remotemedia.ErrUnavailable) && !retryExpiredProbe || ready.Err() != nil {
 			break
 		}
 		timer := time.NewTimer(25 * time.Millisecond)

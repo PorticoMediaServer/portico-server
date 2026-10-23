@@ -170,6 +170,15 @@ func runInventoryServeFixture() int {
 		switch r.URL.Path {
 		case "/operations/fsinfo":
 			fmt.Fprint(w, `{"Name":"fixture","Features":{"SlowHash":true}}`)
+		case "/operations/list":
+			fmt.Fprint(w, `{"list":[`)
+			for i := 0; i < 130; i++ {
+				if i != 0 {
+					fmt.Fprint(w, ",")
+				}
+				fmt.Fprintf(w, `{"Path":"entry-%04d","Size":1,"ModTime":"2026-01-01T00:00:00Z","ID":"entry-%04d"}`, i, i)
+			}
+			fmt.Fprint(w, `]}`)
 		case "/operations/stat":
 			var input struct{ Remote string }
 			if json.NewDecoder(r.Body).Decode(&input) != nil {

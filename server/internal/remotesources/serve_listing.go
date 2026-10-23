@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
@@ -35,7 +36,7 @@ type serveListingEntry struct {
 	Expected    int64             `json:"expectedObservationRevision,omitempty"`
 	Epoch       string            `json:"processEpoch"`
 	Profile     SourceReadProfile `json:"readProfile"`
-	rawBytes    int
+	ServedETag  string            `json:"servedETag,omitempty"`
 }
 
 // serveListingFenceTx resolves the actual running inventory, including the
@@ -154,7 +155,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		return fence(ctx, view.Tx())
 	}
 	var count, bytes int64
-	batch := make([]storage.Snapshot, 0, 128)
+	batch := make([]serveListingEntry, 0, 128)
 	flush := func(ready bool) error {
 		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 		if err != nil {
@@ -215,7 +216,7 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 		if filepath.Dir(value.Path) != filepath.Join(b.Root, filepath.FromSlash(relative)) {
 			return storage.ErrRemoteConfig
 		}
-		batch = append(batch, value)
+		batch = append(batch, serveListingEntry{Snapshot: value, ServedETag: entry.ETag})
 		if len(batch) == cap(batch) {
 			return flush(false)
 		}
@@ -227,101 +228,91 @@ func (s *Service) buildServeSnapshot(ctx context.Context, process *rcloneprogram
 	if err = flush(false); err != nil {
 		return err
 	}
-	// The complete listing request is closed before any backend metadata call.
-	// Only bounded batches live in memory; every rewritten row remains private.
-	after := ""
-	for {
-		rows, err := s.db.QueryContext(ctx, `SELECT name,snapshot FROM remote_listing_entries WHERE listing_id=? AND name>? ORDER BY name LIMIT 128`, id, after)
-		if err != nil {
-			return err
-		}
-		values := make([]serveListingEntry, 0, 128)
-		for rows.Next() {
-			var raw string
-			var entry serveListingEntry
-			if err = rows.Scan(&after, &raw); err == nil {
-				err = json.Unmarshal([]byte(raw), &entry.Snapshot)
-			}
-			if err != nil {
-				break
-			}
-			entry.rawBytes = len(raw)
-			entry.Epoch, entry.Profile = process.Generation(), capture.profile
-			values = append(values, entry)
-		}
-		rowErr := rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
-		if rowErr != nil {
-			return rowErr
-		}
-		if len(values) == 0 {
-			break
-		}
-		for i := range values {
-			entry := &values[i]
-			if entry.Directory {
-				continue
-			}
-			object, err := filepath.Rel(b.Root, entry.Path)
-			if err != nil || !validObservationObject(filepath.ToSlash(object)) {
-				return storage.ErrRemoteConfig
-			}
-			observed, err := observeProcessFile(ctx, process, filepath.ToSlash(object), check)
-			if err != nil {
-				return mapError(err)
-			}
-			if observed.Size != entry.Size {
-				return storage.ErrRemoteChanged
-			}
-			entry.Snapshot, err = observationSnapshot(b, generation, observed)
-			if err != nil {
-				return err
-			}
-			entry.Observation = &ScanObservation{Facts: observed, ScanRevision: entry.Revision}
-			view, err := dbwork.BeginSnapshot(ctx, s.db)
-			if err != nil {
-				return err
-			}
-			previous, err := readScanObservationTx(ctx, view.Tx(), b.ID, filepath.ToSlash(object))
-			view.Rollback()
-			if err != nil && err != sql.ErrNoRows {
-				return err
-			}
-			entry.Expected = previous.Ref.Revision
+	// The full listing body is closed before the directory metadata request.
+	// The same upstream process supplies its fresh backend listing once, without
+	// Portico issuing a metadata/stat request for every child.
+	metadata, err := process.Metadata(ctx)
+	if err != nil {
+		return err
+	}
+	metaBatch := make([]remotemedia.RcloneFileMetadata, 0, 128)
+	var enriched int64
+	writeMetadata := func() error {
+		if len(metaBatch) == 0 {
+			return nil
 		}
 		writer, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 		if err != nil {
 			return err
 		}
-		if err = fence(ctx, writer.Tx()); err == nil {
-			for _, entry := range values {
-				var raw []byte
-				raw, err = json.Marshal(entry)
-				if err != nil {
-					break
-				}
-				bytes += int64(len(raw) - entry.rawBytes)
-				if bytes > 512<<20 {
-					err = storage.ErrRemoteLimit
-					break
-				}
-				_, err = writer.Tx().ExecContext(ctx, `UPDATE remote_listing_entries SET snapshot=? WHERE listing_id=? AND name=?`, string(raw), id, entry.Path)
-				if err != nil {
-					break
-				}
-			}
-		}
-		if err == nil {
-			err = writer.Commit()
-		} else {
-			writer.Rollback()
-		}
-		if err != nil {
+		defer writer.Rollback()
+		if err = fence(ctx, writer.Tx()); err != nil {
 			return err
 		}
+		for _, fresh := range metaBatch {
+			file := filepath.Join(b.Root, filepath.FromSlash(fresh.Path))
+			var raw string
+			var entry serveListingEntry
+			if err = writer.Tx().QueryRowContext(ctx, `SELECT snapshot FROM remote_listing_entries WHERE listing_id=? AND name=?`, id, file).Scan(&raw); err != nil {
+				return storage.ErrRemoteChanged
+			}
+			if json.Unmarshal([]byte(raw), &entry) != nil || entry.Epoch != "" || entry.Directory != fresh.Directory || !entry.Directory && entry.Size != fresh.Size {
+				return storage.ErrRemoteChanged
+			}
+			entry.Epoch, entry.Profile = process.Generation(), capture.profile
+			if !entry.Directory {
+				facts := remotemedia.FileObservation{SourceID: b.ID, Incarnation: generation, Object: fresh.Path, ObjectID: fresh.ID, Size: fresh.Size, ProviderHashes: fresh.Hashes, ServeETag: entry.ServedETag}
+				if !fresh.Modified.IsZero() && time.Unix(0, fresh.Modified.UnixNano()).Equal(fresh.Modified) {
+					facts.ModifiedKnown, facts.ModifiedNS = true, fresh.Modified.UnixNano()
+					if entry.ModifiedNS != 0 && !time.Unix(0, entry.ModifiedNS).Truncate(time.Second).Equal(fresh.Modified.Truncate(time.Second)) {
+						return storage.ErrRemoteChanged
+					}
+				}
+				entry.Snapshot, err = observationSnapshot(b, generation, facts)
+				if err != nil {
+					return err
+				}
+				entry.Observation = &ScanObservation{Facts: facts, ScanRevision: entry.Revision}
+				previous, err := readScanObservationTx(ctx, writer.Tx(), b.ID, fresh.Path)
+				if err != nil && err != sql.ErrNoRows {
+					return err
+				}
+				entry.Expected = previous.Ref.Revision
+			}
+			encoded, err := json.Marshal(entry)
+			if err != nil {
+				return err
+			}
+			bytes += int64(len(encoded) - len(raw))
+			if bytes > 512<<20 {
+				return storage.ErrRemoteLimit
+			}
+			if _, err = writer.Tx().ExecContext(ctx, `UPDATE remote_listing_entries SET snapshot=? WHERE listing_id=? AND name=?`, string(encoded), id, file); err != nil {
+				return err
+			}
+			enriched++
+		}
+		if err = writer.Commit(); err != nil {
+			return err
+		}
+		metaBatch = metaBatch[:0]
+		return nil
+	}
+	err = metadata.VisitDirectory(ctx, relative, check, func(fresh remotemedia.RcloneFileMetadata) error {
+		metaBatch = append(metaBatch, fresh)
+		if len(metaBatch) == cap(metaBatch) {
+			return writeMetadata()
+		}
+		return nil
+	})
+	if err != nil {
+		return mapError(err)
+	}
+	if err = writeMetadata(); err != nil {
+		return err
+	}
+	if enriched != count {
+		return storage.ErrRemoteChanged
 	}
 	if err = check(ctx); err != nil {
 		return err
