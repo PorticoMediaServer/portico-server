@@ -540,4 +540,3 @@ test('CAF local media requests retain private object authority through intercept
  await h.message('phone',{type:'seek',positionSeconds:5});assert.equal(h.manager.getCurrentTimeSec(),5);
  await h.message('phone',{type:'stop'});assert.equal(h.manager.getPlayerState(),'IDLE');assert.equal(h.receiver.state().playbackId,null);
 });
-
