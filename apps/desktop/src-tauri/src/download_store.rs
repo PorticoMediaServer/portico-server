@@ -6,13 +6,15 @@ use crate::download_receipt::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ring::digest::{Context, SHA256};
+use ring::rand::{SecureRandom, SystemRandom};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const CHUNK_BYTES: usize = 256 * 1024;
@@ -22,6 +24,7 @@ PRAGMA trusted_schema=OFF;
 CREATE TABLE IF NOT EXISTS download_scopes (
  id TEXT PRIMARY KEY, authority TEXT NOT NULL CHECK(authority IN ('local','hosted')),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL, server_id TEXT NOT NULL,
+ clock_floor_ms INTEGER NOT NULL CHECK(clock_floor_ms>=0),
  UNIQUE(authority,account_id,profile_id,server_id)
 ) STRICT;
 CREATE TABLE IF NOT EXISTS download_rules (
@@ -29,8 +32,7 @@ CREATE TABLE IF NOT EXISTS download_rules (
  remove_watched INTEGER NOT NULL CHECK(remove_watched IN (0,1)),
  next_episode INTEGER NOT NULL CHECK(next_episode IN (0,1)),
  unmetered_only INTEGER NOT NULL CHECK(unmetered_only IN (0,1)),
- limit_bytes INTEGER NOT NULL CHECK(limit_bytes BETWEEN 0 AND 9007199254740991),
- clock_floor_ms INTEGER NOT NULL CHECK(clock_floor_ms>=0)
+ limit_bytes INTEGER NOT NULL CHECK(limit_bytes BETWEEN 0 AND 9007199254740991)
 ) STRICT;
 CREATE TABLE IF NOT EXISTS download_entries (
  id TEXT PRIMARY KEY,scope_id TEXT NOT NULL REFERENCES download_scopes(id),
@@ -67,6 +69,12 @@ CREATE TABLE IF NOT EXISTS download_plays (
  observed_ms INTEGER NOT NULL CHECK(observed_ms>=0),PRIMARY KEY(scope_id,play_id)
 ) STRICT;
 CREATE INDEX IF NOT EXISTS download_plays_pending ON download_plays(scope_id,observed_ms,play_id);
+CREATE TABLE IF NOT EXISTS download_garbage (id TEXT PRIMARY KEY) STRICT;
+CREATE TABLE IF NOT EXISTS download_artwork (
+ entry_id TEXT PRIMARY KEY REFERENCES download_entries(id) ON DELETE CASCADE,
+ mime TEXT NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
+ bytes BLOB NOT NULL CHECK(length(bytes) BETWEEN 1 AND 4194304)
+) STRICT;
 ";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -147,6 +155,95 @@ pub struct PendingPlay {
     pub position_ms: u64,
     pub ended: bool,
     pub observed_ms: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadCapacity {
+    pub total_bytes: u64,
+    pub free_bytes: u64,
+    pub used_bytes: u64,
+    pub other_downloads_bytes: u64,
+}
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadGroup {
+    pub kind: String,
+    pub parent_id: String,
+    pub group_id: String,
+    pub count: u64,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OtherDownloadsPreview {
+    pub snapshot_token: String,
+    pub bytes: u64,
+}
+#[derive(Debug, PartialEq)]
+struct RemovalTarget {
+    id: String,
+    revision: u64,
+    bytes: u64,
+}
+struct RemovalSnapshot {
+    viewer: DownloadViewer,
+    targets: Vec<RemovalTarget>,
+    created: Instant,
+}
+#[derive(Debug, Serialize)]
+pub struct DownloadArtwork {
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+fn disk_space(path: &Path) -> Result<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        let path = CString::new(path.as_os_str().as_bytes()).map_err(unavailable)?;
+        let mut value = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+        if unsafe { libc::statvfs(path.as_ptr(), value.as_mut_ptr()) } != 0 {
+            return Err(Error::DownloadsUnavailable);
+        }
+        let value = unsafe { value.assume_init() };
+        let block = value.f_frsize as u64;
+        return Ok((
+            (value.f_blocks as u64)
+                .checked_mul(block)
+                .ok_or(Error::DownloadsUnavailable)?,
+            (value.f_bavail as u64)
+                .checked_mul(block)
+                .ok_or(Error::DownloadsUnavailable)?,
+        ));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn GetDiskFreeSpaceExW(
+                path: *const u16,
+                available: *mut u64,
+                total: *mut u64,
+                free: *mut u64,
+            ) -> i32;
+        }
+        let path = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let (mut available, mut total, mut free) = (0, 0, 0);
+        if unsafe { GetDiskFreeSpaceExW(path.as_ptr(), &mut available, &mut total, &mut free) } == 0
+        {
+            return Err(Error::DownloadsUnavailable);
+        }
+        return Ok((total, available));
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        Err(Error::Unsupported)
+    }
 }
 
 fn unavailable<T>(_: T) -> Error {
@@ -277,6 +374,7 @@ fn row_entry(row: &Row<'_>) -> rusqlite::Result<LocalDownload> {
 pub struct DownloadStore {
     connection: Connection,
     files: PathBuf,
+    previews: HashMap<String, RemovalSnapshot>,
 }
 impl DownloadStore {
     /// Fixed native app-data root, not a path accepted from IPC. Initial rules are supplied by
@@ -302,7 +400,7 @@ impl DownloadStore {
         connection.execute_batch(SQL).map_err(unavailable)?;
         connection
             .execute(
-                "INSERT OR IGNORE INTO download_rules VALUES(1,0,?1,?2,?3,?4,0)",
+                "INSERT OR IGNORE INTO download_rules VALUES(1,0,?1,?2,?3,?4)",
                 params![
                     initial.remove_watched,
                     initial.next_episode,
@@ -311,7 +409,12 @@ impl DownloadStore {
                 ],
             )
             .map_err(unavailable)?;
-        let store = Self { connection, files };
+        let store = Self {
+            connection,
+            files,
+            previews: HashMap::new(),
+        };
+        store.collect_garbage()?;
         store.recover()?;
         Ok(store)
     }
@@ -319,7 +422,7 @@ impl DownloadStore {
         let id = scope(viewer)?;
         self.connection
             .execute(
-                "INSERT OR IGNORE INTO download_scopes VALUES(?1,?2,?3,?4,?5)",
+                "INSERT OR IGNORE INTO download_scopes VALUES(?1,?2,?3,?4,?5,0)",
                 params![
                     id,
                     viewer.authority,
@@ -419,6 +522,9 @@ impl DownloadStore {
                 .filter(|n| *n <= limit)
                 .is_none()
         {
+            return Err(Error::StorageFull);
+        }
+        if input.bytes > disk_space(&self.files)?.1 {
             return Err(Error::StorageFull);
         }
         tx.execute(
@@ -590,13 +696,13 @@ impl DownloadStore {
             return Err(Error::DownloadsConflict);
         }
         std::fs::rename(&partial, &sealed).map_err(unavailable)?;
-        let stored = (|| -> rusqlite::Result<()> {
-            tx.execute("UPDATE download_entries SET state='ready',revision=revision+1 WHERE id=?1 AND revision=?2",params![id,expected_revision as i64])?;
-            tx.commit()
+        let stored = (|| -> Result<()> {
+            if tx.execute("UPDATE download_entries SET state='ready',revision=revision+1 WHERE id=?1 AND revision=?2",params![id,expected_revision as i64]).map_err(unavailable)?!=1{return Err(Error::DownloadsConflict);}
+            tx.commit().map_err(unavailable)
         })();
-        if stored.is_err() {
+        if let Err(error) = stored {
             std::fs::rename(&sealed, &partial).map_err(unavailable)?;
-            return Err(Error::DownloadsUnavailable);
+            return Err(error);
         }
         self.entry(viewer, id)
     }
@@ -654,17 +760,17 @@ impl DownloadStore {
         }
         Ok(())
     }
-    fn receipt_time(&self) -> Result<i64> {
+    fn receipt_time(&self, owner: &str) -> Result<i64> {
         self.connection
             .execute(
-                "UPDATE download_rules SET clock_floor_ms=max(clock_floor_ms,?1) WHERE id=1",
-                [now_ms()],
+                "UPDATE download_scopes SET clock_floor_ms=max(clock_floor_ms,?1) WHERE id=?2",
+                params![now_ms(), owner],
             )
             .map_err(unavailable)?;
         self.connection
             .query_row(
-                "SELECT clock_floor_ms FROM download_rules WHERE id=1",
-                [],
+                "SELECT clock_floor_ms FROM download_scopes WHERE id=?1",
+                [owner],
                 |r| r.get(0),
             )
             .map_err(unavailable)
@@ -699,12 +805,12 @@ impl DownloadStore {
                 sha256: &entry.sha256,
                 bytes: entry.bytes,
             },
-            self.receipt_time()?,
+            self.receipt_time(&owner)?,
         )?;
         self.connection
             .execute(
-                "UPDATE download_rules SET clock_floor_ms=max(clock_floor_ms,?1) WHERE id=1",
-                [verified.issued_ms],
+                "UPDATE download_scopes SET clock_floor_ms=max(clock_floor_ms,?1) WHERE id=?2",
+                params![verified.issued_ms, owner],
             )
             .map_err(unavailable)?;
         Ok(verified.expires_ms)
@@ -717,17 +823,27 @@ impl DownloadStore {
     ) -> Result<()> {
         let entry = self.entry(viewer, id)?;
         let expires = self.check_receipt(viewer, &entry, &receipt)?;
-        let old: Option<u64> = self
+        let old: Option<(String,u64,String,String)> = self
             .connection
             .query_row(
-                "SELECT revision FROM download_receipts WHERE entry_id=?1",
+                "SELECT receipt_id,revision,payload,signature FROM download_receipts WHERE entry_id=?1",
                 [id],
-                |r| count(r, 0),
+                |r| Ok((r.get(0)?,count(r,1)?,r.get(2)?,r.get(3)?)),
             )
             .optional()
             .map_err(unavailable)?;
-        if old.is_some_and(|v| v >= receipt.revision) {
-            return Err(Error::DownloadsConflict);
+        if let Some((id, revision, payload, signature)) = old {
+            if id == receipt.receipt_id {
+                if revision == receipt.revision
+                    && payload == receipt.payload
+                    && signature == receipt.signature
+                {
+                    return Ok(());
+                }
+                if revision >= receipt.revision {
+                    return Err(Error::DownloadsConflict);
+                }
+            }
         }
         self.connection.execute("INSERT INTO download_receipts VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(entry_id) DO UPDATE SET receipt_id=excluded.receipt_id,key_id=excluded.key_id,payload=excluded.payload,signature=excluded.signature,revision=excluded.revision,expires_ms=excluded.expires_ms",params![id,receipt.receipt_id,receipt.key_id,receipt.payload,receipt.signature,receipt.revision as i64,expires]).map_err(unavailable)?;
         Ok(())
@@ -820,6 +936,328 @@ impl DownloadStore {
     }
     pub fn usage(&self, viewer: &DownloadViewer) -> Result<(u64, u64)> {
         self.connection.query_row("SELECT coalesce(sum(CASE WHEN scope_id=?1 THEN bytes_done ELSE 0 END),0),coalesce(sum(CASE WHEN scope_id!=?1 THEN bytes_done ELSE 0 END),0) FROM download_entries",[scope(viewer)?],|r|Ok((count(r,0)?,count(r,1)?))).map_err(unavailable)
+    }
+    pub fn capacity(&self, viewer: &DownloadViewer) -> Result<DownloadCapacity> {
+        let (total_bytes, free_bytes) = disk_space(&self.files)?;
+        viewer.validate()?;
+        let other_downloads_bytes = self
+            .other_targets(viewer)?
+            .iter()
+            .try_fold(0u64, |sum, t| {
+                sum.checked_add(t.bytes).ok_or(Error::DownloadsUnavailable)
+            })?;
+        // Count actual Portico-owned files, including metadata/artwork in SQLite and
+        // pending garbage. Do not label all other accounts' bytes as removable.
+        let mut used_bytes = 0u64;
+        for entry in std::fs::read_dir(&self.files).map_err(unavailable)? {
+            let entry = entry.map_err(unavailable)?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let Some((id, extension)) = name.rsplit_once('.') else {
+                continue;
+            };
+            if digest(id) && matches!(extension, "part" | "media") {
+                let meta = std::fs::symlink_metadata(entry.path()).map_err(unavailable)?;
+                if meta.is_file() && !meta.file_type().is_symlink() {
+                    used_bytes = used_bytes
+                        .checked_add(meta.len())
+                        .ok_or(Error::DownloadsUnavailable)?;
+                }
+            }
+        }
+        for name in [
+            "downloads.sqlite3",
+            "downloads.sqlite3-wal",
+            "downloads.sqlite3-shm",
+            "downloads.sqlite3-journal",
+        ] {
+            match std::fs::symlink_metadata(
+                self.files
+                    .parent()
+                    .ok_or(Error::DownloadsUnavailable)?
+                    .join(name),
+            ) {
+                Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => {
+                    used_bytes = used_bytes
+                        .checked_add(meta.len())
+                        .ok_or(Error::DownloadsUnavailable)?;
+                }
+                Ok(_) => return Err(Error::DownloadsUnavailable),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => return Err(Error::DownloadsUnavailable),
+            }
+        }
+        Ok(DownloadCapacity {
+            total_bytes,
+            free_bytes,
+            used_bytes,
+            other_downloads_bytes,
+        })
+    }
+    /// Counts describe every persisted local row in this scope, independent of pagination.
+    /// They never claim the server's full library/season/album size.
+    pub fn groups(&self, viewer: &DownloadViewer) -> Result<Vec<DownloadGroup>> {
+        let mut query=self.connection.prepare("SELECT CASE t.kind WHEN 'episode' THEN 'episodes' ELSE 'songs' END,t.parent_id,t.group_id,count(*) FROM download_entries e JOIN download_titles t ON t.entry_id=e.id WHERE e.scope_id=?1 AND t.kind IN ('episode','song','track') GROUP BY 1,2,3 ORDER BY 1,2,3").map_err(unavailable)?;
+        query
+            .query_map([scope(viewer)?], |r| {
+                Ok(DownloadGroup {
+                    kind: r.get(0)?,
+                    parent_id: r.get(1)?,
+                    group_id: r.get(2)?,
+                    count: count(r, 3)?,
+                })
+            })
+            .map_err(unavailable)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(unavailable)
+    }
+    pub fn artwork(&self, viewer: &DownloadViewer, id: &str) -> Result<Option<DownloadArtwork>> {
+        self.entry(viewer, id)?;
+        self.connection
+            .query_row(
+                "SELECT mime,bytes FROM download_artwork WHERE entry_id=?1",
+                [id],
+                |r| {
+                    Ok(DownloadArtwork {
+                        mime: r.get(0)?,
+                        bytes: r.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(unavailable)
+    }
+    /// Image payloads arrive through the authenticated app adapter; IPC cannot request a
+    /// native path or URL. SVG/HTML are never accepted as local artwork.
+    pub fn save_artwork(
+        &mut self,
+        viewer: &DownloadViewer,
+        id: &str,
+        expected_revision: u64,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Result<LocalDownload> {
+        let magic = match mime {
+            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
+            "image/webp" => bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+            _ => false,
+        };
+        if !magic || bytes.len() > 4 * 1024 * 1024 {
+            return Err(Error::InvalidCommand);
+        }
+        let entry = self.entry(viewer, id)?;
+        if entry.revision != expected_revision {
+            return Err(Error::DownloadsConflict);
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        if tx
+            .execute(
+                "UPDATE download_entries SET revision=revision+1 WHERE id=?1 AND revision=?2",
+                params![id, expected_revision as i64],
+            )
+            .map_err(unavailable)?
+            != 1
+        {
+            return Err(Error::DownloadsConflict);
+        }
+        tx.execute("INSERT INTO download_artwork VALUES(?1,?2,?3) ON CONFLICT(entry_id) DO UPDATE SET mime=excluded.mime,bytes=excluded.bytes",params![id,mime,bytes]).map_err(unavailable)?;
+        tx.commit().map_err(unavailable)?;
+        self.entry(viewer, id)
+    }
+    fn other_targets(&self, viewer: &DownloadViewer) -> Result<Vec<RemovalTarget>> {
+        viewer.validate()?;
+        let mut query=self.connection.prepare("SELECT e.id,e.revision,e.bytes_done+coalesce(length(a.bytes),0) FROM download_entries e JOIN download_scopes s ON s.id=e.scope_id LEFT JOIN download_artwork a ON a.entry_id=e.id WHERE s.authority=?1 AND s.server_id=?2 AND s.account_id=?3 AND s.profile_id!=?4 ORDER BY e.id").map_err(unavailable)?;
+        query
+            .query_map(
+                params![
+                    viewer.authority,
+                    viewer.server_id,
+                    viewer.account_id,
+                    viewer.profile_id
+                ],
+                |r| {
+                    Ok(RemovalTarget {
+                        id: r.get(0)?,
+                        revision: count(r, 1)?,
+                        bytes: count(r, 2)?,
+                    })
+                },
+            )
+            .map_err(unavailable)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(unavailable)
+    }
+    pub fn preview_other_profiles(
+        &mut self,
+        viewer: &DownloadViewer,
+    ) -> Result<OtherDownloadsPreview> {
+        let targets = self.other_targets(viewer)?;
+        let bytes = targets.iter().try_fold(0u64, |sum, t| {
+            sum.checked_add(t.bytes).ok_or(Error::DownloadsUnavailable)
+        })?;
+        self.previews
+            .retain(|_, v| v.created.elapsed() < Duration::from_secs(300));
+        if self.previews.len() >= 16 {
+            self.previews.clear()
+        }
+        let mut random = [0u8; 32];
+        SystemRandom::new().fill(&mut random).map_err(unavailable)?;
+        let snapshot_token = hex(&random);
+        self.previews.insert(
+            snapshot_token.clone(),
+            RemovalSnapshot {
+                viewer: viewer.clone(),
+                targets,
+                created: Instant::now(),
+            },
+        );
+        Ok(OtherDownloadsPreview {
+            snapshot_token,
+            bytes,
+        })
+    }
+    pub fn remove_other_profiles(&mut self, viewer: &DownloadViewer, token: &str) -> Result<()> {
+        viewer.validate()?;
+        let preview = self
+            .previews
+            .remove(token)
+            .ok_or(Error::DownloadsConflict)?;
+        if preview.viewer != *viewer || preview.created.elapsed() >= Duration::from_secs(300) {
+            return Err(Error::DownloadsConflict);
+        }
+        // A transaction prevents a concurrent writer adding/changing targets between
+        // the exact-set comparison and deletion. Any change rejects the entire action.
+        self.connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(unavailable)?;
+        let result = (|| {
+            if self.other_targets(viewer)? != preview.targets {
+                return Err(Error::DownloadsConflict);
+            }
+            for target in preview.targets {
+                self.connection
+                    .execute(
+                        "INSERT OR IGNORE INTO download_garbage VALUES(?1)",
+                        [&target.id],
+                    )
+                    .map_err(unavailable)?;
+                if self
+                    .connection
+                    .execute(
+                        "DELETE FROM download_entries WHERE id=?1 AND revision=?2",
+                        params![target.id, target.revision as i64],
+                    )
+                    .map_err(unavailable)?
+                    != 1
+                {
+                    return Err(Error::DownloadsConflict);
+                }
+            }
+            self.connection.execute_batch("COMMIT").map_err(unavailable)
+        })();
+        if let Err(error) = result {
+            let _ = self.connection.execute_batch("ROLLBACK");
+            return Err(error);
+        }
+        self.collect_garbage()
+    }
+    fn collect_garbage(&self) -> Result<()> {
+        loop {
+            let ids = {
+                let mut query = self
+                    .connection
+                    .prepare("SELECT id FROM download_garbage LIMIT 200")
+                    .map_err(unavailable)?;
+                query
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(unavailable)?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(unavailable)?
+            };
+            if ids.is_empty() {
+                return Ok(());
+            }
+            for id in ids {
+                for ready in [false, true] {
+                    let path = self.path(&id, ready)?;
+                    match std::fs::remove_file(path) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(_) => return Err(Error::DownloadsUnavailable),
+                    }
+                }
+                self.connection
+                    .execute("DELETE FROM download_garbage WHERE id=?1", [id])
+                    .map_err(unavailable)?;
+            }
+        }
+    }
+    pub fn remove(
+        &mut self,
+        viewer: &DownloadViewer,
+        id: &str,
+        expected_revision: u64,
+    ) -> Result<()> {
+        let entry = self.entry(viewer, id)?;
+        if entry.revision != expected_revision {
+            return Err(Error::DownloadsConflict);
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        tx.execute("INSERT OR IGNORE INTO download_garbage VALUES(?1)", [id])
+            .map_err(unavailable)?;
+        if tx
+            .execute(
+                "DELETE FROM download_entries WHERE id=?1 AND revision=?2",
+                params![id, expected_revision as i64],
+            )
+            .map_err(unavailable)?
+            != 1
+        {
+            return Err(Error::DownloadsConflict);
+        }
+        tx.commit().map_err(unavailable)?;
+        self.collect_garbage()
+    }
+    /// Server deletion is a displayed fact. It never deletes a viewer's offline bytes.
+    pub fn server_presence(
+        &mut self,
+        viewer: &DownloadViewer,
+        id: &str,
+        expected_revision: u64,
+        on_server: bool,
+    ) -> Result<LocalDownload> {
+        let entry = self.entry(viewer, id)?;
+        if entry.revision != expected_revision {
+            return Err(Error::DownloadsConflict);
+        }
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        if tx
+            .execute(
+                "UPDATE download_entries SET revision=revision+1 WHERE id=?1 AND revision=?2",
+                params![id, expected_revision as i64],
+            )
+            .map_err(unavailable)?
+            != 1
+        {
+            return Err(Error::DownloadsConflict);
+        }
+        tx.execute(
+            "UPDATE download_titles SET on_server=?1 WHERE entry_id=?2",
+            params![on_server, id],
+        )
+        .map_err(unavailable)?;
+        tx.commit().map_err(unavailable)?;
+        self.entry(viewer, id)
     }
 }
 
@@ -1032,6 +1470,185 @@ mod tests {
         drop(store);
         let store = DownloadStore::open(&root, &rules()).unwrap();
         assert_eq!(store.rules().unwrap().rules, changed);
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn remove_is_revision_fenced_and_server_absence_keeps_local_bytes() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let entry = store.enroll(enrollment(b"hello")).unwrap();
+        let partial = store.append(&viewer(), &entry.id, 0, 0, b"hello").unwrap();
+        let ready = store.seal(&viewer(), &entry.id, partial.revision).unwrap();
+        let absent = store
+            .server_presence(&viewer(), &entry.id, ready.revision, false)
+            .unwrap();
+        assert!(!absent.title.on_server);
+        assert!(store.path(&entry.id, true).unwrap().exists());
+        assert_eq!(
+            store
+                .remove(&viewer(), &entry.id, ready.revision)
+                .unwrap_err(),
+            Error::DownloadsConflict
+        );
+        let capacity = store.capacity(&viewer()).unwrap();
+        assert!(capacity.total_bytes >= capacity.free_bytes);
+        assert!(capacity.free_bytes > 0);
+        assert!(capacity.used_bytes >= 5);
+        assert_eq!(capacity.other_downloads_bytes, 0);
+        store.remove(&viewer(), &entry.id, absent.revision).unwrap();
+        assert!(store.list(&viewer(), None, 10).unwrap().items.is_empty());
+        assert!(!store.path(&entry.id, true).unwrap().exists());
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn other_profile_confirmation_is_exact_scoped_and_rejects_any_changed_target() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let active = store.enroll(enrollment(b"active")).unwrap();
+        let mut entries = Vec::new();
+        for (field, value) in [
+            ("profile", "other"),
+            ("account", "other"),
+            ("server", "other"),
+            ("authority", "hosted"),
+        ] {
+            let mut input = enrollment(b"other");
+            match field {
+                "profile" => input.viewer.profile_id = value.into(),
+                "account" => input.viewer.account_id = value.into(),
+                "server" => input.viewer.server_id = value.into(),
+                _ => input.viewer.authority = value.into(),
+            }
+            let owner = input.viewer.clone();
+            let row = store.enroll(input).unwrap();
+            let row = store
+                .append(&owner, &row.id, row.revision, 0, b"other")
+                .unwrap();
+            entries.push((owner, row));
+        }
+        assert_eq!(store.capacity(&viewer()).unwrap().other_downloads_bytes, 5);
+        let preview = store.preview_other_profiles(&viewer()).unwrap();
+        assert_eq!(preview.bytes, 5);
+        let (other, row) = &entries[0];
+        store.hold(other, &row.id, row.revision, true).unwrap();
+        assert_eq!(
+            store.remove_other_profiles(&viewer(), &preview.snapshot_token),
+            Err(Error::DownloadsConflict)
+        );
+        assert!(store.entry(other, &row.id).is_ok());
+        let preview = store.preview_other_profiles(&viewer()).unwrap();
+        let mut wrong = viewer();
+        wrong.account_id = "other".into();
+        assert_eq!(
+            store.remove_other_profiles(&wrong, &preview.snapshot_token),
+            Err(Error::DownloadsConflict)
+        );
+        let preview = store.preview_other_profiles(&viewer()).unwrap();
+        store
+            .remove_other_profiles(&viewer(), &preview.snapshot_token)
+            .unwrap();
+        assert!(store.entry(other, &row.id).is_err());
+        assert!(store.entry(&viewer(), &active.id).is_ok());
+        for (owner, row) in &entries[1..] {
+            assert!(store.entry(owner, &row.id).is_ok());
+        }
+        assert_eq!(
+            store.remove_other_profiles(&viewer(), &preview.snapshot_token),
+            Err(Error::DownloadsConflict)
+        );
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn native_groups_cover_all_pages_and_artwork_is_persisted_scoped_and_revision_fenced() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let mut ids = Vec::new();
+        for i in 0..4 {
+            let mut input = enrollment(b"media");
+            input.preparation_id = format!("song{i}");
+            input.item_id = format!("item{i}");
+            input.title.kind = "song".into();
+            input.title.parent_id = "album".into();
+            input.title.group_id = "disc1".into();
+            ids.push(store.enroll(input).unwrap().id);
+        }
+        assert_eq!(store.list(&viewer(), None, 1).unwrap().items.len(), 1);
+        assert_eq!(
+            store.groups(&viewer()).unwrap(),
+            vec![DownloadGroup {
+                kind: "songs".into(),
+                parent_id: "album".into(),
+                group_id: "disc1".into(),
+                count: 4
+            }]
+        );
+        assert!(store.artwork(&viewer(), &ids[0]).unwrap().is_none());
+        assert_eq!(
+            store
+                .save_artwork(&viewer(), &ids[0], 0, "image/svg+xml", b"<svg/> ")
+                .unwrap_err(),
+            Error::InvalidCommand
+        );
+        let payload = b"\x89PNG\r\n\x1a\nactual stored image payload";
+        let saved = store
+            .save_artwork(&viewer(), &ids[0], 0, "image/png", payload)
+            .unwrap();
+        assert_eq!(saved.revision, 1);
+        assert_eq!(
+            store
+                .save_artwork(&viewer(), &ids[0], 0, "image/png", payload)
+                .unwrap_err(),
+            Error::DownloadsConflict
+        );
+        let mut other = viewer();
+        other.profile_id = "other".into();
+        assert!(store.artwork(&other, &ids[0]).is_err());
+        drop(store);
+        let store = DownloadStore::open(&root, &rules()).unwrap();
+        let image = store.artwork(&viewer(), &ids[0]).unwrap().unwrap();
+        assert_eq!(image.mime, "image/png");
+        assert_eq!(image.bytes, payload);
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn failed_ready_commit_restores_partial_file_without_claiming_ready() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let entry = store.enroll(enrollment(b"hello")).unwrap();
+        let partial = store.append(&viewer(), &entry.id, 0, 0, b"hello").unwrap();
+        store.connection.execute_batch("CREATE TRIGGER reject_ready BEFORE UPDATE ON download_entries WHEN NEW.state='ready' BEGIN SELECT RAISE(ABORT,'reject'); END;").unwrap();
+        assert_eq!(
+            store
+                .seal(&viewer(), &entry.id, partial.revision)
+                .unwrap_err(),
+            Error::DownloadsUnavailable
+        );
+        assert!(store.path(&entry.id, false).unwrap().exists());
+        assert!(!store.path(&entry.id, true).unwrap().exists());
+        assert_eq!(
+            store.entry(&viewer(), &entry.id).unwrap().state,
+            "downloading"
+        );
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn native_generated_file_names_never_follow_a_symlink_into_other_files() {
+        let root = root();
+        let mut store = DownloadStore::open(&root, &rules()).unwrap();
+        let entry = store.enroll(enrollment(b"hello")).unwrap();
+        let original = root.join("original");
+        std::fs::write(&original, b"preserve").unwrap();
+        std::os::unix::fs::symlink(&original, store.path(&entry.id, false).unwrap()).unwrap();
+        assert!(store.append(&viewer(), &entry.id, 0, 0, b"hello").is_err());
+        assert_eq!(std::fs::read(&original).unwrap(), b"preserve");
+        store.remove(&viewer(), &entry.id, 0).unwrap();
+        assert_eq!(std::fs::read(&original).unwrap(), b"preserve");
         drop(store);
         std::fs::remove_dir_all(root).unwrap();
     }
