@@ -56,6 +56,9 @@ func (s *Service) musicTags(ctx context.Context, w work, input subtitles.RenderI
 		r = source.file
 	}
 	tags := audiotags.Read(r, input.Size())
+	if len(tags.Warnings) > 0 {
+		return tags, ErrUnsupported
+	}
 	if e := ctx.Err(); e != nil {
 		return tags, e
 	}

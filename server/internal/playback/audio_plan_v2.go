@@ -197,6 +197,15 @@ func cdRate(source int) int {
 }
 func isDSD(codec string) bool { return strings.HasPrefix(codec, "dsd_") }
 
+func flacDepthAtMost(source, ceiling int) int {
+	for _, depth := range []int{32, 24, 16} {
+		if depth <= source && (ceiling <= 0 || depth <= ceiling) {
+			return depth
+		}
+	}
+	return 0
+}
+
 // pinAudioPlan builds and pins the version 2 plan for a v1 audio presentation.
 // Facts were ensured before the transaction (audiofacts.Ensure); without them
 // the plan is unavailable, never guessed.
@@ -349,9 +358,6 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 		if (isLossless(f.Codec) && f.BitDepth > 16) || isDSD(f.Codec) {
 			conv.BitDepth = min(32, max(24, f.BitDepth))
 		}
-		if flacCap.MaxBitDepth > 0 && flacCap.MaxBitDepth < conv.BitDepth {
-			conv.BitDepth = 16
-		}
 		if isDSD(f.Codec) {
 			conv.Rate = convertedRate(flacCap, min(f.SampleRate, 176400))
 			conv.BitDepth = 24
@@ -360,10 +366,8 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 			conv.Rate = convertedRate(flacCap, cdRate(f.SampleRate))
 			conv.BitDepth = 16
 		}
-		if flacCap.MaxBitDepth > 0 && conv.BitDepth > flacCap.MaxBitDepth {
-			conv.BitDepth = 16
-		}
-		if conv.Rate == 0 {
+		conv.BitDepth = flacDepthAtMost(conv.BitDepth, flacCap.MaxBitDepth)
+		if conv.Rate == 0 || conv.BitDepth == 0 {
 			conv = nil
 		}
 		p.Container, p.Codec = "flac", "flac"

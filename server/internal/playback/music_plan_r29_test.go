@@ -27,3 +27,25 @@ func TestMusicRateFamilyR29(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestMusicFLACDepthAndOwnerMusicCapR29(t *testing.T) {
+	if got := flacDepthAtMost(32, 24); got != 24 {
+		t.Fatal("discarded usable source depth", got)
+	}
+	if got := flacDepthAtMost(24, 8); got != 0 {
+		t.Fatal("exceeded decoder depth", got)
+	}
+	if got := flacDepthAtMost(16, 32); got != 16 {
+		t.Fatal("upward conversion", got)
+	}
+	for _, q := range []string{"original", "cd-quality", "320", "96"} {
+		if got := (DeliveryConfiguration{MaxMusicQuality: q}).Normalized().MaxMusicQuality; got != q {
+			t.Fatal(q, got)
+		}
+	}
+	for _, q := range []string{"256", "192", "128", "auto", ""} {
+		if got := (DeliveryConfiguration{MaxMusicQuality: q}).Normalized().MaxMusicQuality; got != "original" {
+			t.Fatal(q, got)
+		}
+	}
+}

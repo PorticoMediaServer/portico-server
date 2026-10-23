@@ -183,7 +183,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
-		requested, err := requestedDownloadQuality(tx, p, string(r.Quality), found)
+		requested, err := requestedDownloadQuality(ctx, tx, p, string(r.Quality), found)
 		if err != nil {
 			return out, err
 		}

@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const preparedInputFormats = "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8"
+
 // PreparedMusicOutput describes the first audio track actually written by a
 // versioned music recipe. It is shared by admission and completed-media checks.
 type PreparedMusicOutput struct {
@@ -115,20 +117,7 @@ func preparedMusicArgs(args []string, r PreparedRecipe) ([]string, error) {
 	if strings.HasPrefix(r.Source.AudioCodec, "dsd_") {
 		filters = append(filters, "volume=-6dB:precision=double")
 	}
-	if o.Rate != r.Source.AudioSampleRate || o.Depth > 0 && r.Source.AudioBitDepth > o.Depth {
-		f := fmt.Sprintf("aresample=%d:resampler=soxr:precision=28", o.Rate)
-		if o.Depth > 0 {
-			sf := "s32"
-			if o.Depth <= 16 {
-				sf = "s16"
-			}
-			f += ":osf=" + sf
-			if r.Source.AudioBitDepth > o.Depth {
-				f += fmt.Sprintf(":output_sample_bits=%d:dither_method=triangular", o.Depth)
-			}
-		}
-		filters = append(filters, f)
-	}
+	filters = append(filters, musicResampleFilters(r.Source.AudioSampleRate, o.Rate, r.Source.AudioBitDepth, o.Depth, strings.HasPrefix(r.Source.AudioCodec, "dsd_"))...)
 	if len(filters) > 0 {
 		args = append(args, "-af", strings.Join(filters, ","))
 	}
@@ -146,4 +135,23 @@ func preparedMusicArgs(args []string, r PreparedRecipe) ([]string, error) {
 		args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-b:a", strconv.Itoa(o.BitrateBPS), "-frag_duration", "1000000", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4")
 	}
 	return append(args, "pipe:1"), nil
+}
+
+// soxr handles rate conversion at double precision. The final equal-rate SWR
+// conversion quantizes to the requested used bits and adds triangular dither;
+// output_sample_bits is an SWR option, not a soxr quantizer option.
+func musicResampleFilters(sourceRate, rate, sourceDepth, depth int, processed bool) []string {
+	out := []string{}
+	rateChanged := sourceRate != rate
+	if rateChanged {
+		out = append(out, fmt.Sprintf("aresample=%d:resampler=soxr:precision=28:osf=dbl", rate))
+	}
+	if depth > 0 && (rateChanged || processed || sourceDepth > depth) {
+		format := "s32"
+		if depth <= 16 {
+			format = "s16"
+		}
+		out = append(out, fmt.Sprintf("aresample=%d:resampler=swr:osf=%s:output_sample_bits=%d:dither_method=triangular", rate, format, depth))
+	}
+	return out
 }

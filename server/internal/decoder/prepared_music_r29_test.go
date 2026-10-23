@@ -12,7 +12,7 @@ func TestMusicPreparedRateDepthAndNoUpgradeR29(t *testing.T) {
 		t.Fatal(e)
 	}
 	o, e := PreparedMusicFormat(r)
-	if e != nil || o.Rate != 44100 || o.Depth != 16 || o.Channels != 8 || !strings.Contains(strings.Join(args, " "), "resampler=soxr:precision=28:osf=s16:output_sample_bits=16:dither_method=triangular") {
+	if e != nil || o.Rate != 44100 || o.Depth != 16 || o.Channels != 8 || !strings.Contains(strings.Join(args, " "), "resampler=soxr:precision=28:osf=dbl") || !strings.Contains(strings.Join(args, " "), "resampler=swr:osf=s16:output_sample_bits=16:dither_method=triangular") {
 		t.Fatal(o, args, e)
 	}
 	r.Source.AudioSampleRate = 192000

@@ -154,7 +154,7 @@ func (s *Service) SubmitContainer(ctx context.Context, p identity.Principal, r C
 		if !anyVisible {
 			return ErrNotFound
 		}
-		musicQuality, e := musicDownloadQuality(tx, p)
+		musicQuality, e := musicDownloadQuality(ctx, tx, p)
 		if e != nil {
 			return e
 		}

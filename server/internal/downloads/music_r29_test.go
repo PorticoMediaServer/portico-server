@@ -14,7 +14,7 @@ import (
 
 func TestMusicDownloadLadderDefaultsAndReplayR29(t *testing.T) {
 	h := newHarness(t)
-	ctx := context.Background()
+	ctx := playback.WithDeliveryContext(context.Background(), playback.DeliveryContext{DeviceClass: "web"})
 	if _, e := h.db.Exec(`INSERT INTO libraries(id,name,kind,root) VALUES('music','Music','music',?)`, h.root); e != nil {
 		t.Fatal(e)
 	}
@@ -51,7 +51,7 @@ func TestMusicDownloadLadderDefaultsAndReplayR29(t *testing.T) {
 	if e != nil || len(batch.Items) != 1 || batch.Items[0].Quality != "320" {
 		t.Fatal(batch, e)
 	}
-	if _, e = h.db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,'{"music.qualityDownloads":"96"}',1)`, "profile:"+operations.ViewerScopeKey(h.viewer.Viewer)); e != nil {
+	if _, e = h.db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,'{"music.qualityDownloads":"96"}',1)`, "device:"+operations.ViewerScopeKey(h.viewer.Viewer)+":web"); e != nil {
 		t.Fatal(e)
 	}
 	replay, e := h.service.Submit(ctx, h.viewer, Request{OperationID: "music-omission", MediaID: song}, nil)

@@ -69,9 +69,14 @@ func TestMusicCueVirtualTracksR29(t *testing.T) {
 	if e != nil || facts == nil || facts.Channels != 6 || facts.BitDepth != 24 || facts.SampleRate != 96000 || facts.Lossless == nil || !*facts.Lossless {
 		t.Fatal(facts, e)
 	}
+	secondPublic := public
 	f.MusicCueTracks = nil
 	commit(f)
 	if e = db.QueryRow(`SELECT count(*) FROM music_virtual_tracks WHERE asset_id=?`, token).Scan(&n); e != nil || n != 0 {
 		t.Fatal(n, e)
+	}
+	var retired bool
+	if e = db.QueryRow(`SELECT retired FROM catalog_entities WHERE public_id=pid_blob(?)`, secondPublic).Scan(&retired); e != nil || !retired {
+		t.Fatal("removed cue remains in browse", retired, e)
 	}
 }

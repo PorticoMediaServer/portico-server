@@ -315,11 +315,17 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if _, e := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal>?)`, asset, asset, len(f.MusicCueTracks)); e != nil {
 			return e
 		}
+		if e := retireRemovedMusicCueTx(ctx, tx, asset, len(f.MusicCueTracks)); e != nil {
+			return e
+		}
 		_, e := tx.ExecContext(ctx, `DELETE FROM music_virtual_tracks WHERE asset_id=? AND ordinal>?`, asset, len(f.MusicCueTracks))
 		return e
 	}
 	if kind == "music" {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal>1)`, asset, asset); e != nil {
+			return e
+		}
+		if e := retireRemovedMusicCueTx(ctx, tx, asset, 1); e != nil {
 			return e
 		}
 		if _, e := tx.ExecContext(ctx, `UPDATE catalog_asset_links SET start_seconds=0,end_seconds=NULL WHERE asset_id=(SELECT id FROM catalog_assets WHERE token=?) AND entity_id IN(SELECT entity_id FROM music_virtual_tracks WHERE asset_id=? AND ordinal=1)`, asset, asset); e != nil {
@@ -912,6 +918,35 @@ func joinBookByIdentifierTx(ctx context.Context, tx *sql.Tx, book int64, tags ma
 		}
 		if _, err = tx.ExecContext(ctx, `RELEASE book_join`); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// Retain the removed cue identity and personal state, but hide an obsolete
+// virtual track from browse/search when no other source still supplies it.
+func retireRemovedMusicCueTx(ctx context.Context, tx *sql.Tx, asset string, keep int) error {
+	rows, e := tx.QueryContext(ctx, `SELECT v.entity_id FROM music_virtual_tracks v WHERE v.asset_id=? AND v.ordinal>? AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.entity_id=v.entity_id) ORDER BY v.ordinal`, asset, keep)
+	if e != nil {
+		return e
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			return e
+		}
+		ids = append(ids, id)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	for _, id := range ids {
+		if e = compactcatalog.RetireEntityTx(ctx, tx, id); e != nil {
+			return e
 		}
 	}
 	return nil

@@ -200,6 +200,9 @@ func (p *reader) add(k, v string) {
 		return
 	}
 	if len(p.out.Values) >= maxValues || len(p.out.Values[k]) >= 64 || len(v) == 0 || len(v) > limit || !utf8.ValidString(v) || strings.IndexFunc(v, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) >= 0 {
+		if len(v) > 0 {
+			p.warn()
+		}
 		return
 	}
 	for _, old := range p.out.Values[k] {
@@ -455,6 +458,8 @@ func (p *reader) chapter(title string, start, end float64) {
 func (p *reader) picture(kind int, mime string, b []byte) {
 	if len(p.out.Pictures) < 8 && len(b) > 0 && len(b) <= 4<<20 {
 		p.out.Pictures = append(p.out.Pictures, Picture{kind, mime, append([]byte(nil), b...)})
+	} else {
+		p.warn()
 	}
 }
 func (p *reader) id3Picture(v []byte, old bool) {

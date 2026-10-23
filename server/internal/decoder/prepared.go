@@ -82,7 +82,7 @@ func PreparedArgs(input string, r PreparedRecipe) ([]string, error) {
 }
 
 func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, error) {
-	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input}
+	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-protocol_whitelist", "http,tcp", "-format_whitelist", preparedInputFormats, "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input}
 	if validate {
 		return append(args, "-map", "0:v?", "-map", "0:a?", "-sn", "-dn", "-f", "null", "-"), nil
 	}
@@ -223,7 +223,7 @@ func runPrepared(ctx context.Context, s *storage.Supervisor, key string, cmd *ex
 	return e
 }
 func RunPreparedProbe(ctx context.Context, s *storage.Supervisor, key, executable, input string, res *EndpointReservation, custody *os.File, libraries ...string) ([]byte, error) {
-	cmd, e := ProbeCommand(executable, input, res, libraries...)
+	cmd, e := probeCommand(executable, input, res, preparedInputFormats, libraries...)
 	if e != nil {
 		return nil, e
 	}

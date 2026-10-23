@@ -180,7 +180,7 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	} else if !allowed {
 		original.Reason = ReasonNotAllowed
 	}
-	out.DefaultQuality, e = requestedDownloadQuality(tx, p, "", found)
+	out.DefaultQuality, e = requestedDownloadQuality(ctx, tx, p, "", found)
 	if e != nil {
 		return out, e
 	}

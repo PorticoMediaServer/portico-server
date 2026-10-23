@@ -125,21 +125,17 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		if s.AudioGainDB != 0 {
 			filters = append(filters, fmt.Sprintf("volume=%gdB:precision=double", s.AudioGainDB))
 		}
-		// Untouched same-rate/depth samples never enter a resampler or dither stage.
-		if s.AudioTruePeakLimit || s.AudioSourceRate != s.AudioRate || s.AudioSourceDepth > s.AudioBitDepth && s.AudioBitDepth > 0 {
-			resample := fmt.Sprintf("aresample=%d:resampler=soxr:precision=28", s.AudioRate)
-			if s.AudioBitDepth > 0 {
-				format := "s32"
-				if s.AudioBitDepth == 16 {
-					format = "s16"
-				}
-				resample += ":osf=" + format
-				if s.AudioTruePeakLimit || s.AudioSourceDepth > s.AudioBitDepth {
-					resample += ":dither_method=triangular"
-				}
-			}
-			filters = append(filters, resample)
+		if s.AudioTruePeakLimit {
+			// Four-times oversampling bounds inter-sample peaks. Automatic
+			// make-up gain is off; lookahead latency is compensated and flushed.
+			filters = append(filters, fmt.Sprintf("aresample=%d:resampler=soxr:precision=28:osf=dbl,alimiter=limit=0.8912509381:level=0:latency=1", s.AudioRate*4))
 		}
+		// Untouched same-rate/depth samples never enter a resampler or dither stage.
+		resampleSource := s.AudioSourceRate
+		if s.AudioTruePeakLimit {
+			resampleSource = s.AudioRate * 4
+		}
+		filters = append(filters, musicResampleFilters(resampleSource, s.AudioRate, s.AudioSourceDepth, s.AudioBitDepth, s.AudioTruePeakLimit || s.AudioGainDB != 0)...)
 		filters = append(filters, fmt.Sprintf("asetpts=N/SR/TB,apad=whole_len=%d,atrim=end_sample=%d", s.AudioOut, s.AudioOut))
 		filter := strings.Join(filters, ",")
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", filter, "-ac", fmt.Sprint(s.AudioChannels), "-ar", fmt.Sprint(s.AudioRate))

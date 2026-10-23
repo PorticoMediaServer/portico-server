@@ -14,8 +14,8 @@ import (
 	"portico.local/server/internal/qualityladder"
 )
 
-func musicDownloadQuality(tx *sql.Tx, p identity.Principal) (string, error) {
-	values, _, _, e := operations.EffectivePreferences(tx, p.Viewer, "")
+func musicDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal) (string, error) {
+	values, _, _, e := operations.EffectivePreferences(tx, p.Viewer, playback.DeliveryContextFrom(ctx).DeviceClass)
 	if e != nil {
 		return "", e
 	}
@@ -29,12 +29,12 @@ func canonicalMusicQuality(q string) bool {
 	}
 	return false
 }
-func requestedDownloadQuality(tx *sql.Tx, p identity.Principal, q string, s source) (string, error) {
+func requestedDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal, q string, s source) (string, error) {
 	if q != "" {
 		return q, nil
 	}
 	if s.Kind == "song" {
-		return musicDownloadQuality(tx, p)
+		return musicDownloadQuality(ctx, tx, p)
 	}
 	return QualityOriginal, nil
 }

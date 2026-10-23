@@ -73,7 +73,7 @@ func runPreparedFile(ctx context.Context, s *storage.Supervisor, key, sandbox, e
 	return owned.validate()
 }
 func RunPreparedFileProbe(ctx context.Context, s *storage.Supervisor, key, sandbox, executable string, input *os.File, custody *PreparedFileCustody, libraries ...string) ([]byte, error) {
-	args := []string{"-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "10000000", "-show_format", "-show_streams", "-of", "json", "/input.media"}
+	args := []string{"-v", "error", "-protocol_whitelist", "file", "-format_whitelist", preparedInputFormats, "-probesize", "8388608", "-analyzeduration", "10000000", "-show_format", "-show_streams", "-of", "json", "/input.media"}
 	var raw []byte
 	e := runPreparedFile(ctx, s, key, sandbox, executable, input, custody, args, func(r io.Reader) error {
 		var err error

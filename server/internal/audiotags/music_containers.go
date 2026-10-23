@@ -391,6 +391,20 @@ func (p *reader) asfMetadata(b []byte) {
 			return
 		}
 		name := strings.TrimPrefix(asfText(b[:nameLen]), "WM/")
+		switch name {
+		case "AlbumTitle":
+			name = "album"
+		case "AlbumArtist":
+			name = "album_artist"
+		case "TrackNumber":
+			name = "track"
+		case "Year":
+			name = "date"
+		case "Genre":
+			name = "genre"
+		case "Composer":
+			name = "composer"
+		}
 		v := b[nameLen : nameLen+int(n)]
 		b = b[nameLen+int(n):]
 		if typ == 1 && name == "Picture" {
