@@ -1,23 +1,25 @@
+import {throwIfAborted} from '../errors.ts';
 import type {ReaderSource} from '../ports.ts';
+import {abortScope} from '../abort.ts';
 
 /** PDF.js requests may cover several chunks. Return one exact requested range. */
 export function pdfRanges(source:ReaderSource,options:{signal:AbortSignal;onRange(start:number,bytes:Uint8Array):void;onError(error:unknown):void}){
-  const id=source.id,revision=source.revision,size=source.size,life=new AbortController(),signal=AbortSignal.any([options.signal,life.signal]);
+  const id=source.id,revision=source.revision,size=source.size,life=new AbortController(),scope=abortScope([options.signal,life.signal]),signal=scope.signal;
   const queue:{start:number;end:number}[]=[];let active=0,closed=false,total=0,count=0;
   const error=(code:string)=>Object.assign(new Error(code),{code});
   const unchanged=()=>{if(source.id!==id||source.revision!==revision||source.size!==size||typeof source.read!=='function')throw error('pdf_invalid');};
-  const fail=(reason:unknown)=>{if(closed||signal.aborted)return;closed=true;queue.length=0;life.abort(reason);options.onError(reason);};
+  const fail=(reason:unknown)=>{if(closed||signal.aborted)return;closed=true;queue.length=0;life.abort(reason);scope.dispose();options.onError(reason);};
   const pump=()=>{
     while(!closed&&!signal.aborted&&active<2&&queue.length){
       const range=queue.shift()!;active++;
       void (async()=>{
         const result=new Uint8Array(range.end-range.start);
         for(let start=range.start;start<range.end;start+=65536){
-          signal.throwIfAborted();unchanged();const end=Math.min(start+65536,range.end);
-          const bytes=await source.read!({start,endExclusive:end},signal);signal.throwIfAborted();unchanged();
+          throwIfAborted(signal);unchanged();const end=Math.min(start+65536,range.end);
+          const bytes=await source.read!({start,endExclusive:end},signal);throwIfAborted(signal);unchanged();
           if(!(bytes instanceof Uint8Array)||bytes.byteLength!==end-start)throw error('pdf_invalid');result.set(bytes,start-range.start);
         }
-        signal.throwIfAborted();if(!closed)options.onRange(range.start,result);
+        throwIfAborted(signal);if(!closed)options.onRange(range.start,result);
       })().catch(fail).finally(()=>{active--;pump();});
     }
   };
@@ -31,6 +33,6 @@ export function pdfRanges(source:ReaderSource,options:{signal:AbortSignal;onRang
         queue.push({start,end});pump();
       }catch(reason){fail(reason);}
     },
-    dispose(){if(closed)return;closed=true;queue.length=0;life.abort();}
+    dispose(){if(closed)return;closed=true;queue.length=0;life.abort();scope.dispose();}
   });
 }
