@@ -12,7 +12,7 @@ import (
 func musepackDurationUS(ctx context.Context, tx *sql.Tx, asset, codec string, seconds float64) (int64, error) {
 	var observed string
 	var rate int
-	if err := tx.QueryRowContext(ctx, `SELECT f.codec,f.sample_rate FROM music_technical_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE a.token=?`, asset).Scan(&observed, &rate); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT f.codec,f.sample_rate FROM music_technical_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns AND a.audio_codec=f.codec WHERE a.token=?`, asset).Scan(&observed, &rate); err != nil {
 		return 0, err
 	}
 	if observed != codec {

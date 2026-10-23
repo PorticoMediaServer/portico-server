@@ -75,6 +75,7 @@ func TestSonicMusepackClockRequiresFreshMeasuredRate(t *testing.T) {
 	c := catalogtest.Open(t)
 	lib := c.Library("music", "Music", "music", "/music")
 	item := c.Song(c.Album(c.Artist(lib, "Artist"), "Album", 2026), 1, "/music/song.mpc", "Song")
+	c.Exec(`UPDATE catalog_assets SET audio_codec='mpc8' WHERE id=?`, item.Asset)
 	c.Exec(`INSERT INTO music_technical_facts(asset_id,size,modified_ns,codec,sample_rate,bit_depth,channels) SELECT token,size,modified_ns,'mpc8',44100,0,2 FROM catalog_assets WHERE id=?`, item.Asset)
 	tx, err := c.DB.Begin()
 	if err != nil {
