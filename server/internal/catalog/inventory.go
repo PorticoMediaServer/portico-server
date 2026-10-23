@@ -517,7 +517,9 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		}
 	}
 	// A revision/policy-specific queue is separate from inventory visibility.
-	if policy.Tier != "file_list_only" && reason == "" && ext != "strm" {
+	// Static reading publications have no timed media probe. Their package and
+	// page resources are validated by the interactive, actor-authorized reader.
+	if policy.Tier != "file_list_only" && reason == "" && ext != "strm" && ext != "epub" && ext != "pdf" && ext != "cbz" {
 		_, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) SELECT ?,id,revision,? FROM inventory_objects WHERE id=? AND (analysis_revision!=revision OR analysis_policy!=?) ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=CASE WHEN inventory_analysis_queue.revision=excluded.revision AND inventory_analysis_queue.policy_revision=excluded.policy_revision THEN inventory_analysis_queue.state ELSE 'pending' END`, job, policy.Revision, object, policy.Revision)
 	}
 	return previousSeen != job, err
@@ -545,6 +547,9 @@ func (s *Service) associateInventoryTx(ctx context.Context, tx *sql.Tx, source L
 		return s.publishExtraTx(ctx, tx, source, asset, path, extra)
 	}
 	switch kind {
+	case "book", "comic":
+		_, err := attachReadingTx(ctx, tx, source.LibraryID, kind, asset, path)
+		return err
 	case "music", "audiobook":
 		return s.commitAudio(ctx, tx, source.LibraryID, kind, source.ResolvedPath, asset, path, assets.Facts{InventoryOnly: true})
 	case "tv", "anime":

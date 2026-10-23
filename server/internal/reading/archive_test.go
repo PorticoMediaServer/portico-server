@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -21,7 +22,20 @@ func fixtureZIP(t *testing.T, entries [][2]string) []byte {
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
 	for _, e := range entries {
-		w, err := z.Create(e[0])
+		header := &zip.FileHeader{Name: e[0], Method: zip.Deflate}
+		if e[0] == "mimetype" {
+			header.Method = zip.Store
+		}
+		var w io.Writer
+		var err error
+		if e[0] == "mimetype" {
+			header.CRC32 = crc32.ChecksumIEEE([]byte(e[1]))
+			header.CompressedSize64 = uint64(len(e[1]))
+			header.UncompressedSize64 = uint64(len(e[1]))
+			w, err = z.CreateRaw(header)
+		} else {
+			w, err = z.CreateHeader(header)
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -35,7 +49,7 @@ func fixtureZIP(t *testing.T, entries [][2]string) []byte {
 	return b.Bytes()
 }
 func fixtureEPUB(t *testing.T, body string) []byte {
-	return fixtureZIP(t, [][2]string{{"mimetype", "application/epub+zip"}, {"META-INF/container.xml", `<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`}, {"OEBPS/content.opf", `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:test</dc:identifier><dc:title>Original reading fixture</dc:title><dc:creator>Portico tests</dc:creator><dc:language>en</dc:language></metadata><manifest><item id="c" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c"/></spine></package>`}, {"OEBPS/chapter.xhtml", body}})
+	return fixtureZIP(t, [][2]string{{"mimetype", "application/epub+zip"}, {"META-INF/container.xml", `<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`}, {"OEBPS/content.opf", `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:test</dc:identifier><dc:title>Original reading fixture</dc:title><dc:creator>Portico tests</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">2026-10-23T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c"/></spine></package>`}, {"OEBPS/nav.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">Chapter</a></li></ol></nav></body></html>`}, {"OEBPS/chapter.xhtml", body}})
 }
 func TestEPUBActualAssetsAndActiveContentBoundary(t *testing.T) {
 	good := `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter</title></head><body><h1 id="start">Original text</h1><p>Lawful fixture.</p><a href="#start">Return</a></body></html>`
@@ -169,7 +183,7 @@ func TestArchiveDoesNotReadWholeSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(e.Resources) != 4 {
+	if len(e.Resources) != 5 {
 		t.Fatal(e.Resources)
 	}
 	if counted.max > 65557 {
