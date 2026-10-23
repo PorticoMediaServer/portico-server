@@ -1,10 +1,74 @@
 package disc
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 )
+
+func TestDolbyVisionDiscFixturesAndActualSandboxedProbe(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "..", "fixtures", "discs", "dovi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Schema   int
+		Fixtures []fixture
+	}
+	if json.Unmarshal(raw, &manifest) != nil || manifest.Schema != 1 || len(manifest.Fixtures) != 2 {
+		t.Fatal("invalid supplemental Dolby Vision disc inventory")
+	}
+	for _, f := range manifest.Fixtures {
+		t.Run(f.ID, func(t *testing.T) {
+			if !filepath.IsLocal(f.Path) || len(f.Files) != 9 {
+				t.Fatal("incomplete or unsafe generated disc")
+			}
+			for member, want := range f.Files {
+				if !filepath.IsLocal(member) {
+					t.Fatal("unsafe generated member")
+				}
+				data, err := os.ReadFile(filepath.Join(root, f.Path, member))
+				if err != nil {
+					t.Fatal(err)
+				}
+				digest := sha256.Sum256(data)
+				if hex.EncodeToString(digest[:]) != want {
+					t.Fatalf("generated member changed: %s", member)
+				}
+			}
+			want, err := DecodeProbe(f.Expected)
+			if err != nil || len(want.Titles) != 1 || len(want.Titles[0].Streams) != 2 {
+				t.Fatalf("invalid observed source facts: %v", err)
+			}
+			el := want.Titles[0].Streams[1]
+			if el.PID != 4117 || !el.DolbyVisionEnhancementKnown || !el.DolbyVisionEnhancementLayer {
+				t.Fatal("actual EL STN entry is missing")
+			}
+			if f.ID == "stn-fel-bdmv" && el.DolbyVisionBasePID != nil ||
+				f.ID == "pmt-fel-bdmv" && (el.DolbyVisionBasePID == nil || *el.DolbyVisionBasePID != 4113) {
+				t.Fatal("PMT dependency was invented or lost")
+			}
+			binary := os.Getenv("PORTICO_DISC_TEST_BINARY")
+			if binary == "" {
+				t.Skip("source inventory checked; compiled helper required for actual sandbox probe")
+			}
+			got, err := (Tool{Binary: binary}).ProbeLocal(context.Background(), filepath.Join(root, f.Path))
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("actual reader differs: got %+v want %+v: %v", got, want, err)
+			}
+		})
+	}
+}
 
 func TestDolbyVisionDependencyIsAnObservedSameClipVideoPID(t *testing.T) {
 	_, fixtures := discFixtures(t)

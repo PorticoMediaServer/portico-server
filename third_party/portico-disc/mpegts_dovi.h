@@ -18,6 +18,7 @@ typedef struct {
     size_t used, expected;
     size_t seen_size;
     unsigned pid;
+    unsigned program;
     int cc;
 } PD_Section;
 typedef struct {
@@ -41,26 +42,30 @@ static void pd_table(PD_Psi *psi, PD_Section *section) {
     const uint8_t *data = section->data;
     size_t size = section->expected;
     if (size < 12 || pd_crc(data, size) || !(data[5] & 1) || data[6] || data[7]) return;
+    if (section == &psi->pat) {
+        if (data[0] != 0 || (size - 12) % 4) return;
+    } else if (data[0] != 2 || size < 16 || pd_u16(data + 3) != section->program) return;
     if (section->seen_size && (size - 4 != section->seen_size || memcmp(data, section->seen, 5) ||
         memcmp(data + 6, section->seen + 6, size - 10) || ((data[5] ^ section->seen[5]) & 0xc1))) {
         psi->facts->malformed = 1; return;
     }
     if (!section->seen_size) { memcpy(section->seen, data, size - 4); section->seen_size = size - 4; }
     if (section == &psi->pat) {
-        if (data[0] != 0 || (size - 12) % 4) return;
         for (size_t i = 8; i + 4 <= size - 4; i += 4) {
             if (!pd_u16(data+i)) continue;
             unsigned pid = pd_u16(data+i+2) & 8191, found = 0;
             if (pid <= 31 || pid >= 8191) continue;
-            for (unsigned j = 0; j < psi->pmts; j++) found |= psi->pmt[j].pid == pid;
+            for (unsigned j = 0; j < psi->pmts; j++) if (psi->pmt[j].pid == pid) {
+                if (psi->pmt[j].program != pd_u16(data+i)) { psi->facts->malformed = 1; return; }
+                found = 1;
+            }
             if (!found && psi->pmts < PD_PMT_MAX) {
                 PD_Section *pmt = &psi->pmt[psi->pmts++];
-                pmt->pid = pid; pmt->cc = -1;
+                pmt->pid = pid; pmt->program = pd_u16(data+i); pmt->cc = -1;
             }
         }
         return;
     }
-    if (data[0] != 2 || size < 16) return;
     size_t at = 12 + (pd_u16(data + 10) & 4095);
     uint16_t pids[256], bases[256];
     uint8_t types[256];
@@ -70,24 +75,34 @@ static void pd_table(PD_Psi *psi, PD_Section *section) {
         unsigned type = data[at], pid = pd_u16(data + at + 1) & 8191;
         size_t end = at + 5 + (pd_u16(data + at + 3) & 4095);
         if (end > size - 4 || pid <= 31 || pid >= 8191) return;
-        unsigned base = 0;
+        unsigned base = 0, registration = 0, hevc = 0;
         for (size_t d = at + 5; d < end;) {
             if (d + 2 > end || d + 2 + data[d+1] > end) return;
             const uint8_t *v = data + d + 2;
             unsigned length = data[d+1];
-            if (data[d] == 0xb0 && length >= 7) {
+            if (data[d] == 0x05 && length >= 4 && !memcmp(v, "DOVI", 4)) registration = 1;
+            if (data[d] == 0x38 && length >= 13) hevc = 1;
+            if (data[d] == 0xb0 && length >= 7 && v[0] == 1 && v[1] == 0) {
                 unsigned flags = pd_u16(v + 2);
                 unsigned dependency = pd_u16(v + 4) >> 3;
                 if ((flags >> 9) == 7 && (flags & 7) == 6 && (v[6] >> 4) == 6 &&
-                    dependency > 31 && dependency < 8191 && dependency != pid) base = dependency;
+                    dependency > 31 && dependency < 8191 && dependency != pid) {
+                    if (base && base != dependency) { psi->facts->malformed = 1; return; }
+                    base = dependency;
+                }
             }
             d += 2 + length;
         }
+        /* Generic Dolby TS uses private PES (0x06), with both DOVI
+         * registration and HEVC video descriptors. Blu-ray's explicit
+         * HEVC stream type does not need that private-PES classification. */
+        if (type != 0x24 && !(type == 0x06 && registration && hevc)) base = 0;
+        for (unsigned i = 0; i < count; i++) if (pids[i] == pid) return;
         pids[count] = pid; types[count] = type; bases[count++] = base;
         at = end;
     }
     if (at != size - 4) return;
-    for (unsigned i = 0; i < count; i++) if (bases[i] && types[i] == 0x24) {
+    for (unsigned i = 0; i < count; i++) if (bases[i]) {
         unsigned found = 0;
         for (unsigned j = 0; j < count; j++) found |= pids[j] == bases[i] && types[j] == 0x24 && !bases[j];
         if (!found) continue;
@@ -131,7 +146,10 @@ static void pd_packet(PD_Psi *psi, const uint8_t *ts) {
     size_t at = 4;
     if (afc & 2) {
         if (ts[4] > 183) return;
-        if (ts[4] && (ts[5] & 0x80)) section->cc = -1;
+        if (ts[4] && (ts[5] & 0x80)) {
+            section->cc = -1;
+            section->used = section->expected = 0;
+        }
         at += 1 + ts[4];
     }
     if (!(afc & 1) || at >= 188) return;
