@@ -125,8 +125,8 @@ test('gate 3: the codes the INT review named get their own sentence', () => {
   assert.equal(say(new ApiError(400, 'invalid_request', 'x'), 'password').messageId, 'web.signIn.error.details');
   assert.equal(say(new ApiError(422, 'invalid_request', 'x'), 'new-password').messageId, 'web.signIn.error.newPassword');
   assert.equal(say(new CodedError('invalid_response', 'unreadable')).messageId, 'web.signIn.error.unreadable');
-  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'web.signIn.error.identity');
-  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'web.portico.notProven');
+  assert.equal(say(new CodedError('server_mismatch', 'The server answered as a different server.')).messageId, 'portico.failure.identity.body');
+  assert.equal(say(new CodedError('challenge_not_proven', 'x')).messageId, 'portico.failure.identity.body');
   assert.equal(say(new DOMException('The operation timed out.', 'TimeoutError')).messageId, 'web.signIn.error.timeout');
   assert.equal(say(new ApiError(429, 'rate_limited', 'x', true, 30), 'password').text, 'Too many sign-in attempts. Try again in 30 seconds.');
   assert.equal(say(superseded()).silent, true, 'a sign-in the person moved on from says nothing');
