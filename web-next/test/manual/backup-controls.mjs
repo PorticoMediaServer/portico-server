@@ -50,15 +50,16 @@ try {
   await page.send('Page.enable');await page.send('Runtime.enable');await page.send('Page.bringToFront');await page.send('Emulation.setDeviceMetricsOverride', {width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false});
   const navigate = async query => {const url = `${origin}/test/backup-picker.html${query}`;await page.send('Page.navigate', {url});await waitFor(`location.href===${JSON.stringify(url)} && !!window.backupPickerProof`);};
   if (process.env.BACKUP_CAPTURE_ONLY === '1') {
-    const output = process.env.PORTICO_RUNNER_OUTPUT;assert.ok(output, 'Runner output directory is required');const captures = [];
+    const output = process.env.PORTICO_RUNNER_OUTPUT;assert.ok(output, 'Runner output directory is required');const captures = [], images = new Map();
     const capture = async (name, selector) => {
       await evaluate('document.fonts.ready.then(()=>true)');await waitFor(`!!document.querySelector(${JSON.stringify(selector)}) && getComputedStyle(document.querySelector(${JSON.stringify(selector)})).opacity==='1' && document.getAnimations().every(a=>a.playState!=='running')`);
       const state = await evaluate(`(() => {const element=document.querySelector(${JSON.stringify(selector)});if(!element)throw Error('Capture target absent');const r=element.getBoundingClientRect(),s=getComputedStyle(element);return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},text:element.textContent,font:s.fontFamily,background:s.background,opacity:s.opacity,transform:s.transform,fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),viewport:[innerWidth,innerHeight],clientWidth:document.documentElement.clientWidth};})()`);
       const {x,y,width,height} = state.rect, clip = {x,y,width,height,scale: 1};
-      const screenshot = await page.send('Page.captureScreenshot', {format: 'jpeg',quality: 95,captureBeyondViewport: true,clip});await writeFile(path.join(output, name), Buffer.from(screenshot.data, 'base64'));captures.push({name,...state,clip});
+      const screenshot = await page.send('Page.captureScreenshot', {format: 'jpeg',quality: 95,captureBeyondViewport: true,clip});await writeFile(path.join(output, name), Buffer.from(screenshot.data, 'base64'));images.set(name,screenshot.data);captures.push({name,...state,clip});
     };
     await navigate('?frame=13');await waitFor("document.querySelectorAll('[aria-pressed]').length===2");
-    await evaluate("[...document.querySelectorAll('[aria-pressed]')].find(b=>b.textContent.includes('2026-10-21')).click()");await capture('backup-picker-build.jpg', '[role=dialog]');
+    const selected = await evaluate("(() => {const r=[...document.querySelectorAll('[aria-pressed]')].find(b=>b.textContent.includes('2026-10-21')).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
+    await page.send('Input.dispatchMouseEvent',{type:'mousePressed',...selected,button:'left',clickCount:1});await page.send('Input.dispatchMouseEvent',{type:'mouseReleased',...selected,button:'left',clickCount:1});await capture('backup-picker-build.jpg', '[role=dialog]');
     await navigate('?list=1');await waitFor("!![...document.querySelectorAll('button')].find(b=>b.textContent==='Restore this backup')");await capture('backup-list-build.jpg', '#root > div');
     for (const [query,name] of [['?confirm=delete','backup-delete-build.jpg'],['?confirm=restore','backup-restore-build.jpg'],['?passphrase=protect','backup-protect-build.jpg'],['?passphrase=restore','backup-protected-restore-build.jpg']]) {
       await navigate(query);await waitFor("!!document.querySelector('[role=dialog]')");await capture(name, '[role=dialog]');
@@ -66,8 +67,12 @@ try {
     if (process.env.BACKUP_REFERENCE_ORIGIN) {
       const reference = new URL(process.env.BACKUP_REFERENCE_ORIGIN);assert.equal(reference.protocol, 'http:');assert.equal(reference.hostname, '127.0.0.1');
       await page.send('Page.navigate', {url: `${reference.origin}/owner-server.html?only=13`});await waitFor("!!document.querySelector('#f13 .stg > div:nth-child(2) .tile')");await capture('backup-picker-frame.jpg', '#f13 .stg > div:nth-child(2) .tile');
+      await page.send('Page.navigate',{url:'about:blank'});await waitFor("location.href==='about:blank' && document.readyState==='complete'");await page.send('Emulation.setDeviceMetricsOverride',{width:1288,height:397,deviceScaleFactor:1,mobile:false});
+      const pair = '<!doctype html><style>body{margin:0;background:white;color:#111;font:14px Arial}.pair{display:grid;grid-template-columns:636px 636px;gap:16px}.label{height:32px;display:flex;align-items:center}img{display:block;width:636px;height:365px}</style><div class=pair>'+[['Frame — 69f2d45a, selected backup','backup-picker-frame.jpg'],['Build — actual controlled picker, selected backup','backup-picker-build.jpg']].map(([label,name])=>'<div><div class=label>'+label+'</div><img src="data:image/jpeg;base64,'+images.get(name)+'"></div>').join('')+'</div>';
+      await evaluate(`document.write(${JSON.stringify(pair)})`);await waitFor('document.images.length===2 && [...document.images].every(i=>i.complete && i.naturalWidth===636 && i.naturalHeight===365)');
+      const sideBySide=await page.send('Page.captureScreenshot',{format:'jpeg',quality:95,captureBeyondViewport:false});await writeFile(path.join(output,'backup-picker-side-by-side.jpg'),Buffer.from(sideBySide.data,'base64'));
     }
-    const report = {browser:version.Browser,kind:'Unscaled actual controlled component JPEGs; no live API, protected Settings parent or UI acceptance',captures};await writeFile(path.join(output,'backup-captures.log'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
+    const report = {node:process.version,declaredNode:(await readFile(path.join(root,'.node-version'),'utf8')).trim(),browser:version.Browser,kind:'Unscaled actual controlled component JPEGs; no live API, protected Settings parent or UI acceptance',captures};await writeFile(path.join(output,'backup-captures.log'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
   } else {
   await navigate('');await waitFor("!!document.querySelector('[aria-pressed]')");
   await check('bounded actual filesystem request and offered file eligibility', async () => {
