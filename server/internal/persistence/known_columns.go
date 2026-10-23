@@ -2088,6 +2088,9 @@ identity_refresh_receipts.expires_at
 identity_refresh_receipts.family_id
 identity_refresh_receipts.predecessor_hash
 identity_refresh_receipts.request_id
+identity_state.revision
+identity_state.sign_in_kind
+identity_state.singleton
 identity_unknown_attempts.failed_attempts
 identity_unknown_attempts.last_failure
 identity_unknown_attempts.locked_until

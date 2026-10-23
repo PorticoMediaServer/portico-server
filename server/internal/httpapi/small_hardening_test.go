@@ -16,7 +16,7 @@ func TestThePublicSystemDocumentDoesNotCarryTheBuildFingerprint(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil || w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
-	for _, key := range []string{"id", "name", "setupRequired", "hostedConfigured", "hostedAttached", "version"} {
+	for _, key := range []string{"id", "name", "setupRequired", "hostedConfigured", "hostedAttached", "version", "signIn"} {
 		if _, ok := doc[key]; !ok {
 			t.Errorf("the public system document lost %q", key)
 		}

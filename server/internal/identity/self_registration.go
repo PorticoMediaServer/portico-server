@@ -131,6 +131,9 @@ type InvitationRedeemer func(ctx context.Context, tx *sql.Tx, code, account stri
 // signs it in. A new account is always a member with no libraries: reaching the
 // server is not evidence of what its owner wants shared.
 func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, private bool) (DirectSignIn, error) {
+	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
+		return DirectSignIn{}, err
+	}
 	mode := s.SelfRegistration()
 	if mode == SelfRegistrationOff || s.SetupRequired() {
 		return DirectSignIn{}, ErrRegistrationClosed
