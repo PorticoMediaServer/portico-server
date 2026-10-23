@@ -41,6 +41,7 @@ type MemberResetRequest struct {
 	TurnOffTwoStep   bool  `json:"turnOffTwoStep,omitempty"`
 }
 type MemberResetCode struct {
+	ServerID  string `json:"serverId,omitempty"`
 	Code      string `json:"code"`
 	ExpiresAt string `json:"expiresAt"`
 }
@@ -425,7 +426,7 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 	if !validFamilyID(target) || q.ExpectedRevision < 1 {
 		return MemberResetCode{}, ErrDirectInput
 	}
-	out := MemberResetCode{Code: Token(), ExpiresAt: time.Now().UTC().Truncate(time.Second).Add(time.Hour).Format(time.RFC3339)}
+	out := MemberResetCode{Code: Token()}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if e := RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
 			return e
@@ -451,12 +452,21 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 		if linked {
 			return ErrForbidden
 		}
+		out.ServerID, e = LocalLinkServerIDTx(ctx, tx)
+		if e != nil {
+			return e
+		}
 		// Issuing a replacement does not disable MFA; the choice commits only when
 		// the recipient successfully proves the reset code.
 		if e = s.resetCredentialTx(ctx, tx, target, true, false); e != nil {
 			return e
 		}
-		expires, _ := time.Parse(time.RFC3339, out.ExpiresAt)
+		policy, e := ReadSignInPolicyTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		expires := time.Now().UTC().Truncate(time.Second).Add(time.Duration(policy.Values.MemberResetCodeMinutes) * time.Minute)
+		out.ExpiresAt = expires.Format(time.RFC3339)
 		if _, e = tx.ExecContext(ctx, `INSERT INTO member_password_resets(account_id,code_hash,epoch,expires_at,failed_attempts,turn_off_two_step,membership_revision,issuer_id,issuer_epoch) VALUES(?,?,?, ?,0,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET code_hash=excluded.code_hash,epoch=excluded.epoch,expires_at=excluded.expires_at,failed_attempts=0,turn_off_two_step=excluded.turn_off_two_step,membership_revision=excluded.membership_revision,issuer_id=excluded.issuer_id,issuer_epoch=excluded.issuer_epoch`, target, s.setupHash("member-reset", out.Code), member.epoch+1, expires.Unix(), q.TurnOffTwoStep, member.account.Revision, c.account.ID, c.epoch); e != nil {
 			return e
 		}
@@ -567,14 +577,7 @@ func twoFactorResetNoticeTx(ctx context.Context, tx *sql.Tx, account string) err
 
 // The server's selected method survives a deleted/unlinked Portico account.
 // Losing that link must never turn a reset-file proof into local password setup.
-func (s *Service) ownerResetPorticoTx(ctx context.Context, tx *sql.Tx, account string) (bool, error) {
-	var mode string
-	e := tx.QueryRowContext(ctx, `SELECT auth_mode FROM onboarding_state_v1 WHERE singleton=1`).Scan(&mode)
-	if e == nil {
-		return mode == "hosted", nil
-	}
-	if !errors.Is(e, sql.ErrNoRows) {
-		return false, e
-	}
-	return porticoLinkedTx(ctx, tx, account)
+func (s *Service) ownerResetPorticoTx(ctx context.Context, tx *sql.Tx, _ string) (bool, error) {
+	kind, err := SignInKindTx(ctx, tx)
+	return kind == SignInPortico, err
 }

@@ -15395,6 +15395,9 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverId": {
+        "type": "string"
+      },
       "state": {
         "type": "string"
       }
@@ -15459,6 +15462,9 @@ export const schemas = {
             "role": {
               "type": "string"
             },
+            "serverId": {
+              "type": "string"
+            },
             "state": {
               "type": "string"
             }
@@ -15518,6 +15524,12 @@ export const schemas = {
       },
       "displayName": {
         "type": "string"
+      },
+      "effectiveMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
       },
       "email": {
         "type": "string"
@@ -15579,6 +15591,14 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          },
           "maximumAge": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -15656,6 +15676,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -15695,11 +15716,19 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
       "username": {
         "type": "string"
       }
     },
     "required": [
+      "serverMaxStreams",
+      "effectiveMaxStreams",
       "accountId",
       "username",
       "displayName",
@@ -15724,6 +15753,12 @@ export const schemas = {
     "properties": {
       "accountId": {
         "type": "string"
+      },
+      "effectiveMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
       },
       "limits": {
         "properties": {
@@ -15770,6 +15805,14 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          },
           "maximumAge": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -15847,6 +15890,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -15863,6 +15907,12 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "serverMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
       "updatedAt": {
         "type": "string"
       }
@@ -15870,7 +15920,9 @@ export const schemas = {
     "required": [
       "accountId",
       "revision",
-      "limits"
+      "limits",
+      "serverMaxStreams",
+      "effectiveMaxStreams"
     ],
     "type": "object"
   },
@@ -15895,6 +15947,12 @@ export const schemas = {
             },
             "disabled": {
               "type": "boolean"
+            },
+            "effectiveMaxStreams": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "nullable": true,
+              "type": "integer"
             },
             "email": {
               "type": "string"
@@ -15924,6 +15982,14 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "maxStreamsMode": {
+              "enum": [
+                "inherit",
+                "unlimited",
+                "limit"
+              ],
+              "type": "string"
+            },
             "profileCount": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -15942,6 +16008,12 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "serverMaxStreams": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "nullable": true,
+              "type": "integer"
             },
             "status": {
               "type": "string"
@@ -15962,6 +16034,9 @@ export const schemas = {
             "allowedLibraries",
             "libraryNames",
             "maxStreams",
+            "maxStreamsMode",
+            "serverMaxStreams",
+            "effectiveMaxStreams",
             "profileCount",
             "profileNames",
             "liveState"
@@ -27012,6 +27087,9 @@ export const schemas = {
                 },
                 "type": "object"
               },
+              "dolbyVisionProfile7To81": {
+                "type": "boolean"
+              },
               "encoders": {
                 "additionalProperties": {
                   "type": "boolean"
@@ -27050,6 +27128,7 @@ export const schemas = {
               }
             },
             "required": [
+              "dolbyVisionProfile7To81",
               "bitstreamFilters",
               "vulkanAvailable",
               "openclAvailable",
@@ -33091,6 +33170,9 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -136608,6 +136690,109 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSignInPolicyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSignInPolicyResponse": {
+    "properties": {
+      "revision": {
+        "type": "string"
+      },
+      "values": {
+        "properties": {
+          "endedSessionsDays": {
+            "enum": [
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          },
+          "memberResetCodeMinutes": {
+            "enum": [
+              15,
+              60,
+              1440
+            ],
+            "type": "integer"
+          },
+          "passwordAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "passwordMinLength": {
+            "enum": [
+              8,
+              10,
+              12,
+              16
+            ],
+            "type": "integer"
+          },
+          "pinAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "pinRememberDays": {
+            "enum": [
+              0,
+              7,
+              30,
+              90
+            ],
+            "type": "integer"
+          },
+          "rememberAccounts": {
+            "type": "boolean"
+          },
+          "requireTwoStep": {
+            "enum": [
+              "nobody",
+              "administrators",
+              "everyone"
+            ],
+            "type": "string"
+          },
+          "staySignedInDays": {
+            "enum": [
+              7,
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          }
+        },
+        "required": [
+          "staySignedInDays",
+          "pinRememberDays",
+          "passwordAttempts",
+          "pinAttempts",
+          "passwordMinLength",
+          "memberResetCodeMinutes",
+          "requireTwoStep",
+          "rememberAccounts",
+          "endedSessionsDays"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "revision",
+      "values"
+    ],
+    "type": "object"
+  },
   "GetSignInSettingsRequest": {
     "properties": {},
     "required": [],
@@ -138662,13 +138847,32 @@ export const schemas = {
             "entries": {
               "items": {
                 "properties": {
+                  "absoluteNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "dateBased": {
+                    "type": "boolean"
+                  },
                   "displayUrl": {
                     "type": "string"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "id": {
                     "type": "string"
                   },
                   "imageUrl": {
+                    "type": "string"
+                  },
+                  "kind": {
                     "type": "string"
                   },
                   "playUrl": {
@@ -138679,6 +138883,17 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "showTitle": {
+                    "type": "string"
+                  },
+                  "special": {
+                    "type": "boolean"
+                  },
                   "subtitle": {
                     "type": "string"
                   },
@@ -138688,6 +138903,7 @@ export const schemas = {
                 },
                 "required": [
                   "id",
+                  "kind",
                   "title",
                   "displayUrl"
                 ],
@@ -138703,11 +138919,33 @@ export const schemas = {
             },
             "title": {
               "type": "string"
+            },
+            "titleText": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "fallback": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "code",
+                "fallback"
+              ],
+              "type": "object"
             }
           },
           "required": [
             "id",
             "title",
+            "titleText",
             "shape",
             "entries"
           ],
@@ -138717,9 +138955,13 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "serverName": {
+        "type": "string"
       }
     },
     "required": [
+      "serverName",
       "serverId",
       "profileId",
       "expiresAt",
@@ -144010,6 +144252,9 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -145402,6 +145647,202 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PatchSignInPolicyRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "values": {
+        "properties": {
+          "endedSessionsDays": {
+            "enum": [
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          },
+          "memberResetCodeMinutes": {
+            "enum": [
+              15,
+              60,
+              1440
+            ],
+            "type": "integer"
+          },
+          "passwordAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "passwordMinLength": {
+            "enum": [
+              8,
+              10,
+              12,
+              16
+            ],
+            "type": "integer"
+          },
+          "pinAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "pinRememberDays": {
+            "enum": [
+              0,
+              7,
+              30,
+              90
+            ],
+            "type": "integer"
+          },
+          "rememberAccounts": {
+            "type": "boolean"
+          },
+          "requireTwoStep": {
+            "enum": [
+              "nobody",
+              "administrators",
+              "everyone"
+            ],
+            "type": "string"
+          },
+          "staySignedInDays": {
+            "enum": [
+              7,
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          }
+        },
+        "required": [
+          "staySignedInDays",
+          "pinRememberDays",
+          "passwordAttempts",
+          "pinAttempts",
+          "passwordMinLength",
+          "memberResetCodeMinutes",
+          "requireTwoStep",
+          "rememberAccounts",
+          "endedSessionsDays"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "values"
+    ],
+    "type": "object"
+  },
+  "PatchSignInPolicyResponse": {
+    "properties": {
+      "revision": {
+        "type": "string"
+      },
+      "values": {
+        "properties": {
+          "endedSessionsDays": {
+            "enum": [
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          },
+          "memberResetCodeMinutes": {
+            "enum": [
+              15,
+              60,
+              1440
+            ],
+            "type": "integer"
+          },
+          "passwordAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "passwordMinLength": {
+            "enum": [
+              8,
+              10,
+              12,
+              16
+            ],
+            "type": "integer"
+          },
+          "pinAttempts": {
+            "enum": [
+              "relaxed",
+              "standard",
+              "strict"
+            ],
+            "type": "string"
+          },
+          "pinRememberDays": {
+            "enum": [
+              0,
+              7,
+              30,
+              90
+            ],
+            "type": "integer"
+          },
+          "rememberAccounts": {
+            "type": "boolean"
+          },
+          "requireTwoStep": {
+            "enum": [
+              "nobody",
+              "administrators",
+              "everyone"
+            ],
+            "type": "string"
+          },
+          "staySignedInDays": {
+            "enum": [
+              7,
+              30,
+              90,
+              365
+            ],
+            "type": "integer"
+          }
+        },
+        "required": [
+          "staySignedInDays",
+          "pinRememberDays",
+          "passwordAttempts",
+          "pinAttempts",
+          "passwordMinLength",
+          "memberResetCodeMinutes",
+          "requireTwoStep",
+          "rememberAccounts",
+          "endedSessionsDays"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "revision",
+      "values"
+    ],
+    "type": "object"
+  },
   "PostAccessInvitationsAcceptRequest": {
     "oneOf": [
       {
@@ -145767,6 +146208,9 @@ export const schemas = {
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -145880,6 +146324,9 @@ export const schemas = {
           },
           "serverId": {
             "type": "string"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -145914,6 +146361,9 @@ export const schemas = {
         "type": "string"
       },
       "expiresAt": {
+        "type": "string"
+      },
+      "serverId": {
         "type": "string"
       }
     },
@@ -145979,6 +146429,9 @@ export const schemas = {
         "type": "integer"
       },
       "role": {
+        "type": "string"
+      },
+      "serverId": {
         "type": "string"
       },
       "state": {
@@ -146072,6 +146525,9 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverId": {
+        "type": "string"
+      },
       "state": {
         "type": "string"
       }
@@ -146115,6 +146571,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
           }
         },
         "required": [],
@@ -152631,6 +153095,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -153000,6 +153467,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -153312,6 +153782,9 @@ export const schemas = {
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -153565,6 +154038,9 @@ export const schemas = {
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -153879,6 +154355,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -154331,6 +154810,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -154664,6 +155146,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -155069,6 +155554,9 @@ export const schemas = {
         "type": "string"
       },
       "expiresAt": {
+        "type": "string"
+      },
+      "serverId": {
         "type": "string"
       }
     },
@@ -155596,6 +156084,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -155799,6 +156290,9 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -156192,6 +156686,9 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -156594,6 +157091,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -168274,6 +168774,9 @@ export const schemas = {
           "authorizationHorizon"
         ],
         "type": "object"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -168595,6 +169098,9 @@ export const schemas = {
               "type": "string"
             },
             "expiresAt": {
+              "type": "string"
+            },
+            "serverId": {
               "type": "string"
             },
             "username": {
@@ -168974,6 +169480,9 @@ export const schemas = {
               "authorizationHorizon"
             ],
             "type": "object"
+          },
+          "twoStepSetupRequired": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -171735,6 +172244,9 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverId": {
+        "type": "string"
+      },
       "state": {
         "type": "string"
       }
@@ -171792,6 +172304,12 @@ export const schemas = {
       },
       "displayName": {
         "type": "string"
+      },
+      "effectiveMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
       },
       "email": {
         "type": "string"
@@ -171852,6 +172370,14 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
           },
           "maximumAge": {
             "maximum": 9007199254740991,
@@ -171930,6 +172456,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -171969,11 +172496,19 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
       "username": {
         "type": "string"
       }
     },
     "required": [
+      "serverMaxStreams",
+      "effectiveMaxStreams",
       "accountId",
       "username",
       "displayName",
@@ -172041,6 +172576,14 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          },
           "maximumAge": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -172118,6 +172661,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -172144,6 +172688,12 @@ export const schemas = {
     "properties": {
       "accountId": {
         "type": "string"
+      },
+      "effectiveMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
       },
       "limits": {
         "properties": {
@@ -172190,6 +172740,14 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          },
           "maximumAge": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -172267,6 +172825,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -172283,6 +172842,12 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "serverMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
       "updatedAt": {
         "type": "string"
       }
@@ -172290,7 +172855,9 @@ export const schemas = {
     "required": [
       "accountId",
       "revision",
-      "limits"
+      "limits",
+      "serverMaxStreams",
+      "effectiveMaxStreams"
     ],
     "type": "object"
   },
@@ -172337,6 +172904,12 @@ export const schemas = {
       },
       "displayName": {
         "type": "string"
+      },
+      "effectiveMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
       },
       "email": {
         "type": "string"
@@ -172398,6 +172971,14 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "maxStreamsMode": {
+            "enum": [
+              "inherit",
+              "unlimited",
+              "limit"
+            ],
+            "type": "string"
+          },
           "maximumAge": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -172475,6 +173056,7 @@ export const schemas = {
           "allowRemote",
           "conversion",
           "maxStreams",
+          "maxStreamsMode",
           "remoteBitrateKbps",
           "ratingSystem",
           "maxContentRating",
@@ -172514,11 +173096,19 @@ export const schemas = {
       "role": {
         "type": "string"
       },
+      "serverMaxStreams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
       "username": {
         "type": "string"
       }
     },
     "required": [
+      "serverMaxStreams",
+      "effectiveMaxStreams",
       "accountId",
       "username",
       "displayName",
@@ -175236,6 +175826,9 @@ export const schemas = {
       },
       "serverId": {
         "type": "string"
+      },
+      "twoStepSetupRequired": {
+        "type": "boolean"
       }
     },
     "required": [

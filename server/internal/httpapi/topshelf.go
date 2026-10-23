@@ -32,30 +32,42 @@ const topShelfLifetime = identity.MaxTopShelfLifetime
 // TopShelfEntry is one card. The URLs are absolute paths on this server and carry
 // the feed token, so the extension needs no credential of its own to draw them.
 type TopShelfEntry struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Subtitle    string `json:"subtitle,omitempty"`
-	ImageURL    string `json:"imageUrl,omitempty"`
-	DisplayURL  string `json:"displayUrl"`
-	PlayURL     string `json:"playUrl,omitempty"`
-	ProgressPct int    `json:"progressPercent,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	ShowTitle string `json:"showTitle,omitempty"`
+	// These are the Home card's supplied facts. Nil numbers remain omitted;
+	// a genuine season zero is preserved. Clients never parse Subtitle.
+	SeasonNumber   *int   `json:"seasonNumber,omitempty"`
+	EpisodeNumber  *int   `json:"episodeNumber,omitempty"`
+	AbsoluteNumber *int   `json:"absoluteNumber,omitempty"`
+	DateBased      bool   `json:"dateBased,omitempty"`
+	Special        bool   `json:"special,omitempty"`
+	AirDate        string `json:"airDate,omitempty"`
+	Subtitle       string `json:"subtitle,omitempty"`
+	ImageURL       string `json:"imageUrl,omitempty"`
+	DisplayURL     string `json:"displayUrl"`
+	PlayURL        string `json:"playUrl,omitempty"`
+	ProgressPct    int    `json:"progressPercent,omitempty"`
 }
 
 // TopShelfSection is one shelf. Shape mirrors the home row it came from so the
 // extension can pick a carousel or an inset banner without guessing.
 type TopShelfSection struct {
-	ID      string          `json:"id"`
-	Title   string          `json:"title"`
-	Shape   string          `json:"shape"`
-	Entries []TopShelfEntry `json:"entries"`
+	ID        string             `json:"id"`
+	Title     string             `json:"title"`
+	TitleText catalog.ServerText `json:"titleText"`
+	Shape     string             `json:"shape"`
+	Entries   []TopShelfEntry    `json:"entries"`
 }
 
 // TopShelfFeed is the whole document.
 type TopShelfFeed struct {
-	ServerID  string            `json:"serverId"`
-	ProfileID string            `json:"profileId"`
-	ExpiresAt string            `json:"expiresAt"`
-	Sections  []TopShelfSection `json:"sections"`
+	ServerName string            `json:"serverName"`
+	ServerID   string            `json:"serverId"`
+	ProfileID  string            `json:"profileId"`
+	ExpiresAt  string            `json:"expiresAt"`
+	Sections   []TopShelfSection `json:"sections"`
 }
 
 // TopShelfToken is what a signed-in session hands the extension.
@@ -110,12 +122,12 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out := TopShelfFeed{ServerID: d.Identity.ID(), ProfileID: p.ProfileID, ExpiresAt: grant.ExpiresAt, Sections: []TopShelfSection{}}
+		out := TopShelfFeed{ServerName: d.Identity.Name(), ServerID: d.Identity.ID(), ProfileID: p.ProfileID, ExpiresAt: grant.ExpiresAt, Sections: []TopShelfSection{}}
 		for _, row := range document.Rows {
 			if len(row.Entries) == 0 || len(out.Sections) >= topShelfSections {
 				continue
 			}
-			section := TopShelfSection{ID: row.ID, Title: row.Title, Shape: row.ArtworkShape, Entries: []TopShelfEntry{}}
+			section := topShelfSection(row)
 			for _, entry := range row.Entries {
 				if len(section.Entries) >= topShelfEntries {
 					break
@@ -213,8 +225,20 @@ func (d Dependencies) topShelfArtwork(ctx context.Context, item string, width in
 	return d.Metadata.EntityArtworkVariant(ctx, metadata.RepairTarget{Kind: "item", ID: item}, "poster", "", width, "")
 }
 
+func topShelfSection(row catalog.HomeRow) TopShelfSection {
+	return TopShelfSection{ID: row.ID, Title: row.Title, TitleText: row.TitleText, Shape: row.ArtworkShape, Entries: []TopShelfEntry{}}
+}
+
 func topShelfEntry(entry catalog.ContentEntry, token string) TopShelfEntry {
-	out := TopShelfEntry{ID: entry.ID, Title: entry.Title, Subtitle: entry.Subtitle, DisplayURL: "portico://item/" + entry.ID}
+	out := TopShelfEntry{
+		ID: entry.ID, Kind: entry.Kind, Title: entry.Title, Subtitle: entry.Subtitle,
+		SeasonNumber: entry.SeasonNumber, EpisodeNumber: entry.EpisodeNumber, AbsoluteNumber: entry.AbsoluteNumber,
+		DateBased: entry.DateBased, Special: entry.Special, AirDate: entry.AirDate,
+		DisplayURL: "portico://item/" + entry.ID,
+	}
+	if entry.Show != nil {
+		out.ShowTitle = entry.Show.Name
+	}
 	if entry.PosterURL != "" || entry.Kind == "episode" {
 		out.ImageURL = "/v1/topshelf/art/" + entry.ID + "?grant=" + token + "&w=400"
 	}

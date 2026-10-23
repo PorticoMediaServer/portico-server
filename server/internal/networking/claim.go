@@ -233,6 +233,7 @@ func (c *Coordinator) Step(parent context.Context) (Intent, error) {
 		if e = c.approved(v); e != nil {
 			return v, e
 		}
+
 		v, e = c.store.BeginFinalizing(ctx, v)
 		if e != nil {
 			return Intent{}, e
@@ -245,6 +246,19 @@ func (c *Coordinator) Step(parent context.Context) (Intent, error) {
 		}
 		fallthrough
 	case Finalizing:
+		if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
+			if armer, ok := c.store.(interface {
+				ArmPreinstallCancellation(context.Context, Intent, Cancellation) (Cancellation, error)
+			}); ok {
+				item, err := c.cancellation(ctx, v)
+				if err != nil {
+					return v, err
+				}
+				if _, err = armer.ArmPreinstallCancellation(ctx, v, item); err != nil {
+					return v, err
+				}
+			}
+		}
 		proof, e := c.proof(ctx, v, FinalizePurpose)
 		if e != nil {
 			return v, e

@@ -52,6 +52,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
+		if q.To == identity.SignInPortico && d.ownerSwitchWebOrigin(r) == "" {
+			failure(w, identity.ErrForbidden)
+			return
+		}
 		out, e := d.Identity.PreviewAccountMove(r.Context(), directBearer(r), q)
 		if e != nil {
 			failure(w, e)
@@ -84,6 +88,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 				d.Hosted.MembershipChanged()
 			}
 			writeAuth(w, r, 200, moveConfirmation{SignIn: &out})
+			return
+		}
+		if d.ownerSwitchWebOrigin(r) == "" {
+			failure(w, identity.ErrForbidden)
 			return
 		}
 		out, e := d.Identity.ConfirmPorticoMove(r.Context(), directBearer(r), q)

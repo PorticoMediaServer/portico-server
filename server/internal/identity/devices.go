@@ -304,6 +304,13 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 		}
 	}
 	if q.RememberAccount != nil {
+		allowed, e := rememberAccountsTx(ctx, tx)
+		if e != nil {
+			return Device{}, e
+		}
+		if *q.RememberAccount && !allowed {
+			return Device{}, ErrForbidden
+		}
 		if _, e = tx.ExecContext(ctx, `UPDATE identity_devices SET remember_account=? WHERE id=? AND authority=? AND account_id=?`, *q.RememberAccount, id, c.authority, c.account); e != nil {
 			return Device{}, e
 		}
