@@ -2,6 +2,8 @@ import type {PlayerEvent, PlayerObservation, PlayerSource} from '../../../packag
 import type {PlaybackMediaPort, VideoLike, WebMediaPlayerOptions, WebPlayerNotice} from '../../../web-next/src/platform/playback/index.ts';
 import type {Bridge, NativeCommand} from './bridge.ts';
 import {NativeHole} from './surface.ts';
+import type {PlaybackSnapshot} from '../../../packages/client-core/src/index.ts';
+import {audioGainLinear} from '../../../packages/client-core/src/playback-v1/audio-render.ts';
 
 let nextNativeGeneration = 0;
 
@@ -18,6 +20,9 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private polling = false;
   private surfaceActive = false;
   private processing?:Readonly<{generation:number;eqApplied:boolean;levelingApplied:boolean}>;
+  private effects?:PlaybackSnapshot;
+  private effectsBinding?:Readonly<{sessionId:string;generation:number;url:string}>;
+  private sentGain?:number;
   private hole?: NativeHole;
   private seeking = false;
   private frameStepping = false;
@@ -55,16 +60,36 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
     if (!this.source || this.disposed) return;
     this.enqueue({...command, generation: this.nativeGeneration}, this.epoch);
   }
+  applyAudioEffects(snapshot:PlaybackSnapshot):void {
+    this.effects=snapshot.session&&!['idle','ended','error'].includes(snapshot.phase)?snapshot:undefined;
+    if(!this.effects){if(this.effectsBinding){this.effectsBinding=undefined;this.applyGain(1);}return;}
+    const session=this.effects.session!;
+    if(this.effectsBinding?.sessionId===session.id&&this.effectsBinding.generation===session.generation&&this.effectsBinding.url===session.streamUrl)this.applyCurrentEffects();
+  }
+  private applyGain(gain:number):void {
+    if(!this.source||this.disposed||this.sentGain===gain)return;
+    this.sentGain=gain;this.send({action:'processing',gain});
+  }
+  private applyCurrentEffects():void {
+    const snapshot=this.effects;
+    if(!snapshot)return;
+    const settings=snapshot.audioEffects.settings;
+    this.applyGain(audioGainLinear(snapshot.session?.audio,settings.normalization,0,settings.neverBoost??false));
+  }
   load(source: PlayerSource) {
     if (this.disposed) return;
     const epoch = ++this.epoch; this.source = source; this.seeking = false;this.frameStepping=false;
     this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
+    this.sentGain=undefined;
+    const session=this.effects?.session;
+    this.effectsBinding=session&&session.generation===source.generation&&session.streamUrl===source.url?{sessionId:session.id,generation:session.generation,url:session.streamUrl}:undefined;
     if(!this.hole&&typeof HTMLVideoElement!=='undefined'&&this.video instanceof HTMLVideoElement)this.hole=new NativeHole(this.video,bounds=>this.bridge.surface?.(bounds,this.nativeGeneration)??Promise.reject(new Error('unsupported')),()=>this.surfaceActive);
     this.hole?.invalidate();
     this.reading = {generation: source.generation, state: 'loading', positionMs: source.startPositionMs, rate: this.reading.rate};
     this.emit({type: 'state', observation: this.reading});
     this.enqueue({action: 'load', source: {url: this.options.resolveUrl?.(source.url) ?? source.url, generation: this.nativeGeneration, mode: source.mode, startPositionMs: source.startPositionMs, autoplay: source.autoplay}}, epoch);
+    if(this.effectsBinding)this.applyCurrentEffects();
   }
   play() { this.send({action: 'play'}); }
   pause() { this.send({action: 'pause'}); }
@@ -116,6 +141,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   unload() {
     if (this.source) this.send({action: 'stop'});
     ++this.epoch; this.source = undefined; this.seeking = false;this.frameStepping=false; this.surfaceActive = false;this.processing=undefined;
+    this.effects=undefined;this.effectsBinding=undefined;this.sentGain=undefined;
     this.hole?.dispose();this.hole=undefined;
     this.reading = {generation: 0, state: 'idle', positionMs: 0, rate: this.reading.rate};
   }
