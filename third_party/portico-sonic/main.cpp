@@ -7,11 +7,13 @@
 #include <cwchar>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
+static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559, "float32 protocol requires IEEE-754");
 constexpr size_t kFrames = 187, kMels = 96, kEmbedding = 200, kTags = 50;
 constexpr size_t kPatch = kFrames * kMels;
 constexpr char kVersion[] = "516acb2a0ff5ef73f64547898e018e793152c506-onnx1";

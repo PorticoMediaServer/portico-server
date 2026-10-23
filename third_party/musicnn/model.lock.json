@@ -11,6 +11,11 @@
     "embedding": "model/batch_normalization_10/batchnorm/add_1",
     "logits": "model/dense_1/BiasAdd"
   },
+  "onnx": {
+    "version": "516acb2a0ff5ef73f64547898e018e793152c506-onnx1",
+    "sha256": "ba2ce1a652eaf2fa0e96139a41a24456ed8780639b2579395c719db453e527c0",
+    "bytes": 3174939
+  },
   "distribution": {
     "url": "https://files.pythonhosted.org/packages/1b/6f/38229e7d99c438e11114bbfa39c8c39185458c398011d0b6d7d7c7401617/musicnn-0.1.0-py3-none-any.whl",
     "sha256": "f38a4890c648c1ddbb141c5d96d2b0a8cfcd36746002d896989f7b88beb65cfa",

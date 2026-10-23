@@ -148,6 +148,8 @@ def export(directory, output):
     data = converted.SerializeToString(deterministic=True)
     if not 0 < len(data) <= 32 << 20:
         raise ValueError("unbounded ONNX model")
+    if version != lock["onnx"]["version"] or len(data) != lock["onnx"]["bytes"] or hashlib.sha256(data).hexdigest() != lock["onnx"]["sha256"]:
+        raise ValueError("ONNX bytes differ from the checked original-model conversion")
     options = ort.SessionOptions()
     options.intra_op_num_threads = options.inter_op_num_threads = 1
     runtime = ort.InferenceSession(data, sess_options=options, providers=["CPUExecutionProvider"])
