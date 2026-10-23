@@ -1,0 +1,46 @@
+import {useMemo} from 'react';
+import {defaultI18n} from '@i18n';
+import {durationText} from '@core/presentation/kit-model/text.ts';
+import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
+import {Artwork} from '../../kit/artwork';
+import {Icon} from '../../kit/Icon';
+import type {WatchBindings} from './types';
+import {watchClock} from './model';
+import {dispatchWatchMarker} from './policy';
+import {dispatchWatchNext, watchUpNextOffer, type WatchNextBinding} from './up-next';
+import styles from './up-next.module.css';
+
+/** desktop-player f4/f4s. Actual policy ticks and queue-window facts are the only inputs. */
+export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expanded, layout}: {
+  binding: WatchNextBinding; snapshot: WebPlaybackRuntimeSnapshot; artwork: WatchBindings['artwork']; environment: WatchBindings['environment'];
+  expanded: boolean; layout: 'desktop' | 'tablet' | 'phone';
+}) {
+  const offer = watchUpNextOffer(binding, snapshot), next = offer?.next;
+  // A missing still stays unknown. No backdrop, trickplay or fixture image stands in for it.
+  const still = next?.stillUrl;
+  const source = useMemo(() => artwork.foreground(still, 176, 16 / 9, {group: 'playback', priority: 'high'}), [artwork, still]);
+  if (!expanded || layout !== 'desktop' || !offer) return null;
+  const {prompt, countdown} = offer, marker = prompt.offer.marker, t = defaultI18n.t;
+  const duration = durationText(next!.durationMs === undefined ? undefined : next!.durationMs / 1000, environment.t);
+  const episode = next!.episode ? environment.t('next.kit.episodeCode', {season: next!.episode.seasonNumber, episode: next!.episode.number}) : undefined;
+  const when = countdown ? countdown.automatic ? t('player.upNext.playingIn', {seconds: countdown.seconds})
+    : t(prompt.sceneAfterCredits ? 'player.upNext.startsAfterScene' : 'player.upNext.startsIn', {time: watchClock(countdown.seconds)}) : undefined;
+  const act = (kind: 'play-now' | 'watch-credits') => {void dispatchWatchNext(binding, snapshot, kind).catch(binding.reportError);};
+  const skip = () => {if (marker) void dispatchWatchMarker(binding, snapshot, {kind: 'skip', markerId: marker.id}).catch(binding.reportError);};
+  return <div role="group" aria-label={t('player.upNext.duringCredits')} className={styles.card} data-watch-up-next data-scene-after={prompt.sceneAfterCredits}>
+    <div className={styles.row}>
+      <div className={styles.still}><Artwork source={source} alt="" /></div>
+      <div className={styles.content}><small>{t('player.upNext.duringCredits')}</small><b>{next!.title}</b>
+        {(episode || duration) && <div className={styles.facts}>{episode}{episode && duration && <i aria-hidden="true" />}{duration}</div>}
+        {when && <div className={styles.when}>{when}</div>}
+      </div>
+    </div>
+    {offer.progress !== undefined && <div className={styles.meter} aria-hidden="true"><i style={{width: `${offer.progress * 100}%`}} /></div>}
+    <div className={styles.actions}>
+      <button type="button" className={styles.play} onClick={() => act('play-now')}><Icon name="i-play" size={18} />{t('player.upNext.playNow')}</button>
+      {prompt.sceneAfterCredits && marker && <button type="button" onClick={skip}><Icon name="i-next" size={18} />{t('player.skip', {kind: marker.kind})}</button>}
+      <button type="button" onClick={() => act('watch-credits')}>{t('player.upNext.watchCredits')}</button>
+    </div>
+    {prompt.sceneAfterCredits && marker && <div className={styles.note}>{t('player.upNext.sceneAfterCredits')}</div>}
+  </div>;
+}

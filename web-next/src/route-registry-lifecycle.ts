@@ -1,25 +1,50 @@
 import type {ShellBootstrap} from './shell/bootstrap';
+import {browserEntryDestination, isProfileSettingsLocation, profileSettingsAliasPath, type createEntryDestinationStore} from './route-registry-destination';
 
 export function isAccountEntryPath(path: string): boolean {
   return path === '/sign-in' || path === '/profiles' || path === '/servers';
 }
-type Location = Readonly<{pathname: string}>;
+type Location = Readonly<{pathname: string; search?: Record<string, unknown>}>;
 type Navigation = Readonly<{fromLocation?: Location; toLocation: Location}>;
 type EntryRouter = Readonly<{
   state: Readonly<{location: Location}>;
-  subscribe: (event: 'onBeforeNavigate', listener: (event: Navigation) => void) => () => void;
+  subscribe: {
+    (event: 'onBeforeNavigate', listener: (event: Navigation) => void): () => void;
+    (event: 'onResolved', listener: () => void): () => void;
+  };
+  navigate: (options: typeof import('./route-registry-destination').profileSettingsDestination & {replace: boolean}) => Promise<void>;
 }>;
 /** Account entry retires private media/feeds before its controls can select a
- * successor. Returning starts normal restoration, never a reused private binding. */
-export function bindWebAccountEntry(router: EntryRouter, bootstrap: ShellBootstrap): () => void {
+ * successor. A public hand-off destination is used only AFTER normal restoration
+ * has produced a genuine ready binding; it never promotes an account-only grant. */
+export function bindWebAccountEntry(router: EntryRouter, bootstrap: Pick<ShellBootstrap, 'subscribe' | 'getSnapshot' | 'start' | 'suspendForAccountEntry' | 'resumeAfterAccountEntry' | 'dispose'>, destination: ReturnType<typeof createEntryDestinationStore> = browserEntryDestination): () => void {
+  let closed = false, returningFromEntry = false, navigating = false;
+  const remember = (location: Location) => {
+    if (location.pathname === profileSettingsAliasPath || isProfileSettingsLocation(location)) destination.rememberProfileSettings();
+  };
+  const finish = () => {
+    const snapshot = bootstrap.getSnapshot();
+    if (closed || navigating || snapshot.phase !== 'ready' || !snapshot.binding) return;
+    const location = router.state.location;
+    if (isProfileSettingsLocation(location)) {destination.clear();returningFromEntry = false;return;}
+    if (!returningFromEntry || isAccountEntryPath(location.pathname)) return;
+    const target = destination.take();returningFromEntry = false;
+    if (!target) return;
+    navigating = true;
+    void router.navigate({...target, replace: true}).catch(() => {if (!closed) destination.rememberProfileSettings();}).finally(() => {navigating = false;});
+  };
   const off = router.subscribe('onBeforeNavigate', event => {
+    if (!navigating) remember(event.toLocation);
     if (isAccountEntryPath(event.toLocation.pathname)) {
       if (!isAccountEntryPath(event.fromLocation?.pathname ?? '')) bootstrap.suspendForAccountEntry();
     } else if (isAccountEntryPath(event.fromLocation?.pathname ?? '')) {
+      returningFromEntry = true;
       void bootstrap.resumeAfterAccountEntry();
     }
   });
+  const offResolved = router.subscribe('onResolved', finish), offBootstrap = bootstrap.subscribe(finish);
+  remember(router.state.location);
   if (isAccountEntryPath(router.state.location.pathname)) bootstrap.suspendForAccountEntry();
   else void bootstrap.start();
-  return () => {off();bootstrap.dispose();};
+  return () => {closed = true;off();offResolved();offBootstrap();bootstrap.dispose();};
 }

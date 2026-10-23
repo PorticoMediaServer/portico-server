@@ -1,0 +1,23 @@
+/** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
+export const readerMessages = {
+  'next.reader.display': 'Display',
+  'next.reader.page': 'Page',
+  'next.reader.font': 'Font',
+  'next.reader.size': 'Size',
+  'next.reader.textSize': 'Text size',
+  'next.reader.smaller': 'Smaller',
+  'next.reader.larger': 'Larger',
+  'next.reader.sizePosition': '{value} of {count}',
+  'next.reader.publisherCompact': 'Publisher’s',
+  'next.reader.columns': 'Columns',
+  'next.reader.columnsAuto': 'Auto',
+  'next.reader.columnsOne': 'One',
+  'next.reader.layout': 'Layout',
+  'next.reader.sample': 'Aa',
+  'next.reader.sizeSample': 'A',
+  'next.reader.sessionNote': 'Changes here last until you close this book.',
+  'next.reader.defaultsNote': 'Your defaults are in Settings, Reading.',
+  'next.reader.openSettings': 'Open Settings',
+  'next.reader.twoPagesLandscape': 'Two pages side by side in landscape',
+  'next.reader.twoPagesPortrait': 'Held upright, a book always shows one page.',
+} as const satisfies Record<`next.reader.${string}`, string>;
