@@ -1,9 +1,10 @@
 import {playbackFence, sameFence, sameScope, type PlaybackFence, type QueuePlaybackFence, type ChannelPlaybackFence} from './identity.ts';
 import {parseQueueSnapshot, queueScope, type QueueScope, type QueueSnapshot} from './queues.ts';
 import {clockMs, counter, invalidState, seconds, wireId} from './validation.ts';
+import {localPlaybackScope,sameLocalScope,type LocalPlaybackScope,type LocalPlaybackFence} from './local-playback-identity.ts';
 export type DockPlayback = Readonly<{
   positionSeconds:number; playing:boolean; expanded:boolean;
-}> & (Readonly<{kind:'live';fence:ChannelPlaybackFence;queue:null}> | Readonly<{kind:'video'|'music'|'audiobook';fence:QueuePlaybackFence;queue:QueueSnapshot|null}>);
+}> & (Readonly<{kind:'live';fence:ChannelPlaybackFence;queue:null}> | Readonly<{kind:'video'|'music'|'audiobook';fence:QueuePlaybackFence;queue:QueueSnapshot|null}> | Readonly<{kind:'video'|'music'|'audiobook';fence:LocalPlaybackFence;queue:null}>);
 export type RemotePhase = 'connecting'|'pairing'|'waiting'|'playing'|'stopped'|'replaced'|'error';
 export type RemoteDock = Readonly<{
   id:string; kind:'cast'|'play-on'; phase:RemotePhase; sequence:string;
@@ -15,19 +16,30 @@ export type DockTransition = Readonly<{state:DockState;effects:readonly DockEffe
 const audio = (p:DockPlayback) => p.kind==='music'||p.kind==='audiobook';
 const paused = (p:DockPlayback):DockPlayback => Object.freeze({...p,playing:false,expanded:false});
 const empty = ():DockState => Object.freeze({local:null,parkedAudio:null,resumeVideo:null,remote:null});
+function capturedLocalScope(scope:QueueScope,value:LocalPlaybackScope|undefined):LocalPlaybackScope|undefined {
+  if(value===undefined)return undefined;
+  const local=localPlaybackScope(value);
+  if(local.serverId!==scope.serverId||local.authority!==scope.authority||local.accountId!==scope.accountId||local.profileId!==scope.profileId)invalidState();
+  return local;
+}
 /** One occupant, including remote connecting/stopped states. Local video never becomes PiP here.
  * Parked values are in-memory bookmarks only; restoring them is always paused. The engine
  * adapter creates a fresh session before using a retired bookmark, reading Settings again. */
 export class PlaybackDock {
-  private scope:QueueScope; private state:DockState=empty(); private localRetired=false; private remoteNow=-1;
-  constructor(scope:QueueScope) { this.scope=queueScope(scope); }
+  private scope:QueueScope; private localScope?:LocalPlaybackScope; private state:DockState=empty(); private localRetired=false; private remoteNow=-1;
+  constructor(scope:QueueScope,localScope?:LocalPlaybackScope) { this.scope=queueScope(scope);this.localScope=capturedLocalScope(this.scope,localScope); }
   getSnapshot=()=>this.state;
   private checked(p:DockPlayback):DockPlayback {
     const fence=playbackFence(p.fence);
-    if (!sameScope(fence.playback.scope,this.scope) || !['video','live','music','audiobook'].includes(p.kind) || !seconds(p.positionSeconds) || typeof p.playing!=='boolean' || typeof p.expanded!=='boolean') invalidState();
+    const current=fence.kind==='local'?!!this.localScope&&sameLocalScope(fence.playback.scope,this.localScope):sameScope(fence.playback.scope,this.scope);
+    if (!current || !['video','live','music','audiobook'].includes(p.kind) || !seconds(p.positionSeconds) || typeof p.playing!=='boolean' || typeof p.expanded!=='boolean') invalidState();
     const common={positionSeconds:p.positionSeconds,playing:p.playing,expanded:p.expanded};
     if(p.kind==='live') {
       if(fence.kind!=='channel'||p.queue!==null)invalidState();
+      return Object.freeze({...common,kind:p.kind,fence,queue:null});
+    }
+    if(fence.kind==='local') {
+      if(p.queue!==null)invalidState();
       return Object.freeze({...common,kind:p.kind,fence,queue:null});
     }
     if(fence.kind!=='queue')invalidState();
@@ -102,6 +114,8 @@ export class PlaybackDock {
     if (!initial && (!current || current.id!==value.id || BigInt(value.sequence)<=BigInt(current.sequence))) return this.commit(this.state);
     if (!initial && current && ['stopped','replaced','error'].includes(current.phase) && !['stopped','replaced','error'].includes(value.phase)) return this.commit(this.state);
     const playback=this.checked(value.playback),effects:DockEffect[]=[];
+    // This app's receipt-bound file is never a server/Cast/Play-on source.
+    if(playback.fence.kind==='local')invalidState();
     let local=this.state.local;
     // Connecting leaves this phone playing; the confirmed receiver takeover retires local media.
     if (value.phase==='playing') this.localRetired=true;
@@ -123,7 +137,14 @@ export class PlaybackDock {
     return this.commit({...this.state,local:restored,remote:null},[{kind:'restore',playback:restored,playing:false}]);
   }
   /** Sign-out/profile/controller change discards all bookmarks; nothing crosses identities. */
-  reset(scope:QueueScope):DockTransition { this.scope=queueScope(scope);this.localRetired=false;this.remoteNow=-1; const effects:DockEffect[]=[]; if(this.state.local)effects.push({kind:'stop',playback:paused(this.state.local),playing:false}); if(this.state.remote)effects.push({kind:'stop',playback:paused(this.state.remote.playback),playing:false}); return this.commit(empty(),effects); }
+  reset(scope:QueueScope,localScope?:LocalPlaybackScope):DockTransition {
+    const next=queueScope(scope),local=capturedLocalScope(next,localScope);
+    this.scope=next;this.localScope=local;this.localRetired=false;this.remoteNow=-1;
+    const effects:DockEffect[]=[];
+    if(this.state.local)effects.push({kind:'stop',playback:paused(this.state.local),playing:false});
+    if(this.state.remote)effects.push({kind:'stop',playback:paused(this.state.remote.playback),playing:false});
+    return this.commit(empty(),effects);
+  }
   occupant():Readonly<{mode:'cast'|'play-on'|'video'|'music'|'audiobook';playback:DockPlayback;remote?:RemoteDock}>|null {
     const {remote,local}=this.state;
     if (remote) return Object.freeze({mode:remote.kind,playback:remote.playback,remote});
