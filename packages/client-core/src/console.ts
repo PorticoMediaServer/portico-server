@@ -65,7 +65,7 @@ function invalid():never{throw new Error('Invalid selected-server console respon
 function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)invalid();}
 export function parseSettings(v:unknown):SettingsDocument{
- const raw=base(v),d={...raw,requested:{...base(raw.requested)},effective:{...base(raw.effective)}};revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
+ const raw=base(v),d:Record<string,any>={...raw,requested:{...base(raw.requested)},effective:{...base(raw.effective)}};revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
  for(const key of ['requested','effective']){const s=base(d[key]);delete s.transcodingEnabled;delete s.deviceApprovalRequired;delete s.blockMemberAccessTokens;if(!text(s.name,100)||!['all','sound','never'].includes(s.conversionMode)||!['auto','h264'].includes(s.outputFormat)||!canonicalQualityLadder.some(q=>q.id!=='automatic'&&q.id===s.downloadMaxQuality)||!canonicalMusicQualityLadder.some(q=>q.id===s.musicAwayQuality))invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
  return {...d,...(d.ffmpegValidation?{ffmpegValidation:parseFFmpegValidation(d.ffmpegValidation)}:{})} as SettingsDocument;
 }
