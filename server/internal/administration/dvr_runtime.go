@@ -27,6 +27,31 @@ func (s *Service) runtimeDVRSettings(ctx context.Context, auth Authorize) (DVRDo
 	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error { var e error; out, e = runtimeDefaults(ctx, tx); return e })
 	return out, err
 }
+
+func replaceRuntimeDVRDefaultsTx(ctx context.Context, tx *sql.Tx, expected int64, value DVRDefaults) (DVRDocument, error) {
+	if err := validateDVRDefaults(&value); err != nil {
+		return DVRDocument{}, err
+	}
+	days, count := 0, 0
+	if value.Keep.Mode == "keep-days" {
+		days = value.Keep.KeepDays
+	}
+	if value.Keep.Mode == "keep-count" {
+		count = value.Keep.KeepCount
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=?,live_tuner_conflict=? WHERE singleton=1 AND revision=?`, value.PrePaddingMs/1000, value.PostPaddingMs/1000, days, count, value.LiveTunerConflict, expected)
+	if err != nil {
+		return DVRDocument{}, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return DVRDocument{}, err
+	}
+	if n != 1 {
+		return DVRDocument{}, ErrConflict
+	}
+	return runtimeDefaults(ctx, tx)
+}
 func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c Change[DVRDefaults]) (DVRDocument, error) {
 	var out DVRDocument
 	if !validOperationID(c.OperationID) {
@@ -44,23 +69,15 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 			out = saved
 			return nil
 		}
-		days, count := 0, 0
-		if c.Settings.Keep.Mode == "keep-days" {
-			days = c.Settings.Keep.KeepDays
-		}
-		if c.Settings.Keep.Mode == "keep-count" {
-			count = c.Settings.Keep.KeepCount
-		}
-		result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=?,live_tuner_conflict=? WHERE singleton=1 AND revision=?`, c.Settings.PrePaddingMs/1000, c.Settings.PostPaddingMs/1000, days, count, c.Settings.LiveTunerConflict, c.ExpectedRevision)
+		before, err := runtimeDefaults(ctx, tx)
 		if err != nil {
 			return err
 		}
-		n, _ := result.RowsAffected()
-		if n != 1 {
-			return ErrConflict
-		}
-		out, err = runtimeDefaults(ctx, tx)
+		out, err = replaceRuntimeDVRDefaultsTx(ctx, tx, c.ExpectedRevision, c.Settings)
 		if err != nil {
+			return err
+		}
+		if err = queueDVRConfiguration(ctx, tx, before.Settings, out.Settings); err != nil {
 			return err
 		}
 		return saveReceipt(ctx, tx, dvrScope, c.OperationID, digestOf(c), out, s.milliseconds())

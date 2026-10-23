@@ -363,7 +363,11 @@ func (d Dependencies) dvrAdministrationRoutes(mux *http.ServeMux) {
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
-		return d.Administration.SaveDVRSettings(ctx, d.administrationAuthority(p), body)
+		out, err := d.Administration.SaveDVRSettings(ctx, d.administrationAuthority(p), body)
+		if err == nil && d.Console != nil {
+			err = d.Console.FlushConfiguration(context.WithoutCancel(ctx))
+		}
+		return out, err
 	}))
 
 	d.httpHandle(mux, "GET /v1/admin/dvr/recording-groups", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {

@@ -394,7 +394,7 @@ func run() (runErr error) {
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
 	configSettings := operations.New(db)
-	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, adminops.LiveConfiguration{}}
+	configSettings.ConfigurationDomains = []operations.ConfigurationDomain{adminops.MaintenanceConfiguration{}, adminops.LiveConfiguration{}, adminops.DVRConfiguration{}}
 	if e = configSettings.InitializeConfiguration(ctx, layout.Config); e != nil {
 		return e
 	}
