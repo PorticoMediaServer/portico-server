@@ -1,6 +1,6 @@
 module portico.local/hosted
 
-go 1.26.2
+go 1.26.10
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
@@ -10,7 +10,6 @@ require (
 )
 
 require (
-	github.com/miekg/dns v1.1.72 // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
@@ -28,7 +27,7 @@ require (
 	portico.local/dns v0.0.0
 )
 
-require portico.local/apikit v0.0.0
+require github.com/miekg/dns v1.1.72
 
 replace portico.local/dns => ../dns
 
