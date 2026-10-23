@@ -2135,6 +2135,6 @@ test('a guide tune cannot adopt a late channel after abort/navigation or stop a 
     gate.resolve();await rejected;await settle();
     assert.equal(f.runtime.getSnapshot().session?.itemId, retirement === 'new-play' ? 'newer_movie' : undefined);
     assert.equal(f.runtime.getSnapshot().fence?.kind, retirement === 'new-play' ? 'queue' : undefined);
-    assert.ok(f.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/live_1'), 'the actual late channel session is abandoned');
+    assert.ok(f.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/live_session_1'), 'the actual late channel session is abandoned');
   }
 });
