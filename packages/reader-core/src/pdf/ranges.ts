@@ -1,4 +1,4 @@
-import {throwIfAborted} from '../errors.ts';
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import type {ReaderSource} from '../ports.ts';
 import {abortScope} from '../abort.ts';
 

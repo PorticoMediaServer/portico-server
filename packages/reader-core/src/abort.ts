@@ -6,6 +6,10 @@ import {ReaderError} from './errors.ts';
 export function abortReason(signal:AbortSignal):unknown {
   return signal.reason ?? new ReaderError('aborted');
 }
+/** Preserve a provider's AbortError/custom reason when the runtime has it. */
+export function throwSignalAborted(signal:AbortSignal):void {
+  if(signal.aborted)throw abortReason(signal);
+}
 export function abortScope(signals:readonly AbortSignal[]):Readonly<{signal:AbortSignal;dispose():void}> {
   const controller=new AbortController(),listeners=new Map<AbortSignal,()=>void>();
   const dispose=()=>{for(const [signal,listener]of listeners)signal.removeEventListener('abort',listener);listeners.clear();};

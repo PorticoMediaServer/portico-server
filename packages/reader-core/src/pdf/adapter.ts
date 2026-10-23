@@ -1,4 +1,4 @@
-import {throwIfAborted} from '../errors.ts';
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import {abortScope} from '../abort.ts';
 import type {ReaderAdapter,ReaderDocument,ReaderLocation} from '../ports.ts';
 import {mountFixed,type FixedPreferences} from './fixed-view.ts';

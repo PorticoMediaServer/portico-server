@@ -1,4 +1,4 @@
-import {throwIfAborted} from '../errors.ts';
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import {abortScope,abortReason} from '../abort.ts';
 import type {ReaderSource} from '../ports.ts';
 import type {PDFDocumentProxy,PDFPageProxy,PDFWorker} from 'pdfjs-dist/types/src/display/api.d.ts';
