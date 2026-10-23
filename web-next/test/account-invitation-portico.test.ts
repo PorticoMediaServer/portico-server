@@ -71,12 +71,15 @@ test('an invalid challenge proof asks Hosted for no assertion', async () => {
 test('changing the Hosted family during assertion issuance sends no identity to the server', async () => {
   const f = await fixture(); f.holdIdentity(); const pending = f.entry.joinPortico(f.account);
   await until(() => f.calls.some(path => path.startsWith('Hosted:'))); f.changeAccount(); f.releaseIdentity(); await pending;
-  assert.equal(f.calls.includes('/v1/access/invitations/accept'), false); assert.deepEqual(f.admitted, []); f.entry.dispose();
+  assert.equal(f.calls.includes('/v1/access/invitations/accept'), false); assert.deepEqual(f.admitted, []);
+  assert.equal(f.entry.getSnapshot().busy, false, 'the still-current invitation can continue with the newly signed-in account');
+  assert.equal(f.entry.getSnapshot().error, undefined); f.entry.dispose();
 });
 test('a grant arriving after the Hosted family changes is retired without admission', async () => {
   const f = await fixture(); f.holdGrant(); const pending = f.entry.joinPortico(f.account);
   await until(() => f.calls.includes('/v1/access/invitations/accept')); f.changeAccount(); f.releaseGrant(); await pending;
-  assert.deepEqual(f.retired, ['issued-family']); assert.deepEqual(f.admitted, []); f.entry.dispose();
+  assert.deepEqual(f.retired, ['issued-family']); assert.deepEqual(f.admitted, []);
+  assert.equal(f.entry.getSnapshot().busy, false); assert.equal(f.entry.getSnapshot().phase, 'portico'); f.entry.dispose();
 });
 test('a different Hosted account in the returned grant is retired', async () => {
   const f = await fixture(); f.wrongGrantAccount(); await f.entry.joinPortico(f.account);

@@ -148,7 +148,12 @@ export class BrowserAccountEntry {
    const previous=this.api;this.api=paired.api;previous?.getRouteConnection()?.dispose();
    await this.accept(result,paired.api,revision,guard,paired.hosted);
   }catch(error){if(guard.current())this.publish({...state,busy:false,error});}
-  finally{if(paired&&this.api!==paired.api)paired.connection.dispose();}
+  finally{
+   if(paired&&this.api!==paired.api)paired.connection.dispose();
+   // A family change ends this attempt, not the invitation. Its old guard may
+   // never admit a grant, but the current page must let the new account act.
+   if(op.current()&&!account.isCurrent())this.publish({...state,busy:false,error:undefined});
+  }
  }
  async signIn(username:string,password:string){
   const state=this.state,api=this.api;
