@@ -17,6 +17,7 @@ function response() {
 }
 function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const calls: {path: string; body?: unknown}[] = [], retired: string[] = [], admitted: string[] = [], tokens: string[] = [];
+  let selected: unknown;
   let currentOrigin = origin, previewAnswer: unknown = preview, failSignIn = false;
   let family = 'issued-family', token = 'issued-access';
   let retirementGate: Promise<void> | undefined, releaseRetirement: (() => void) | undefined;
@@ -38,10 +39,10 @@ function fixture(destination: 'adopt' | 'server-origin' = 'adopt') {
   const probe = {inspect: async (value: string) => {currentOrigin = value; if (probeGate) {const wait = probeGate; probeGate = undefined; await wait;} return system;},
     getSnapshot: () => ({origin: currentOrigin}), cancel: () => {}, dispose: () => {}} as unknown as ServerSignInProbe;
   const entry = new BrowserAccountEntry({
-    store: {read: async () => ({version: 1, revision: 7, servers: []}), connectionStorage: (_id: string, admission: {expectedRevision: number}) => {assert.equal(admission.expectedRevision, 7); return storage;}} as never,
+    store: {selected: async () => selected, read: async () => ({version: 1, revision: 7, servers: []}), connectionStorage: (_id: string, admission: {expectedRevision: number}) => {assert.equal(admission.expectedRevision, 7); return storage;}} as never,
     actions: {} as never, environment: () => ({storage}), restore: async () => undefined,
     inspect: async () => pin, connect: (async () => ({api, connection})) as never,
-    remember: async (_api, session, _env, _hosted, current) => {assert.equal(current?.(), true); admitted.push(session.sessionFamilyId);},
+    remember: async (_api, session, _env, _hosted, current) => {assert.equal(current?.(), true); admitted.push(session.sessionFamilyId);selected = {signIn: 'local', connection: {pin, session}};},
     retire: async (_api, session) => {retired.push(session.sessionFamilyId);if (retirementGate) await retirementGate;}, invitationDestination: destination,
   }, probe);
   return {entry, calls, retired, admitted, tokens, successorGrant: () => {family = 'successor-family';token = 'successor-access';},

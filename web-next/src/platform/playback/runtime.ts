@@ -10,6 +10,7 @@ import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@cor
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeChannel} from '@core/home.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
+import {localPlaybackScope} from '../../../../packages/player-core/src/index.ts';
 import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';
@@ -99,8 +100,10 @@ export class WebShellPlaybackRuntime {
 
   constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = playbackEnvironment()) {
     if (source.contentScope.serverId !== source.authority.serverId || !source.authority.viewerFence || !source.isCurrent()) problem('invalid_playback_authority');
+    const localScope = source.localScope && localPlaybackScope(source.localScope);
+    if (localScope && (['serverId', 'authority', 'accountId', 'profileId'] as const).some(key => localScope[key] !== source.authority[key])) problem('invalid_playback_authority');
     this.authority = Object.freeze({...source.authority});
-    this.source = Object.freeze({...source, authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
+    this.source = Object.freeze({...source, ...(localScope ? {localScope} : {}), authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
     this.env = environment;
     this.equalizerPort = environment.equalizerPort;
     this.capabilityPublisher = new CapabilityPublisher(localV1Http(source.api), () => JSON.stringify([this.authority.serverId, this.authority.accountId, this.authority.profileId, this.authority.epoch]));
