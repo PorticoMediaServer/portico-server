@@ -50,3 +50,18 @@ Pass extra `go test` arguments after the host, for example
 - **Several minutes.** PostgreSQL fixtures install the complete current schema
   and exercise password hashes and transaction races. Allow several minutes
   for a full run; use focused tests for subsequent scoped corrections.
+
+## Account notification fixtures
+
+`notifications_ruling10_test.go` exercises explicit boolean preference updates,
+the actual sign-in/export/quiet-registration writers, provider insertion and
+restoration, retired-notice exclusion and account-bound pagination. Positive
+feed rows come from those writers; the four ordinary categories do not impose
+a four-row page limit. The configured operator's signing-key alert remains
+separate from ordinary account events.
+
+Set `PORTICO_NOTIFICATION_FIXTURES_DIR` to a private scratch directory to capture
+the tests' actual public notification/preference HTTP responses. Each JSON file
+contains the exact response body, its SHA256 and Content-Type. Session replies,
+cookies and request credentials are excluded. These disposable fixture facts
+are for consumer tests, not seed data for the account UI.
