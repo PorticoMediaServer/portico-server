@@ -3,6 +3,7 @@ package mediaanalysis
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image/jpeg"
 	"io"
 
@@ -111,7 +112,12 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 		}
 		return err
 	})
-	if err != nil {
+	// A failed decode can be the first sign of a replaced source. Check both
+	// retained metadata and authority before closing, even when decoding failed.
+	// Keep the original invocation context: cancellation cannot grant more work.
+	validationErr := input.Validate(ctx)
+	authorizationErr := r.Authorize(ctx, catalog.EpisodeThumbnailOperation, EpisodeThumbnailCostClass, r.Manual)
+	if err = errors.Join(err, validationErr, authorizationErr, ctx.Err()); err != nil {
 		return out, err
 	}
 	shape, err := jpeg.DecodeConfig(bytes.NewReader(data))
@@ -120,12 +126,6 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	}
 	if _, err = jpeg.Decode(bytes.NewReader(data)); err != nil {
 		return out, ErrUnsupported
-	}
-	if err = input.Validate(ctx); err != nil {
-		return out, err
-	}
-	if err = authorize(); err != nil {
-		return out, err
 	}
 	if err = ctx.Err(); err != nil {
 		return out, err

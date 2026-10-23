@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -259,6 +260,99 @@ func TestEpisodeThumbnailRejectsChangedOrInvalidOutput(t *testing.T) {
 		if result, err := MakeEpisodeThumbnail(context.Background(), r); !errors.Is(err, ErrConflict) || len(result.JPEG) != 0 || input.closed != 1 {
 			t.Fatalf("changed source accepted or leaked: %+v %v", result, err)
 		}
+	}
+}
+
+type thumbnailFailureInput struct {
+	thumbnailRangeInput
+	events *[]string
+	after  error
+}
+
+func (i *thumbnailFailureInput) Validate(ctx context.Context) error {
+	*i.events = append(*i.events, "validate")
+	i.validated++
+	if i.closed != 0 {
+		return errors.New("validation after close")
+	}
+	if i.validated > 1 {
+		return errors.Join(i.after, ctx.Err())
+	}
+	return ctx.Err()
+}
+
+func (i *thumbnailFailureInput) Close() error {
+	*i.events = append(*i.events, "close")
+	return i.thumbnailRangeInput.Close()
+}
+
+func TestEpisodeThumbnailDecodeFailureRechecksThenTerminates(t *testing.T) {
+	decodeErr := errors.New("decoder failed after writing a frame")
+	metadataErr := errors.New("remote identity changed")
+	authorityErr := errors.New("source authority revoked")
+	for _, tc := range []struct {
+		name                     string
+		changed, revoked, cancel bool
+	}{
+		{name: "decode_error"},
+		{name: "identity_changed", changed: true},
+		{name: "authority_revoked", revoked: true},
+		{name: "both_checks_fail", changed: true, revoked: true},
+		{name: "cancelled", cancel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var events []string
+			input := &thumbnailFailureInput{events: &events}
+			if tc.changed {
+				input.after = metadataErr
+			}
+			authorized, opened, decoded := 0, 0, 0
+			r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailOffMode, Manual: true, DurationUS: 10, EndUS: 10,
+				Authorize: func(checkCtx context.Context, operation, cost string, manual bool) error {
+					events = append(events, "authorize")
+					authorized++
+					if checkCtx != ctx || operation != catalog.EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || !manual || input.closed != 0 {
+						t.Fatal("authority context, classification or retained lifetime changed")
+					}
+					if authorized == 3 && tc.revoked {
+						return authorityErr
+					}
+					return checkCtx.Err()
+				},
+				Open: func(context.Context) (Input, error) {
+					events = append(events, "open")
+					opened++
+					return input, nil
+				},
+				Decoder: func(Input) Decode {
+					return func(_ context.Context, _ string, _ decoder.AnalysisSpec, consume func(io.Reader) error) error {
+						events = append(events, "decode")
+						decoded++
+						// Even a complete JPEG must never escape a failed decode.
+						if err := consume(bytes.NewReader(thumbnailJPEG(320, 180))); err != nil {
+							return err
+						}
+						if tc.cancel {
+							cancel()
+						}
+						return decodeErr
+					}
+				},
+			}
+			result, err := MakeEpisodeThumbnail(ctx, r)
+			if !errors.Is(err, decodeErr) || errors.Is(err, metadataErr) != tc.changed || errors.Is(err, authorityErr) != tc.revoked || errors.Is(err, context.Canceled) != tc.cancel {
+				t.Fatalf("lost original or fresh check failure: %v", err)
+			}
+			if result.Origin != "fallback" || len(result.JPEG) != 0 || result.Width != 0 || result.Height != 0 || result.PositionUS != 0 || opened != 1 || decoded != 1 || authorized != 3 || input.validated != 2 || input.closed != 1 {
+				t.Fatalf("failed decode published, retried or leaked: %+v input=%+v opens=%d decodes=%d auth=%d", result, input, opened, decoded, authorized)
+			}
+			want := []string{"authorize", "open", "validate", "authorize", "decode", "validate", "authorize", "close"}
+			if !reflect.DeepEqual(events, want) {
+				t.Fatalf("check/close order %v, want %v", events, want)
+			}
+		})
 	}
 }
 

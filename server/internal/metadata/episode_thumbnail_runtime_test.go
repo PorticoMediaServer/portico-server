@@ -160,6 +160,39 @@ func TestEpisodeThumbnailRuntimeRejectsRevocationAndConcurrentOwnerDecision(t *t
 	}
 }
 
+func TestEpisodeThumbnailRuntimeFailedDecodeCannotPublish(t *testing.T) {
+	s, c, target, _ := episodePublicationFixture(t)
+	captured := capturePublication(t, s, target)
+	s.EpisodeThumbnails = thumbnailRuntime(t, s, nil)
+	decodeErr := errors.New("decode failed after output")
+	decode := s.EpisodeThumbnails.Decoder
+	s.EpisodeThumbnails.Decoder = func(input mediaanalysis.Input) mediaanalysis.Decode {
+		run := decode(input)
+		return func(ctx context.Context, operation string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
+			if err := run(ctx, operation, spec, consume); err != nil {
+				return err
+			}
+			return decodeErr
+		}
+	}
+	s.EpisodeThumbnails.ArtworkContext = func(context.Context) (context.Context, func(context.Context, *sql.Tx) error, error) {
+		t.Fatal("failed decode reached artwork encoding")
+		return nil, nil, nil
+	}
+	source := &episodeRuntimeSource{input: &episodeRuntimeInput{}, manual: true}
+	_, err := s.generateEpisodeThumbnail(context.Background(), captured, "off", true, source, MBActor{Authority: "local", AccountID: "owner", ProfileID: "profile"}, func(*sql.Tx) error {
+		t.Fatal("failed decode reached artwork writer")
+		return nil
+	})
+	if !errors.Is(err, decodeErr) || source.opens != 1 || source.authorizations != 3 || source.input.checks != 2 || source.input.closed != 1 || source.calls != 0 {
+		t.Fatalf("failed decode was retried, unchecked or published: source=%+v input=%+v err=%v", source, source.input, err)
+	}
+	var selections int
+	if err = c.DB.QueryRow(`SELECT COUNT(*) FROM artwork_selections`).Scan(&selections); err != nil || selections != 0 {
+		t.Fatal("failed decode changed selected art", selections, err)
+	}
+}
+
 func TestEpisodeThumbnailRuntimeReencodesCurrentPolicyWithoutRepeatingDecode(t *testing.T) {
 	s, _, target, _ := episodePublicationFixture(t)
 	captured := capturePublication(t, s, target)
