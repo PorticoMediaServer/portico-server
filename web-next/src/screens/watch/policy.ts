@@ -10,7 +10,7 @@ export type WatchPolicyBinding = Readonly<{
   reportError: (error: unknown) => void;
 }>;
 
-export function currentWatchPolicy(binding: WatchPolicyBinding, shown: WebPlaybackRuntimeSnapshot) {
+export function currentWatchPolicy(binding: Pick<WatchPolicyBinding, 'getSnapshot' | 'isCurrent'>, shown: WebPlaybackRuntimeSnapshot) {
   const live = binding.getSnapshot(), fence = shown.fence;
   if (!binding.isCurrent() || shown.disposed || live.disposed || fence?.kind !== 'queue' || !sameFence(live.fence, fence)
     || shown.authority !== live.authority || live.dock.remote?.phase === 'playing'

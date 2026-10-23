@@ -52,3 +52,16 @@ test('the actual public font loaders need no WebCrypto in an HTTP host', async t
   assert.equal(resource.fonts.literata.size, 955132); assert.equal(env.faces.size, 1);
   resource.dispose(); assert.equal(env.faces.size, 0);
 });
+
+test('trusted font loading and late cancellation need no modern AbortSignal helpers', async t => {
+  const env = await environment(t);
+  const any = Object.getOwnPropertyDescriptor(AbortSignal, 'any'), throwing = Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'throwIfAborted');
+  Object.defineProperty(AbortSignal, 'any', {value: undefined, configurable: true});
+  Object.defineProperty(AbortSignal.prototype, 'throwIfAborted', {value: undefined, configurable: true});
+  t.after(() => {if (any) Object.defineProperty(AbortSignal, 'any', any); if (throwing) Object.defineProperty(AbortSignal.prototype, 'throwIfAborted', throwing);});
+  const ready = await loadReadFonts({document: env.document, signal: new AbortController().signal});
+  assert.equal(env.faces.size, 1); ready.dispose(); assert.equal(env.faces.size, 0);
+  env.hold(); const life = new AbortController(), pending = loadReadFonts({document: env.document, signal: life.signal});
+  while (!env.waiting) await new Promise<void>(resolve => setImmediate(resolve));
+  life.abort(); env.release(); await assert.rejects(pending); assert.equal(env.faces.size, 0);
+});
