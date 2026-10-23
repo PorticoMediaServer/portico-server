@@ -28,14 +28,16 @@ ffmpeg -hide_banner -version
 dpkg-query -W libmpv2 libmpv-dev libwebkit2gtk-4.1-dev
 export PORTICO_TEST_MPV_LIBRARY=/usr/lib/x86_64-linux-gnu/libmpv.so.2
 export PORTICO_TEST_PCM_FIXTURE=/work/owned-48000-stereo.wav PORTICO_TEST_VIDEO_FIXTURE=/work/owned-vfr-6.mkv
-python3 apps/desktop/test/native-fixtures.py
+if [ "$PORTICO_NATIVE_CHECK" != startup ]; then python3 apps/desktop/test/native-fixtures.py; fi
 if [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
 else
+  if [ "$PORTICO_NATIVE_CHECK" != startup ]; then
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib mpv::local_source_tests -- --ignored --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --lib shell::tests -- --ignored --test-threads=1
+  fi
   cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin portico-desktop
   if [ "$PORTICO_NATIVE_CHECK" = startup ]; then
     # Deliberately absent engine: the app must preserve native identity/host startup,

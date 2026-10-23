@@ -8,6 +8,7 @@ observed = json.loads(report.read_text())
 assert observed["platform"] == "linux"
 assert observed["ui"]["rootMounted"] is True
 assert observed["ui"]["desktopHost"] is True
-assert observed["native"] is None, "missing engine must not become WebView playback"
+assert observed["player"] is None and observed["audio"] is None, "missing native engine has no playback/output observations"
+assert observed["native"]["renderCalls"] == 0
 assert "close-finished 0" in report.with_suffix(".native.log").read_text()
 print("actual Linux missing-engine native identity/app mount/clean close PASS; no media/HDR/screens")
