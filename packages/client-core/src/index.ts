@@ -1,4 +1,6 @@
 import {routeBody} from "../../contracts/src/routes.ts";
+import {ReadingClient, type ReadingScope} from './reading.ts';
+export * from './reading.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
 import {routePrefix, routePath, apiRoot, encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -331,6 +333,22 @@ export class HttpLocalApi {
     if (this.routes && token) bindSessionRoute(token,this.routes);
     this.certificateSessionEpoch++;
     for (const listener of this.certificateSessionListeners) listener();
+  }
+  /** Captures this exact selected-server authority; reader callbacks never
+   * refresh, retry or substitute another viewer's token behind an open book. */
+  reading(scope: ReadingScope): ReadingClient {
+    const token = this.token, epoch = this.certificateSessionEpoch, fetcher = this.fetcher;
+    const isCurrent = () => this.token === token && this.certificateSessionEpoch === epoch;
+    return new ReadingClient({
+      isCurrent,
+      subscribe: retire => this.subscribeCertificateSession(retire),
+      send: (path, init) => {
+        if (!isCurrent() || !path.startsWith(apiRoot) || path.includes('#') || path.includes('\\')) return Promise.reject(new Error('cancelled'));
+        const headers = new Headers(init.headers);
+        headers.delete('Authorization'); if (token) headers.set('Authorization', 'Bearer ' + token);
+        return fetcher(this.baseUrl + path, {...init, headers, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store'});
+      },
+    }, scope);
   }
   /** Fixed owner-certificate operations, selected-server credentials and bounded responses. */
   async requestCertificate<T>(action:CertificateAction,body:unknown,signal:AbortSignal):Promise<T>{
