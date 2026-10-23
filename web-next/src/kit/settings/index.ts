@@ -8,3 +8,6 @@ export * from './SettingsOrderedList';
 export * from './SettingsRows';
 export * from './SettingsWorkspace';
 export * from './search';
+export * from './SettingsSelectionList';
+export * from './SettingsHours';
+export * from './SettingsStringList';
