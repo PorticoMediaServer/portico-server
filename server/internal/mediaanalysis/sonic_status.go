@@ -18,6 +18,7 @@ import (
 type SonicStatus struct {
 	Settings                  catalog.SonicSettings
 	PolicyAllows              bool
+	CanAnalyze                bool
 	Total, Analyzed           int64
 	Runtime                   sonic.Availability
 	Work                      workpolicy.HeavyWorkFacts
@@ -46,6 +47,7 @@ func (s *Service) SonicStatus(ctx context.Context, library string, at time.Time,
 	}
 	out.PolicyAllows = policy.Allows(catalog.SonicOperation)
 	out.Runtime = s.sonicRuntime().Availability()
+	out.CanAnalyze = s.SonicCanAttempt()
 	if out.Work, err = workpolicy.ReadHeavyWorkTx(ctx, tx, "analysis", at); err != nil {
 		return out, err
 	}
