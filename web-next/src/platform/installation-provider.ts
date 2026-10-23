@@ -18,7 +18,9 @@ export async function initializeAppInstallation(appVersion: string): Promise<Ins
     if (installed) throw new Error('platform_installation_changed');
     return initializeBrowserInstallation(appVersion);
   }
-  const identity = typeof captured.provider === 'function' ? await captured.provider() : captured.provider;
+  let identity: InstallationIdentity;
+  try {identity = typeof captured.provider === 'function' ? await captured.provider() : captured.provider;}
+  catch {throw new Error('platform_installation_unavailable');}
   if (installed !== captured) throw new Error('platform_installation_changed');
   if (!identity || (['installationId', 'name', 'platform', 'app', 'appVersion'] as const).some(key => typeof identity[key] !== 'string')) throw new Error('invalid_platform_installation');
   setInstallationIdentity(identity);

@@ -37,8 +37,9 @@ test('native absence, invalid identity and bridge rejection never fall back to b
     await assert.rejects(initializeAppInstallation('web-version'));assert.equal(installationIdentity(), undefined);
   });
   await t.test('bridge rejection', async child => {
-    environment(child);child.after(installPlatformInstallationProvider(async () => {throw new Error('fixture-native-unavailable');}));
-    await assert.rejects(initializeAppInstallation('web-version'), /fixture-native-unavailable/);assert.equal(installationIdentity(), undefined);
+    environment(child);child.after(installPlatformInstallationProvider(async () => {throw new Error('fixture-native-unavailable:' + native.installationId);}));
+    await assert.rejects(initializeAppInstallation('web-version'), (error: Error) => error.message === 'platform_installation_unavailable' && !String(error.stack).includes(native.installationId));
+    assert.equal(installationIdentity(), undefined);
   });
 });
 test('an obsolete native provider cannot overwrite a newer provider after an await', async t => {
