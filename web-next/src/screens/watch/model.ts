@@ -1,8 +1,20 @@
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackAction, WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
 
-export type WatchIntent = Pick<WebPlaybackAction, 'kind' | 'seconds' | 'volume'>;
+export type WatchIntent = Pick<WebPlaybackAction, 'kind' | 'seconds' | 'volume' | 'direction'>;
 export type WatchCommands = Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'onAction'>;
+
+/** Only the current engine can offer frame stepping; a browser seek is never a substitute. */
+export function watchStepIntent(runtime: Pick<WebShellPlaybackRuntime, 'getSnapshot' | 'speedChoices' | 'canStepFrame'>,
+  shown: WebPlaybackRuntimeSnapshot, key: string): WatchIntent | null {
+  if (!['<', '>', ',', '.'].includes(key)) return null;
+  const live = runtime.getSnapshot(), fence = shown.fence, presentation = shown.presentation;
+  if (!fence || shown.disposed || live.disposed || shown.authority !== live.authority || !sameFence(fence, live.fence)
+    || !presentation?.expanded || presentation.kind !== 'video' || presentation.finished || !sameFence(presentation.fence, fence)
+    || live.dock.remote?.phase === 'playing') return null;
+  if (key === '<' || key === '>') return runtime.speedChoices(fence).length ? {kind: 'step-speed', direction: key === '<' ? -1 : 1} : null;
+  return !presentation.playing && runtime.canStepFrame(fence) ? {kind: 'step-frame', direction: key === ',' ? -1 : 1} : null;
+}
 
 /** A retained render or an old keyboard closure cannot command a new playback. */
 export async function dispatchWatch(runtime: WatchCommands, shown: WebPlaybackRuntimeSnapshot, intent: WatchIntent): Promise<void> {

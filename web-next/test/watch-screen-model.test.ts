@@ -4,7 +4,7 @@ import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from './transform-tsx.mjs';
-import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds} from '../src/screens/watch/model.ts';
+import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchStepIntent} from '../src/screens/watch/model.ts';
 import {readWatchFileInfo, readWatchFiles, watchFileGroups} from '../src/screens/watch/file-info.ts';
 import {parseSession} from '@core/playback-v1/types.ts';
 import type {FileInfoProjection} from '@core/detail.ts';
@@ -35,6 +35,31 @@ function snapshot(change: Partial<WebPlaybackRuntimeSnapshot> = {}): WebPlayback
     presentation: {fence, subject: {kind: 'video', item: {id: 'item', kind: 'movie', title: 'Title'}}, kind: 'video', durationSeconds: 7200, positionSeconds: 30, playing: true, expanded: true, finished: false, controls: ['pause', 'seek'], volume: .7, muted: false, rate: 1, policy: null},
     playback: {} as WebPlaybackRuntimeSnapshot['playback'], dock: {} as WebPlaybackRuntimeSnapshot['dock'], presentations: [], queueView: null, options: null, offers: null, ...change};
 }
+
+test('speed and frame shortcuts use offered current engine commands and never synthesize a seek', async () => {
+  const shown = snapshot(); let live = shown, frames = false, speeds: readonly number[] = [.5, 1, 1.5];
+  const calls: WebPlaybackAction[] = [];
+  const runtime = {getSnapshot: () => live, speedChoices: () => speeds, canStepFrame: () => frames,
+    onAction: async (action: WebPlaybackAction) => {calls.push(action);}};
+  for (const [key, direction] of [['<', -1], ['>', 1]] as const) {
+    const intent = watchStepIntent(runtime, shown, key)!;
+    await dispatchWatch(runtime, shown, intent);
+    assert.deepEqual(calls.at(-1), {kind: 'step-speed', direction, fence});
+  }
+  assert.equal(watchStepIntent(runtime, shown, '.'), null);
+  const paused = snapshot({presentation: {...shown.presentation!, playing: false}}); live = paused;
+  assert.equal(watchStepIntent(runtime, paused, '.'), null); // Ordinary browser has no frame primitive.
+  frames = true;
+  for (const [key, direction] of [[',', -1], ['.', 1]] as const) {
+    await dispatchWatch(runtime, paused, watchStepIntent(runtime, paused, key)!);
+    assert.deepEqual(calls.at(-1), {kind: 'step-frame', direction, fence});
+  }
+  speeds = []; assert.equal(watchStepIntent(runtime, paused, '>'), null);
+  live = snapshot({fence: {...fence, sessionId: 'new-session'}});
+  assert.equal(watchStepIntent(runtime, paused, '.'), null);
+  assert.equal(watchStepIntent(runtime, paused, '>'), null);
+  assert.ok(calls.every(action => action.kind !== 'seek'));
+});
 
 test('a picture double-click enters fullscreen without a transient pause; assistive activation is immediate', async context => {
   context.mock.timers.enable({apis: ['setTimeout']});
