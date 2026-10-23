@@ -70,7 +70,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
         const next = position < 0 ? candidates[0] : candidates[(position + (event.shiftKey ? -1 : 1) + candidates.length) % candidates.length];
         onOpenChange(false, 'action'); focusElement(next);
       } }}>
-      {touchContext ? <div id={`${id}-title`} style={{padding: '6px 12px 10px', fontSize: 15, fontWeight: 800}}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
+      {touchContext ? <div id={`${id}-title`} style={{padding: '6px 20px 10px', margin: '0 -8px 6px', borderBottom: '1px solid rgba(237,245,250,.08)', fontSize: 15, fontWeight: 800}}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
       {touchContext && <RadixPopover.Arrow width={14} height={7} style={{fill: 'rgba(22,44,58,.97)'}} />}
@@ -133,6 +133,22 @@ export function Menu({items, children, open, onOpenChange, title, presentation =
     return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', keyboard, true); };
   }, []);
   const sheet = phone && presentation === 'responsive';
+  useLayoutEffect(() => {
+    if (!open || !touchContext) return;
+    // A held touch opens before its pointer releases. Focus after the portal
+    // mounts and after release's synthetic mouse focus, including reflows.
+    let frame: number;
+    const focusMenu = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (document.activeElement === document.body || document.activeElement === props.anchorRef?.current) focusElement(props.initialFocusRef?.current ?? initial.current);
+      });
+    };
+    const release = (event: PointerEvent) => {if (event.pointerType !== 'mouse') focusMenu();};
+    const blurred = (event: FocusEvent) => {if (event.target instanceof Node && initial.current?.contains(event.target) && event.relatedTarget == null) focusMenu();};
+    focusMenu(); document.addEventListener('pointerup', release, true); document.addEventListener('focusout', blurred, true);
+    return () => {cancelAnimationFrame(frame); document.removeEventListener('pointerup', release, true); document.removeEventListener('focusout', blurred, true);};
+  }, [open, sheet, touchContext, props.initialFocusRef, props.anchorRef]);
   useExclusiveAnchor(sheet && open, onOpenChange);
   const keydown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
