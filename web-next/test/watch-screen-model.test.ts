@@ -11,10 +11,12 @@ import type {FileInfoProjection} from '@core/detail.ts';
 import type {PlaybackOptions, MediaVersion} from '@core/playback-v1/types.ts';
 import type {WebPlaybackAction, WebPlaybackRuntimeSnapshot} from '../src/platform/playback/types.ts';
 import type {QueuePlaybackFence} from '../../packages/player-core/src/index.ts';
-import {PlaybackDock} from '../../packages/player-core/src/index.ts';
+import {PlaybackDock, PlaybackPolicy} from '../../packages/player-core/src/index.ts';
 import {parseTrickplay, trickplayFrameAt} from '@core/trickplay.ts';
 import {createArtworkRuntime} from '../src/kit/artwork/source.ts';
 import {scrubImageStyle, watchPreviewFrame} from '../src/screens/watch/preview.ts';
+import {dispatchWatchMarker} from '../src/screens/watch/policy.ts';
+import {dispatchWatchVersion, watchVersionRows} from '../src/screens/watch/versions.ts';
 
 function previewSet() {
   const id = 'a'.repeat(64);
@@ -109,6 +111,87 @@ test('preview crops use canonical sprite cells and reject missing or inconsisten
   assert.equal(phone.width, 356);
   assert.equal(phone.left, -178);
   for (const image of [{}, {width: 320, height: 180}, {width: NaN, height: 360}]) assert.equal(scrubImageStyle(frame, image, false), null);
+});
+
+test('drawn skip actions carry the current policy marker identity, never a UI-made seek', async () => {
+  const policy = new PlaybackPolicy();
+  policy.begin(fence, [{id: 'intro', kind: 'intro', startSeconds: 60, endSeconds: 120, automaticSafe: true}], 600);
+  const view = policy.update({fence, nowMs: 0, positionSeconds: 80, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {intro: 'ask'}, postPlay: null})!.view;
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown, called = 0;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: () => {}, policyAction: async (captured: QueuePlaybackFence, action: {kind: 'skip' | 'dismiss' | 'undo'; markerId: string}) => {
+    called++; assert.deepEqual(action, {kind: 'skip', markerId: 'intro'}); assert.equal(captured, fence);
+    assert.equal(policy.skip(captured)?.positionSeconds, 119);
+  }};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'other'}), false);
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'intro'}), true);
+  live = snapshot({presentation: {...snapshot().presentation!, policy: {...view, attention: 'owner-stopped'}}});
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'intro'}), false);
+  live = snapshot({fence: {...fence, generation: 2}});
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'skip', markerId: 'intro'}), false);
+  assert.equal(called, 1);
+});
+
+test('a retained Undo action cannot outlive the real current policy offer', async () => {
+  const marker = {id: 'intro', kind: 'intro' as const, startSeconds: 60, endSeconds: 120, automaticSafe: true};
+  const policy = new PlaybackPolicy(), frame = {fence, nowMs: 0, positionSeconds: 80, durationSeconds: 600, rate: 1, playing: true, expanded: true, ended: false, kind: 'episode', modes: {intro: 'auto' as const}, postPlay: null};
+  policy.begin(fence, [marker], 600); policy.update(frame);
+  const view = policy.update({...frame, nowMs: 4000, positionSeconds: 119})!.view;
+  assert.equal(view.undo?.remainingSeconds, 2);
+  const shown = snapshot({presentation: {...snapshot().presentation!, policy: view}});
+  let live = shown, called = 0;
+  const binding = {getSnapshot: () => live, isCurrent: () => true, reportError: () => {}, policyAction: async () => { called++; assert.equal(policy.undoSkip(fence, 4000)?.positionSeconds, 80); }};
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'undo', markerId: 'intro'}), true);
+  live = snapshot({presentation: {...shown.presentation!, policy: policy.update({...frame, nowMs: 6000, positionSeconds: 120})!.view}});
+  assert.equal(await dispatchWatchMarker(binding, shown, {kind: 'undo', markerId: 'intro'}), false);
+  assert.equal(called, 1);
+});
+
+test('the version chooser follows actual grouped options order and permits one remaining failure choice', async () => {
+  const version = (id: string): MediaVersion => ({id, label: 'transport label must not become chooser copy', durationMs: 200000, parts: [{id, index: 0, durationMs: 200000}], video: [], audio: [], subtitles: []});
+  const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [version('failed'), version('remaining')], chapters: [], markers: [], qualities: [], resume: {positionMs: 123456, partIndex: 0}};
+  const choices = {options, versions: options.versions.slice(1), selectedVersionId: 'failed', failedVersionId: 'failed', fence, isCurrent: () => true};
+  const rows = [{id: 'remaining', heading: '1080p', detail: 'Dolby Digital 5.1, 9.8 GB'}];
+  let calls = 0;
+  const binding = {choices, rows, reportError() {}, playVersion: async (request: {choices: typeof choices; versionId: string; signal: AbortSignal}) => {
+    calls++; assert.equal(request.choices, choices); assert.equal(request.choices.options, options);
+    assert.equal(request.versionId, 'remaining'); assert.deepEqual(Object.keys(request).sort(), ['choices', 'signal', 'versionId']);
+  }};
+  assert.equal(watchVersionRows(binding), rows);
+  assert.equal(await dispatchWatchVersion(binding, 'failed', new AbortController().signal), false);
+  assert.equal(await dispatchWatchVersion(binding, 'remaining', new AbortController().signal), true);
+  assert.equal(calls, 1);
+  assert.equal(options.resume?.positionMs, 123456);
+  assert.equal(Object.hasOwn(choices, 'rememberedVersion'), false);
+});
+
+test('a chooser cannot dispatch stale, aborted, reordered or unoffered version rows', async () => {
+  const version = (id: string): MediaVersion => ({id, label: '', durationMs: 1, parts: [{id, index: 0, durationMs: 1}], video: [], audio: [], subtitles: []});
+  const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [version('one'), version('two')], chapters: [], markers: [], qualities: []};
+  let current = true, calls = 0;
+  const choices = {options, versions: options.versions, isCurrent: () => current};
+  const rows = [{id: 'one', heading: '4K Dolby Vision', detail: ''}, {id: 'two', heading: '1080p', detail: ''}];
+  const binding = {choices, rows, reportError() {}, playVersion: async () => { calls++; }};
+  for (const invalid of [rows.toReversed(), rows.slice(1), [{...rows[0]!, id: 'other'}, rows[1]!], [{...rows[0]!, heading: ''}, rows[1]!]]) assert.equal(watchVersionRows({...binding, rows: invalid}), null);
+  assert.equal(watchVersionRows({...binding, choices: {...choices, versions: options.versions.toReversed()}}), null);
+  const abort = new AbortController(); abort.abort();
+  assert.equal(await dispatchWatchVersion(binding, 'one', abort.signal), false);
+  assert.equal(await dispatchWatchVersion(binding, 'other', new AbortController().signal), false);
+  current = false;
+  assert.equal(await dispatchWatchVersion(binding, 'one', new AbortController().signal), false);
+  assert.equal(calls, 0);
+});
+
+test('chooser completion waits for the real start and a closed chooser aborts its retained command', async () => {
+  const version: MediaVersion = {id: 'one', label: '', durationMs: 1, parts: [{id: 'one', index: 0, durationMs: 1}], video: [], audio: [], subtitles: []};
+  const options: PlaybackOptions = {itemId: 'item', kind: 'movie', versions: [version], chapters: [], markers: [], qualities: []};
+  let release = () => {}, settled = false;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const binding = {choices: {options, versions: options.versions, isCurrent: () => true}, rows: [{id: 'one', heading: '1080p', detail: ''}], reportError() {}, playVersion: async () => wait};
+  const abort = new AbortController(), pending = dispatchWatchVersion(binding, 'one', abort.signal).then(started => { settled = true; return started; });
+  await Promise.resolve(); assert.equal(settled, false);
+  abort.abort(); release();
+  assert.equal(await pending, false);
 });
 
 test('File info uses its real bounded endpoint and discards a read after a source change', async () => {
