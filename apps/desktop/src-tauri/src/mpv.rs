@@ -101,7 +101,14 @@ impl Mpv {
         let handle = unsafe { (api.create)() };
         if handle.is_null() { return Err(Error::EngineUnavailable); }
         let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
-        for (key,value) in [("config","no"),("load-scripts","no"),("ytdl","no"),("osc","no"),
+        // mpv compiles these switches out with their corresponding script engines.
+        // Only OPTION_NOT_FOUND means the forbidden feature itself is unavailable;
+        // every other failure still closes initialization.
+        for key in ["load-scripts","ytdl","osc"] {
+            let code=unsafe{(engine.api.option)(engine.handle,c(key)?.as_ptr(),c("no")?.as_ptr())};
+            if code != -5 {status(code)?;}
+        }
+        for (key,value) in [("config","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
             ("idle","yes"),("keep-open","yes"),("access-references","no"),("load-unsafe-playlists","no"),
             ("demuxer-lavf-o","protocol_whitelist=[http,https,tcp,tls,crypto]"),("hwdec","auto-safe"),
@@ -121,10 +128,10 @@ impl Mpv {
                  engine.option("d3d11-output-mode","composition")?;engine.option("d3d11-output-csp","auto")?;}
             }
         }
-        status(unsafe {(engine.api.initialize)(handle)})?;
+        let initialized=unsafe {(engine.api.initialize)(handle)};crate::spike::record("initialize",initialized);status(initialized)?;
         Ok(engine)
     }
-    fn option(&self,name:&str,value:&str)->Result<()> {status(unsafe{(self.api.option)(self.handle,c(name)?.as_ptr(),c(value)?.as_ptr())})}
+    fn option(&self,name:&str,value:&str)->Result<()> {let code=unsafe{(self.api.option)(self.handle,c(name)?.as_ptr(),c(value)?.as_ptr())};if code<0{crate::spike::record(name,code);}status(code)}
     fn set(&self,name:&str,value:&str)->Result<()> {status(unsafe{(self.api.property)(self.handle,c(name)?.as_ptr(),c(value)?.as_ptr())})}
     fn command(&self,args:&[&str])->Result<()> {
         let values=args.iter().map(|x|c(x)).collect::<Result<Vec<_>>>()?;

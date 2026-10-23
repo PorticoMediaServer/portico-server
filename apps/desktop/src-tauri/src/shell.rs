@@ -97,26 +97,40 @@ async fn desktop_observe(window:WebviewWindow,state:tauri::State<'_,EngineState>
     }).await.map_err(|_|Error::EngineFailure)?
 }
 #[tauri::command]
-fn desktop_audio_facts(window:WebviewWindow,state:tauri::State<EngineState>)->Result<crate::audio::AudioFacts> {
+async fn desktop_audio_facts(window:WebviewWindow,state:tauri::State<'_,EngineState>)->Result<crate::audio::AudioFacts> {
     caller(&window)?;
-    Ok(state.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().map_err(|e|*e)?.audio_facts())
+    let native=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
+    tauri::async_runtime::spawn_blocking(move||Ok(native.audio_facts())).await.map_err(|_|Error::EngineFailure)?
 }
 #[tauri::command]
-fn desktop_equalizer(window:WebviewWindow,equalizer:tauri::State<EqualizerState>,engine:tauri::State<EngineState>)->Result<EqualizerSnapshot> {
+async fn desktop_equalizer(window:WebviewWindow)->Result<EqualizerSnapshot> {
     caller(&window)?;
-    let store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
-    let saved=store.as_ref().map_err(|error|*error)?.read()?;
-    let applied=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().map(|native|native.equalizer_matches(&saved.settings)).unwrap_or(false);
-    Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
+    let app=window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let equalizer=app.state::<EqualizerState>();
+        let store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
+        let saved=store.as_ref().map_err(|error|*error)?.read()?;
+        let engine=app.state::<EngineState>();
+        let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+        let applied=native.as_ref().map(|player|player.equalizer_matches(&saved.settings)).unwrap_or(false);
+        Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
+    }).await.map_err(|_|Error::PreferencesUnavailable)?
 }
 #[tauri::command]
-fn desktop_equalizer_change(window:WebviewWindow,equalizer:tauri::State<EqualizerState>,engine:tauri::State<EngineState>,change:EqualizerChange)->Result<EqualizerSnapshot> {
+async fn desktop_equalizer_change(window:WebviewWindow,change:EqualizerChange)->Result<EqualizerSnapshot> {
     caller(&window)?;
-    let mut store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
-    let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
-    let saved=store.as_mut().map_err(|error|*error)?.change(change,|settings|native.as_ref().map(|player|player.apply_equalizer(settings)).unwrap_or(Ok(())))?;
-    let applied=native.as_ref().map(|player|player.equalizer_matches(&saved.settings)).unwrap_or(false);
-    Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
+    let app=window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        // Resolve the renderer only after taking the store lock, as initialization does.
+        // A request queued before initialization must apply to the renderer now present.
+        let equalizer=app.state::<EqualizerState>();
+        let mut store=equalizer.0.lock().map_err(|_|Error::PreferencesUnavailable)?;
+        let engine=app.state::<EngineState>();
+        let native=engine.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+        let saved=store.as_mut().map_err(|error|*error)?.change(change,|settings|native.as_ref().map(|player|player.apply_equalizer(settings)).unwrap_or(Ok(())))?;
+        let applied=native.as_ref().map(|player|player.equalizer_matches(&saved.settings)).unwrap_or(false);
+        Ok(EqualizerSnapshot{revision:saved.revision,settings:saved.settings,applied})
+    }).await.map_err(|_|Error::PreferencesUnavailable)?
 }
 #[tauri::command]
 fn desktop_window_state(window:WebviewWindow,state:tauri::State<Arc<crate::window::ChromeState>>)->Result<crate::window::WindowSnapshot>{
@@ -209,6 +223,7 @@ pub fn run() {
                 .transparent(true)
                 .on_navigation(|url|boundary::local_origin("main",url.as_str(),cfg!(debug_assertions)).is_ok())
                 .on_page_load(|window,payload| {
+                    crate::spike::record(if payload.event()==tauri::webview::PageLoadEvent::Finished{"page-finished"}else{"page-started"},0);
                     if cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_REPORT").is_some()&&payload.event()==tauri::webview::PageLoadEvent::Finished {
                         if std::env::var_os("PORTICO_SPIKE_MEDIA").is_some(){let _=window.eval(r#"window.__porticoNativeProbe=setInterval(()=>window.__TAURI_INTERNALS__.invoke('desktop_observe').then(o=>o.generation?window.__TAURI_INTERNALS__.invoke('desktop_surface',{generation:o.generation,bounds:{x:0,y:0,width:innerWidth,height:innerHeight}}):undefined).catch(()=>{}),200);setTimeout(()=>clearInterval(window.__porticoNativeProbe),9000)"#);}
                         let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight}})}requestAnimationFrame(measure)},3000)"#);
@@ -217,6 +232,31 @@ pub fn run() {
             let main=main.build()?;
             let handle=app.handle().clone();
             let lib=library(app.handle()).and_then(|p|Api::open(&p));
+            #[cfg(target_os="macos")]
+            {
+                let window=main.clone();
+                tauri::async_runtime::spawn_blocking(move||{
+                    crate::spike::record("worker-started",0);
+                    // macvk initializes Cocoa through DispatchQueue.main.sync. Never wait for
+                    // its client API on AppKit's main thread, including the first VO load.
+                    let native=lib.and_then(|api|Mpv::new(api,&AudioOutput::default(),crate::mpv::VideoTarget::NativeView(0)));
+                    crate::spike::record("worker-engine",if native.is_ok(){0}else{-1});
+                    let equalizer=handle.state::<EqualizerState>();let preferences=equalizer.0.lock();
+                    let result=native.and_then(|native|{
+                        let store=preferences.as_ref().map_err(|_|Error::PreferencesUnavailable)?.as_ref().map_err(|e|*e)?;
+                        native.apply_equalizer(&store.read()?.settings)?;Ok(native)
+                    });
+                    *handle.state::<EngineState>().0.lock().unwrap_or_else(|e|e.into_inner())=result.clone();
+                    drop(preferences);
+                    if let Ok(native)=result{
+                        let attached=native.clone();
+                        let _=window.with_webview(move|webview|{let _=surface::attach_existing(&webview,&attached);});
+                        #[cfg(debug_assertions)]
+                        if let Some(path)=std::env::var_os("PORTICO_SPIKE_MEDIA"){let _=native.load_spike_fixture(&PathBuf::from(path));}
+                    }
+                });
+            }
+            #[cfg(not(target_os="macos"))]
             main.with_webview(move |webview| {
                 // Keep the same store->engine lock order as preference commands. A setting
                 // saved while the webview starts must not be replaced by an earlier copy.
@@ -231,7 +271,11 @@ pub fn run() {
                 #[cfg(debug_assertions)]
                 if let Ok(engine)=&result {if let Some(path)=std::env::var_os("PORTICO_SPIKE_MEDIA"){
                     let ready=surface::bounds(&webview,crate::boundary::SurfaceBounds{x:0.0,y:0.0,width:1440.0,height:900.0}).is_ok();
-                    engine.set_geometry_ready(ready);let _=engine.load_spike_fixture(&PathBuf::from(path));
+                    engine.set_geometry_ready(ready);
+                    let native=engine.clone();
+                    // Client API calls may wait for the GL renderer. Never make them on
+                    // the thread that owns and services that render context.
+                    tauri::async_runtime::spawn_blocking(move||{let _=native.load_spike_fixture(&PathBuf::from(path));});
                 }}
                 *handle.state::<EngineState>().0.lock().unwrap_or_else(|e|e.into_inner())=result;
             })?;

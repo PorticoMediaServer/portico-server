@@ -3,12 +3,14 @@ use crate::{audio::AudioOutput,boundary::{Error,Result},mpv::{Api,Mpv,VideoTarge
 use gtk::{prelude::*,glib};
 use std::{cell::RefCell,ffi::{c_char,c_int,c_void},ptr,rc::Rc,sync::Arc,time::Duration};
 use webkit2gtk::WebViewExt;
-use std::sync::{atomic::{AtomicU64,Ordering},OnceLock};
+use std::sync::{atomic::{AtomicU64,AtomicU32,Ordering},OnceLock};
 static RENDER_CALLS:AtomicU64=AtomicU64::new(0);
 static FRAMES:AtomicU64=AtomicU64::new(0);
 static COLORED:AtomicU64=AtomicU64::new(0);
+static PIXEL:AtomicU32=AtomicU32::new(0);
+static READ_ERROR:AtomicU32=AtomicU32::new(0);
 static RENDERER:OnceLock<String>=OnceLock::new();
-pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.load(Ordering::Relaxed),"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
+pub fn proof()->serde_json::Value{serde_json::json!({"renderCalls":RENDER_CALLS.load(Ordering::Relaxed),"renderedFrames":FRAMES.load(Ordering::Relaxed),"nonBlackFrames":COLORED.load(Ordering::Relaxed),"debugCenterRgba":PIXEL.load(Ordering::Relaxed).to_be_bytes(),"debugReadError":READ_ERROR.load(Ordering::Relaxed),"renderer":RENDERER.get(),"output":"SDR OpenGL","hdrVerified":false})}
 
 #[repr(C)]struct Param{kind:c_int,data:*mut c_void}
 #[repr(C)]struct Init{get:unsafe extern "C" fn(*mut c_void,*const c_char)->*mut c_void,context:*mut c_void}
@@ -76,8 +78,20 @@ pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&Audi
                     if actual_frame{FRAMES.fetch_add(1,Ordering::Relaxed);ctx.engine.frame_drawn(generation);}
                     #[cfg(debug_assertions)]
                     {let p=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glReadPixels".as_ptr());
-                     if !p.is_null(){let read:unsafe extern "C" fn(i32,i32,i32,i32,u32,u32,*mut c_void)=std::mem::transmute(p);let mut pixel=[0u8;4];
-                       read(target.width/2,target.height/2,1,1,0x1908,0x1401,pixel.as_mut_ptr().cast());if actual_frame&&pixel[..3].iter().any(|x|*x>12){COLORED.fetch_add(1,Ordering::Relaxed);}}}
+                     let bind=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glBindFramebuffer".as_ptr());
+                     let error=get_proc((&*ctx.gl as *const libloading::Library).cast_mut().cast(),c"glGetError".as_ptr());
+                     if !p.is_null()&&!bind.is_null()&&!error.is_null(){
+                       let read:unsafe extern "C" fn(i32,i32,i32,i32,u32,u32,*mut c_void)=std::mem::transmute(p);
+                       let bind:unsafe extern "C" fn(u32,u32)=std::mem::transmute(bind);
+                       let error:unsafe extern "C" fn()->u32=std::mem::transmute(error);
+                       let mut previous=0;get(0x8CAA,&mut previous);
+                       // mpv may change the read target. Inspect the actual GTK output FBO,
+                       // then restore GL state instead of reading the default framebuffer.
+                       bind(0x8CA8,target.id as u32);let _=error();let mut pixel=[0u8;4];
+                       read(target.width/2,target.height/2,1,1,0x1908,0x1401,pixel.as_mut_ptr().cast());
+                       let code=error();READ_ERROR.store(code,Ordering::Relaxed);bind(0x8CA8,previous as u32);
+                       if actual_frame&&code==0{PIXEL.store(u32::from_be_bytes(pixel),Ordering::Relaxed);if pixel[..3].iter().any(|x|*x>12){COLORED.fetch_add(1,Ordering::Relaxed);}}
+                     }}
                 }
             }
         }}

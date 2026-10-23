@@ -1,6 +1,6 @@
 //! mpv's macvk VO owns its NSWindow and Metal layer. AppKit attaches that window below
 //! the unchanged WKWebView window. HDR remains an actual monitor/output qualification.
-use crate::{audio::AudioOutput,boundary::{Error,Result,SurfaceBounds},mpv::{Api,Mpv,VideoTarget}};
+use crate::{boundary::{Error,Result,SurfaceBounds},mpv::Mpv};
 use std::{cell::RefCell,ffi::{c_char,c_void,CStr},sync::{Arc,Weak}};
 type Id=*mut c_void;
 type Sel=*mut c_void;
@@ -42,14 +42,13 @@ impl Surface{
 impl Drop for Surface{fn drop(&mut self){unsafe{self.detach();call(self.parent as Id,c"release");}}}
 thread_local!{static SURFACE:RefCell<Option<Surface>>=const{RefCell::new(None)};}
 pub fn proof()->serde_json::Value{SURFACE.with(|slot|serde_json::json!({"output":"macvk Metal NSWindow below WKWebView window","attached":slot.borrow().as_ref().is_some_and(|s|s.child!=0),"hdrVerified":false,"renderedFrames":null}))}
-pub fn attach(webview:&tauri::webview::PlatformWebview,api:Arc<Api>,output:&AudioOutput)->Result<Arc<Mpv>>{
+pub fn attach_existing(webview:&tauri::webview::PlatformWebview,engine:&Arc<Mpv>)->Result<()>{
     unsafe{
         let web=webview.inner();if web.is_null(){return Err(Error::Unsupported)}
         let parent=get(web,c"window");if parent.is_null(){return Err(Error::Unsupported)}
-        let engine=Mpv::new(api,output,VideoTarget::NativeView(parent as usize))?;
         call(parent,c"retain");
-        SURFACE.with(|slot|*slot.borrow_mut()=Some(Surface{parent:parent as usize,child:0,engine:Arc::downgrade(&engine)}));
-        Ok(engine)
+        SURFACE.with(|slot|*slot.borrow_mut()=Some(Surface{parent:parent as usize,child:0,engine:Arc::downgrade(engine)}));
+        Ok(())
     }
 }
 pub fn bounds(webview:&tauri::webview::PlatformWebview,bounds:SurfaceBounds)->Result<()>{
