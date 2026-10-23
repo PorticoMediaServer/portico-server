@@ -43,6 +43,9 @@ type CaptureCheckpoint struct {
 	SourceRevision    int64  // stamped by the scheduler, never accepted from a client
 }
 type CaptureResult struct {
+	// LayoutReceipt binds a real external filename to this exact sealed source.
+	// Catalog playback retains its original occurrence-private asset authority.
+	LayoutReceipt *RecordingLayoutReceipt `json:"-"`
 	CaptureCheckpoint
 	Path                              string // canonical private object path; never serialized to a viewer
 	Root                              string // this owner's managed Recorded TV root
