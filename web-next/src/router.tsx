@@ -31,7 +31,9 @@ export const signInRoute = createRoute({getParentRoute: () => rootRoute, compone
 export const togetherRoute = createRoute({getParentRoute: () => rootRoute, component: screen('together'), path: '/watch-together'});
 export const feedbackRoute = createRoute({getParentRoute: () => rootRoute, component: screen('feedback'), path: '/feedback'});
 export const helpRoute = createRoute({getParentRoute: () => rootRoute, component: screen('help'), path: '/help'});
-const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, signInRoute, togetherRoute, feedbackRoute, helpRoute];
+export const personRoute = createRoute({getParentRoute: () => rootRoute, component: screen('person'), path: '/person/$personId'});
+export const readRoute = createRoute({getParentRoute: () => rootRoute, component: screen('read'), path: '/read/$itemId'});
+const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, signInRoute, togetherRoute, feedbackRoute, helpRoute, personRoute, readRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
