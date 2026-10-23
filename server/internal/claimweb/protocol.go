@@ -81,7 +81,7 @@ func validPurposeBinding(p, current, previous, registration string) bool {
 	case "setup":
 		return current == "" && previous == ""
 	case "switch":
-		return id.MatchString(current) && previous == ""
+		return (current == "" || id.MatchString(current)) && previous == ""
 	case "change-owner":
 		return id.MatchString(current) && (previous == "admin" || previous == "member" || previous == "remove")
 	}

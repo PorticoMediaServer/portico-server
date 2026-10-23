@@ -6618,9 +6618,6 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "blockMemberAccessTokens": {
-            "type": "boolean"
-          },
           "connectionLimit": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6634,9 +6631,6 @@ export const schemas = {
           },
           "customCertificatePath": {
             "type": "string"
-          },
-          "deviceApprovalRequired": {
-            "type": "boolean"
           },
           "diagnosticDays": {
             "maximum": 9007199254740991,
@@ -6858,7 +6852,6 @@ export const schemas = {
           "jobDays",
           "playHistoryDays",
           "apiRequestsPerMinute",
-          "blockMemberAccessTokens",
           "home.communityActivityEnabled",
           "updates.releaseChannel",
           "updates.feedUrl",
@@ -6880,7 +6873,6 @@ export const schemas = {
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain",
-          "deviceApprovalRequired",
           "logLevel",
           "logRetention"
         ],
@@ -6935,9 +6927,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "blockMemberAccessTokens": {
-                "type": "boolean"
-              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -6951,9 +6940,6 @@ export const schemas = {
               },
               "customCertificatePath": {
                 "type": "string"
-              },
-              "deviceApprovalRequired": {
-                "type": "boolean"
               },
               "diagnosticDays": {
                 "maximum": 9007199254740991,
@@ -7175,7 +7161,6 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
-              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -7197,7 +7182,6 @@ export const schemas = {
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
-              "deviceApprovalRequired",
               "logLevel",
               "logRetention"
             ],
@@ -7268,9 +7252,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "blockMemberAccessTokens": {
-                "type": "boolean"
-              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7284,9 +7265,6 @@ export const schemas = {
               },
               "customCertificatePath": {
                 "type": "string"
-              },
-              "deviceApprovalRequired": {
-                "type": "boolean"
               },
               "diagnosticDays": {
                 "maximum": 9007199254740991,
@@ -7508,7 +7486,6 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
-              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -7530,7 +7507,6 @@ export const schemas = {
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
-              "deviceApprovalRequired",
               "logLevel",
               "logRetention"
             ],
@@ -15265,9 +15241,6 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "trust": {
-        "type": "string"
-      },
       "username": {
         "type": "string"
       }
@@ -15280,7 +15253,6 @@ export const schemas = {
       "platform",
       "app",
       "appVersion",
-      "trust",
       "firstSeenAt",
       "lastSeenAt",
       "revision",
@@ -15296,9 +15268,6 @@ export const schemas = {
   },
   "GetAdminAccessDevicesResponse": {
     "properties": {
-      "approvalRequired": {
-        "type": "boolean"
-      },
       "items": {
         "items": {
           "properties": {
@@ -15343,9 +15312,6 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
-            "trust": {
-              "type": "string"
-            },
             "username": {
               "type": "string"
             }
@@ -15358,7 +15324,6 @@ export const schemas = {
             "platform",
             "app",
             "appVersion",
-            "trust",
             "firstSeenAt",
             "lastSeenAt",
             "revision",
@@ -15380,7 +15345,6 @@ export const schemas = {
     },
     "required": [
       "limit",
-      "approvalRequired",
       "items"
     ],
     "type": "object"
@@ -15550,6 +15514,12 @@ export const schemas = {
         "type": "string"
       },
       "disabledReason": {
+        "type": "string"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "email": {
         "type": "string"
       },
       "hostedAccountId": {
@@ -15732,6 +15702,7 @@ export const schemas = {
     "required": [
       "accountId",
       "username",
+      "displayName",
       "profileId",
       "role",
       "disabled",
@@ -15928,6 +15899,9 @@ export const schemas = {
             "email": {
               "type": "string"
             },
+            "hasMoveCode": {
+              "type": "boolean"
+            },
             "lastActiveAt": {
               "type": "string"
             },
@@ -15984,6 +15958,7 @@ export const schemas = {
             "limitsRevision",
             "disabled",
             "status",
+            "hasMoveCode",
             "allowedLibraries",
             "libraryNames",
             "maxStreams",
@@ -29948,9 +29923,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "blockMemberAccessTokens": {
-                "type": "boolean"
-              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -29964,9 +29936,6 @@ export const schemas = {
               },
               "customCertificatePath": {
                 "type": "string"
-              },
-              "deviceApprovalRequired": {
-                "type": "boolean"
               },
               "diagnosticDays": {
                 "maximum": 9007199254740991,
@@ -30188,7 +30157,6 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
-              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -30210,7 +30178,6 @@ export const schemas = {
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
-              "deviceApprovalRequired",
               "logLevel",
               "logRetention"
             ],
@@ -30281,9 +30248,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "blockMemberAccessTokens": {
-                "type": "boolean"
-              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -30297,9 +30261,6 @@ export const schemas = {
               },
               "customCertificatePath": {
                 "type": "string"
-              },
-              "deviceApprovalRequired": {
-                "type": "boolean"
               },
               "diagnosticDays": {
                 "maximum": 9007199254740991,
@@ -30521,7 +30482,6 @@ export const schemas = {
               "jobDays",
               "playHistoryDays",
               "apiRequestsPerMinute",
-              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
@@ -30543,7 +30503,6 @@ export const schemas = {
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
-              "deviceApprovalRequired",
               "logLevel",
               "logRetention"
             ],
@@ -31606,9 +31565,6 @@ export const schemas = {
             "appVersion": {
               "type": "string"
             },
-            "approvalState": {
-              "type": "string"
-            },
             "authority": {
               "type": "string"
             },
@@ -31646,9 +31602,6 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
-            },
-            "trusted": {
-              "type": "boolean"
             }
           },
           "required": [
@@ -31662,8 +31615,6 @@ export const schemas = {
             "ip",
             "firstSeen",
             "lastSeen",
-            "trusted",
-            "approvalState",
             "rememberAccount",
             "current",
             "sessions"
@@ -32148,16 +32099,12 @@ export const schemas = {
   },
   "GetDirectRegistrationPolicyResponse": {
     "properties": {
-      "deviceApproval": {
-        "type": "string"
-      },
       "selfRegistration": {
         "type": "string"
       }
     },
     "required": [
-      "selfRegistration",
-      "deviceApproval"
+      "selfRegistration"
     ],
     "type": "object"
   },
@@ -135242,6 +135189,98 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSignInMoveRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSignInMoveResponse": {
+    "properties": {
+      "move": {
+        "nullable": true,
+        "properties": {
+          "devices": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "from": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invitations": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ownAddressRequired": {
+            "type": "boolean"
+          },
+          "people": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "profiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "startOver": {
+            "type": "boolean"
+          },
+          "to": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "startOver",
+          "stage",
+          "revision",
+          "people",
+          "invitations",
+          "profiles",
+          "waiting",
+          "serverName",
+          "ownAddressRequired"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "move"
+    ],
+    "type": "object"
+  },
   "GetStorageMountsRequest": {
     "properties": {},
     "required": [],
@@ -137104,6 +137143,14 @@ export const schemas = {
       "id": {
         "type": "string"
       },
+      "move": {
+        "enum": [
+          "to_portico",
+          "to_local"
+        ],
+        "nullable": true,
+        "type": "string"
+      },
       "name": {
         "type": "string"
       },
@@ -137125,6 +137172,7 @@ export const schemas = {
       "id",
       "name",
       "signIn",
+      "move",
       "setupRequired",
       "hostedConfigured",
       "hostedAttached",
@@ -142011,9 +142059,6 @@ export const schemas = {
       },
       "rememberAccount": {
         "type": "boolean"
-      },
-      "trusted": {
-        "type": "boolean"
       }
     },
     "required": [],
@@ -142025,9 +142070,6 @@ export const schemas = {
         "type": "string"
       },
       "appVersion": {
-        "type": "string"
-      },
-      "approvalState": {
         "type": "string"
       },
       "authority": {
@@ -142067,9 +142109,6 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "trusted": {
-        "type": "boolean"
       }
     },
     "required": [
@@ -142083,8 +142122,6 @@ export const schemas = {
       "ip",
       "firstSeen",
       "lastSeen",
-      "trusted",
-      "approvalState",
       "rememberAccount",
       "current",
       "sessions"
@@ -144184,115 +144221,6 @@ export const schemas = {
           "canManage",
           "capabilities",
           "challenge"
-        ],
-        "type": "object"
-      },
-      {
-        "properties": {
-          "account": {
-            "properties": {
-              "allowedLibraries": {
-                "type": "null"
-              },
-              "disabled": {
-                "type": "boolean"
-              },
-              "disabledAt": {
-                "type": "string"
-              },
-              "disabledReason": {
-                "type": "string"
-              },
-              "hostedAccountId": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "primaryProfileId": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "role": {
-                "type": "string"
-              },
-              "username": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "username",
-              "primaryProfileId",
-              "role",
-              "revision",
-              "disabled",
-              "allowedLibraries"
-            ],
-            "type": "object"
-          },
-          "authority": {
-            "type": "string"
-          },
-          "canManage": {
-            "type": "boolean"
-          },
-          "capabilities": {
-            "properties": {
-              "manageAccount": {
-                "type": "boolean"
-              },
-              "managePeople": {
-                "type": "boolean"
-              },
-              "manageServer": {
-                "type": "boolean"
-              },
-              "manageSignIn": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "manageAccount",
-              "managePeople",
-              "manageServer",
-              "manageSignIn"
-            ],
-            "type": "object"
-          },
-          "custodyPending": {
-            "type": "boolean"
-          },
-          "deviceApprovalPending": {
-            "type": "boolean"
-          },
-          "deviceId": {
-            "type": "string"
-          },
-          "installationId": {
-            "type": "string"
-          },
-          "profiles": {
-            "type": "null"
-          },
-          "serverId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "authority",
-          "serverId",
-          "account",
-          "profiles",
-          "canManage",
-          "capabilities",
-          "deviceApprovalPending",
-          "deviceId",
-          "installationId"
         ],
         "type": "object"
       }
@@ -150733,6 +150661,688 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAuthMoveCodeRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "type": "object"
+  },
+  "PostAuthMoveCodeResponse": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "signIn": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "username",
+      "signIn",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
+  "PostAuthMoveLocalRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "username",
+      "password"
+    ],
+    "type": "object"
+  },
+  "PostAuthMoveLocalResponse": {
+    "properties": {
+      "account": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryProfileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "primaryProfileId",
+          "role",
+          "revision",
+          "disabled",
+          "allowedLibraries"
+        ],
+        "type": "object"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "canManage": {
+        "type": "boolean"
+      },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
+      "challenge": {
+        "properties": {
+          "expiresAt": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "custodyPending": {
+        "type": "boolean"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "passwordChangeRequired": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "allowedLibraries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "art": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRequired": {
+              "type": "boolean"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "primary": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "primary",
+            "position",
+            "art",
+            "revision",
+            "pinRevision",
+            "pinRequired",
+            "allowedLibraries"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "authorizationHorizon": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "authority",
+      "serverId",
+      "account",
+      "profiles",
+      "canManage",
+      "capabilities"
+    ],
+    "type": "object"
+  },
+  "PostAuthMovePasswordRequest": {
+    "properties": {
+      "password": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "username",
+      "password"
+    ],
+    "type": "object"
+  },
+  "PostAuthMovePasswordResponse": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "ticket": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "ticket",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
+  "PostAuthMovePorticoRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "porticoIdentity": {
+        "properties": {
+          "certificate": {
+            "properties": {
+              "keyId": {
+                "type": "string"
+              },
+              "notAfter": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "notBefore": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revoked": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keyId",
+              "publicKey",
+              "purpose",
+              "notBefore",
+              "notAfter",
+              "revision",
+              "revoked",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature",
+          "keyId"
+        ],
+        "type": "object"
+      },
+      "ticket": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "porticoIdentity"
+    ],
+    "type": "object"
+  },
+  "PostAuthMovePorticoResponse": {
+    "properties": {
+      "account": {
+        "properties": {
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "primaryProfileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "primaryProfileId",
+          "role",
+          "revision",
+          "disabled",
+          "allowedLibraries"
+        ],
+        "type": "object"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "canManage": {
+        "type": "boolean"
+      },
+      "capabilities": {
+        "properties": {
+          "manageAccount": {
+            "type": "boolean"
+          },
+          "managePeople": {
+            "type": "boolean"
+          },
+          "manageServer": {
+            "type": "boolean"
+          },
+          "manageSignIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "manageAccount",
+          "managePeople",
+          "manageServer",
+          "manageSignIn"
+        ],
+        "type": "object"
+      },
+      "challenge": {
+        "properties": {
+          "expiresAt": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "custodyPending": {
+        "type": "boolean"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "passwordChangeRequired": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "allowedLibraries": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "art": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRequired": {
+              "type": "boolean"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "primary": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "primary",
+            "position",
+            "art",
+            "revision",
+            "pinRevision",
+            "pinRequired",
+            "allowedLibraries"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resetFileOwnerSession": {
+        "type": "boolean"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "authorizationHorizon": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "serverIdentity": {
+            "properties": {
+              "fingerprint": {
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "publicKey",
+              "fingerprint"
+            ],
+            "type": "object"
+          },
+          "sessionFamilyId": {
+            "type": "string"
+          },
+          "tokenGeneration": {
+            "type": "string"
+          },
+          "viewer": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "profileId",
+              "serverId",
+              "authority",
+              "role"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accessToken",
+          "deviceId",
+          "installationId",
+          "expiresAt",
+          "viewer",
+          "sessionFamilyId",
+          "tokenGeneration",
+          "authorizationHorizon"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "authority",
+      "serverId",
+      "account",
+      "profiles",
+      "canManage",
+      "capabilities"
+    ],
+    "type": "object"
+  },
   "PostAuthOwnerResetRequestRequest": {
     "properties": {
       "username": {
@@ -151445,9 +152055,6 @@ export const schemas = {
       "custodyPending": {
         "type": "boolean"
       },
-      "deviceApprovalPending": {
-        "type": "boolean"
-      },
       "deviceId": {
         "type": "string"
       },
@@ -151826,9 +152433,6 @@ export const schemas = {
       "custodyPending": {
         "type": "boolean"
       },
-      "deviceApprovalPending": {
-        "type": "boolean"
-      },
       "deviceId": {
         "type": "string"
       },
@@ -152160,9 +152764,6 @@ export const schemas = {
         "type": "object"
       },
       "custodyPending": {
-        "type": "boolean"
-      },
-      "deviceApprovalPending": {
         "type": "boolean"
       },
       "deviceId": {
@@ -152567,89 +153168,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "PostDeviceApprovalRequest": {
-    "properties": {
-      "approved": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "approved"
-    ],
-    "type": "object"
-  },
-  "PostDeviceApprovalResponse": {
-    "properties": {
-      "app": {
-        "type": "string"
-      },
-      "appVersion": {
-        "type": "string"
-      },
-      "approvalState": {
-        "type": "string"
-      },
-      "authority": {
-        "type": "string"
-      },
-      "current": {
-        "type": "boolean"
-      },
-      "firstSeen": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "installationId": {
-        "type": "string"
-      },
-      "ip": {
-        "type": "string"
-      },
-      "lastProfileId": {
-        "type": "string"
-      },
-      "lastSeen": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "platform": {
-        "type": "string"
-      },
-      "rememberAccount": {
-        "type": "boolean"
-      },
-      "sessions": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "trusted": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "id",
-      "authority",
-      "installationId",
-      "name",
-      "platform",
-      "app",
-      "appVersion",
-      "ip",
-      "firstSeen",
-      "lastSeen",
-      "trusted",
-      "approvalState",
-      "rememberAccount",
-      "current",
-      "sessions"
-    ],
-    "type": "object"
-  },
   "PostDeviceRequest": {
     "properties": {
       "app": {
@@ -152685,9 +153203,6 @@ export const schemas = {
       "appVersion": {
         "type": "string"
       },
-      "approvalState": {
-        "type": "string"
-      },
       "authority": {
         "type": "string"
       },
@@ -152725,9 +153240,6 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "trusted": {
-        "type": "boolean"
       }
     },
     "required": [
@@ -152741,8 +153253,6 @@ export const schemas = {
       "ip",
       "firstSeen",
       "lastSeen",
-      "trusted",
-      "approvalState",
       "rememberAccount",
       "current",
       "sessions"
@@ -152765,6 +153275,26 @@ export const schemas = {
     "type": "object"
   },
   "PostDeviceSessionBindingResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostDirectMemberDeviceSignOutRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostDirectMemberDeviceSignOutResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostDirectMemberDevicesSignOutRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostDirectMemberDevicesSignOutResponse": {
     "properties": {},
     "required": [],
     "type": "object"
@@ -154164,9 +154694,6 @@ export const schemas = {
         "type": "object"
       },
       "custodyPending": {
-        "type": "boolean"
-      },
-      "deviceApprovalPending": {
         "type": "boolean"
       },
       "deviceId": {
@@ -165849,9 +166376,6 @@ export const schemas = {
       "custodyPending": {
         "type": "boolean"
       },
-      "deviceApprovalPending": {
-        "type": "boolean"
-      },
       "deviceId": {
         "type": "string"
       },
@@ -166276,6 +166800,560 @@ export const schemas = {
     "required": [
       "showId",
       "status"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveCancelRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveCancelResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostSignInMoveCodesRequest": {
+    "properties": {
+      "accountIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "accountIds"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveCodesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accountId",
+            "username",
+            "code",
+            "expiresAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveConfirmRequest": {
+    "properties": {
+      "confirmation": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "moveId": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "moveId",
+      "expectedRevision",
+      "confirmation",
+      "username",
+      "password"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveConfirmResponse": {
+    "properties": {
+      "move": {
+        "properties": {
+          "devices": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "from": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invitations": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ownAddressRequired": {
+            "type": "boolean"
+          },
+          "people": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "profiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "startOver": {
+            "type": "boolean"
+          },
+          "to": {
+            "enum": [
+              "portico",
+              "local"
+            ],
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "from",
+          "to",
+          "startOver",
+          "stage",
+          "revision",
+          "people",
+          "invitations",
+          "profiles",
+          "waiting",
+          "serverName",
+          "ownAddressRequired"
+        ],
+        "type": "object"
+      },
+      "signIn": {
+        "properties": {
+          "account": {
+            "properties": {
+              "allowedLibraries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "disabledAt": {
+                "type": "string"
+              },
+              "disabledReason": {
+                "type": "string"
+              },
+              "hostedAccountId": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "primaryProfileId": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "role": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "primaryProfileId",
+              "role",
+              "revision",
+              "disabled",
+              "allowedLibraries"
+            ],
+            "type": "object"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "properties": {
+              "manageAccount": {
+                "type": "boolean"
+              },
+              "managePeople": {
+                "type": "boolean"
+              },
+              "manageServer": {
+                "type": "boolean"
+              },
+              "manageSignIn": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "manageAccount",
+              "managePeople",
+              "manageServer",
+              "manageSignIn"
+            ],
+            "type": "object"
+          },
+          "challenge": {
+            "properties": {
+              "expiresAt": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "expiresAt"
+            ],
+            "type": "object"
+          },
+          "custodyPending": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "installationId": {
+            "type": "string"
+          },
+          "passwordChangeRequired": {
+            "type": "boolean"
+          },
+          "profiles": {
+            "items": {
+              "properties": {
+                "allowedLibraries": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "art": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRequired": {
+                  "type": "boolean"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "primary": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "primary",
+                "position",
+                "art",
+                "revision",
+                "pinRevision",
+                "pinRequired",
+                "allowedLibraries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "resetFileOwnerSession": {
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "session": {
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "authorizationHorizon": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "installationId": {
+                "type": "string"
+              },
+              "refreshToken": {
+                "type": "string"
+              },
+              "serverIdentity": {
+                "properties": {
+                  "fingerprint": {
+                    "type": "string"
+                  },
+                  "publicKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "publicKey",
+                  "fingerprint"
+                ],
+                "type": "object"
+              },
+              "sessionFamilyId": {
+                "type": "string"
+              },
+              "tokenGeneration": {
+                "type": "string"
+              },
+              "viewer": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "profileId",
+                  "serverId",
+                  "authority",
+                  "role"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "accessToken",
+              "deviceId",
+              "installationId",
+              "expiresAt",
+              "viewer",
+              "sessionFamilyId",
+              "tokenGeneration",
+              "authorizationHorizon"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "authority",
+          "serverId",
+          "account",
+          "profiles",
+          "canManage",
+          "capabilities"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "PostSignInMoveFinishRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostSignInMoveFinishResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostSignInMovePreviewRequest": {
+    "properties": {
+      "startOver": {
+        "type": "boolean"
+      },
+      "to": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "to",
+      "startOver"
+    ],
+    "type": "object"
+  },
+  "PostSignInMovePreviewResponse": {
+    "properties": {
+      "devices": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "from": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "invitations": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "ownAddressRequired": {
+        "type": "boolean"
+      },
+      "people": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "profiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverName": {
+        "type": "string"
+      },
+      "stage": {
+        "type": "string"
+      },
+      "startOver": {
+        "type": "boolean"
+      },
+      "to": {
+        "enum": [
+          "portico",
+          "local"
+        ],
+        "type": "string"
+      },
+      "waiting": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "from",
+      "to",
+      "startOver",
+      "stage",
+      "revision",
+      "people",
+      "invitations",
+      "profiles",
+      "waiting",
+      "serverName",
+      "ownAddressRequired"
     ],
     "type": "object"
   },
@@ -168832,94 +169910,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "PutAdminAccessDeviceTrustRequest": {
-    "properties": {
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "operationId": {
-        "type": "string"
-      },
-      "trust": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "expectedRevision",
-      "operationId",
-      "trust"
-    ],
-    "type": "object"
-  },
-  "PutAdminAccessDeviceTrustResponse": {
-    "properties": {
-      "accountId": {
-        "type": "string"
-      },
-      "app": {
-        "type": "string"
-      },
-      "appVersion": {
-        "type": "string"
-      },
-      "firstSeenAt": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "lastNetwork": {
-        "type": "string"
-      },
-      "lastSeenAt": {
-        "type": "string"
-      },
-      "liveState": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "platform": {
-        "type": "string"
-      },
-      "profileId": {
-        "type": "string"
-      },
-      "profileName": {
-        "type": "string"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "trust": {
-        "type": "string"
-      },
-      "username": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "id",
-      "accountId",
-      "username",
-      "name",
-      "platform",
-      "app",
-      "appVersion",
-      "trust",
-      "firstSeenAt",
-      "lastSeenAt",
-      "revision",
-      "lastNetwork",
-      "liveState"
-    ],
-    "type": "object"
-  },
   "PutAdminAccessInvitationRequest": {
     "properties": {
       "allowedLibraries": {
@@ -169050,6 +170040,12 @@ export const schemas = {
         "type": "string"
       },
       "disabledReason": {
+        "type": "string"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "email": {
         "type": "string"
       },
       "hostedAccountId": {
@@ -169232,6 +170228,7 @@ export const schemas = {
     "required": [
       "accountId",
       "username",
+      "displayName",
       "profileId",
       "role",
       "disabled",
@@ -169590,6 +170587,12 @@ export const schemas = {
       "disabledReason": {
         "type": "string"
       },
+      "displayName": {
+        "type": "string"
+      },
+      "email": {
+        "type": "string"
+      },
       "hostedAccountId": {
         "type": "string"
       },
@@ -169770,6 +170773,7 @@ export const schemas = {
     "required": [
       "accountId",
       "username",
+      "displayName",
       "profileId",
       "role",
       "disabled",
@@ -172498,31 +173502,23 @@ export const schemas = {
   },
   "PutDirectRegistrationPolicyRequest": {
     "properties": {
-      "deviceApproval": {
-        "type": "string"
-      },
       "selfRegistration": {
         "type": "string"
       }
     },
     "required": [
-      "selfRegistration",
-      "deviceApproval"
+      "selfRegistration"
     ],
     "type": "object"
   },
   "PutDirectRegistrationPolicyResponse": {
     "properties": {
-      "deviceApproval": {
-        "type": "string"
-      },
       "selfRegistration": {
         "type": "string"
       }
     },
     "required": [
-      "selfRegistration",
-      "deviceApproval"
+      "selfRegistration"
     ],
     "type": "object"
   },

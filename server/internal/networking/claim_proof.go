@@ -41,24 +41,28 @@ type Challenge struct {
 	ExpiresAt     time.Time
 }
 
-// Fixed field order and exact JSON encoding are part of this internal proposal;
-// root owns the eventual public schema. No arbitrary maps/payloads are signed.
+// Fixed order mirrors the checked Hosted claim Wire. Only the locally reserved
+// approved identity is included in finalization; result retrieval grants none.
 type claimWire struct {
-	Kind             string  `json:"kind"`
-	Version          string  `json:"version"`
-	Audience         string  `json:"audience"`
-	Purpose          Purpose `json:"purpose"`
-	OperationID      string  `json:"operationId"`
-	ServerID         string  `json:"serverId"`
-	AccountID        string  `json:"accountId"`
-	PublicKey        string  `json:"publicKey"`
-	LocalGeneration  int64   `json:"localGeneration,string"`
-	ApprovalRevision int64   `json:"approvalRevision,string"`
-	RequestID        string  `json:"requestId"`
-	NonceID          string  `json:"nonceId,omitempty"`
-	Nonce            string  `json:"nonce,omitempty"`
-	IssuedAt         string  `json:"issuedAt"`
-	ExpiresAt        string  `json:"expiresAt"`
+	Kind                   string  `json:"kind"`
+	Version                string  `json:"version"`
+	Audience               string  `json:"audience"`
+	Purpose                Purpose `json:"purpose"`
+	OperationID            string  `json:"operationId"`
+	ServerID               string  `json:"serverId"`
+	AccountID              string  `json:"accountId"`
+	PublicKey              string  `json:"publicKey"`
+	LocalGeneration        int64   `json:"localGeneration,string"`
+	ApprovalRevision       int64   `json:"approvalRevision,string"`
+	RequestID              string  `json:"requestId"`
+	NonceID                string  `json:"nonceId,omitempty"`
+	Nonce                  string  `json:"nonce,omitempty"`
+	IssuedAt               string  `json:"issuedAt"`
+	ExpiresAt              string  `json:"expiresAt"`
+	ReservationAccountID   string  `json:"reservationAccountId,omitempty"`
+	ReservationUsername    string  `json:"reservationUsername,omitempty"`
+	ReservationGeneration  string  `json:"reservationGeneration,omitempty"`
+	ReservationOperationID string  `json:"reservationOperationId,omitempty"`
 }
 type cancelWire struct {
 	Kind            string `json:"kind"`
@@ -101,6 +105,15 @@ func (c *Coordinator) proof(ctx context.Context, v Intent, purpose Purpose) (Sig
 		expiry = v.ApprovalExpiresAt
 	}
 	w := claimWire{Kind: "portico.claim.nonce-request", Version: "1", Audience: c.audience, Purpose: purpose, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: v.AccountID, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, ApprovalRevision: v.ApprovalRevision, RequestID: requestID, IssuedAt: now.Format(time.RFC3339Nano), ExpiresAt: expiry.UTC().Format(time.RFC3339Nano)}
+	if purpose == FinalizePurpose && (v.Purpose == "switch" || v.Purpose == "change-owner") {
+		if !claimUsername.MatchString(v.ReservationUsername) {
+			return SignedProof{}, ErrStale
+		}
+		w.ReservationAccountID = v.AccountID
+		w.ReservationUsername = v.ReservationUsername
+		w.ReservationGeneration = strconv.FormatInt(v.LocalGeneration, 10)
+		w.ReservationOperationID = v.OperationID
+	}
 	raw, e := json.Marshal(w)
 	if e != nil {
 		return SignedProof{}, e

@@ -356,22 +356,16 @@ type invitationChallenge struct {
 	identity.DirectSnapshot
 	Challenge identity.SignInChallenge `json:"challenge"`
 }
-type invitationDevicePending struct {
-	identity.DirectSnapshot
-	DeviceApprovalPending bool   `json:"deviceApprovalPending"`
-	DeviceID              string `json:"deviceId"`
-	InstallationID        string `json:"installationId"`
-}
 
 func (InvitationAcceptanceResponse) JSONSchema() map[string]any {
-	variants := []reflect.Type{reflect.TypeFor[access.AcceptanceResult](), reflect.TypeFor[invitationSignedIn](), reflect.TypeFor[invitationChallenge](), reflect.TypeFor[invitationDevicePending]()}
+	variants := []reflect.Type{reflect.TypeFor[access.AcceptanceResult](), reflect.TypeFor[invitationSignedIn](), reflect.TypeFor[invitationChallenge]()}
 	shapes := make([]any, 0, len(variants))
 	for _, typ := range variants {
 		shape, e := apikit.Schema(typ)
 		if e != nil {
 			panic(e)
 		}
-		if typ == reflect.TypeFor[invitationChallenge]() || typ == reflect.TypeFor[invitationDevicePending]() {
+		if typ == reflect.TypeFor[invitationChallenge]() {
 			// These producers marshal a zero snapshot, including nil slices.
 			// Keep those fields explicit without allowing null in signed-in data.
 			properties := shape["properties"].(map[string]any)

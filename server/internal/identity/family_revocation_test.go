@@ -20,7 +20,6 @@ func TestEveryFamilyRevocationReasonAppearsInOwnerSessionHistory(t *testing.T) {
 		{RevokedExplicitSignout, "Signed out"},
 		{RevokedAdminRevoke, "Signed out by an administrator"},
 		{RevokedMembershipRemoved, "Signed out: account access was removed"},
-		{RevokedDeviceDisapproved, "Signed out: device was not approved"},
 		{RevokedPasswordChange, "Signed out: account security changed"},
 	}
 	for _, tc := range cases {

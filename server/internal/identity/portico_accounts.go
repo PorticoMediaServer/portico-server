@@ -32,6 +32,7 @@ type PorticoIdentity struct {
 	AccountID   string
 	Username    string
 	DisplayName string
+	Email       string
 	// Consent is the verified assertion itself (JSON): the account's own
 	// statement that it signed in here, which Hosted requires before listing
 	// this server for it (INT M6).
@@ -91,6 +92,20 @@ func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoId
 		return DirectSignIn{}, ErrAccessRefused
 	}
 	if e != nil {
+		return DirectSignIn{}, e
+	}
+	// Refresh identity facts only; profile names are the person's own edits.
+	if !validPorticoUsername(who.Username) || len(who.DisplayName) > 256 || len(who.Email) > 320 {
+		return DirectSignIn{}, ErrUnauthorized
+	}
+	var taken bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE username=? COLLATE NOCASE AND id<>?)`, who.Username, account).Scan(&taken); e != nil {
+		return DirectSignIn{}, e
+	}
+	if taken {
+		return DirectSignIn{}, ErrRegistrationTaken
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET username=?,display_name=?,email=? WHERE id=?`, who.Username, who.DisplayName, who.Email, account); e != nil {
 		return DirectSignIn{}, e
 	}
 	c, e := s.directAccountTx(ctx, tx, account)
@@ -345,7 +360,7 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 	}
 	var out DirectSignIn
 	e := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
-		c, e := s.directCallerTx(ctx, tx, bearer, true)
+		c, e := s.profileManagerTx(ctx, tx, bearer)
 		if e != nil {
 			return e
 		}
@@ -358,31 +373,14 @@ func (s *Service) CompletePorticoOwnerClaim(ctx context.Context, bearer string, 
 		if e = CheckPorticoReturnTx(ctx, tx, who); e != nil {
 			return e
 		}
+		if who.Return.Purpose == "switch" {
+			var err error
+			out, err = s.CompleteMoveToPorticoTx(ctx, tx, c, who)
+			return err
+		}
 		var current string
 		if e = tx.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, c.account.ID).Scan(&current); e != nil || current != who.Return.CurrentOwnerAccountID {
 			return ErrForbidden
-		}
-		if who.Return.Purpose == "switch" {
-			if current != who.AccountID {
-				return ErrForbidden
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=X'',epoch=epoch+1 WHERE id=?`, c.account.ID); e != nil {
-				return e
-			}
-			if e = s.revokeCredentialsTx(ctx, tx, c.account.ID); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `INSERT INTO identity_credential_state(account_id,must_change) VALUES(?,0) ON CONFLICT(account_id) DO UPDATE SET must_change=0`, c.account.ID); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE onboarding_state_v1 SET auth_mode='hosted',revision=revision+1 WHERE singleton=1 AND ready=1`); e != nil {
-				return e
-			}
-			out, e = s.PorticoSignInTx(ctx, tx, who)
-			if e == nil {
-				e = CheckPorticoReturnTx(ctx, tx, who)
-			}
-			return e
 		}
 		if who.Return.Purpose != "change-owner" || current == who.AccountID {
 			return ErrForbidden
