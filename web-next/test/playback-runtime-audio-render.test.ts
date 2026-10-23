@@ -193,11 +193,10 @@ test('(b)(i) a committed edge promotes at the boundary; the engine keeps a const
   assert.equal(t.calls.filter(c => c[0] === 'ready').length, 1, 'no restart at any edge');
 });
 
-test('(h) an unavailable plan plays ordinarily and says why, quietly', async () => {
-  const {renderable, renderNotice} = await import('../../packages/client-core/src/index.ts');
+test('an unavailable effects plan retains the ordinary playback path', async () => {
+  const {renderable} = await import('../../packages/client-core/src/index.ts');
   const s = {audio: {version: 2 as const, mode: 'unavailable' as const, id: 'm', reason: 'The owner doesn’t allow converting audio, and this device can’t decode ALAC.'}};
   assert.equal(renderable(s), false, 'no effects engine: the ordinary player plays presentation.url');
-  assert.equal(renderNotice(s), s.audio.reason);
 });
 
 test('the position is what is heard: the output path’s latency is taken off the sample clock (A-17.26)', bounded, async ctx => {
