@@ -3,6 +3,7 @@ package disc
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"strconv"
 )
 
@@ -15,7 +16,23 @@ type Input struct {
 }
 
 func (p Probe) FFmpegInput(path string, t Title, positionMs int64, seek *Seek) (Input, error) {
-	if !cleanLocalPath(path) || p.Encryption != "none" || positionMs < 0 || positionMs >= t.DurationMs {
+	if !cleanLocalPath(path) || p.Schema != Schema || p.Encryption != "none" || positionMs < 0 || positionMs >= t.DurationMs {
+		return Input{}, ErrProtocol
+	}
+	// A valid-looking playlist/title number is not authority to play it. Keep
+	// the exact selected title tied to this probe, including its observed
+	// duration, clips, tracks and chapters. The caller still owns the live
+	// source/version fence before and after probe/seek and at FFmpeg launch.
+	matches := 0
+	for _, observed := range p.Titles {
+		if observed.Key(p.Kind) == t.Key(p.Kind) {
+			if !reflect.DeepEqual(observed, t) {
+				return Input{}, ErrProtocol
+			}
+			matches++
+		}
+	}
+	if matches != 1 {
 		return Input{}, ErrProtocol
 	}
 	switch p.Kind {
