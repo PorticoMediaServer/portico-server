@@ -46,7 +46,7 @@ func TestRestoreProgressSurvivesRequestCancellation(t *testing.T) {
 
 func TestSeparateBackupDestinationAndRestoreRefusalWithoutLock(t *testing.T) {
 	svc, state, _ := testService(t)
-	directory := filepath.Join(t.TempDir(), "copies")
+	directory := t.TempDir()
 	if err := svc.SetDirectory(directory); err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +106,9 @@ func TestFailedRestoreCanRetryTheSameOperation(t *testing.T) {
 	if err != nil || second == first {
 		t.Fatal("failed receipt prevented retry", first, second, err)
 	}
+	// Creating the replacement source belongs to setup, not the retry's
+	// observation window. Each asynchronous attempt gets its own bound.
+	deadline = time.Now().Add(10 * time.Second)
 	for service.RestoreProgress().Phase != "staged" {
 		if p := service.RestoreProgress(); p.ErrorCode != "" {
 			t.Fatal(p)

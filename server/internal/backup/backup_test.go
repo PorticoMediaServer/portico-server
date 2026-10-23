@@ -136,7 +136,7 @@ func TestBackupDuringConcurrentWrites(t *testing.T) {
 		t.Fatal("writer loop never ran during the backup")
 	}
 	if max := time.Duration(maxWait.Load()); max > 250*time.Millisecond {
-		t.Fatalf("writer waited %v during backup", max)
+		t.Fatalf("writer waited %v during backup; gate=%+v pool=%+v", max, dbwork.WriteGate().Stats(), dbwork.Pool(db))
 	}
 	checkOK(t, openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName)))
 	var probe string

@@ -270,18 +270,41 @@ the criteria matched nothing.
 
 ## Maintenance
 
-**Backups.** The default destination is `<state>/backups`; `PORTICO_BACKUP_DIR`
-can move ordinary backups. A finished directory contains a consistent database,
-selected non-rebuildable state and a checksum manifest. Media, recordings,
-generated artwork and conversion caches are excluded. Manual backups are kept
-until deleted; `backupKeepCount` prunes scheduled copies. The three retained
-pre-migration database copies and pre-restore rollback state stay beside the live
-database. Backups are not encrypted. Live sign-in secrets are scrubbed, with
-API keys/tokens deliberately retained.
+**Backups.** The default destination is `<data>/Backups`. Owner-only
+`GET/PUT /v1/admin/backups/settings` reads or updates `backupFolder`,
+`includeArtwork` and `passphraseProtected`. The write accepts an optional
+`passphrase` (12–1024 bytes); reads return only `passphraseSet`. Turning protection
+off erases the stored sealed passphrase. Scheduled and manual backups read the
+same live policy. A chosen destination must be an existing absolute directory
+outside the data folder; the default `Backups` child is allowed. Changing it keeps
+previous destinations discoverable and preserves their copies.
+
+Backups always contain the consistent scrubbed database, `portico.toml`, `Keys`
+and owner metadata, including uploaded/selected artwork and its undo history.
+Downloaded artwork and previews are included only when `includeArtwork` is true.
+Cache, logs, temporary work, conversions, original media and recordings are never
+included. Manual copies remain until deleted; scheduled copies use the existing
+keep count. Pre-restore rollback copies remain beside the live database.
+Live sign-ins are scrubbed; API credentials remain subject to the existing restore
+rules.
+
+Protected backups contain `archive.pba` and a public listing summary. The archive
+uses Argon2id (three passes, 64 MiB, four lanes, independent random 16-byte salt)
+and AES-256-GCM authenticated chunks, with ordered nonces, bound headers and a
+required authenticated terminal record. Creation snapshots in private `Temp`,
+then flushes and atomically publishes ciphertext on the destination. Restore
+requires the passphrase; it authenticates the complete stream and verifies the
+embedded manifest and database before staging. An exported `.pba` file restores
+without the original server or listing summary. Unprotected backups are private
+plain files and contain readable server keys. Keep the passphrase separately;
+the API does not recover or return it. Rollback safety copies use the existing
+private local plain-file format so interrupted restores can resume at startup.
 
 `POST /v1/admin/backups {operationId}` answers 202 with `jobId`. Poll
 `GET /v1/admin/backups` for `running`, finished `backups`, `restore` and
-`lastRestore`. `POST /v1/admin/backups/restore {operationId, source}` also answers
+`lastRestore`. The current process also reports `lastBackup` with its job ID,
+completion/failure outcome and stable error code, so a failed manual job is not
+mistaken for success when `running` clears. `POST /v1/admin/backups/restore {operationId, source, passphrase?}` also answers
 202 with a job, rather than running copying in the request. Source identifies
 `backupId` or an absolute server `path`. Validation and staging run in the
 background, followed by restart. Restore needs the single-instance lock and
