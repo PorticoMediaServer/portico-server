@@ -102,7 +102,7 @@ func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (
 		policyError(w, "revision_required")
 		return nil, false
 	}
-	if len(match) != 66 || match[0] != '"' || match[len(match)-1] != '"' {
+	if len(r.Header.Values("If-Match")) != 1 || len(match) != 66 || match[0] != '"' || match[len(match)-1] != '"' {
 		policyError(w, "revision_mismatch")
 		return nil, false
 	}

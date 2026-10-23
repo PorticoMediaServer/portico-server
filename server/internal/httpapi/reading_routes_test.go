@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -137,6 +138,13 @@ func TestReadingRegisteredPDFLifecycle(t *testing.T) {
 	if w = readingHTTP(t, h, "GET", base+"/source", token, m.Revision, nil); w.Code != 403 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	current := readingOpened(t, r, h)
+	if err := r.f.id.LogoutToken(context.Background(), token); err != nil {
+		t.Fatal(err)
+	}
+	if w = readingHTTP(t, h, "GET", "/v1/reading/sessions/"+current.SessionID+"/progress", token, current.Revision, nil); w.Code != 401 {
+		t.Fatal("revoked family reached registered session", w.Code, w.Body.String())
+	}
 }
 
 func TestReadingRegisteredArchiveAssets(t *testing.T) {
@@ -157,7 +165,7 @@ func TestReadingRegisteredArchiveAssets(t *testing.T) {
 				}
 				path = base + "/assets?path=" + url.QueryEscape(m.Spine[0])
 			} else {
-				if len(m.PageNames) != 1 || len(m.Resources) != 0 {
+				if len(m.PageNames) != 2 || m.PageNames[0] != "page1.png" || m.PageNames[1] != "page2.png" || len(m.Resources) != 0 {
 					t.Fatal(m)
 				}
 				path = base + "/pages/0?width=32"
