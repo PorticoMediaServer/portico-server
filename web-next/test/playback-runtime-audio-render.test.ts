@@ -66,6 +66,8 @@ function setup() {
   (globalThis as any).document = {visibilityState: 'visible', addEventListener() {}, removeEventListener() {}};
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
+    const asked = new Headers(init.headers).get('Range');
+    if (!asked) return new Response(files[url]!, {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);
     const last = Math.min(bytes.length - 1, b!);
     return new Response(bytes.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${bytes.length}`}});
