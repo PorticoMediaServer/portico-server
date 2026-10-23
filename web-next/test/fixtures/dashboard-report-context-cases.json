@@ -1,13 +1,13 @@
 {
   "status": "Authored regression cases only; NOT RUN; await checked canonical ReportContext and interval DTOs",
-  "authority": "CLAUDE-RULINGS-2026-10-23.md section11",
+  "authority": "CLAUDE-RULINGS-2026-10-23.md sections11 and13; section13 supersedes raw-until/partial-quarter/frozen-snapshot proposals",
   "consumerPrinciple": "Capture and propagate device context; assert actual server output; never implement a UI calendar resolver",
   "queryCases": [
     {
       "id": "same-context-every-read",
       "context": {
         "timeZone": "America/Halifax",
-        "until": "2026-10-23T15:47:22Z"
+        "until": "2026-10-23T15:45:00Z"
       },
       "reads": [
         "people",
@@ -23,7 +23,8 @@
         "each request has the exact timeZone/until pair",
         "filters and opaque cursor are otherwise unchanged",
         "response interval is the actual server interval"
-      ]
+      ],
+      "captureTime": "2026-10-23T15:47:22Z"
     },
     {
       "id": "carry-to-full-history",
@@ -63,6 +64,105 @@
         "secondary profile or stale authority clears private results",
         "context disposal cancels work and listeners"
       ]
+    },
+    {
+      "id": "canonical-helper-completed-quarter",
+      "cases": [
+        {
+          "captureTime": "2026-10-23T12:14:59.999Z",
+          "until": "2026-10-23T12:00:00Z"
+        },
+        {
+          "captureTime": "2026-10-23T12:15:00Z",
+          "until": "2026-10-23T12:15:00Z"
+        },
+        {
+          "captureTime": "2026-10-23T12:15:00.001Z",
+          "until": "2026-10-23T12:15:00Z"
+        },
+        {
+          "captureTime": "2026-10-23T12:34:56Z",
+          "until": "2026-10-23T12:30:00Z"
+        }
+      ],
+      "assert": [
+        "invoke the data owner checked captureReportContext",
+        "do not implement quarter/calendar arithmetic in UI",
+        "capture once per view/refresh and propagate unchanged"
+      ]
+    },
+    {
+      "id": "consistent-producer-read",
+      "assert": [
+        "all aggregate panels and totals consume the actual common consistent-read result at context.until",
+        "do not stitch unrelated responses into a promised immutable snapshot",
+        "do not add snapshot or authority framework",
+        "new refresh/new history query may contain late facts"
+      ]
+    },
+    {
+      "id": "late-facts-on-full-history",
+      "context": {
+        "timeZone": "Asia/Kathmandu",
+        "until": "2026-10-23T12:30:00Z"
+      },
+      "knownAtFirstQuery": [
+        {
+          "id": "a",
+          "eventTime": "2026-10-23T12:14:00Z",
+          "ingestTime": "2026-10-23T12:20:00Z"
+        }
+      ],
+      "knownAtLaterQuery": [
+        {
+          "id": "a",
+          "eventTime": "2026-10-23T12:14:00Z",
+          "ingestTime": "2026-10-23T12:20:00Z"
+        },
+        {
+          "id": "b",
+          "eventTime": "2026-10-23T12:29:59.999Z",
+          "ingestTime": "2026-10-23T12:32:00Z"
+        },
+        {
+          "id": "boundary",
+          "eventTime": "2026-10-23T12:30:00Z",
+          "ingestTime": "2026-10-23T12:31:00Z"
+        },
+        {
+          "id": "current",
+          "eventTime": "2026-10-23T12:35:00Z",
+          "ingestTime": "2026-10-23T12:36:00Z"
+        },
+        {
+          "id": "late-old",
+          "eventTime": "2026-10-23T11:50:00Z",
+          "ingestTime": "2026-10-23T12:40:00Z"
+        }
+      ],
+      "expectedFirstQueryIds": [
+        "a"
+      ],
+      "expectedLaterQueryIds": [
+        "a",
+        "b",
+        "late-old"
+      ],
+      "assert": [
+        "same until reused by See full history",
+        "event-time bucket placement, not ingest-time placement",
+        "strictly-before boundary; exact-boundary/current-quarter facts excluded",
+        "later query can have more facts without changing context",
+        "no immutable-count promise or UI interpolation"
+      ]
+    },
+    {
+      "id": "no-new-aggregate-copy",
+      "assert": [
+        "no new label/control",
+        "no UTC/server-zone/lag badge or helper invented",
+        "Today remains drawn Today and24 hours remains24 hours"
+      ]
     }
   ],
   "producerResponseCases": [
@@ -71,7 +171,7 @@
       "request": {
         "period": "7d",
         "timeZone": "America/Halifax",
-        "until": "2026-03-09T16:20:00Z"
+        "until": "2026-03-09T16:15:00Z"
       },
       "expected": {
         "bucketCount": 7,
@@ -83,14 +183,15 @@
         "use returned bounds",
         "do not stretch the DST day to24h",
         "today is partial"
-      ]
+      ],
+      "captureTime": "2026-03-09T16:20:00Z"
     },
     {
       "id": "halifax-fall-back-seven-days",
       "request": {
         "period": "7d",
         "timeZone": "America/Halifax",
-        "until": "2026-11-02T17:20:00Z"
+        "until": "2026-11-02T17:15:00Z"
       },
       "expected": {
         "bucketCount": 7,
@@ -101,14 +202,15 @@
       "consumerAssert": [
         "use returned bounds",
         "do not collapse repeated local hour facts"
-      ]
+      ],
+      "captureTime": "2026-11-02T17:20:00Z"
     },
     {
       "id": "thirty-days-not-rolling-hours",
       "request": {
         "period": "30d",
         "timeZone": "Asia/Kathmandu",
-        "until": "2026-10-23T12:34:56Z"
+        "until": "2026-10-23T12:30:00Z"
       },
       "expected": {
         "bucketCount": 30,
@@ -118,14 +220,15 @@
       "consumerAssert": [
         "thirty actual daily buckets",
         "no split of old monthly or weekly points"
-      ]
+      ],
+      "captureTime": "2026-10-23T12:34:56Z"
     },
     {
       "id": "ninety-calendar-days",
       "request": {
         "period": "90d",
         "timeZone": "America/Halifax",
-        "until": "2026-03-09T16:20:00Z"
+        "until": "2026-03-09T16:15:00Z"
       },
       "expected": {
         "bucketCount": 90,
@@ -134,14 +237,15 @@
       "consumerAssert": [
         "exactly90 actual daily buckets",
         "no rolling90x24h assumption"
-      ]
+      ],
+      "captureTime": "2026-03-09T16:20:00Z"
     },
     {
       "id": "last-year-fifty-two-weeks",
       "request": {
         "period": "1y",
         "timeZone": "America/Halifax",
-        "until": "2026-03-09T16:20:00Z"
+        "until": "2026-03-09T16:15:00Z"
       },
       "expected": {
         "bucketCount": 52,
@@ -153,14 +257,15 @@
         "use52 actual seven-calendar-day buckets",
         "no365-day label or old monthly points",
         "newest bucket ends at anchor within today"
-      ]
+      ],
+      "captureTime": "2026-03-09T16:20:00Z"
     },
     {
       "id": "twelve-hours-quarter-hour-zone",
       "request": {
         "period": "12h",
         "timeZone": "Asia/Kathmandu",
-        "until": "2026-10-23T12:34:56Z"
+        "until": "2026-10-23T12:30:00Z"
       },
       "expected": {
         "bucketCount": 12,
@@ -170,14 +275,15 @@
       "consumerAssert": [
         "last bucket partial",
         "no epoch-hour rounding"
-      ]
+      ],
+      "captureTime": "2026-10-23T12:34:56Z"
     },
     {
       "id": "twenty-four-hours-quarter-hour-zone",
       "request": {
         "period": "24h",
         "timeZone": "Asia/Kathmandu",
-        "until": "2026-10-23T12:34:56Z"
+        "until": "2026-10-23T12:30:00Z"
       },
       "expected": {
         "bucketCount": 24,
@@ -187,14 +293,15 @@
       "consumerAssert": [
         "exactly24 real hourly buckets",
         "do not render Today for this interval"
-      ]
+      ],
+      "captureTime": "2026-10-23T12:34:56Z"
     },
     {
       "id": "repeated-hour-distinct",
       "request": {
         "period": "12h",
         "timeZone": "America/Halifax",
-        "until": "2026-11-01T06:20:00Z"
+        "until": "2026-11-01T06:15:00Z"
       },
       "expected": {
         "bucketCount": 12,
@@ -207,7 +314,8 @@
       "consumerAssert": [
         "both timestamps remain separate points",
         "never dedupe by formatted local label"
-      ]
+      ],
+      "captureTime": "2026-11-01T06:20:00Z"
     },
     {
       "id": "plus-twelve-forty-five",
@@ -238,11 +346,11 @@
     {
       "id": "live-exception",
       "assert": [
-        "sent context is validated",
-        "actual2-second detail uses moving server-now until",
+        "sent canonical context is validated",
+        "Now playing and existing2-second Live use moving actual server-now detail",
         "flat returned until/observedAt identify the live read",
-        "frozen request context remains the disposal identity",
-        "no historical bucket reconstruction"
+        "aggregate current-quarter data remains excluded",
+        "no live partial-quarter total or historical reconstruction"
       ]
     },
     {
@@ -250,18 +358,19 @@
       "request": {
         "period": "today",
         "timeZone": "Asia/Kathmandu",
-        "until": "2026-10-23T12:34:56Z"
+        "until": "2026-10-23T12:30:00Z"
       },
       "expected": {
         "bucketCount": 1,
         "from": "2026-10-22T18:15:00Z",
-        "until": "2026-10-23T12:34:56Z"
+        "until": "2026-10-23T12:30:00Z"
       },
       "consumerAssert": [
         "approved Today sends period=today",
         "24h remains24 hourly buckets",
         "no silent alias or replacement wording"
-      ]
+      ],
+      "captureTime": "2026-10-23T12:34:56Z"
     }
   ],
   "canonicalContract": {
@@ -270,7 +379,7 @@
       "until"
     ],
     "type": "readonly ReportContext {timeZone:string,until:string}",
-    "factory": "captureReportContext(timeZone, until?=nowISO)",
+    "factory": "captureReportContext(timeZone, until?=captureTime); canonical helper floors capture time to last completed15-minute UTC boundary",
     "exports": [
       "admin",
       "root"
@@ -278,6 +387,10 @@
     "telemetrySignature": "ConsoleClient.telemetry(window:TelemetryWindow,context:ReportContext)",
     "responseFields": "flat period/timeZone/from/until/buckets(start/end/partial); DashboardHistory buckets additionally retain kinds",
     "lifetime": "once per view/refresh; See full history carries same context",
-    "implementationHold": "No UI source changes or dependent intake until checked generated pin"
+    "implementationHold": "No UI source changes or dependent intake until checked generated pin",
+    "aggregateEnd": "eventTime < context.until; in-progress quarter excluded; no sub-quarter filtering/interpolation",
+    "consistency": "render aggregate panels from the actual common consistent-read producer result; no UI snapshot framework",
+    "lateFacts": "every fact known at query time with eventTime < until; same context may yield additional late facts on a new query",
+    "live": "Now playing and existing2-second Live remain moving; Live returns its actual effective until/observedAt"
   }
 }
