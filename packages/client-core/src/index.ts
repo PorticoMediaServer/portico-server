@@ -2046,6 +2046,7 @@ export {highestRatingChoices} from './profile-limits.ts';
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
 
+export * from './report-context.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';
 export {ServerSignInProbe, parseServerSignIn, signInLabelKey, serverSignInSettingsURL, accountSignInKeys, type ServerSignIn, type ServerSignInSnapshot} from './sign-in.ts';
 export * from './account-move.ts';

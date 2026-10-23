@@ -7,7 +7,8 @@ package persistence
 // It exists so a database can be asked whether it still has the columns this
 // build's statements name, without anything to compare it against but the
 // build itself.
-const knownSchemaColumns = `access_invitations.accepted_ms
+const knownSchemaColumns = `
+access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
 access_invitations.bound_username
@@ -3601,7 +3602,10 @@ play_history.episode
 play_history.id
 play_history.item_id
 play_history.kind
+play_history.last_position_ms
+play_history.last_state
 play_history.library_id
+play_history.location
 play_history.parent_title
 play_history.platform
 play_history.playback_id
@@ -3613,6 +3617,10 @@ play_history.started_ms
 play_history.title
 play_history.updated_ms
 play_history.user_name
+play_history.watched_ms
+play_history_time.bucket_ms
+play_history_time.history_id
+play_history_time.watched_ms
 playback_admin_operations.actor
 playback_admin_operations.created_at
 playback_admin_operations.fingerprint
@@ -3959,6 +3967,7 @@ playback_v1_sessions.state
 playback_v1_sessions.subtitle_track_id
 playback_v1_sessions.transfer_id
 playback_v1_sessions.updated_ms
+playback_v1_sessions.upload_limited
 playback_v1_sessions.version_id
 playback_vod_intervals.attempts
 playback_vod_intervals.bytes
@@ -4784,8 +4793,14 @@ subtitle_sidecars.id
 subtitle_sidecars.modified_ns
 subtitle_sidecars.path
 subtitle_sidecars.size
-telemetry_rollups.body
-telemetry_rollups.minute_ms
+telemetry_rollups.bucket_ms
+telemetry_rollups.detail
+telemetry_rollups.first_event_ms
+telemetry_rollups.last_event_ms
+telemetry_rollups.metric
+telemetry_rollups.samples
+telemetry_rollups.status
+telemetry_rollups.total
 topshelf_tokens.account_id
 topshelf_tokens.authority
 topshelf_tokens.device_id
@@ -4986,4 +5001,5 @@ webhooks.name
 webhooks.revision
 webhooks.secret
 webhooks.updated_ms
-webhooks.url`
+webhooks.url
+`

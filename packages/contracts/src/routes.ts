@@ -1801,6 +1801,65 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_dashboard_report",
+    "method": "GET",
+    "path": "/v1/admin/dashboard/report",
+    "summary": "Read or update the selected projection",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "timeZone",
+      "until",
+      "period",
+      "window",
+      "peoplePeriod",
+      "topPeriod",
+      "topKind",
+      "accountId",
+      "libraryId",
+      "media",
+      "q",
+      "sort",
+      "direction",
+      "topAccountId",
+      "peopleCursor",
+      "peopleLimit",
+      "tableCursor",
+      "tableLimit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_dashboard_status",
+    "method": "GET",
+    "path": "/v1/admin/dashboard/status",
+    "summary": "Read qualified owner Dashboard alerts and tasks",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_diagnostics_bundle",
     "method": "GET",
     "path": "/v1/admin/diagnostics/bundle",
@@ -2491,7 +2550,7 @@ export const routes = [
     "method": "GET",
     "path": "/v1/admin/play-history",
     "summary": "Read or update the selected projection",
-    "access": "device",
+    "access": "owner",
     "requires": "admin",
     "lane": "default",
     "cost": "page_sized",
@@ -2501,7 +2560,13 @@ export const routes = [
       "libraryId",
       "period",
       "cursor",
-      "limit"
+      "limit",
+      "media",
+      "q",
+      "sort",
+      "direction",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -2514,17 +2579,87 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_play_history_dashboard",
+    "method": "GET",
+    "path": "/v1/admin/play-history/dashboard",
+    "summary": "Read owner Dashboard analytics",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "period",
+      "accountId",
+      "libraryId",
+      "media",
+      "q",
+      "cursor",
+      "limit",
+      "topKind",
+      "timeZone",
+      "until"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_play_history_people",
+    "method": "GET",
+    "path": "/v1/admin/play-history/people",
+    "summary": "Read owner Dashboard analytics",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "period",
+      "accountId",
+      "libraryId",
+      "media",
+      "q",
+      "cursor",
+      "limit",
+      "topKind",
+      "timeZone",
+      "until"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_play_history_summary",
     "method": "GET",
     "path": "/v1/admin/play-history/summary",
     "summary": "Read or update the selected projection",
-    "access": "device",
+    "access": "owner",
     "requires": "admin",
     "lane": "default",
     "cost": "page_sized",
     "bodyLimit": 1048576,
     "query": [
-      "period"
+      "period",
+      "timeZone",
+      "until",
+      "accountId",
+      "libraryId",
+      "media",
+      "q"
     ],
     "errors": [
       "invalid_request",
@@ -2814,7 +2949,9 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "query": [
-      "window"
+      "window",
+      "timeZone",
+      "until"
     ],
     "errors": [
       "invalid_request",
@@ -17535,6 +17672,8 @@ export const routePaths = {
   "get_admin_console_panels_panel": "/v1/admin/console/panels/{panel}",
   "get_admin_console_schedules": "/v1/admin/console/schedules",
   "get_admin_console_stream_options": "/v1/admin/console/stream-options",
+  "get_admin_dashboard_report": "/v1/admin/dashboard/report",
+  "get_admin_dashboard_status": "/v1/admin/dashboard/status",
   "get_admin_diagnostics_bundle": "/v1/admin/diagnostics/bundle",
   "get_admin_diagnostics_concurrency": "/v1/admin/diagnostics/concurrency",
   "get_admin_diagnostics_pprof_profile": "/v1/admin/diagnostics/pprof/{profile}",
@@ -17567,6 +17706,8 @@ export const routePaths = {
   "get_admin_notifications_settings": "/v1/admin/notifications/settings",
   "get_admin_operations_panel": "/v1/admin/operations/{panel}",
   "get_admin_play_history": "/v1/admin/play-history",
+  "get_admin_play_history_dashboard": "/v1/admin/play-history/dashboard",
+  "get_admin_play_history_people": "/v1/admin/play-history/people",
   "get_admin_play_history_summary": "/v1/admin/play-history/summary",
   "get_admin_playback_diagnostics": "/v1/admin/playback/diagnostics",
   "get_admin_playback_history": "/v1/admin/playback/history",

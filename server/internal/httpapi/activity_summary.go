@@ -68,6 +68,9 @@ type ActivitySummaryHealth struct {
 }
 
 func registerActivitySummary(registry *apikit.Registry, d Dependencies) error {
+	if err := registerDashboardStatus(registry, d); err != nil {
+		return err
+	}
 	return apikit.Register(registry, apikit.Route[struct{}, ActivitySummary]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_activity", Method: "GET", Path: "/v1/admin/activity", Summary: "Read the owner's bounded server activity summary", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ActivitySummary, error) {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
