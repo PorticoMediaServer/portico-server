@@ -116,7 +116,7 @@ func (s *Service) ViewerStatus(ctx context.Context, path string) (string, error)
 	}
 	var state, code, generation string
 	var removed bool
-	if err := s.db.QueryRowContext(ctx, `SELECT state,error_code,removed,CASE WHEN kind='rclone' THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END FROM remote_sources WHERE id=?`, b.ID).Scan(&state, &code, &removed, &generation); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT state,error_code,removed,CASE WHEN kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END FROM remote_sources WHERE id=?`, b.ID).Scan(&state, &code, &removed, &generation); err != nil {
 		return "unavailable", err
 	}
 	if removed {

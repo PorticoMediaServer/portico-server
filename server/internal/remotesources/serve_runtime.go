@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +24,7 @@ import (
 type sourceNetwork struct {
 	Policy      remotemedia.Policy
 	Fingerprint string
+	Native      *nativeSourceAuthority
 }
 
 // sourceNetworkTx reuses durable owner network approvals. An absent record is
@@ -47,6 +47,13 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 			return out, err
 		}
 		out.Policy.Approvals = append(out.Policy.Approvals, c.Approval)
+	}
+	if kind == "sftp" || kind == "smb" {
+		var err error
+		out.Native, err = s.readNativeSourceAuthority(kind, config)
+		if err != nil {
+			return out, err
+		}
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.root,COALESCE(n.revision,0),COALESCE(n.approvals_json,'[]') FROM library_sources s LEFT JOIN library_network_policy n ON n.library_id=s.library_id WHERE s.kind='remote' AND s.enabled=1 ORDER BY s.id`)
 	if err != nil {
@@ -183,10 +190,9 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	var proxy *remotemedia.PolicyProxy
 	if backend == "sftp" || backend == "smb" {
-		// Direct to the exact owner-entered host under section18. This initial
-		// hard-block check is not a DNS-pinning/enforcing-transport guarantee.
-		destination := url.URL{Scheme: "https", Host: net.JoinHostPort(host, port), Path: "/"}
-		if _, err = (remotemedia.Policy{Resolver: s.resolver}).Approve(ctx, destination.String()); err != nil {
+		// Direct native-scheme approval from this saved source only. Rechecks
+		// cannot pin rclone's later DNS lookup or see its hidden reconnects.
+		if err = s.checkNativeMaterial(ctx, network.Native, backend, host, port, material.Configuration); err != nil {
 			return nil, err
 		}
 	} else {
@@ -273,7 +279,7 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 	if err := s.db.QueryRowContext(ctx, `SELECT kind,mount_id,config FROM remote_sources WHERE id=? AND removed=0`, slot.source).Scan(&kind, &mount, &raw); err != nil {
 		return out, err
 	}
-	if kind == "rclone" {
+	if managedSourceKind(kind) {
 		if s.mounts == nil || mount == "" {
 			return out, storage.ErrRemoteConfig
 		}

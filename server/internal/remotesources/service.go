@@ -122,7 +122,7 @@ func (s *Service) RefreshMounts(ctx context.Context) error {
 			return err
 		}
 	}
-	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind='rclone' AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
+	if _, err = tx.Exec(`UPDATE remote_sources SET removed=1,state='removed' WHERE kind IN('rclone','sftp','smb') AND NOT EXISTS(SELECT 1 FROM managed_mounts m WHERE m.id=remote_sources.mount_id)`); err != nil {
 		return err
 	}
 	if err = gated.Commit(); err != nil {
@@ -217,7 +217,7 @@ func (s *Service) dav(ctx context.Context, id string) (*remotemedia.DAV, string,
 	return d, strconv.FormatInt(generation, 10), mapError(err)
 }
 func (s *Service) generation(ctx context.Context, b binding) (string, error) {
-	if b.Kind == "rclone" {
+	if managedSourceKind(b.Kind) {
 		n, err := s.mounts.Native(ctx, b.ID)
 		if err != nil {
 			return "", err
@@ -317,7 +317,7 @@ func (s *Service) health(b binding, generation string, err error) {
 	if errors.Is(err, context.Canceled) {
 		return
 	}
-	_, _ = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_sources SET state=?,error_code=? WHERE id=? AND CASE WHEN kind='rclone' THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END=? AND removed=0`, state, code, b.ID, generation)
+	_, _ = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE remote_sources SET state=?,error_code=? WHERE id=? AND CASE WHEN kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=remote_sources.mount_id) ELSE CAST(generation AS TEXT) END=? AND removed=0`, state, code, b.ID, generation)
 }
 func davSnapshot(e remotemedia.DAVEntry, root string) storage.Snapshot {
 	modified := int64(0)
@@ -343,7 +343,7 @@ func (s *Service) Stat(ctx context.Context, path string) (storage.Snapshot, erro
 	var value storage.Snapshot
 	var generation string
 	var err error
-	if b.Kind == "rclone" {
+	if managedSourceKind(b.Kind) {
 		var n *mounts.NativeBackend
 		n, err = s.mounts.Native(ctx, b.ID)
 		if err == nil {

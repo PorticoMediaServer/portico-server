@@ -41,7 +41,7 @@ func validObservationObject(object string) bool {
 func observationGenerationTx(ctx context.Context, tx *sql.Tx, source string) (string, error) {
 	var generation string
 	var removed bool
-	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_sources r LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE r.id=?`, source).Scan(&generation, &removed)
+	err := tx.QueryRowContext(ctx, `SELECT CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed FROM remote_sources r LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE r.id=?`, source).Scan(&generation, &removed)
 	if err != nil || removed || generation == "" {
 		return "", storage.ErrRemoteOffline
 	}

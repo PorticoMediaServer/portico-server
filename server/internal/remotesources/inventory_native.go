@@ -29,7 +29,7 @@ func nativeListingFence(ctx context.Context, db interface {
 }, id, owner string) error {
 	var actualOwner, status, directory, root, generation, current string
 	var incarnationOK, removed bool
-	err := db.QueryRowContext(ctx, `SELECT n.owner,j.status,l.directory,ls.root,l.generation,CASE WHEN rs.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(rs.generation AS TEXT) END,
+	err := db.QueryRowContext(ctx, `SELECT n.owner,j.status,l.directory,ls.root,l.generation,CASE WHEN rs.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(rs.generation AS TEXT) END,
  (r.source_generation=ls.generation AND r.root_incarnation=ls.incarnation AND r.root_identity=ls.root_identity AND ls.enabled=1 AND ls.identity_confirmed=1 AND r.policy_revision=p.revision),rs.removed
  FROM remote_listing_sessions l JOIN remote_native_listings n ON n.listing_id=l.id AND n.state='running'
  JOIN remote_sources rs ON rs.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=rs.mount_id

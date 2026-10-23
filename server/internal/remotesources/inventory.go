@@ -156,7 +156,7 @@ func (s *Service) CommitPage(ctx context.Context, tx *sql.Tx, p storage.RemotePa
 	}
 	var job, gen string
 	var removed, ready bool
-	err := tx.QueryRowContext(ctx, `SELECT l.job_id,CASE WHEN r.kind='rclone' THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed,l.ready FROM remote_listing_sessions l JOIN remote_sources r ON r.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE l.id=? AND l.source_id=? AND l.directory=? AND l.generation=?`, p.ID, p.SourceID, p.Directory, p.Generation).Scan(&job, &gen, &removed, &ready)
+	err := tx.QueryRowContext(ctx, `SELECT l.job_id,CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END,r.removed,l.ready FROM remote_listing_sessions l JOIN remote_sources r ON r.id=l.source_id LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id WHERE l.id=? AND l.source_id=? AND l.directory=? AND l.generation=?`, p.ID, p.SourceID, p.Directory, p.Generation).Scan(&job, &gen, &removed, &ready)
 	if err != nil || removed {
 		return storage.ErrRemoteCursor
 	}

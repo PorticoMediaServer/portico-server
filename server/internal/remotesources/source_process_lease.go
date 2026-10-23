@@ -127,6 +127,7 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		l.cancel()
 		return storage.ErrRemoteChanged
 	}
+	var native *nativeSourceAuthority
 	if l.networkFingerprint != "" {
 		network, e := l.service.sourceNetworkTx(ctx, snapshot.Tx(), l.source, l.root)
 		sequential, se := sourceSequentialTx(ctx, snapshot.Tx(), l.source, l.root)
@@ -136,6 +137,21 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		if e != nil || se != nil || network.Fingerprint != l.networkFingerprint || sequential != l.sequential {
 			l.cancel()
 			return storage.ErrRemoteChanged
+		}
+		native = network.Native
+	}
+	// DNS/provider checks happen outside the snapshot. A reconnect is admitted
+	// only against this source's saved native approval; the hidden rclone dial
+	// still has the explicitly accepted check/connect gap for hostnames.
+	snapshot.Rollback()
+	if native != nil {
+		_, err = (remotemedia.Policy{Resolver: l.service.resolver}).CheckNativeEndpoint(ctx, native.endpoint, native.config.Approval)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			l.cancel()
+			return err
 		}
 	}
 	return l.CheckLocal()
