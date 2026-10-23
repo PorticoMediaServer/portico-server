@@ -14,6 +14,9 @@ import type {SettingsContext, SettingsPageSnapshot} from './Settings';
 import {settingsServerHeader} from './server-header';
 import {configurationFieldEligible, settingsRowEligible, type SettingsEligibility} from './eligibility';
 import {settingsRowVisible, settingsSectionVisible, type SettingsEnvironment} from '@core/presentation/settings-visibility.ts';
+import type {SettingsDevicePort} from '../../platform/settings-platform';
+import {readDeviceSettingsBinding, writeDeviceSettingsBinding} from './device-bindings';
+import {settingsPresetOptions} from './preset-options';
 
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
@@ -51,6 +54,7 @@ export type SettingsControllerOptions = Readonly<{
   capabilities: Readonly<{manageServer: boolean; managePeople: boolean; manageSignIn: boolean}>;
   preferences: PreferenceSnapshot; isCurrent: () => boolean; reportError: (error: unknown) => void;
   eligibility: SettingsEligibility; reading: ReadingSettingsAdapter; environment: SettingsEnvironment;
+  device?: SettingsDevicePort;
 }>;
 
 /** One selected session owns every document and pending write. No constructor fetches. */
@@ -65,6 +69,7 @@ export class SettingsController {
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
   private readonly rowErrors = new Map<string, unknown>();
+  private readonly offDevice?: () => void;
   private closed = false;
   private loaded = false;
   private loading?: Promise<void>;
@@ -75,6 +80,7 @@ export class SettingsController {
     const scope = {serverId: options.serverId, viewerId: options.viewerId};
     this.console = new ConsoleClient(options.api, scope);
     this.preferencesReader = new PreferencesReader(options.api, scope);
+    this.offDevice = options.device?.subscribe(() => this.publish({}));
     if (options.role === 'owner' && options.mainProfile && options.capabilities.manageServer) {
       const deps: ServerFormDeps = {api: options.api, console: this.console, serverId: options.serverId, operationId: randomId};
       this.forms.runtime = documentForm(runtimeForm(deps));
@@ -109,22 +115,27 @@ export class SettingsController {
   };
   private sources(): SettingsBindingSources {
     return {configuration: this.configuration, preferences: this.preferences,
+      device: this.options.device?.getSnapshot().document?.values,
       forms: Object.fromEntries(Object.entries(this.forms).map(([name, form]) => [name, form.value()]))};
   }
   private read(row: SettingsRow, context?: SettingsContext): SettingsBindingValue | undefined {
     if (!this.eligible(row, context)) return undefined;
     const location = settingsRowIndex.get(row.id)!;
+    const facts = this.options.device?.getSnapshot().facts;
+    const fact = row.id === 'device.name' ? facts?.name?.value : row.id === 'device.appVersion' ? facts?.appVersion : undefined;
+    if (fact !== undefined) return {current: fact, effective: fact, default: undefined, source: 'device', configOnly: false};
     if (location.section.scope === 'account' && location.section.id === 'reading') return this.options.reading.read(row.id, this.preferences);
-    const options = row.control.options;
+    const options = row.control.options && settingsPresetOptions(row.control.options, {...this.options.environment, role: this.options.role});
     if (options?.some(option => option.sets)) {
       const ids = [...new Set(options.flatMap(option => Object.keys(option.sets ?? {})))];
       const values = new Map(ids.map(id => [id, settingsRowIndex.get(id)?.row]).map(([id, row]) => [id, row ? this.read(row as SettingsRow, context) : undefined]));
-      if (ids.some(id => !values.get(id))) return undefined;
+      if (!ids.length || ids.some(id => !values.get(id))) return undefined;
       const defaultsKnown = ids.every(id => values.get(id)!.default !== undefined);
       return {current: exactPresetValue(options, id => values.get(id)?.current), effective: exactPresetValue(options, id => values.get(id)?.effective),
         default: defaultsKnown ? exactPresetValue(options, id => values.get(id)?.default) : undefined, source: [...new Set(ids.map(id => values.get(id)!.source))].join(','), configOnly: false};
     }
     const binding = settingsBinding(row.id);
+    if (binding?.form === 'device') return readDeviceSettingsBinding(binding, this.options.device, this.sources(), row.id);
     return binding && readSettingsBinding(binding, this.sources(), row.id);
   }
   rowState = (row: SettingsRow, context?: SettingsContext): SettingPresentation => {
@@ -134,10 +145,13 @@ export class SettingsController {
     if (!value || value.configOnly) return {present: false};
     const current = value.current as SettingsValue;
     const option = row.control.options?.find(option => option.value === current);
+    const choices = row.control.options?.some(option => option.sets) ? settingsPresetOptions(row.control.options, {...this.options.environment, role: this.options.role}).map(option => ({...option, label: defaultI18n.t(option.label), hint: option.hint && defaultI18n.t(option.hint)})) : undefined;
     return {present: true, value: current, defaultValue: value.default as SettingsValue | undefined,
+      choices,
       changed: value.default !== undefined && changedFromDefault(value.effective, value.default),
       displayValue: option ? defaultI18n.t(option.label) : typeof current === 'boolean' ? defaultI18n.t(current ? 'next.settings.on' : 'next.settings.off') : typeof current === 'object' ? JSON.stringify(current) : String(current),
       disabled: this.writing || !this.current(), saving: this.writing,
+      readOnly: row.id === 'device.appVersion' || row.id === 'device.name' && this.options.device?.getSnapshot().facts.name?.readOnly === true,
       error: this.rowErrors.has(row.id) ? defaultI18n.t('next.states.pageFailedBody') : undefined};
   };
   configurationMatches = (query: string) => this.configuration && this.options.role === 'owner' && this.options.mainProfile ? searchConfiguration(this.configuration, query).filter(field => configurationFieldEligible(field, this.eligible)).map(field => ({...field, label: settingsRowIndex.has(field.id) ? defaultI18n.t(settingsRowIndex.get(field.id)!.row.label) : field.key, path: this.configuration!.path})) : [];
@@ -173,10 +187,11 @@ export class SettingsController {
     return scope;
   }
   private write = async (row: SettingsRow, value: SettingsValue, reset: boolean, context?: SettingsContext) => {
-    if (this.writing || !this.current() || !this.rowState(row, context).present) return;
+    const state = this.rowState(row, context);
+    if (this.writing || !this.current() || !state.present || state.readOnly) return;
     this.writing = true; this.rowErrors.delete(row.id); this.publish({saveState: 'saving'});
     try {
-      const sets = row.control.options?.some(option => option.sets) ? presetPatch(row.control.options, value, id => {const row = settingsRowIndex.get(id)?.row; return row && this.read(row, context)?.current;}) : {[row.id]: value};
+      const sets = row.control.options?.some(option => option.sets) ? presetPatch(settingsPresetOptions(row.control.options, {...this.options.environment, role: this.options.role}), value, id => {const row = settingsRowIndex.get(id)?.row; return row && this.read(row, context)?.current;}) : {[row.id]: value};
       const patches = new Map<SettingsBindingForm, Record<string, unknown>>(), preferencePatches = new Map<PreferenceScope, Record<string, unknown>>();
       const sources = this.sources();
       for (const [id, next] of Object.entries(sets)) {
@@ -208,10 +223,11 @@ export class SettingsController {
         if (!this.current()) return;
       }
       for (const [id, patch] of patches) {
+        if (id === 'device') {await writeDeviceSettingsBinding(this.options.device, Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, settingValue(value)])), this.lifetime.signal, this.current); continue;}
         const form = this.forms[id]; if (!form) throw new Error('settings_document_unavailable');
         await form.patch(patch); if (!this.current()) return;
       }
-      if (patches.size) this.configuration = await loadSettingsConfiguration(this.options.api, this.options.serverId, this.lifetime.signal);
+      if ([...patches.keys()].some(id => id !== 'device')) this.configuration = await loadSettingsConfiguration(this.options.api, this.options.serverId, this.lifetime.signal);
       this.publish({saveState: 'saved'});
     } catch (error) {
       if (this.current()) {this.rowErrors.set(row.id, error); this.publish({saveState: undefined}); this.options.reportError(error);}
@@ -220,7 +236,7 @@ export class SettingsController {
   change = (row: SettingsRow, value: SettingsValue, context?: SettingsContext) => {void this.write(row, value, false, context);};
   reset = (row: SettingsRow, context?: SettingsContext) => {const value = this.read(row, context)?.default; if (value !== undefined) void this.write(row, value as SettingsValue, true, context);};
   dispose = () => {
-    this.closed = true; this.lifetime.abort(); this.console.dispose(); this.preferencesReader.dispose();
+    this.closed = true; this.lifetime.abort(); this.offDevice?.(); this.console.dispose(); this.preferencesReader.dispose();
     for (const form of Object.values(this.forms)) form.dispose();
     this.configuration = undefined; this.header = {facts: []}; this.rowErrors.clear(); this.listeners.clear();
   };

@@ -6,6 +6,7 @@ import type {SettingsBindings, SettingsContext} from './Settings';
 import type {SettingsController, SettingsControllerOptions} from './controller';
 
 export type SettingsSections = Readonly<{
+  openHome: () => void;
   special: (row: SettingsRow, state: SettingPresentation, context: SettingsContext, openPanel: (panelId: string, recordId?: string) => void) => ReactNode;
   section?: SettingsBindings['section'];
   panel?: SettingsBindings['panel'];
@@ -35,5 +36,6 @@ export function createSettingsBindings(controller: SettingsController, options: 
     section: sections.section,
     panel: sections.panel,
     load: controller.load,
+    openHome: sections.openHome,
   };
 }

@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {managesTier, type AccessMember, type AccessTier, type MemberLimits} from '@core/server-administration.ts';
-import {SettingsGroup, SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
+import {SettingsAction, SettingsGroup, SettingsHours, SettingsSelectionList, SettingsStringList, SettingsPanel, SettingsRows, SettingsTable, type SettingPresentation, type SettingsTableHandle, type TableQuery} from '../../kit/settings';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
@@ -16,7 +16,14 @@ const initialQuery: TableQuery = {search: '', filters: {role: 'all', status: 'al
 function queryOf(query: TableQuery): SettingsPeopleQuery {
   return {search: query.search, role: query.filters.role as SettingsPeopleQuery['role'], status: query.filters.status as SettingsPeopleQuery['status'], sort: query.sort.by as SettingsPeopleQuery['sort'], direction: query.sort.direction};
 }
-export type PeopleBindings = Readonly<{client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier}; invite: (opener: HTMLElement) => void; reportError: (error: unknown) => void}>;
+/** Supplied only by the genuine inherit/unlimited/limit producer facade. */
+export type PeopleStreamLimits = Readonly<{
+  read: (person: AccessMember) => SettingsValue;
+  patch: (person: AccessMember, choice: SettingsValue) => MemberLimits;
+  readBulk: (access: SettingsBulkAccess | undefined) => SettingsValue;
+  patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
+}>;
+export type PeopleBindings = Readonly<{client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier}; streamLimits?: PeopleStreamLimits; invite: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void}>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
 export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
@@ -60,7 +67,7 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
   const canEdit = !!person && person.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, person.role);
   const values: Readonly<Record<string, SettingsValue | undefined>> = person ? {
     'people.username': person.username, 'people.notes': person.notes ?? '', 'people.role': person.role === 'admin' ? 'administrator' : person.role,
-    'people.libraries': person.allowedLibraries.length || chooseLibraries ? 'some' : 'all', 'people.maxStreams': person.limits.maxStreams === 0 ? 'unlimited' : String(person.limits.maxStreams),
+    'people.libraries': person.allowedLibraries.length || chooseLibraries ? 'some' : 'all', ...(bindings.streamLimits ? {'people.maxStreams': bindings.streamLimits.read(person)} : {}),
     'people.awayAccess': person.limits.allowRemote ? 'allowed' : 'home', 'people.conversions': person.limits.conversion === 'audio' ? 'sound' : person.limits.conversion,
     'people.hours': person.limits.schedule.windows.length || chooseHours ? 'set' : 'any', 'people.hoursTimezone': person.limits.schedule.timezone,
     'people.maxRating': person.limits.maxContentRating || 'none', 'people.allowUnrated': person.limits.allowUnrated, 'people.accessTokens': person.limits.accessTokens,
@@ -77,7 +84,12 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
       if (row.id === 'people.role') {const next = await client.role(before, value === 'administrator' ? 'admin' : value as AccessTier); setPerson(current => current?.accountId === before.accountId ? next : current); return;}
       if (row.id === 'people.libraries' && value === 'all') {await libraryAccess([]); setChooseLibraries(false); return;}
       const patch: {-readonly [K in keyof MemberLimits]?: MemberLimits[K]} = {};
-      if (row.id === 'people.maxStreams') patch.maxStreams = value === 'unlimited' ? 0 : value === 'default' ? 0 : Number(value);
+      if (row.id === 'people.maxStreams') {
+        if (!bindings.streamLimits) throw new Error('settings_stream_limit_inheritance_unavailable');
+        const saved = await client.limits(before, bindings.streamLimits.patch(before, value));
+        setPerson(current => current?.accountId === before.accountId ? {...before, limits: saved.limits, limitsRevision: saved.revision} : current);
+        return;
+      }
       else if (row.id === 'people.awayAccess') patch.allowRemote = value === 'allowed';
       else if (row.id === 'people.conversions') patch.conversion = value === 'sound' ? 'audio' : value as MemberLimits['conversion'];
       else if (row.id === 'people.maxRating') patch.maxContentRating = value === 'none' ? '' : String(value);
@@ -118,17 +130,17 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
     }} />;
     if (row.id === 'people.profiles') return <>{person.profileNames?.map((name, index) => <Row key={index} label={name}><span /></Row>)}</>;
     if (row.control.type === 'readonly') return <span>{values[row.id] as string}</span>;
-    if (row.control.type === 'action') return <Button size="compact" disabled={!canEdit || saving || !personRow} onClick={() => {if (personRow) ask(row.id === 'people.delete' ? 'remove' : person.disabled ? 'enable' : 'disable', [personId!]);}}>{row.id === 'people.turnOff' && person.disabled ? t('next.settings.turnOn') : t(row.control.label!)}</Button>;
+    if (row.control.type === 'action') return <SettingsAction appearance={row.control.style === 'danger' ? 'danger' : 'glass'} disabled={!canEdit || saving || !personRow} onClick={() => {if (personRow) ask(row.id === 'people.delete' ? 'remove' : person.disabled ? 'enable' : 'disable', [personId!]);}}>{row.id === 'people.turnOff' && person.disabled ? t('next.settings.turnOn') : t(row.control.label!)}</SettingsAction>;
     return null;
   };
   return <>
-    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="compact" variant="primary" icon="i-plus" iconSize={20} onClick={event => bindings.invite(event.currentTarget)}>{t(table.addLabel!)}</Button>}>
-    {error && !page && !personId ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRefresh(value => value + 1)}} /> : <SettingsTable ref={tableRef} height={table.height}
+    <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} onClick={event => bindings.invite(event.currentTarget)}>{t(table.addLabel!)}</Button>}>
+    {error && !page && !personId ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRefresh(value => value + 1)}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : <SettingsTable ref={tableRef} height={table.height}
       label={t(section.title)} rows={(page?.items ?? []).map(row => ({id: row.accountId, label: row.username, selectable: row.accountId !== bindings.actor.accountId && managesTier(bindings.actor.role, row.role), cells: {
-        person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]},
+        person: {title: row.username, meta: row.email, avatar: Array.from(row.username)[0]?.toLocaleUpperCase()},
         role: {title: t(row.role === 'owner' ? 'next.shell.owner' : row.role === 'admin' ? 'next.shell.administrator' : 'next.settings.member'), tone: row.role === 'owner' ? 'ok' : row.role === 'admin' ? 'accent' : 'quiet'},
         access: {title: row.libraryNames.length ? row.libraryNames.join(', ') : t('next.settings.allLibraries'), meta: row.maxStreams ? t('next.settings.streams', {count: row.maxStreams}) : t('next.settings.unlimitedStreams')},
-        profiles: row.profileNames.join(', '), active: {title: row.liveState === 'watching' ? t('next.settings.watchingNow') : row.liveState === 'listening' ? t('next.settings.listeningNow') : row.status !== 'active' ? t(`next.settings.personStatus.${row.status}` as 'next.settings.personStatus.off') : row.lastActiveAt ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(row.lastActiveAt)) : t('next.settings.never')},
+        profiles: row.profileNames.join(', '), active: {title: row.liveState === 'watching' ? t('next.settings.watchingNow') : row.liveState === 'listening' ? t('next.settings.listeningNow') : row.status !== 'active' ? t(`next.settings.personStatus.${row.status}` as 'next.settings.personStatus.off') : row.lastActiveAt ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(row.lastActiveAt)) : ''},
       }}))} columns={table.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main', sortable: column.sort, width: column.width}))}
       query={query} onQueryChange={setQuery} filters={table.filters!.map(filter => ({id: filter.id, label: t(filter.label), showAllValue: false, options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
       searchLabel={t(table.search!)} countLabel={t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page?.matchedCount ?? 0, total: page?.totalCount ?? 0})} emptyLabel={t(table.empty!)} loading={loading}
@@ -147,8 +159,8 @@ export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
       }))} />}
     {command && <Dialog open title={command.action === 'access' ? t(table.select!.bulk[0].label) : t('next.settings.confirmPeople', {count: command.rows.length})} onOpenChange={open => {if (!open && !saving) {setCommand(undefined); setBulk(undefined);}}}
       returnFocusRef={confirmOpener} footer={<><Button disabled={saving} onClick={() => {setCommand(undefined); setBulk(undefined);}}>{t('next.settings.cancel')}</Button><Button variant="primary" loading={saving} disabled={command.action === 'access' && !Object.keys(bulk ?? {}).length} onClick={() => {void run(async () => {await client.bulk(command.rows, command.action, command.action === 'access' ? bulk : undefined); setCommand(undefined); setBulk(undefined); setSelected(new Set()); if (command.action === 'remove' && command.rows.some(row => row.accountId === personId)) {setPersonId(undefined); setPerson(undefined);} else if (personId) {const next = await client.person(personId); setPerson(current => current?.accountId === next.accountId ? next : current);}});}}>{t('next.settings.apply')}</Button></>}>
-      {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.maxStreams', 'bulk.awayAccess', 'bulk.maxRating'].includes(row.id), value: row.id === 'bulk.maxStreams' ? bulk?.maxStreams === undefined ? 'keep' : bulk.maxStreams === 0 ? 'unlimited' : String(bulk.maxStreams) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
-        change={(row, value) => setBulk(before => {const next = {...before}; if (row.id === 'bulk.maxStreams') {if (value === 'keep') delete next.maxStreams; else next.maxStreams = value === 'unlimited' || value === 'default' ? 0 : Number(value);} else if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
+      {command.action === 'access' ? <SettingsRows holder={section.panels!.bulkAccess} advancedOpen={false} onAdvancedChange={() => {}} reset={() => {}} state={row => ({present: ['bulk.awayAccess', 'bulk.maxRating'].includes(row.id) || row.id === 'bulk.maxStreams' && !!bindings.streamLimits, value: row.id === 'bulk.maxStreams' ? bindings.streamLimits?.readBulk(bulk) : row.id === 'bulk.awayAccess' ? bulk?.allowRemote === undefined ? 'keep' : bulk.allowRemote ? 'allowed' : 'home' : bulk?.maxContentRating === undefined ? 'keep' : bulk.maxContentRating || 'none'})}
+        change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
     </Dialog>}
   </>;
 }

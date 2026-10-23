@@ -1,4 +1,13 @@
 export const settingsMessages = {
+  'next.settings.backup.protectTitle': 'Backup passphrase',
+  'next.settings.backup.changeTitle': 'Change backup passphrase',
+  'next.settings.backup.restoreTitle': 'This backup is protected',
+  'next.settings.backup.passphrase': 'Passphrase',
+  'next.settings.backup.repeat': 'Type it again',
+  'next.settings.backup.protect': 'Protect backups',
+  'next.settings.backup.restore': 'Restore',
+  'next.settings.backup.mismatch': 'These don’t match.',
+  'next.settings.backup.incorrect': 'That passphrase doesn’t open this backup.',
   'next.settings.selected': '{count, plural, one {# selected} other {# selected}}',
   'next.settings.selectLoaded': 'Select loaded rows',
   'next.settings.selectRow': 'Select {name}',

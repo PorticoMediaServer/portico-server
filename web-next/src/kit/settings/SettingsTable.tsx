@@ -2,7 +2,7 @@ import {useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, use
 import {defaultI18n} from '@i18n';
 import {Button, Select, TextField} from '../controls';
 import {Icon} from '../Icon';
-import {nextTableSort, selectTableRows, settingsTableHeaderHeight, settingsTableRowHeight, settingsTableWindow, tableFocusFallback, type TableQuery} from './table-model';
+import {nextTableSort, selectTableRows, settingsTableAvatarHue, settingsTableHeaderHeight, settingsTableRowHeight, settingsTableWindow, tableFocusFallback, type TableQuery} from './table-model';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
@@ -25,7 +25,7 @@ function Cell({value, kind}: {value?: SettingsTableCell; kind?: SettingsTableCol
   const cell = typeof value === 'string' ? {title: value} : value;
   if (!cell) return null;
   return <div className={styles.cell} data-kind={kind} title={[cell.title, cell.meta].filter(Boolean).join('\n')}>
-    {kind === 'main' && (cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} aria-hidden="true">{cell.avatar}</span> : null)}
+    {kind === 'main' && (cell.image ? <img src={cell.image} alt="" className={styles.poster} loading="lazy" /> : cell.avatar ? <span className={styles.avatar} style={{'--settings-avatar-hue': settingsTableAvatarHue(cell.title)} as CSSProperties} aria-hidden="true">{cell.avatar}</span> : null)}
     <span className={kind === 'badge' ? styles.badge : styles.cellText} data-tone={cell.tone}><span>{cell.title}</span>{cell.meta && <small>{cell.meta}</small>}</span>
   </div>;
 }
@@ -108,7 +108,7 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
         }
       }}>
       <table className={styles.table} aria-label={label} aria-rowcount={matchedCount + 1} aria-colcount={columnsCount}>
-        <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{rowAction && <col className={styles.actionColumn} />}</colgroup>
+        <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{rowAction && <col style={{width: Math.ceil(78 + rowAction.label.length * 7.8)}} />}</colgroup>
         <thead><tr>{selectable && <th scope="col"><input ref={all} type="checkbox" checked={allChecked} disabled={!eligible.length} aria-label={t('next.settings.selectLoaded')} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), eligible.map(row => row.id), event.currentTarget.checked))} /></th>}
           {columns.map(column => <th key={column.id} scope="col" aria-sort={query.sort.by === column.id ? query.sort.direction === 'asc' ? 'ascending' : 'descending' : undefined} data-kind={column.kind}>
             {column.sortable ? <button type="button" onClick={() => changeQuery({...query, sort: nextTableSort(query.sort, column.id)})}>{column.label}<Icon name={query.sort.by === column.id && query.sort.direction === 'desc' ? 'i-arrow-down' : 'i-arrow-up'} size={14} className={query.sort.by === column.id ? undefined : styles.sortIdle} /></button> : column.label}

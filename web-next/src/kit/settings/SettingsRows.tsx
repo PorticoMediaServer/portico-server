@@ -15,7 +15,7 @@ import styles from './settings.module.css';
 const t = defaultI18n.t;
 export type SettingPresentation = Readonly<{
   present: boolean; value?: SettingsValue; defaultValue?: SettingsValue; changed?: boolean; displayValue?: string; defaultLabel?: string;
-  disabled?: boolean; saving?: boolean; readOnly?: boolean; error?: string;
+  disabled?: boolean; saving?: boolean; readOnly?: boolean; error?: string; statusTone?: 'quiet' | 'ok' | 'warn' | 'bad';
   /** Static copy is translated once; dynamic names are genuine producer values. */
   choices?: readonly (Omit<SettingsOption, 'label' | 'hint'> & {label: string; hint?: string})[]; label?: string; help?: string;
   gridRows?: readonly SettingsTableRow[];
@@ -70,6 +70,7 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   } else if (c.type === 'segmented' && state.value !== undefined) control = <Segmented aria-label={label} value={String(state.value)} disabled={disabled} items={options.map(option => ({value: String(option.value), label: option.label, disabled: options.some(value => value.sets) && !option.sets}))} onValueChange={value => {const next = option(value); if (next !== undefined) change(next);}} />;
   else if (c.type === 'number' && (typeof state.value === 'number' || state.value === null)) control = <SettingNumber label={label} value={state.value} min={c.min ?? 0} max={c.max ?? Number.MAX_SAFE_INTEGER} step={c.step} optional={c.optional} unit={c.unit && t(c.unit)} placeholder={c.placeholder && t(c.placeholder)} disabled={disabled} plain={c.style === 'field'} onCommit={change} />;
   else if (c.type === 'text' && !c.secret && typeof state.value === 'string') control = <SettingText label={label} value={state.value} disabled={disabled} placeholder={c.placeholder && t(c.placeholder)} onCommit={change} />;
+  else if (c.type === 'status' && state.displayValue !== undefined) control = <span className={styles.status} data-tone={state.statusTone ?? 'quiet'}>{state.displayValue}</span>;
   else if (c.type === 'readonly' && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
   else if (c.type === 'table' && c.style === 'grid' && state.gridRows) control = <SettingsGrid label={label} rows={state.gridRows} columns={(c.columns ?? []).map(column => ({id: column.id!, label: t(column.label), kind: column.kind as SettingsTableColumn['kind'], width: column.width}))} />;
   else if (c.type === 'matrix' && state.value && typeof state.value === 'object' && !Array.isArray(state.value)) {

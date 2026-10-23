@@ -62,7 +62,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
   const profileRequest=useRef<AbortController|undefined>(undefined);
   useEffect(()=>()=>profileRequest.current?.abort(),[]);
   const chooseProfile=async(profile:ProfileIdentity,pin='')=>{if(!onSwitchProfile)return;profileRequest.current?.abort();const controller=profileRequest.current=new AbortController();setProfileBusy(true);setProfileError(false);try{await onSwitchProfile(profile.id,pin,controller.signal);if(!controller.signal.aborted)setProfileChoice(undefined);}catch{if(!controller.signal.aborted)setProfileError(true);}finally{if(profileRequest.current===controller)setProfileBusy(false);}};
-  const home = pathname === '/', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
+  const home = pathname === '/', settingsArea = pathname === '/settings' || pathname === '/dashboard', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
   const {viewer} = identity;
   useEffect(() => {
     if (!pathname.startsWith('/library/')) return;
@@ -97,13 +97,13 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
     }} trigger={navigation === 'sidebar' ? <button type="button" className={styles.profileRow} aria-label={[t('web.account.switchProfileOrServer'), identity.username || t('next.shell.usernameUnavailable'), identity.serverName].join(', ')}>
       <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={34} />
       <span className={styles.profileText}><b>{identity.username || t('next.shell.usernameUnavailable')}</b><small>{identity.serverName}</small></span><Icon name="i-updown" size={18} />
-    </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
+    </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30} current={pathname === '/settings'}
       notificationDot={compact && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
   return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible} data-window-os={chrome.os} data-window-fullscreen={chrome.fullscreen}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
     {windowChrome && <div data-window-chrome-host data-window-no-drag>{windowChrome}</div>}
     <div className={styles.navigation} data-shell-navigation>
-      {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
+      {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home && !settingsArea} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
         <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
         <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} pathname={pathname} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
         <div className={styles.tools} data-window-no-drag>

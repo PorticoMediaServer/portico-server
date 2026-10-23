@@ -3,6 +3,13 @@ export type TableSort = Readonly<{by: string; direction: 'asc' | 'desc'}>;
 export type TableQuery = Readonly<{search: string; filters: Readonly<Record<string, string>>; sort: TableSort}>;
 export type TableWindow = Readonly<{first: number; last: number; before: number; after: number}>;
 
+/** settings.html hueOf: a stable colour from the actual displayed person name. */
+export function settingsTableAvatarHue(title: string): number {
+  let hue = 0;
+  for (const character of title) hue = (hue * 31 + character.charCodeAt(0)) % 360;
+  return hue;
+}
+
 export const settingsTableRowHeight = 60;
 export const settingsTableHeaderHeight = 40;
 export function settingsTableWindow(count: number, scrollTop: number, height: number, overscan = 3): TableWindow {

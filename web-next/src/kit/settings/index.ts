@@ -12,3 +12,6 @@ export * from './SettingsSelectionList';
 export * from './SettingsHours';
 export * from './SettingsStringList';
 export * from './SettingsGrid';
+export {SettingsAction} from './SettingsAction';
+export {BackupPassphraseDialog} from './BackupPassphraseDialog';
+export type {BackupPassphraseDialogProps} from './BackupPassphraseDialog';

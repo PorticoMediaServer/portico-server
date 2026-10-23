@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
+import {settingsRowIndex, settingsSpec, type SettingsHolder, type SettingsRow, type SettingsSection, type SettingsValue} from '@core/presentation/settings-spec.ts';
 import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
 import {StateView} from '../../kit/states';
@@ -30,10 +30,11 @@ export type SettingsBindings = Readonly<{
   change: (row: SettingsRow, value: SettingsValue, context: SettingsContext) => void;
   reset: (row: SettingsRow, context: SettingsContext) => void;
   special: (row: SettingsRow, state: SettingPresentation, context: SettingsContext, openPanel: (panelId: string, recordId?: string) => void) => ReactNode;
-  section?: (context: SettingsContext, openPanel: (panelId: string, recordId?: string) => void) => ReactNode;
+  section?: (context: SettingsContext, openPanel: (panelId: string, recordId?: string) => void, renderRows: (holder: SettingsHolder) => ReactNode) => ReactNode;
   configurationMatches?: (query: string) => readonly SettingsConfigurationMatch[];
   panel?: (context: SettingsContext) => Readonly<{title?: string; description?: string; create?: SettingsPanelProps['create']}>;
   load: () => Promise<void>;
+  openHome: () => void;
 }>;
 
 export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsBindings; route: SettingsRoute; navigate: (route: SettingsRoute) => void}) {
@@ -42,7 +43,7 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const [query, setQuery] = useState(''), [compactPage, setCompactPage] = useState(false), [advanced, setAdvanced] = useState(false);
   const [panel, setPanel] = useState<{id: string; recordId?: string; tab?: string} | undefined>();
   const [configurationKey, setConfigurationKey] = useState<string>();
-  const opener = useRef<HTMLElement | null>(null), heading = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const environment = {...bindings.environment, role: bindings.role};
   const sectionVisible = (section: SettingsSection) => settingsSectionVisible(section, environment) && bindings.sectionVisible(section);
   const rowState = (row: SettingsRow, context: SettingsContext): SettingPresentation => settingsRowVisible(row, environment) && bindings.eligible(row, context) ? bindings.rowState(row, context) : {present: false};
@@ -98,8 +99,8 @@ export function SettingsScreen({bindings, route, navigate}: {bindings: SettingsB
   const fact = configuration.find(fact => fact.key === configurationKey);
   return <SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
-    <div ref={heading}><SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} /></div>
-    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load();}}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel) ?? rows(section, context)}
+    <SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} />
+    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void bindings.load();}}} secondary={{id: 'home', label: t('next.states.goHome'), onPress: bindings.openHome}} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
     {panel && panelSpec && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}

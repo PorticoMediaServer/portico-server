@@ -19,7 +19,7 @@ export type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   errorIcon?: IconName;
   leadingIcon?: IconName;
   trailing?: ReactNode;
-  variant?: 'field' | 'compact' | 'search' | 'auth' | 'code' | 'large-search';
+  variant?: 'field' | 'compact' | 'setting' | 'search' | 'auth' | 'code' | 'large-search';
   containerClassName?: string;
 };
 
