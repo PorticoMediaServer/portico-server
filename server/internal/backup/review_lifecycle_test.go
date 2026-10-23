@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -32,7 +33,7 @@ func TestEncryptedSummaryRejectsBytesBeyondItsBound(t *testing.T) {
 }
 
 func TestMissingAndCorruptPassphraseKeyCannotPublishPlaintextFallback(t *testing.T) {
-	for _, damage := range []string{"missing", "truncated", "replaced", "symlink"} {
+	for _, damage := range []string{"missing", "truncated", "replaced", "symlink", "public-mode"} {
 		t.Run(damage, func(t *testing.T) {
 			s, p, state := policyFixture(t)
 			password := "private recovery fixture phrase"
@@ -40,6 +41,11 @@ func TestMissingAndCorruptPassphraseKeyCannotPublishPlaintextFallback(t *testing
 				t.Fatal(err)
 			}
 			path := filepath.Join(state, "Keys", "backup-passphrase.key")
+			originalKey, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer clear(originalKey)
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
@@ -50,6 +56,16 @@ func TestMissingAndCorruptPassphraseKeyCannotPublishPlaintextFallback(t *testing
 				}
 			case "replaced":
 				if err := os.WriteFile(path, bytes.Repeat([]byte{0x51}, 32), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "public-mode":
+				if runtime.GOOS == "windows" {
+					t.Skip("Unix mode bits do not establish Windows ACLs")
+				}
+				if err := os.WriteFile(path, originalKey, 0644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, 0644); err != nil {
 					t.Fatal(err)
 				}
 			case "symlink":
@@ -75,6 +91,48 @@ func TestMissingAndCorruptPassphraseKeyCannotPublishPlaintextFallback(t *testing
 			assertNoScratch(t, state, filepath.Join(state, BackupsDir))
 		})
 	}
+}
+
+func TestEncryptedRestorePrivateTempIOFailureLeavesLiveStateUntouched(t *testing.T) {
+	s, p, state := policyFixture(t)
+	password := "private temporary restore fixture phrase"
+	if _, err := p.Update(context.Background(), SettingsPatch{PassphraseProtected: ptr(true), Passphrase: &password}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.Create(context.Background(), KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeDB := fileHashOrEmpty(t, filepath.Join(state, DatabaseName))
+	beforeKey := fileHashOrEmpty(t, filepath.Join(state, "Keys", "backup-passphrase.key"))
+	temp := filepath.Join(state, "Temp")
+	if err = os.Remove(temp); err != nil {
+		t.Fatal(err)
+	}
+	// An actual filesystem failure, independent of the process's privilege or
+	// platform permission-bit semantics: this path cannot contain a directory.
+	if err = os.WriteFile(temp, []byte("unavailable private temporary directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.StageWithPassphrase(context.Background(), Source{BackupID: id}, password); err == nil {
+		t.Fatal("restore accepted an unusable private temporary directory")
+	}
+	if beforeDB != fileHashOrEmpty(t, filepath.Join(state, DatabaseName)) || beforeKey != fileHashOrEmpty(t, filepath.Join(state, "Keys", "backup-passphrase.key")) {
+		t.Fatal("failed restore changed live database or Keys")
+	}
+	if _, err = os.Stat(filepath.Join(state, RestoreStagedDir, RestoreMarkerFile)); !os.IsNotExist(err) {
+		t.Fatal("failed restore installed a marker", err)
+	}
+	if err = os.Remove(temp); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(temp, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.StageWithPassphrase(context.Background(), Source{BackupID: id}, password); err != nil {
+		t.Fatal("same archive could not stage after repairing private Temp", err)
+	}
+	assertNoScratch(t, state, filepath.Join(state, BackupsDir))
 }
 
 func TestEncryptedBackupCloseFailureNeverPublishes(t *testing.T) {
