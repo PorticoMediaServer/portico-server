@@ -3,7 +3,6 @@
 package rcloneprogram
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -17,7 +16,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,7 +23,6 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"portico.local/server/internal/childprocess"
-	"portico.local/server/internal/remotemedia"
 )
 
 // A throwaway direct SFTP origin, not a relay, native replacement or real
@@ -68,7 +65,7 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := sftpFixturePort(t)
+	port := backendFixturePort(t)
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	authorized := filepath.Join(private, "fixture-authorized-keys")
 	if err = os.WriteFile(authorized, nil, 0600); err != nil {
@@ -124,7 +121,7 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 	defer clear(password)
 	spec, lease, _ := serveProcessFixture(t, "unused")
 	spec.SourceID, spec.Connections, spec.RequestsPerSecond = "sftp-fixture", 2, 50
-	spec.ApprovedProgramDigest, spec.MetadataPort = digest, sftpFixturePort(t)
+	spec.ApprovedProgramDigest, spec.MetadataPort = digest, backendFixturePort(t)
 	spec.Remote = "media:/"
 	spec.Configuration = []byte(fmt.Sprintf("[media]\ntype=sftp\nhost=127.0.0.1\nport=%d\nuser=fixture\npass=%s\nknown_hosts_file=%s\nshell_type=none\ndisable_hashcheck=true\n", port, strings.TrimSpace(string(password)), known))
 	defer clear(spec.Configuration)
@@ -142,7 +139,7 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 		ticker := time.NewTicker(2 * time.Millisecond)
 		defer ticker.Stop()
 		for {
-			n := int32(sftpFixtureSockets(port))
+			n := int32(backendFixtureSockets(port))
 			for prior := socketPeak.Load(); n > prior && !socketPeak.CompareAndSwap(prior, n); prior = socketPeak.Load() {
 			}
 			select {
@@ -165,94 +162,16 @@ func TestLockedSFTPMixedOperationBudget(t *testing.T) {
 			t.Error("SFTP source retirement", err)
 		}
 	})
-	endpoint, err := process.Endpoint(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tags := make(map[string]string)
-	for _, name := range []string{"one.mkv", "two.mkv", "book.bin"} {
-		entry, err := endpoint.Stat(ctx, name, process.Check)
-		if err != nil || entry.Size != int64(len(payload)) {
-			t.Fatal("SFTP served facts", name, err)
-		}
-		tags[name] = entry.ETag
-	}
-	metadata, err := process.Metadata(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	observer, err := process.ObservationEndpoint(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := make(chan struct{})
-	read := func(name string) error {
-		got, err := endpoint.ReadRange(ctx, name, tags[name], int64(len(payload)), 1500001, 127, process.Check)
-		if err == nil && !bytes.Equal(got, payload[1500001:1500128]) {
-			err = fmt.Errorf("SFTP late extent differs")
-		}
-		return err
-	}
-	load := []func() error{
-		func() error {
-			fresh, err := metadata.Stat(ctx, "one.mkv", process.Check)
-			if err == nil && (fresh.Size != int64(len(payload)) || !fresh.Modified.Equal(modified) || len(fresh.Hashes) != 0) {
-				err = fmt.Errorf("fresh SFTP metadata differs")
-			}
-			return err
-		},
-		func() error {
-			entry, err := observer.Stat(ctx, "two.mkv", process.Check)
-			if err == nil && entry.Size != int64(len(payload)) {
-				err = fmt.Errorf("SFTP observer facts differ")
-			}
-			return err
-		},
-		func() error {
-			return endpoint.VisitSnapshot(ctx, "", process.Check, func(remotemedia.DAVEntry) error { return nil })
-		},
-		func() error { return read("one.mkv") },
-		func() error { return read("two.mkv") },
-		func() error { return read("one.mkv") },
-		func() error { return read("one.mkv") },
-		func() error {
-			body, err := endpoint.OpenFromStart(ctx, "book.bin", tags["book.bin"], int64(len(payload)), process.Check)
-			if err != nil {
-				return err
-			}
-			defer body.Close()
-			var prefix [64]byte
-			_, err = io.ReadFull(body, prefix[:])
-			if err == nil && !bytes.Equal(prefix[:], payload[:64]) {
-				err = fmt.Errorf("SFTP progressive prefix differs")
-			}
-			return err
-		},
-	}
-	var done sync.WaitGroup
-	for _, call := range load {
-		done.Go(func() {
-			<-start
-			if err := call(); err != nil {
-				t.Error("mixed SFTP operation", err)
-			}
-		})
-	}
-	close(start)
-	done.Wait()
+	exerciseMixedSourceBudget(t, ctx, process, payload, modified)
 	counts := process.OperationCounts()
 	peak := socketPeak.Load()
 	t.Logf("controlled_sftp_admission=%+v observed_upstream_socket_peak=%d", counts, peak)
 	if counts.Capacity != 2 || counts.Active != 0 || counts.Peak != 2 || peak < 1 || peak > 2 {
 		t.Fatal("SFTP operation/pool ceiling", counts, peak)
 	}
-	fresh, err := metadata.Stat(ctx, "one.mkv", process.Check)
-	if err != nil || fresh.Size != int64(len(payload)) || !fresh.Modified.Equal(modified) || len(fresh.Hashes) != 0 {
-		t.Fatal("fresh SFTP facts without whole-file hashes", fresh, err)
-	}
 }
 
-func sftpFixturePort(t *testing.T) int {
+func backendFixturePort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -264,7 +183,7 @@ func sftpFixturePort(t *testing.T) int {
 
 // Linux's sampled established client-side sockets are an observed fact, not a
 // generic transport/socket guarantee. No private endpoint or auth is returned.
-func sftpFixtureSockets(port int) int {
+func backendFixtureSockets(port int) int {
 	file, err := os.Open("/proc/net/tcp")
 	if err != nil {
 		return 0
