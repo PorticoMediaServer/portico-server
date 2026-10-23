@@ -6,7 +6,7 @@
   "status": 200,
   "response": {
     "server": {
-      "id": "JbRYJAtcoMWqZLxoWk8Lmxf6icHUJ0hhEQn62KHzw-Q",
+      "id": "30QIGYwolqtckkznpfTVkqA4oABTTIt6J8TrFD7wO3s",
       "name": "Portico",
       "api": {
         "major": 1,
@@ -45,7 +45,7 @@
       "viewer": {
         "accountId": "account",
         "profileId": "profile",
-        "serverId": "JbRYJAtcoMWqZLxoWk8Lmxf6icHUJ0hhEQn62KHzw-Q",
+        "serverId": "30QIGYwolqtckkznpfTVkqA4oABTTIt6J8TrFD7wO3s",
         "authority": "local",
         "role": "owner"
       }
@@ -59,7 +59,7 @@
       },
       "deviceClass": "web",
       "registry": {
-        "revision": "p40.Q2.B5",
+        "revision": "p40.Q2.B5.QL1",
         "fields": [
           {
             "consumer": "client.playback.controls",
@@ -461,11 +461,12 @@
               "original",
               "automatic",
               "2160p",
-              "1440p",
-              "1080p",
-              "720p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
               "480p",
-              "360p"
+              "240p"
             ],
             "scopes": [
               "profile-device-class"
@@ -482,11 +483,12 @@
               "original",
               "automatic",
               "2160p",
-              "1440p",
-              "1080p",
-              "720p",
+              "1080p-high",
+              "1080p-low",
+              "720p-high",
+              "720p-low",
               "480p",
-              "360p"
+              "240p"
             ],
             "scopes": [
               "profile-device-class"
@@ -782,7 +784,7 @@
         "search.rememberHistory": "default"
       },
       "clampedFields": [],
-      "registryRevision": "p40.Q2.B5"
+      "registryRevision": "p40.Q2.B5.QL1"
     },
     "homeLayout": {
       "revision": 1,

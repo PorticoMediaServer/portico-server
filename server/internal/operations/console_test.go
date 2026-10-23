@@ -75,7 +75,7 @@ func TestConsoleSettingsCASAndReplay(t *testing.T) {
 	cap := 3
 	v := before.Requested
 	v.ServerCap = &cap
-	v.TranscodingEnabled = false
+	v.ConversionMode = "never"
 	v.Name = "Local home"
 	change := SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "settings-one", Values: v}
 	after, e := s.ApplySettings(ctx, p, auth, change)
@@ -462,11 +462,11 @@ func TestConsoleRejectsStaleSettingsAfterLegacyWriter(t *testing.T) {
 	if e != nil || current.Effective.Name != "Changed elsewhere" {
 		t.Fatal("name not authoritative", e)
 	}
-	if _, e = s.DB.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0,revision=revision+1 WHERE singleton=1`); e != nil {
+	if _, e = s.DB.Exec(`UPDATE playback_owner_policy SET per_account_cap=2,revision=revision+1 WHERE singleton=1`); e != nil {
 		t.Fatal(e)
 	}
 	after, e := s.Settings(ctx, auth)
-	if e != nil || after.Effective.TranscodingEnabled || after.Revision <= current.Revision {
+	if e != nil || after.Effective.PerAccountCap == nil || *after.Effective.PerAccountCap != 2 || after.Revision <= current.Revision {
 		t.Fatal("domain policy not authoritative", e)
 	}
 }

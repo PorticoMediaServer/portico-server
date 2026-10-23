@@ -7,6 +7,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "account_move_waiting",
+    "status": 403,
+    "message": "This account is waiting to move. Use its move link or code.",
+    "retry": "never"
+  },
+  {
     "code": "administration_unavailable",
     "status": 503,
     "message": "Administration is temporarily unavailable.",
@@ -149,18 +155,6 @@ export const errors = [
     "status": 409,
     "message": "Refresh the list to continue.",
     "retry": "after_refresh"
-  },
-  {
-    "code": "device_approval_pending",
-    "status": 403,
-    "message": "This device is waiting for approval.",
-    "retry": "never"
-  },
-  {
-    "code": "device_denied",
-    "status": 403,
-    "message": "This device is not approved.",
-    "retry": "never"
   },
   {
     "code": "device_not_found",
@@ -433,6 +427,24 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "move_code_invalid",
+    "status": 410,
+    "message": "This move code is no longer usable. Ask the server owner for another.",
+    "retry": "never"
+  },
+  {
+    "code": "move_collision",
+    "status": 409,
+    "message": "That Portico Account is already on this server as another account.",
+    "retry": "never"
+  },
+  {
+    "code": "move_confirmation",
+    "status": 409,
+    "message": "Type the server's name exactly to confirm.",
+    "retry": "never"
+  },
+  {
     "code": "no_tuner_available",
     "status": 409,
     "message": "Every tuner is in use.",
@@ -628,6 +640,18 @@ export const errors = [
     "code": "setup_already_complete",
     "status": 409,
     "message": "This server is already set up.",
+    "retry": "never"
+  },
+  {
+    "code": "sign_in_kind_local",
+    "status": 403,
+    "message": "This server uses local accounts. Sign in with its username and password.",
+    "retry": "never"
+  },
+  {
+    "code": "sign_in_kind_portico",
+    "status": 403,
+    "message": "This server uses Portico Accounts. Sign in with your Portico Account.",
     "retry": "never"
   },
   {

@@ -402,6 +402,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{itemId}/playback/{session}/subtitles":                perItem("/playback/unknown/subtitles"),
 		"GET /v1/admin/console/settings":                                     exempt(reasonAdmin),
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
+		"GET /v1/admin/sign-in/move":                                         exempt(reasonAdmin),
 		"GET /v1/admin/settings/configuration":                               exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),

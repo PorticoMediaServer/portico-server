@@ -24,6 +24,18 @@ type settingConsumer struct{ file, witness, effect string }
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+
+	"administration.LibrarySettings.scanDepth":          {"internal/catalog/library_sources.go", "Tier", "Admit exactly the configured scan stages"},
+	"administration.LibrarySettings.groupCollections":   {"internal/catalog/collections.go", "literal:group_collections", "Group eligible library collections"},
+	"administration.LibrarySettings.localTags":          {"internal/metadata/screen_base.go", "literal:local_tags", "Apply local metadata selection policy"},
+	"administration.LibrarySettings.lyricsSource":       {"internal/lyrics/bulk.go", "literal:lyrics_source", "Gate remote lyric acquisition"},
+	"administration.LibrarySettings.titleSource":        {"internal/metadata/screen_base.go", "literal:title_source", "Choose tags versus file titles"},
+	"administration.LibrarySettings.episodeNumbering":   {"internal/catalog/show_settings.go", "literal:episode_numbering", "Resolve absolute versus season numbering"},
+	"administration.LibrarySettings.findExtras":         {"internal/catalog/extras.go", "FindExtras", "Discover library extras"},
+	"administration.LibrarySettings.sortIgnoreArticles": {"internal/catalog/library_preferences.go", "SortIgnoreArticles", "Rebuild maintained library sort keys"},
+	"administration.LibrarySettings.refreshMode":        {"internal/metadata/screen_publish.go", "RefreshMode", "Keep existing fields or replace unlocked metadata"},
+	"administration.LibrarySettings.acoustidEnabled":    {"internal/metadata/music_inputs.go", "AcoustIDEnabled", "Gate AcoustID work by actual library policy"},
+
 	"administration.DVRDefaults.keepPolicy.keepCount":                        {"internal/administration/dvr_runtime.go", "KeepCount", "Set padding or retained recording count/days"},
 	"administration.DVRDefaults.keepPolicy.keepDays":                         {"internal/administration/dvr_runtime.go", "KeepDays", "Set padding or retained recording count/days"},
 	"administration.DVRDefaults.keepPolicy.mode":                             {"internal/administration/dvr_runtime.go", "Mode", "Set padding or retained recording count/days"},
@@ -148,7 +160,9 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.subtitleTrackLimit":                                 {"internal/httpapi/connection_policy.go", "SubtitleTrackLimit", "Apply subtitle discovery and acquisition bounds"},
 	"operations.Settings.temporaryDirectory":                                 {"cmd/server/main.go", "TemporaryDirectory", "Configure the running listener or media process"},
 	"operations.Settings.throttleBufferMs":                                   {"internal/httpapi/delivery_settings_adapter.go", "ThrottleBufferMs", "Pace conversion and retain played segments"},
-	"operations.Settings.transcodingEnabled":                                 {"internal/playback/delivery_plan.go", "TranscodingEnabled", "Plan media delivery using owner policy"},
+	"operations.Settings.conversionMode":                                     {"internal/httpapi/delivery_settings_adapter.go", "ConversionMode", "Pass canonical conversion policy to delivery"},
+	"operations.Settings.outputFormat":                                       {"internal/httpapi/delivery_settings_adapter.go", "OutputFormat", "Pass output encoding policy to delivery"},
+	"operations.Settings.downloadMaxQuality":                                 {"internal/httpapi/delivery_settings_adapter.go", "DownloadMaxQuality", "Pass owner download ceiling to delivery"},
 	"operations.Settings.trustedProxies":                                     {"internal/httpapi/request_locality.go", "TrustedProxies", "Classify home connections and forwarded client addresses"},
 	"operations.Settings.updates.feedUrl":                                    {"cmd/server/main.go", "UpdateFeedURL", "Check the selected release feed and channel"},
 	"operations.Settings.updates.releaseChannel":                             {"cmd/server/main.go", "UpdateChannel", "Check the selected release feed and channel"},

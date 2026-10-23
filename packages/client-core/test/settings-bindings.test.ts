@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {exactPresetValue,presetPatch,readSettingsBinding,settingsBinding,settingsBindingPatch} from '../src/presentation/settings-bindings.ts';
+import {exactPresetValue,presetPatch,readSettingsBinding,settingsBinding,settingsBindingPatch,readLibrarySettingsBinding,patchLibrarySettingsBinding} from '../src/presentation/settings-bindings.ts';
 import {parseSettingsConfiguration,searchConfiguration} from '../src/settings-configuration.ts';
 
 test('presets preserve unmatched Advanced values as Custom and reset the exact composite',()=>{
@@ -61,4 +61,31 @@ test('missing-title preset writes both policy and exact days without rounding a 
  const b=settingsBinding('storage.missingRule')!;
  assert.deepEqual(settingsBindingPatch(b,'7d'),{form:'runtime',values:{'library.missingTitles':'after_days','library.missingTitlesDays':7}});
  assert.equal(readSettingsBinding(b,{forms:{runtime:{'library.missingTitles':'after_days','library.missingTitlesDays':17}}})?.current,'custom');
+});
+
+
+test('Library rows use producer eligibility, exact units and preserve independent analysis flags',()=>{
+ const settings={scanDepth:'basic',groupCollections:true,localTags:'prefer',lyricsSource:'files',titleSource:'tags',episodeNumbering:'season',findExtras:true,sortIgnoreArticles:true,refreshMode:'replace_unlocked',acoustidEnabled:false,continueWatching:{weeks:16,maximumItems:40,includeSeasonPremieres:true,videoPlayedThreshold:95,videoCompletion:'earliest'},allowMediaDeletion:false,monitorChanges:true,providers:[],analysis:['probe','local_metadata','subtitle_discovery','trickplay'],navigation:{trickplayIntervalMs:10000,trickplayTileWidth:320,trickplayMaxTiles:1080,chapterThumbnailMode:'embedded',videoPreviewEnabled:false,videoPreviewMs:30000},segmentDetection:'server'} as const;
+ const document={libraryId:'l',libraryName:'Films',libraryKind:'movie',revision:7,digest:'d',settings,eligibleControls:['libraries.scanDepth','libraries.scrub','libraries.scrubSpacing','libraries.scrubMax','libraries.cwWatched'],audience:{everyone:true,accounts:0},actions:['rename','scan','remove'],analysisMatrix:{costClasses:[],operations:[]},availableProviders:[],enumerations:{},sources:[]} as unknown as import('../src/administration.ts').LibraryAdminDocument;
+ assert.equal(readLibrarySettingsBinding('libraries.scrub',document)?.current,'standard');
+ assert.equal(readLibrarySettingsBinding('libraries.scrubSpacing',document)?.current,10);
+ assert.equal(readLibrarySettingsBinding('libraries.scrubMax',document)?.current,'3');
+ assert.equal(readLibrarySettingsBinding('libraries.cwWatched',document)?.current,'95');
+ assert.equal(readLibrarySettingsBinding('libraries.cwWatched',document)?.default,undefined);
+ const complete=patchLibrarySettingsBinding('libraries.scanDepth','complete',document);assert.ok(complete.analysis.includes('trickplay'));assert.ok(complete.analysis.includes('loudness'));
+ assert.equal(patchLibrarySettingsBinding('libraries.scrubSpacing',5,document).navigation.trickplayIntervalMs,5000);
+ assert.equal(readLibrarySettingsBinding('libraries.scrub',{...document,settings:{...document.settings,navigation:{...document.settings.navigation,trickplayTileWidth:300}}})?.current,'custom');
+ assert.equal(readLibrarySettingsBinding('libraries.episodeThumbs',document),undefined);
+ assert.throws(()=>patchLibrarySettingsBinding('libraries.episodeThumbs','off',document));
+});
+
+test('folder units and create kinds remain canonical and preserve inventory revision',async()=>{
+ const {libraryKindForChoice,readLibrarySourceSettingsBinding,patchLibrarySourceSettingsBinding}=await import('../src/presentation/settings-bindings.ts');
+ for(const [choice,kind]of [['movies','movie'],['audiobooks','audiobook'],['books','book'],['comics','comic']])assert.equal(libraryKindForChoice(choice),kind);
+ const draft={name:'',path:'/media',classification:'local' as const,followSymlinks:false,intervalSeconds:3600,expectedRevision:11,acceptReplacement:false};
+ const patched=patchLibrarySourceSettingsBinding('libraries.rescan','15m',draft);assert.equal(patched.intervalSeconds,900);assert.equal(patched.expectedRevision,11);assert.equal(patched.acceptReplacement,false);
+ const source={...draft,id:'s',libraryId:'l',kind:'local',resolvedPath:'/media',generation:2,health:'ready',enabled:true,identityConfirmed:true,nextScanAt:'',lastCompleteAt:'',lastProgressAt:''};
+ assert.equal(readLibrarySourceSettingsBinding('libraries.rescan',source)?.current,'1h');
+ assert.equal(readLibrarySourceSettingsBinding('libraries.rescan',{...source,intervalSeconds:1234})?.current,'custom');
+ assert.throws(()=>patchLibrarySourceSettingsBinding('libraries.rescan','custom',draft));
 });

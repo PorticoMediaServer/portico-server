@@ -456,8 +456,7 @@ const serverPages: readonly AuthoredPage[] = [
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
       panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web', 'phone'], administrators: true}),
     ]},
-  // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
-  // messages sent out when something happens, and the address an assistant connects to.
+  // Owner keys, event webhooks and assistant connections.
   {id: 'integrations', title: 'settings.server.integrations', icon: 'link', platforms: ['web', 'phone'],
     tabs: [{id: 'keys', title: 'settings.server.apiKeys'}, {id: 'webhooks', title: 'api.webhooks.title'}, {id: 'assistants', title: 'settings.server.assistants'}],
     sections: [
@@ -471,7 +470,7 @@ const serverPages: readonly AuthoredPage[] = [
   {id: 'streaming', title: 'settings.server.playback', icon: 'transcode', sections: [
     panel('status', 'server.transcodeStatus'),
     {id: 'transcoding', title: 'settings.server.transcoding', description: 'web.transcoding.conversionLede', rows: [
-      on('runtime', 'transcodingEnabled', 'settings.server.allowConverting', 'web.transcoding.allowTranscodingHelp'),
+      setting('runtime', 'conversionMode', 'settings.server.allowConverting', {type:'choice',choices:[{value:'all',label:'settings.server.conversionAll'},{value:'sound',label:'settings.server.conversionSound'},{value:'never',label:'settings.server.conversionNever'}]}),
       setting('runtime', 'hardwareBackend', 'settings.server.hardware', {type: 'choice', choices: choices('settings.server.hardware', ['auto', 'software', 'videotoolbox', 'vaapi', 'qsv', 'nvenc', 'amf'])}, {help: 'settings.server.hardwareHelp'}),
       setting('runtime', 'hardwareDevice', 'settings.server.hardwareDevice', {type: 'text', mono: true, example: '/dev/dri/renderD128'}, {help: 'settings.server.hardwareDeviceHelp', when: {key: 'hardwareBackend', not: 'software'}}),
       setting('runtime', 'x264Preset', 'settings.server.encoderSpeed', {type: 'choice', choices: choices('settings.server.encoderSpeed', ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow'])}, {help: 'settings.server.encoderSpeedHelp'}),

@@ -37,3 +37,5 @@ export * from './licences.ts';
 export * as kitModel from './kit-model/index.ts';
 export * from './home-spotlight.ts';
 export * from './settings-bindings.ts';
+
+export * from './settings-server-facts.ts';

@@ -7,18 +7,16 @@
   "response": {
     "items": [
       {
-        "id": "oWHoQnIbetTRaUpfUzHoIP8FUbUijD6JqpnkqE-bxrY",
+        "id": "uLHYGPFGWnNaouaMysY4ooFOtprWio4yxWBapQ_2ZRE",
         "authority": "local",
-        "installationId": "unnamed-VDdXMGWEvWadc4g40QCE0nzWww5gJMQiyhROpAbRAdY",
+        "installationId": "unnamed-JOaRsCSSw77EzabDfReuCfDRmgNxtvL99iz9iUvWiKM",
         "name": "Portico device",
         "platform": "unknown",
         "app": "portico",
         "appVersion": "",
         "ip": "",
-        "firstSeen": "2026-10-16T12:28:23Z",
-        "lastSeen": "2026-10-16T12:28:23Z",
-        "trusted": false,
-        "approvalState": "approved",
+        "firstSeen": "2026-10-23T04:26:06Z",
+        "lastSeen": "2026-10-23T04:26:06Z",
         "rememberAccount": true,
         "current": true,
         "sessions": 1

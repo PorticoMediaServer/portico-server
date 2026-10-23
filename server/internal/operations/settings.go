@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const RegistryRevision = "settings-38b51b9.1"
+const RegistryRevision = "settings-14a9a19.2"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -88,7 +88,9 @@ func Registry() []Field {
 		field("subtitleTrackLimit", "storage", "integer", medialimits.DefaultSubtitleTracks, bounded(32), bounded(medialimits.MaxSubtitleTracks), nil, "next-operation", "subtitle inventory", "How many subtitle tracks one file may offer. Existing tracks remain available when the limit is lowered."),
 		field("subtitleFileLimitMiB", "storage", "integer", medialimits.DefaultSubtitleFileMiB, bounded(32), bounded(medialimits.MaxSubtitleFileMiB), nil, "next-operation", "subtitle acquisition", "Largest image subtitle file Portico may read, in MiB."),
 		field("name", "identity", "string", "Portico", nil, nil, nil, "hot", "identity.Service.Name", "Name shown when selecting this server."),
-		field("transcodingEnabled", "playback", "boolean", true, nil, nil, nil, "next-operation", "playback delivery planning", "Allows new audio/video conversions. Existing playback is not interrupted."),
+		field("conversionMode", "playback", "enumeration", "all", nil, nil, []string{"all", "sound", "never"}, "next-operation", "playback delivery planning", "Allows all conversions, audio-only conversions, or none."),
+		field("outputFormat", "transcoding", "enumeration", "auto", nil, nil, []string{"auto", "h264"}, "next-operation", "playback delivery planning", "Output encoding policy."),
+		field("downloadMaxQuality", "playback", "enumeration", "original", nil, nil, ownerDownloadQualities(), "next-operation", "prepared media planning", "The owner ceiling for video downloads."),
 		field("perAccountCap", "playback", "nullable-integer", nil, bounded(1), bounded(1000000), nil, "next-operation", "playback admission and expired-lease recovery", "Null means unlimited across an account's profiles and devices."),
 		field("serverCap", "playback", "nullable-integer", nil, bounded(1), bounded(1000000), nil, "next-operation", "playback admission and expired-lease recovery", "Null means unlimited. Lowering a cap never evicts existing streams."),
 		field("hardwareBackend", "transcoding", "enumeration", "auto", nil, nil, HardwareBackends, "next-operation", "delivery planning and conversion launch", "Encoder family used for conversions. Auto picks the first backend that probes successfully and falls back to software."),
@@ -124,7 +126,7 @@ func Registry() []Field {
 		field("connectionLimit", "connectivity", "integer", 0, bounded(0), bounded(65536), nil, "restart", "listener connection admission", "Maximum ordinary connections. 0 uses a default based on available memory. The owner console has reserved connections."),
 		field("advertiseUrl", "connectivity", "string", "", nil, nil, nil, "hot", "client connection candidates", "External address clients may use to reach this server. Use a hostname with no path. HTTPS addresses can also be listed by Hosted."),
 		field("trustedProxies", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "request locality and forwarded client address", "Reverse proxies (addresses or CIDR networks) whose forwarded client address this server believes. Other peers are judged by their own address."),
-		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(10000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
+		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(100000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
 		field("pausedSessionTimeoutMinutes", "connectivity", "integer", 0, bounded(0), bounded(1440), nil, "hot", "playback session sweeper", "End video sessions paused for longer than this many minutes, freeing their stream slot. Audio and Live are never ended. 0 means never."),
 		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty advertises all available interfaces."),
 		field("ownAddressEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "custom certificate TLS and route publication", "Serve the owner's own secure address independently of the Portico route."),
@@ -149,9 +151,13 @@ type Settings struct {
 	SubtitleTrackLimit      int    `json:"subtitleTrackLimit"`
 	SubtitleFileLimitMiB    int    `json:"subtitleFileLimitMiB"`
 	Name                    string `json:"name"`
-	TranscodingEnabled      bool   `json:"transcodingEnabled"`
-	PerAccountCap           *int   `json:"perAccountCap"`
-	ServerCap               *int   `json:"serverCap"`
+	// Internal admission gate is derived from ConversionMode and is never an independent wire setting.
+	TranscodingEnabled bool   `json:"-"`
+	ConversionMode     string `json:"conversionMode"`
+	OutputFormat       string `json:"outputFormat"`
+	DownloadMaxQuality string `json:"downloadMaxQuality"`
+	PerAccountCap      *int   `json:"perAccountCap"`
+	ServerCap          *int   `json:"serverCap"`
 	// Transcoding administration. No domain table mirrors these, so the console
 	// document is their single authority and the registry their only contract.
 	HardwareBackend         string `json:"hardwareBackend"`
@@ -237,7 +243,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard",
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard",
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -278,6 +284,7 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	if e = tx.QueryRow(`SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&v.TranscodingEnabled, &v.PerAccountCap, &v.ServerCap); e != nil {
 		return SettingsDocument{}, e
 	}
+	v.TranscodingEnabled = v.ConversionMode != "never"
 	b, _ := json.Marshal(v)
 	effective, pending := effectiveMediaSettings(v)
 	return SettingsDocument{Revision: revision, Digest: Hash(string(b)), Requested: v, Effective: effective, ActiveRevision: revision, RestartFields: pending, RegistryRevision: RegistryRevision}, nil
@@ -358,6 +365,17 @@ func validTemporaryDirectory(v string) bool {
 	return filepath.IsAbs(v) && filepath.Clean(v) == v
 }
 func validateSettings(v *Settings) error {
+	if !oneOf(v.ConversionMode, []string{"all", "sound", "never"}) {
+		return invalidFields("values.conversionMode")
+	}
+	if !oneOf(v.OutputFormat, []string{"auto", "h264"}) {
+		return invalidFields("values.outputFormat")
+	}
+	if !oneOf(v.DownloadMaxQuality, ownerDownloadQualities()) {
+		return invalidFields("values.downloadMaxQuality")
+	}
+	v.TranscodingEnabled = v.ConversionMode != "never"
+
 	fields := []string{}
 	if v.AnalysisStorageGiB < 1 || v.AnalysisStorageGiB > 16384 {
 		fields = append(fields, "values.analysisStorageGiB")
@@ -507,6 +525,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 				continue
 			}
 			if _, err = tx.Exec(`INSERT INTO server_setting_sources VALUES(?,'server') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, key); err != nil {
+				return err
+			}
+			if err = QueueConfigurationProjectionTx(ctx, tx, key, revision); err != nil {
 				return err
 			}
 		}
@@ -710,3 +731,13 @@ func (s *Store) ApplyPreferences(ctx context.Context, p identity.Principal, auth
 	return
 }
 func days(n int) int64 { return int64(time.Duration(n) * 24 * time.Hour / time.Millisecond) }
+
+func ownerDownloadQualities() []string {
+	out := []string{}
+	for _, id := range SavedQualities {
+		if id != "automatic" {
+			out = append(out, id)
+		}
+	}
+	return out
+}

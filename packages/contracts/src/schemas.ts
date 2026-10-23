@@ -6630,6 +6630,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "conversionMode": {
+            "type": "string"
+          },
           "customCertificateDomain": {
             "type": "string"
           },
@@ -6649,6 +6652,9 @@ export const schemas = {
           },
           "dlnaEnabled": {
             "type": "boolean"
+          },
+          "downloadMaxQuality": {
+            "type": "string"
           },
           "ffmpegPath": {
             "type": "string"
@@ -6744,6 +6750,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "outputFormat": {
+            "type": "string"
+          },
           "ownAddressEnabled": {
             "type": "boolean"
           },
@@ -6808,9 +6817,6 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "transcodingEnabled": {
-            "type": "boolean"
-          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -6838,7 +6844,9 @@ export const schemas = {
           "subtitleTrackLimit",
           "subtitleFileLimitMiB",
           "name",
-          "transcodingEnabled",
+          "conversionMode",
+          "outputFormat",
+          "downloadMaxQuality",
           "perAccountCap",
           "serverCap",
           "hardwareBackend",
@@ -6943,6 +6951,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -6962,6 +6973,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7057,6 +7071,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "outputFormat": {
+                "type": "string"
+              },
               "ownAddressEnabled": {
                 "type": "boolean"
               },
@@ -7121,9 +7138,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7151,7 +7165,9 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7272,6 +7288,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7291,6 +7310,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7386,6 +7408,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "outputFormat": {
+                "type": "string"
+              },
               "ownAddressEnabled": {
                 "type": "boolean"
               },
@@ -7450,9 +7475,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7480,7 +7502,9 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -30006,6 +30030,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -30025,6 +30052,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -30120,6 +30150,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "outputFormat": {
+                "type": "string"
+              },
               "ownAddressEnabled": {
                 "type": "boolean"
               },
@@ -30184,9 +30217,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -30214,7 +30244,9 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -30335,6 +30367,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -30354,6 +30389,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -30449,6 +30487,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "outputFormat": {
+                "type": "string"
+              },
               "ownAddressEnabled": {
                 "type": "boolean"
               },
@@ -30513,9 +30554,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -30543,7 +30581,9 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",

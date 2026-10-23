@@ -8,13 +8,13 @@ const parseEvidenceRecord=(value:unknown,...args:any[]) => (read_parseEvidenceRe
 
 const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
-const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
+const values:RuntimeSettings={name:'My server',conversionMode:'all',outputFormat:'auto',downloadMaxQuality:'original',perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
  analysisStorageGiB:32,analysisStageStorageMiB:256,subtitleTrackLimit:128,subtitleFileLimitMiB:128,planningPolicy:'maximum_fidelity',throttleBufferMs:60000,playedRetentionMs:180000,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
  maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0,
  playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.missingTitles':'after_days','library.missingTitlesDays':30,
  remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,dlnaEnabled:false,
- trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',deviceApprovalRequired:false,connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,blockMemberAccessTokens:false,logLevel:'info',logRetention:[]};
+ trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',ownAddressEnabled:false,customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,logLevel:'info',logRetention:[]};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
@@ -188,11 +188,11 @@ test('typed owner settings errors retain revision and bounded field paths',async
 test('complete owner settings retain missing-title and API policies after the merge',()=>{
  const read=parseSettings(settings()).requested;
  assert.equal(read['library.missingTitles'],'after_days');assert.equal(read['library.missingTitlesDays'],30);
- assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.blockMemberAccessTokens,false);
+ assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);
  assert.equal(read.dlnaEnabled,false);
  const {dlnaEnabled:_,...older}=values;assert.equal(parseSettings({...settings(),requested:older,effective:older}).requested.dlnaEnabled,false);
- for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan'])assert.equal(retired in read,false);
- for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{blockMemberAccessTokens:'yes'},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
+ for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan','deviceApprovalRequired','blockMemberAccessTokens'])assert.equal(retired in read,false);
+ for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
 });
 
 test('a runtime save rebases only edited fields and preserves concurrent owner changes',async()=>{

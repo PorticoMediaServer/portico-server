@@ -830,6 +830,7 @@ table configuration
 table console_alert_params
 table console_alerts
 table console_audit
+table server_configuration_pending
 table server_configuration_state
 table server_setting_sources
 table server_settings

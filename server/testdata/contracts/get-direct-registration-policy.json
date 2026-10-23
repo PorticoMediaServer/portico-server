@@ -5,7 +5,6 @@
   "auth": "owner",
   "status": 200,
   "response": {
-    "selfRegistration": "off",
-    "deviceApproval": "auto"
+    "selfRegistration": "off"
   }
 }

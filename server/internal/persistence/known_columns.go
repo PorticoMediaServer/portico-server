@@ -1548,6 +1548,8 @@ console_audit.target
 console_audit.time_ms
 server_configuration_state.singleton
 server_configuration_state.pending_revision
+server_configuration_pending.field
+server_configuration_pending.revision
 server_setting_sources.field
 server_setting_sources.source
 server_settings.singleton
@@ -1597,6 +1599,9 @@ server_settings.customCertificatePath
 server_settings.customCertificateKeyPath
 server_settings.customCertificateDomain
 server_settings.logLevel
+server_settings.conversionMode
+server_settings.outputFormat
+server_settings.downloadMaxQuality
 server_setting_lists.setting
 server_setting_lists.position
 server_setting_lists.value

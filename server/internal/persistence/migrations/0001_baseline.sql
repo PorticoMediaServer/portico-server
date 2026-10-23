@@ -2398,7 +2398,10 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "customCertificatePath" TEXT,
  "customCertificateKeyPath" TEXT,
  "customCertificateDomain" TEXT,
- "logLevel" TEXT) STRICT;
+ "logLevel" TEXT,
+ "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
+ "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
+ "downloadMaxQuality" TEXT) STRICT;
 CREATE TABLE server_setting_lists(setting TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),value TEXT NOT NULL,PRIMARY KEY(setting,position)) WITHOUT ROWID, STRICT;
 CREATE TABLE server_log_retention(category TEXT PRIMARY KEY,days INTEGER NOT NULL CHECK(days BETWEEN 1 AND 90)) STRICT;
 
@@ -8494,6 +8497,7 @@ CREATE TRIGGER identity_access_tokens_insert BEFORE INSERT ON api_credentials WH
 CREATE TABLE server_setting_sources(field TEXT PRIMARY KEY,source TEXT NOT NULL CHECK(source IN('server','file'))) STRICT;
 CREATE TABLE server_configuration_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),pending_revision INTEGER NOT NULL DEFAULT 0) STRICT;
 INSERT INTO server_configuration_state(singleton) VALUES(1);
+CREATE TABLE server_configuration_pending(field TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0)) STRICT;
 
 INSERT INTO maintenance_windows VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
 INSERT INTO maintenance_window_days SELECT 'heavy',day FROM maintenance_window_days WHERE window_id='backup';

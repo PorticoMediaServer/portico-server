@@ -24,9 +24,12 @@ var _ playback.DeliverySettings = (*RegistryDeliverySettings)(nil)
 // field, so it stays at zero (no clamp) and HDR stays allowed, with tone mapping
 // deciding what happens to it.
 func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
-	s, bitrate := a.current()
+	s, bitrate, media := a.current()
 	return playback.DeliveryConfiguration{
 		MaxVideoBitrateBPS:     bitrate,
+		ConversionMode:         media.ConversionMode,
+		OutputFormat:           media.OutputFormat,
+		DownloadMaxQuality:     media.DownloadMaxQuality,
 		SessionStorageMiB:      s.SessionStorageMiB,
 		HardwareBackend:        s.HardwareBackend,
 		HardwareDevice:         s.HardwareDevice,
@@ -78,6 +81,7 @@ type RegistryDeliverySettings struct {
 	// answers from, refreshed off the request path.
 	mu         sync.RWMutex
 	snapshot   telemetry.TranscodeSettings
+	media      operations.Settings
 	bitrateBPS int
 	loaded     bool
 	loadedAt   time.Time
@@ -104,6 +108,7 @@ func (a *RegistryDeliverySettings) Refresh(ctx context.Context) {
 		return
 	}
 	decoder.SetBackgroundConversionLimit(document.Effective.MaxBackgroundSessions)
+	a.media = document.Effective
 	a.snapshot, a.bitrateBPS, a.loaded, a.loadedAt = transcodeSettings(document.Effective), document.Effective.RemoteBitrateLimitKbps*1000, true, time.Now()
 }
 
@@ -111,9 +116,9 @@ func (a *RegistryDeliverySettings) Refresh(ctx context.Context) {
 // TTL, starts one background refresh. The remote bitrate ceiling is in bits
 // per second; zero means no ceiling. The per-member cap is applied separately
 // at admission, and the lower of the two wins.
-func (a *RegistryDeliverySettings) current() (telemetry.TranscodeSettings, int) {
+func (a *RegistryDeliverySettings) current() (telemetry.TranscodeSettings, int, operations.Settings) {
 	a.mu.RLock()
-	loaded, stale, refreshing, snapshot, bitrate := a.loaded, time.Since(a.loadedAt) > deliverySettingsTTL, a.refreshing, a.snapshot, a.bitrateBPS
+	loaded, stale, refreshing, snapshot, bitrate, media := a.loaded, time.Since(a.loadedAt) > deliverySettingsTTL, a.refreshing, a.snapshot, a.bitrateBPS, a.media
 	a.mu.RUnlock()
 	if a.Console != nil && (!loaded || stale) && !refreshing {
 		a.mu.Lock()
@@ -124,9 +129,9 @@ func (a *RegistryDeliverySettings) current() (telemetry.TranscodeSettings, int) 
 		a.mu.Unlock()
 	}
 	if !loaded {
-		return transcodeSettings(operations.DefaultSettings()), 0
+		return transcodeSettings(operations.DefaultSettings()), 0, operations.DefaultSettings()
 	}
-	return snapshot, bitrate
+	return snapshot, bitrate, media
 }
 
 // Transcoding returns the effective transcoding policy, or the registry
@@ -136,6 +141,6 @@ func (a *RegistryDeliverySettings) Transcoding(_ context.Context) telemetry.Tran
 	if a == nil {
 		return transcodeSettings(operations.DefaultSettings())
 	}
-	settings, _ := a.current()
+	settings, _, _ := a.current()
 	return settings
 }

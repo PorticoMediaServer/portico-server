@@ -121,3 +121,82 @@ func TestOwnAddressStartsOffAndCanKeepIncompleteDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSettingsConfigurationPreservesIndependentFileEditWhileAppProjectionPending(t *testing.T) {
+	s, owner, authorize := consoleFixture(t)
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "portico.toml")
+	if err := os.WriteFile(path, []byte("[general]\nname='Before'\n[streaming]\nupload_speed=25\noutput_format='auto'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InitializeConfiguration(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := s.Settings(ctx, authorize)
+	values := doc.Requested
+	values.Name = "App edit"
+	values.ConversionMode = "sound"
+	loader := s.ConfigFile
+	s.ConfigFile = nil // End the process between the DB commit and file write.
+	if _, err := s.ApplySettings(ctx, owner, authorize, SettingsChange{doc.Revision, "pending-independent", values}); err != nil {
+		t.Fatal(err)
+	}
+	s.ConfigFile = loader
+	if err := os.WriteFile(path, []byte("[general]\nname='Before'\n[streaming]\nupload_speed=50\noutput_format='h264'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loader.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ImportConfiguration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = s.Settings(ctx, authorize)
+	if doc.Requested.Name != "App edit" || doc.Requested.UploadCapacityKbps != 50000 || doc.Requested.OutputFormat != "h264" || doc.Requested.ConversionMode != "sound" {
+		t.Fatal("pending app write or independent external edit lost", doc)
+	}
+	if err := s.FlushConfiguration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ImportConfiguration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = s.Settings(ctx, authorize)
+	if doc.Requested.Name != "App edit" || doc.Requested.UploadCapacityKbps != 50000 || doc.Requested.OutputFormat != "h264" {
+		t.Fatal("flush overwrote another registered field", doc)
+	}
+	var queued int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM server_configuration_pending`).Scan(&queued); err != nil || queued != 0 {
+		t.Fatal("completed field projection was not drained", queued, err)
+	}
+}
+
+func TestSettingsConfigurationCanonicalVideoPolicyAndManualUploadRange(t *testing.T) {
+	s, owner, authorize := consoleFixture(t)
+	ctx := context.Background()
+	doc, _ := s.Settings(ctx, authorize)
+	values := doc.Requested
+	values.ConversionMode, values.OutputFormat, values.DownloadMaxQuality = "sound", "h264", "720p-high"
+	values.UploadCapacityKbps = 100000000
+	after, err := s.ApplySettings(ctx, owner, authorize, SettingsChange{doc.Revision, "media-policy", values})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Requested.ConversionMode != "sound" || after.Requested.OutputFormat != "h264" || after.Requested.DownloadMaxQuality != "720p-high" || !after.Requested.TranscodingEnabled {
+		t.Fatal(after)
+	}
+	for _, invalid := range []string{"automatic", "invented"} {
+		values.DownloadMaxQuality = invalid
+		if err := validateSettings(&values); err == nil {
+			t.Fatal("invalid owner download cap accepted", invalid)
+		}
+	}
+	values.DownloadMaxQuality = "original"
+	values.ConversionMode = "never"
+	if err := validateSettings(&values); err != nil || values.TranscodingEnabled {
+		t.Fatal("legacy gate did not derive from canonical conversion mode", err)
+	}
+	if _, exposed := SettingsValues(values)["transcodingEnabled"]; exposed {
+		t.Fatal("independent legacy gate exposed")
+	}
+}

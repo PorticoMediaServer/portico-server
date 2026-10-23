@@ -150,6 +150,11 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 			if _, err = tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=(SELECT revision FROM console_settings_revision WHERE singleton=1) WHERE singleton=1`); err != nil {
 				return err
 			}
+			for field := range changed {
+				if _, err = tx.ExecContext(ctx, `INSERT INTO server_configuration_pending(field,revision) VALUES(?,(SELECT revision FROM console_settings_revision WHERE singleton=1)) ON CONFLICT(field) DO UPDATE SET revision=excluded.revision`, "maintenance:"+field); err != nil {
+					return err
+				}
+			}
 		}
 		out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision + 1, Digest: digestOf(value), Settings: value})
 		policy, readErr := workpolicy.ReadTx(ctx, tx)

@@ -32,6 +32,9 @@ func ConfigurationBindings() []ConfigurationBinding {
 		{"general.name", "general.name", "name", 1, false},
 		{"general.updateFeed", "general.update_feed_url", "updates.feedUrl", 1, false},
 		{"updates.channel", "updates.channel", "updates.releaseChannel", 1, true},
+		{"streaming.allowConversion", "streaming.allow_conversion", "conversionMode", 1, false},
+		{"streaming.outputFormat", "streaming.output_format", "outputFormat", 1, false},
+		{"streaming.downloadQuality", "downloads.max_quality", "downloadMaxQuality", 1, false},
 		{"streaming.uploadSpeed", "streaming.upload_speed", "uploadCapacityKbps", 1000, false},
 		{"streaming.awayExact", "streaming.away_limit_mbps", "remoteBitrateLimitKbps", 1000, false},
 		{"streaming.hardware", "streaming.hardware", "hardwareBackend", 1, false},
@@ -367,9 +370,37 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
+		pending, e := configurationPending(ctx, tx)
+		if e != nil {
+			return e
+		}
+		// A committed app edit wins until its file projection has completed.
+		// Other registered file edits can still be imported independently.
+		for _, b := range bindings {
+			field := b.Field
+			if _, exists := pending[field]; !exists {
+				continue
+			}
+			delete(raw, b.Key)
+		}
+		domainSources := make(map[string]string, len(sources))
+		for field, source := range sources {
+			if _, queued := pending[field]; !queued {
+				domainSources[field] = source
+			}
+		}
 		additionalChanged := false
 		for _, domain := range s.ConfigurationDomains {
-			changed, err := domain.Import(ctx, tx, raw, sources, s.now())
+			domainRaw := make(map[string]any, len(raw))
+			for key, value := range raw {
+				domainRaw[key] = value
+			}
+			for _, b := range domain.Bindings() {
+				if _, queued := pending[domain.SourceField(b.Field)]; queued {
+					delete(domainRaw, b.Key)
+				}
+			}
+			changed, err := domain.Import(ctx, tx, domainRaw, domainSources, s.now())
 			if err != nil {
 				return err
 			}
@@ -380,6 +411,9 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 		changed := additionalChanged
 		touched := map[string]bool{}
 		for _, b := range bindings {
+			if _, queued := pending[b.Field]; queued {
+				continue
+			}
 			if _, ok := raw[b.Key]; !ok && sources[b.Field] == "file" {
 				raw[b.Key] = configurationValue(b, defaults[b.Field])
 				removed[b.Field] = true
@@ -388,6 +422,9 @@ func (s *Store) ImportConfiguration(ctx context.Context) error {
 		}
 
 		for _, b := range bindings {
+			if _, queued := pending[b.Field]; queued {
+				continue
+			}
 			value, ok := raw[b.Key]
 			if !ok {
 				continue
@@ -455,6 +492,11 @@ func (s *Store) FlushConfiguration(ctx context.Context) error {
 		return err
 	}
 	document, err := readSettings(snapshot.Tx())
+	queued, queueErr := configurationPending(ctx, snapshot.Tx())
+	if queueErr != nil {
+		snapshot.Rollback()
+		return queueErr
+	}
 	sources := map[string]string{}
 	rows, sourceErr := snapshot.Tx().QueryContext(ctx, `SELECT field,source FROM server_setting_sources`)
 	if sourceErr == nil {
@@ -463,7 +505,9 @@ func (s *Store) FlushConfiguration(ctx context.Context) error {
 			if sourceErr = rows.Scan(&field, &source); sourceErr != nil {
 				break
 			}
-			sources[field] = source
+			if _, ok := queued[field]; ok {
+				sources[field] = source
+			}
 		}
 		if sourceErr == nil {
 			sourceErr = rows.Err()
@@ -512,15 +556,50 @@ func (s *Store) FlushConfiguration(ctx context.Context) error {
 		return err
 	}
 	return dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		for field, revision := range queued {
+			if _, e := tx.ExecContext(ctx, `DELETE FROM server_configuration_pending WHERE field=? AND revision=?`, field, revision); e != nil {
+				return e
+			}
+		}
 		_, e := tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=0 WHERE singleton=1 AND pending_revision=?`, pending)
 		return e
 	})
+}
+
+// QueueConfigurationProjectionTx joins a domain write to the durable file
+// projection without mirroring that domain's policy or exposing any secret.
+// The field uses the same qualified source name as the domain's Read/Projection.
+func QueueConfigurationProjectionTx(ctx context.Context, tx *sql.Tx, field string, revision int64) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO server_configuration_pending(field,revision) VALUES(?,?) ON CONFLICT(field) DO UPDATE SET revision=excluded.revision`, field, revision); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=max(pending_revision,?) WHERE singleton=1`, revision)
+	return err
+}
+
+func configurationPending(ctx context.Context, tx *sql.Tx) (map[string]int64, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT field,revision FROM server_configuration_pending`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var field string
+		var revision int64
+		if err := rows.Scan(&field, &revision); err != nil {
+			return nil, err
+		}
+		out[field] = revision
+	}
+	return out, rows.Err()
 }
 
 // ConfigurationDomain joins another normalized authority to this one file.
 // All reads and imports share the caller's snapshot or write transaction.
 type ConfigurationDomain interface {
 	Bindings() []ConfigurationBinding
+	SourceField(string) string
 	Read(context.Context, *sql.Tx, map[string]string) ([]ConfigurationValue, error)
 	Import(context.Context, *sql.Tx, map[string]any, map[string]string, int64) (bool, error)
 	Projection(context.Context, *sql.Tx, map[string]string) (map[string]any, error)

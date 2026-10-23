@@ -1,8 +1,11 @@
+import type {InventorySource,SourceSettings} from '../library-inventory.ts';
+import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
+import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../server-admin/library-policy.ts';
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
 import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
 import type {PreferenceSnapshot} from '../preferences.ts';
 
-export type SettingsBindingForm='runtime'|'connectivity'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs';
+export type SettingsBindingForm='runtime'|'connectivity'|'maintenance'|'alerts'|'preferences'|'device'|'remote'|'managedRoute'|'logs'|'library';
 export type SettingsBinding=Readonly<{form:SettingsBindingForm;key:string;scale?:number;codec?:'number-choice'|'unlimited'|'domain'|'interface'|'remote-policy'|'away-quality'|'update-checks'|'window-mode'|'days'|'log-retention'|'still-watching'|'missing-rule';fields?:Readonly<Record<string,string>>;window?:'heavy'|'backup'}>;
 export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguration;preferences?:PreferenceSnapshot;forms?:Readonly<Partial<Record<SettingsBindingForm,Readonly<Record<string,unknown>>>>>;device?:Readonly<Record<string,unknown>>}>;
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
@@ -21,6 +24,9 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'general.updateChecks':{form:'runtime',key:'updates.feedUrl',codec:'update-checks'},
  'general.updateFeed':{form:'runtime',key:'updates.feedUrl'},
  'updates.channel':{form:'runtime',key:'updates.releaseChannel'},
+ 'streaming.allowConversion':{form:'runtime',key:'conversionMode'},
+ 'streaming.outputFormat':{form:'runtime',key:'outputFormat'},
+ 'streaming.downloadQuality':{form:'runtime',key:'downloadMaxQuality'},
  'streaming.uploadSpeed':{form:'connectivity',key:'uploadCapacityKbps',scale:1000},
  'streaming.awayQuality':{form:'connectivity',key:'remoteBitrateLimitKbps',codec:'away-quality'},
  'streaming.awayExact':{form:'connectivity',key:'remoteBitrateLimitKbps',scale:1000},
@@ -81,6 +87,26 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'troubleshooting.keepLogs':{form:'runtime',key:'diagnosticDays',codec:'number-choice'},
  'troubleshooting.keepLogsByKind':{form:'runtime',key:'logRetention',codec:'log-retention'},
 };
+const libraryScalarBindings:Readonly<Record<string,SettingsBinding>>={
+ 'libraries.collections':{form:'library',key:'groupCollections'},
+ 'libraries.allowDelete':{form:'library',key:'allowMediaDeletion'},
+ 'libraries.localTags':{form:'library',key:'localTags'},
+ 'libraries.lyrics':{form:'library',key:'lyricsSource'},
+ 'libraries.watch':{form:'library',key:'monitorChanges'},
+ 'libraries.scrubSpacing':{form:'library',key:'navigation.trickplayIntervalMs',scale:1000},
+ 'libraries.scrubWidth':{form:'library',key:'navigation.trickplayTileWidth'},
+ 'libraries.titleSource':{form:'library',key:'titleSource'},
+ 'libraries.episodeNumbering':{form:'library',key:'episodeNumbering'},
+ 'libraries.extras':{form:'library',key:'findExtras'},
+ 'libraries.sortArticles':{form:'library',key:'sortIgnoreArticles'},
+ 'libraries.refreshMode':{form:'library',key:'refreshMode'},
+ 'libraries.acoustid':{form:'library',key:'acoustidEnabled'},
+ 'libraries.cwWeeks':{form:'library',key:'continueWatching.weeks'},
+ 'libraries.cwMax':{form:'library',key:'continueWatching.maximumItems'},
+ 'libraries.cwPremieres':{form:'library',key:'continueWatching.includeSeasonPremieres'},
+ 'libraries.cwWatched':{form:'library',key:'continueWatching.videoPlayedThreshold',codec:'number-choice'},
+ 'libraries.cwRule':{form:'library',key:'continueWatching.videoCompletion'},
+};
 const preferenceKeys:Readonly<Record<string,string>>={
  'audioSubtitles.preferredAudio':'playback.preferredAudioLanguages','audioSubtitles.preferredSubtitles':'playback.preferredSubtitleLanguages','audioSubtitles.subtitleMode':'playback.subtitleMode','audioSubtitles.subtitleSize':'playback.subtitleSize','audioSubtitles.subtitleBackground':'playback.subtitleBackground',
  'quality.home':'quality.home','quality.remote':'quality.remote','quality.mobileData':'quality.mobile',
@@ -93,7 +119,7 @@ const preferenceKeys:Readonly<Record<string,string>>={
  'playback.introSkip':'playback.introSkip','playback.creditsSkip':'playback.creditsSkip','playback.recapSkip':'playback.recapSkip',
  'appearance.backdrops':'appearance.showBackdrops','appearance.cardSizeExact':'appearance.cardSizePercent','appearance.notificationDot':'notifications.badges',
 };
-export function settingsBinding(rowId:string):SettingsBinding|undefined{return bindings[rowId]??(preferenceKeys[rowId]?{form:'preferences',key:preferenceKeys[rowId]!}:undefined);}
+export function settingsBinding(rowId:string):SettingsBinding|undefined{return bindings[rowId]??libraryScalarBindings[rowId]??(preferenceKeys[rowId]?{form:'preferences',key:preferenceKeys[rowId]!}:undefined);}
 function at(source:Readonly<Record<string,unknown>>|undefined,key:string):unknown{if(source&&Object.hasOwn(source,key))return source[key];return key.split('.').reduce<unknown>((v,key)=>v&&typeof v==='object'?(v as Record<string,unknown>)[key]:undefined,source);}
 const days=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
 const categories=['server','playback','scan','network','client'] as const;
@@ -198,3 +224,72 @@ export const resetPreset=presetPatch;
 export function changedFromDefault(current:unknown,defaultValue:unknown):boolean{return !equal(current,defaultValue);}
 
 export {searchConfiguration} from '../settings-configuration.ts';
+
+const libraryAnalysisRows=['local_metadata','subtitle_discovery','checksum','waveform','loudness','audio_fingerprint','trickplay','chapter_images'] as const;
+function libraryRowValue(rowId:string,settings:LibrarySettings,doc:LibraryAdminDocument):unknown{
+ const binding=libraryScalarBindings[rowId];if(binding)return presented(binding,at(settings,binding.key),{});
+ switch(rowId){
+ case 'libraries.scanDepth':return libraryScanDepth(settings);
+ case 'libraries.analysisSteps':return Object.fromEntries(libraryAnalysisRows.filter(id=>doc.analysisMatrix.operations.some(op=>op.id===id)).map(id=>[id,settings.analysis.includes(id)?'run':'skip']));
+ case 'libraries.scrub':{if(!settings.analysis.includes('trickplay'))return 'off';const n=settings.navigation;return n.trickplayIntervalMs===10000&&n.trickplayTileWidth===320?'standard':n.trickplayIntervalMs===5000&&n.trickplayTileWidth===320?'smooth':n.trickplayIntervalMs===20000&&n.trickplayTileWidth===240?'compact':'custom';}
+ case 'libraries.chapterPictures':return settings.analysis.includes('chapter_images')&&settings.navigation.chapterThumbnailMode==='generated'?'generated':!settings.analysis.includes('chapter_images')&&settings.navigation.chapterThumbnailMode==='embedded'?'embedded':'custom';
+ case 'libraries.scrubMax':{const hours=settings.navigation.trickplayMaxTiles*settings.navigation.trickplayIntervalMs/3600000;return [1,2,3,4,6].includes(hours)?String(hours):'custom';}
+ case 'libraries.titlesFrom':return settings.providers.find(p=>p.mediaKind===doc.libraryKind)?.provider;
+ case 'libraries.language':return settings.providers.find(p=>p.mediaKind===doc.libraryKind)?.language;
+ case 'libraries.region':return settings.providers.find(p=>p.mediaKind===doc.libraryKind)?.region;
+ default:return undefined;
+ }
+}
+/** Only producer-eligible rows are exposed. Defaults require the producer's own defaults DTO. */
+export function readLibrarySettingsBinding(rowId:string,document:LibraryAdminDocument&Readonly<{defaults?:LibrarySettings}>):SettingsBindingValue|undefined{
+ if(!document.eligibleControls.includes(rowId))return undefined;const current=libraryRowValue(rowId,document.settings,document);if(current===undefined)return undefined;
+ return {current,effective:current,default:document.defaults?libraryRowValue(rowId,document.defaults,document):undefined,source:'library',configOnly:false};
+}
+/** One complete typed library draft; the facade applies its revision/operation fence on Save. */
+export function patchLibrarySettingsBinding(rowId:string,value:unknown,document:LibraryAdminDocument):LibrarySettings{
+ if(!document.eligibleControls.includes(rowId))throw new Error('This library does not offer that setting.');if(value==='custom')throw new Error('Custom is derived.');const settings=document.settings,binding=libraryScalarBindings[rowId];
+ if(binding)return applySettingsBindingPatch(settings,settingsBindingPatch(binding,value));
+ switch(rowId){
+ case 'libraries.scanDepth':if(value==='file_list_only'||value==='basic'||value==='complete')return setLibraryScanDepth(settings,value);break;
+ case 'libraries.scrub':if(value==='off'||value==='standard'||value==='smooth'||value==='compact')return setLibrarySeekPreviews(settings,value);break;
+ case 'libraries.chapterPictures':if(value==='generated'||value==='embedded')return setLibraryAnalysis(settings,document.analysisMatrix,'chapter_images',value==='generated');break;
+ case 'libraries.scrubMax':{const n=Number(value);if(n===1||n===2||n===3||n===4||n===6)return setLibraryPreviewHours(settings,n);break;}
+ case 'libraries.analysisSteps':{
+  if(!value||typeof value!=='object'||Array.isArray(value))break;let next=settings;
+  const entries=Object.entries(value);if(entries.some(([id,mode])=>!libraryAnalysisRows.includes(id as typeof libraryAnalysisRows[number])||!document.analysisMatrix.operations.some(op=>op.id===id)||mode!=='run'&&mode!=='skip'))break;
+  // Disable dependent operations before adding the enabled dependency chains.
+  for(const [id,mode] of entries)if(mode==='skip')next=setLibraryAnalysis(next,document.analysisMatrix,id,false);
+  for(const [id,mode] of entries)if(mode==='run')next=setLibraryAnalysis(next,document.analysisMatrix,id,true);
+  return next;
+ }
+ case 'libraries.titlesFrom':case 'libraries.language':case 'libraries.region':{
+  if(typeof value!=='string')break;const index=settings.providers.findIndex(p=>p.mediaKind===document.libraryKind);if(index<0)throw new Error('Load this library’s provider selection before editing it.');
+  if(rowId==='libraries.titlesFrom'&&!document.availableProviders.some(p=>p.id===value&&p.mediaKinds.includes(document.libraryKind)))break;
+  const field=rowId==='libraries.titlesFrom'?'provider':rowId==='libraries.language'?'language':'region';return {...settings,providers:settings.providers.map((p,i)=>i===index?{...p,[field]:value}:p)} as LibrarySettings;
+ }
+ }
+ throw new Error('Invalid library setting value.');
+}
+
+
+export const libraryCreateKinds=Object.freeze([
+ {choice:'movies',kind:'movie'},{choice:'tv',kind:'tv'},{choice:'anime',kind:'anime'},{choice:'music',kind:'music'},
+ {choice:'audiobooks',kind:'audiobook'},{choice:'books',kind:'book'},{choice:'comics',kind:'comic'},
+] as const);
+export function libraryKindForChoice(choice:string):(typeof libraryCreateKinds)[number]['kind']{const kind=libraryCreateKinds.find(c=>c.choice===choice)?.kind;if(!kind)throw new Error('Invalid library kind.');return kind;}
+const libraryFolderFields:Readonly<Record<string,keyof SourceSettings>>={'libraries.folderPath':'path','libraries.folderName':'name','libraries.location':'classification','libraries.rescan':'intervalSeconds','libraries.symlinks':'followSymlinks'};
+const folderIntervals:Readonly<Record<string,number>>={'15m':900,'1h':3600,'6h':21600,'1d':86400,'never':0};
+export function readLibrarySourceSettingsBinding(rowId:string,source:InventorySource):SettingsBindingValue|undefined{
+ const key=libraryFolderFields[rowId];if(!key||key==='expectedRevision'||key==='acceptReplacement')return undefined;
+ const raw=source[key as keyof InventorySource];const current=rowId==='libraries.rescan'?Object.entries(folderIntervals).find(([,n])=>n===raw)?.[0]??'custom':raw;
+ return {current,effective:current,default:undefined,source:'library-source',configOnly:false};
+}
+/** Revision and replacement consent remain the caller's current inventory intent. */
+export function patchLibrarySourceSettingsBinding(rowId:string,value:unknown,draft:SourceSettings):SourceSettings{
+ const key=libraryFolderFields[rowId];if(!key)throw new Error('Invalid library folder setting.');let raw=value;
+ if(rowId==='libraries.rescan'){if(typeof value!=='string'||!Object.hasOwn(folderIntervals,value))throw new Error('Custom is derived.');raw=folderIntervals[value];}
+ else if(rowId==='libraries.location'){if(value!=='local'&&value!=='network')throw new Error('Invalid folder location.');}
+ else if(rowId==='libraries.symlinks'){if(typeof value!=='boolean')throw new Error('Invalid symbolic-link policy.');}
+ else if(typeof value!=='string'||/[\u0000-\u001f]/.test(value))throw new Error('Invalid folder value.');
+ return {...draft,[key]:raw};
+}

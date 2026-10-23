@@ -1,3 +1,4 @@
+import {canonicalQualityLadder} from '../../contracts/src/types.ts';
 import {routePath, routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
 import {wireInstants} from './wire-units.ts';
@@ -25,7 +26,7 @@ export type TranscodingSettings={
  throttleBufferMs:number;playedRetentionMs:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
 export type RuntimeSettings=TranscodingSettings&{
- analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
+ analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;conversionMode:'all'|'sound'|'never';outputFormat:'auto'|'h264';downloadMaxQuality:string;perAccountCap:number|null;serverCap:number|null;
  diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
  'updates.releaseChannel':string;'updates.feedUrl':string;'library.missingTitles':MissingTitlesRule;'library.missingTitlesDays':number;
  /** Intro and credits detection for the whole server; each library may follow it or choose its own. */
@@ -64,7 +65,7 @@ function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)invalid();}
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
- for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
+ for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||!['all','sound','never'].includes(String(s.conversionMode))||!['auto','h264'].includes(String(s.outputFormat))||!canonicalQualityLadder.some(q=>q.id===s.downloadMaxQuality&&q.id!=='automatic'))invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
  return {...d,...(d.ffmpegValidation?{ffmpegValidation:parseFFmpegValidation(d.ffmpegValidation)}:{})} as SettingsDocument;
 }
 function checkOwnerDocument(s:Record<string,any>){

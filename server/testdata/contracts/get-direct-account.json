@@ -6,7 +6,7 @@
   "status": 200,
   "response": {
     "authority": "local",
-    "serverId": "JbRYJAtcoMWqZLxoWk8Lmxf6icHUJ0hhEQn62KHzw-Q",
+    "serverId": "30QIGYwolqtckkznpfTVkqA4oABTTIt6J8TrFD7wO3s",
     "account": {
       "id": "account",
       "username": "owner",
@@ -29,6 +29,12 @@
         "allowedLibraries": []
       }
     ],
-    "canManage": true
+    "canManage": true,
+    "capabilities": {
+      "manageAccount": true,
+      "managePeople": true,
+      "manageServer": true,
+      "manageSignIn": true
+    }
   }
 }

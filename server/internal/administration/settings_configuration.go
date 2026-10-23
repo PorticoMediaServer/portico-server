@@ -50,9 +50,22 @@ func maintenanceConfigurationValues(v MaintenanceSettingsDocument) map[string]an
 				mode = "overnight"
 			}
 		} else {
-			mode = w.Cadence
 			if !w.Enabled {
 				mode = "never"
+			} else {
+				for _, cadence := range MaintenanceCadences() {
+					if cadence.ID == "custom" || len(cadence.Days) != len(w.Days) {
+						continue
+					}
+					exact := true
+					for _, day := range cadence.Days {
+						exact = exact && slices.Contains(w.Days, day)
+					}
+					if exact {
+						mode = cadence.ID
+						break
+					}
+				}
 			}
 		}
 		out[w.ID+".mode"] = mode
@@ -240,6 +253,8 @@ func (MaintenanceConfiguration) Import(ctx context.Context, tx *sql.Tx, raw map[
 // MaintenanceConfiguration connects the existing normalized scheduler authority
 // to the shared file inside the same transaction as runtime settings.
 type MaintenanceConfiguration struct{}
+
+func (MaintenanceConfiguration) SourceField(field string) string { return "maintenance:" + field }
 
 func maintenanceAtom(v any) *any {
 	if v == nil {

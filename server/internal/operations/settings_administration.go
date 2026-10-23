@@ -83,7 +83,7 @@ func validateAdministration(v *Settings) []string {
 		}
 		v.TrustedProxies[i] = prefix.String()
 	}
-	if v.UploadCapacityKbps < 0 || v.UploadCapacityKbps > 10000000 {
+	if v.UploadCapacityKbps < 0 || v.UploadCapacityKbps > 100000000 {
 		fields = append(fields, "values.uploadCapacityKbps")
 	}
 	if v.PausedSessionTimeoutMinutes < 0 || v.PausedSessionTimeoutMinutes > 1440 {

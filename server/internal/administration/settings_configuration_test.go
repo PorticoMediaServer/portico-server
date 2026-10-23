@@ -96,3 +96,25 @@ func TestMaintenanceConfigurationFileUsesRealIndependentWindows(t *testing.T) {
 		t.Fatal("partial import", before, after)
 	}
 }
+
+func TestMaintenanceConfigurationCadenceMatchesExactDays(t *testing.T) {
+	v := DefaultMaintenanceSettings()
+	for i := range v.Windows {
+		if v.Windows[i].ID == "backup" {
+			v.Windows[i].Enabled = true
+			v.Windows[i].Cadence = "custom"
+			v.Windows[i].Days = []string{"sunday", "saturday"}
+		}
+	}
+	if got := maintenanceConfigurationValues(v)["backup.mode"]; got != "weekends" {
+		t.Fatal("exact day set was not recognized", got)
+	}
+	for i := range v.Windows {
+		if v.Windows[i].ID == "backup" {
+			v.Windows[i].Days = []string{"monday", "saturday", "sunday"}
+		}
+	}
+	if got := maintenanceConfigurationValues(v)["backup.mode"]; got != "custom" {
+		t.Fatal("unmatched day set rounded to a preset", got)
+	}
+}
