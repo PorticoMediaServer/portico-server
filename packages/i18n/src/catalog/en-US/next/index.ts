@@ -9,6 +9,7 @@ import {statesMessages} from './states.ts';
 import {shellMessages} from './shell.ts';
 import {dockMessages} from './dock.ts';
 import {castPlayerMessages} from './cast-player.ts';
+import {mediaMessages} from './media.ts';
 import {homeMessages} from './home.ts';
 import {controlsNativeMessages} from './controls-native.ts';
 import {overlaysNativeMessages} from './overlays-native.ts';
@@ -37,6 +38,7 @@ export const nextMessages = {
   ...shellMessages,
   ...dockMessages,
   ...castPlayerMessages,
+  ...mediaMessages,
   ...homeMessages,
   ...controlsNativeMessages,
   ...overlaysNativeMessages,

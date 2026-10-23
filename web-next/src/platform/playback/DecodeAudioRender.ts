@@ -9,6 +9,7 @@ import {BrowserEqualizer, flatEqualizer, parseEqualizer, type EqualizerSettings}
 import {loadDeviceEqualizer} from './audio/equalizer-store';
 import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
+import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 
 /**
  * Music decoded on the device (spec §18.1 version 2; Plan §9.6), Plexamp's model: the original file
@@ -69,9 +70,12 @@ export class DecodeAudioRender {
   private factIntent = -1;
   private factPosition = -1;
   private starting = false;
+  private processingReport = '';
+  private readonly listening: ListeningEffectsPort;
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
+    this.listening = service as unknown as ListeningEffectsPort;
     this.snapshot = service.getSnapshot();
     // On iPhone and iPad, audio from a bare AudioContext follows the silent switch and stops when
     // the page goes to the background unless the page says it is playing media.
@@ -105,7 +109,7 @@ export class DecodeAudioRender {
   private interrupted = () => {
     if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
-    void this.context.resume().catch(() => {});
+    void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
   };
   /** While the context is not running nothing is heard, so the position stops; once it runs
    * again the schedule is brought up to date. An interruption is also answered as above. */
@@ -121,10 +125,16 @@ export class DecodeAudioRender {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
         this.carrier.play();
-        void this.context.resume().catch(() => this.service.audioEffectsNotice('Press play to allow audio in this browser.'));
+        void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
       }
     });
   };
+
+  private autoplayBlocked(): void {
+    if (this.disposed || this.service.getSnapshot().intent !== 'playing') return;
+    this.service.pause();
+    this.listening.listeningNotice?.('audio_autoplay_blocked');
+  }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
     if (plan.mode === 'converted') {
@@ -171,6 +181,7 @@ export class DecodeAudioRender {
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
     this.committing = undefined;
     this.starting = false;
+    this.reportProcessing();
   }
 
   apply(s: PlaybackSnapshot) {
@@ -178,7 +189,7 @@ export class DecodeAudioRender {
     this.snapshot = s;
     if (!s.session || !s.audioEffects.rendering || s.phase === 'error' || s.phase === 'ended' || s.failedSeek) { this.reset(); return; }
     const plan = s.session.audio;
-    if (!playableAudio(plan)) { this.service.audioRenderFailed(plan?.reason ?? 'This audio can’t be decoded on this device.'); return; }
+    if (!playableAudio(plan)) { this.service.audioRenderFailed('audio_render_failed'); return; }
     const seek = s.pendingSeek, seekKey = seek ? `${s.intentId}:${seek.revision}` : '';
     const rateChanged = this.lastRate !== s.audioEffects.rate;
     const key = sessionKey(s.session);
@@ -191,6 +202,7 @@ export class DecodeAudioRender {
       return;
     }
     for (const p of [this.primary, this.incoming, this.retiring]) if (p) p.deck.setGain(this.gainFor(p.plan));
+    this.reportProcessing();
     this.transport(s);
     this.prepared(s);
     this.committed(s);
@@ -203,8 +215,8 @@ export class DecodeAudioRender {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
       void this.context.resume().then(() => {
-        if (this.context.state !== 'running' && !this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); }
-      }).catch(() => { if (!this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); } });
+        if (this.context.state !== 'running') this.autoplayBlocked();
+      }).catch(() => this.autoplayBlocked());
     }
   }
 
@@ -223,6 +235,7 @@ export class DecodeAudioRender {
       if (deck.failure) throw deck.failure;
       deck.start(Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate));
       this.starting = false;
+      this.reportProcessing();
       this.service.ready(intent);
       if (seekRevision !== undefined) this.service.seekApplied(intent, seekRevision, fromFrame / plan.sampleRate, 'paused');
       this.transport(this.service.getSnapshot());
@@ -263,7 +276,7 @@ export class DecodeAudioRender {
         pending.ready = true;
         this.service.audioPrepared(token);
       } catch {
-        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; this.service.audioPreparationFailed('The next track could not be buffered. This edge will use ordinary playback.'); }
+        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; listeningDiagnostic('audio_transition_unavailable'); this.listening.audioPreparationFailed(); }
       }
     })();
   }
@@ -278,7 +291,7 @@ export class DecodeAudioRender {
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
     const nowFrame = Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate);
     const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: s.audioEffects.settings.crossfadeSeconds, sameAlbum, earliest: nowFrame});
-    if (edge.late) this.service.audioEffectsNotice('The next track arrived after its edge. Playback is continuing.');
+    if (edge.late) listeningDiagnostic('audio_edge_late');
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
   }
@@ -311,6 +324,7 @@ export class DecodeAudioRender {
   private tick() {
     if (this.disposed) return;
     const s = this.service.getSnapshot(), p = this.primary;
+    this.reportProcessing();
     if (!p || s.phase === 'error' || s.phase === 'ended') return;
     this.measureLag();
     const frame = Math.floor(this.context.currentTime * this.context.sampleRate);
@@ -362,18 +376,29 @@ export class DecodeAudioRender {
     catch (error) {
       this.equalizerFailed = true;
       try { this.equalizer.apply(flatEqualizer); } catch { /* a broken graph grants no EQ facts */ }
-      this.service.setDeviceAudioProcessing?.(false);
-      throw error;
+      // This song continues through the dry path. Saved intent remains on, actual EQ is false.
+      listeningDiagnostic('equalizer_filter_unavailable', error);
     }
-    this.service.setDeviceAudioProcessing?.(value.enabled);
+    this.reportProcessing();
   }
   getEqualizer(): EqualizerSettings { return this.equalizer.settings; }
   audioFacts(): BrowserAudioFacts | undefined {
     const plan = this.primary?.plan;
-    if (!plan) return undefined;
+    const snapshot = this.service.getSnapshot();
+    if (!plan || this.starting || this.primary?.deck.startFrame === undefined || this.primary.deck.failure || this.primary.key !== sessionKey(snapshot.session) || !snapshot.audioEffects.rendering || snapshot.phase === 'error' || snapshot.phase === 'ended') return undefined;
     return {engine:'web-audio',bitPerfect:false,sourceRate:plan.sampleRate,contextRate:this.context.sampleRate,
       resampledToContext:plan.sampleRate!==this.context.sampleRate,deviceRate:null,browserMayResample:true,
-      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqEnabled:!this.equalizerFailed && this.equalizer.settings.enabled,clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+      sourceChannels:plan.channels,outputChannels:Math.min(plan.channels,this.outputCount),eqApplied:!this.equalizerFailed && this.equalizer.settings.enabled,levelingApplied:snapshot.audioEffects.settings.normalization !== 'off',clock:this.carrier.carrying?'unmeasured-carrier':this.clockBasis};
+  }
+
+  private reportProcessing(): void {
+    const snapshot = this.service.getSnapshot(), session = snapshot.session;
+    if (!session) { this.processingReport = ''; return; }
+    const facts = this.audioFacts(), value = {eqApplied: facts?.eqApplied ?? false, levelingApplied: facts?.levelingApplied ?? false};
+    const key = `${snapshot.intentId}:${session.id}:${session.generation}:${value.eqApplied}:${value.levelingApplied}`;
+    if (key === this.processingReport) return;
+    this.processingReport = key;
+    this.listening.audioProcessingApplied?.({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, value);
   }
 
   transportPosition() { return this.primary ? this.position() : this.snapshot.positionSeconds; }

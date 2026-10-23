@@ -35,6 +35,6 @@ export function outputClockLag(context: BrowserOutputClock, nowMs: number, throu
 export type BrowserAudioFacts = Readonly<{
   engine: 'web-audio'; bitPerfect: false; sourceRate: number; contextRate: number;
   resampledToContext: boolean; deviceRate: null; browserMayResample: true;
-  sourceChannels: number; outputChannels: number; eqEnabled: boolean;
+  sourceChannels: number; outputChannels: number; eqApplied: boolean; levelingApplied: boolean;
   clock: 'timestamp' | 'latency' | 'unmeasured-carrier';
 }>;

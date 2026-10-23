@@ -7,7 +7,7 @@ export type {VideoLike, HlsModule, WebPlayerTimers, SubtitleTimeline} from './we
 export {installPlaybackEnvironment} from './environment.ts';
 export type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
 export type {WebMediaPlayerOptions, WebPlayerNotice} from './web-media-player.ts';
-export {eqFrequencies, flatEqualizer} from './audio/equalizer.ts';
+export {eqFrequencies, flatEqualizer, parseEqualizer, equalizerResponse} from './audio/equalizer.ts';
 export type {EqualizerSettings} from './audio/equalizer.ts';
 export type {BrowserAudioFacts} from './audio/output.ts';
 export {loadDeviceEqualizer, saveDeviceEqualizer, resetDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
