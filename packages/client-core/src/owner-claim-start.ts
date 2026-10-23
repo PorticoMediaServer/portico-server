@@ -1,0 +1,63 @@
+import {transportJSON} from './index.ts';
+import {currentUTCTimestamp} from './local-session.ts';
+import {validInstallationId} from './installation.ts';
+import {routeBase64, routeBytes, routeOrigin, sameServerPin, serverPin, webRouteCrypto, type RouteCrypto, type ServerPin} from './route-identity.ts';
+import {CodedError} from './server-messages.ts';
+
+export type OwnerSignedProof = Readonly<{payload: string; signature: string}>;
+const claimFields = ['kind', 'audience', 'operationId', 'serverId', 'accountId', 'publicKey', 'localGeneration', 'name', 'address', 'purpose', 'currentOwnerAccountId', 'previousOwnerRole', 'returnRegistrationId', 'issuedAt', 'expiresAt'] as const;
+const startFields = ['kind', 'audience', 'claimHash', 'operationId', 'serverId', 'publicKey', 'localGeneration', 'address', 'purpose', 'state', 'codeChallenge', 'installationId', 'serverChallenge', 'issuedAt', 'expiresAt'] as const;
+type ClaimFacts = Readonly<Record<typeof claimFields[number], string>>;
+export type OwnerStartFacts = Readonly<Record<typeof startFields[number], string>>;
+export type OwnerStartExpectation = Readonly<{
+  pin: ServerPin; origin: string; hostedOrigin: string; operationId: string; localGeneration: string;
+  state: string; codeChallenge: string; installationId: string;
+}>;
+function invalid(): never {throw new CodedError('invalid_return', 'This owner continuation no longer matches its captured operation.');}
+const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
+function readProof<T extends readonly string[]>(value: unknown, fields: T): {raw: Uint8Array; signature: Uint8Array; facts: Readonly<Record<T[number], string>>} {
+  if (!object(value) || Object.keys(value).sort().join(',') !== 'payload,signature') invalid();
+  const raw = routeBytes(value.payload, undefined, 8192), signature = routeBytes(value.signature, 64);
+  let parsed: unknown;
+  try {parsed = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(raw));} catch {invalid();}
+  if (!object(parsed) || Object.keys(parsed).join(',') !== fields.join(',') || fields.some(field => typeof parsed[field] !== 'string') || transportJSON(parsed) !== new TextDecoder().decode(raw)) invalid();
+  return {raw, signature, facts: Object.freeze(parsed) as Readonly<Record<T[number], string>>};
+}
+function timestamp(value: string): bigint {
+  if (!currentUTCTimestamp(value) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{0,8}[1-9])?Z$/.test(value)) invalid();
+  const fraction = value.includes('.') ? value.slice(20, -1) : '';
+  return BigInt(Date.parse(value.slice(0, 19) + 'Z')) * 1000000n + BigInt(fraction.padEnd(9, '0'));
+}
+function counter(value: string): boolean {return /^(0|[1-9][0-9]{0,18})$/.test(value) && BigInt(value) <= 9223372036854775807n;}
+
+/** Verify the actual canonical MAIN OwnerStart protocol before saving a
+ * browser handoff. Both original signed envelopes remain unchanged. This
+ * proves immutable binding only; it grants no claim, account or admission.
+ * The browser separately enforces its secure context/protected store and the
+ * Server owns current family, reservation, install and one-spend authority. */
+export async function verifyOwnerClaimStart(original: unknown, signedStart: unknown, expected: OwnerStartExpectation, now = Date.now(), crypto: RouteCrypto = webRouteCrypto): Promise<Readonly<{claim: ClaimFacts; start: OwnerStartFacts}>> {
+  // Capture scalar expectations before the first cryptographic await. A caller
+  // reusing its selection object cannot retarget this verification in flight.
+  expected = Object.freeze({...expected, pin: Object.freeze({...expected.pin})});
+  if (!Number.isSafeInteger(now) || !counter(expected.localGeneration) || !/^[A-Za-z0-9_-]{1,128}$/.test(expected.operationId) || !validInstallationId(expected.installationId)) invalid();
+  if (routeOrigin(expected.origin) !== expected.origin || routeOrigin(expected.hostedOrigin) !== expected.hostedOrigin || !expected.hostedOrigin.startsWith('https://')) invalid();
+  const address = new URL(expected.origin);
+  if (address.protocol !== 'https:' && !(address.protocol === 'http:' && address.hostname === 'localhost')) invalid();
+  routeBytes(expected.state, 32); routeBytes(expected.codeChallenge, 32);
+  const c = readProof(original, claimFields), s = readProof(signedStart, startFields), claim = c.facts, start = s.facts;
+  if (claim.kind !== 'portico.claim.web.v2' || start.kind !== 'portico.owner-start.v1' || claim.purpose !== 'switch' || start.purpose !== 'switch' ||
+    claim.accountId !== '' || claim.currentOwnerAccountId !== '' || claim.previousOwnerRole !== '' || claim.returnRegistrationId !== '' ||
+    claim.audience !== expected.hostedOrigin || start.audience !== claim.audience || claim.address !== expected.origin || start.address !== claim.address ||
+    claim.operationId !== expected.operationId || start.operationId !== claim.operationId || claim.localGeneration !== expected.localGeneration || start.localGeneration !== claim.localGeneration ||
+    claim.serverId !== expected.pin.serverId || start.serverId !== claim.serverId || claim.publicKey !== expected.pin.publicKey || start.publicKey !== claim.publicKey ||
+    !claim.name || new TextEncoder().encode(claim.name).length > 120 || start.state !== expected.state || start.codeChallenge !== expected.codeChallenge || start.installationId !== expected.installationId ||
+    !/^[A-Za-z0-9_-]{32,128}$/.test(start.serverChallenge)) invalid();
+  const issued = timestamp(claim.issuedAt), expires = timestamp(claim.expiresAt), startIssued = timestamp(start.issuedAt), startExpires = timestamp(start.expiresAt), nowNS = BigInt(now) * 1000000n;
+  if (issued > nowNS + 60000000000n || expires <= nowNS || expires <= issued || expires - issued > 600000000000n || startIssued < issued || startIssued > nowNS + 60000000000n ||
+    startExpires <= nowNS || startExpires <= startIssued || startExpires - startIssued > 300000000000n || startExpires > expires) invalid();
+  if (routeBase64(await crypto.sha256(c.raw)) !== start.claimHash) invalid();
+  routeBytes(start.claimHash, 32);
+  const pin = await serverPin(claim.serverId, claim.publicKey, expected.pin.fingerprint, crypto);
+  if (!sameServerPin(pin, expected.pin) || !await crypto.verify(routeBytes(pin.publicKey, 32), c.signature, c.raw) || !await crypto.verify(routeBytes(pin.publicKey, 32), s.signature, s.raw)) invalid();
+  return Object.freeze({claim, start});
+}
