@@ -209,12 +209,25 @@ func (h *ClaimHandler) reconcileWebClaim(parent context.Context, operation strin
 
 // RunWebClaimRecovery resumes saved waits and retries only durable deny-only
 // cancellations. It neither starts a new claim nor renews owner consent.
+func (h *ClaimHandler) wakeClaimRecovery() {
+	if h == nil {
+		return
+	}
+	select {
+	case h.recoveryWake <- struct{}{}:
+	default:
+	}
+}
+
 func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(string) ClaimRequestGuard) {
 	if h == nil || guard == nil {
 		return
 	}
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
+	if !timer.Stop() {
+		<-timer.C
+	}
 	for {
 		h.ResumeWebClaims(ctx, guard)
 		rows, err := h.store.db.QueryContext(ctx, `SELECT i.operation_id FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent'`)
@@ -237,10 +250,31 @@ func (h *ClaimHandler) RunWebClaimRecovery(ctx context.Context, guard func(strin
 				}
 			}
 		}
+		// A server with no pending approval or queued denial has no recovery
+		// work. Stay asleep until an actual claim action/watcher wakes it;
+		// permanently polling empty tables would consume the idle SQL budget.
+		var pending bool
+		err = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM networking_web_claims w JOIN networking_claim_intents i ON i.operation_id=w.operation_id WHERE w.watch<>'' AND i.stage IN('prepared','approved','finalizing','retrieving')) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN networking_claim_cancellations c ON c.operation_id=i.operation_id WHERE i.purpose='switch' AND i.current_owner_account_id='' AND i.stage='cancel_pending' AND c.state='pending' AND c.mode='intent')`).Scan(&pending)
+		if err == nil && !pending {
+			select {
+			case <-ctx.Done():
+				return
+			case <-h.recoveryWake:
+				continue
+			}
+		}
+		timer.Reset(30 * time.Second)
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-h.recoveryWake:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		case <-timer.C:
 		}
 	}
 }

@@ -34,6 +34,12 @@ type Linked = Candidate & {edge: number; fade: number};
 const sessionKey = (s: PlaybackSnapshot['session']) => (s ? `${s.id}:${s.generation}` : '');
 
 export type SameAlbum = (currentItemId: string | undefined, nextItemId: string) => boolean;
+// Music owns the checked producer. No legacy text fallback while its new contract is pending.
+type ListeningEffectsPort = {
+  listeningNotice?(code: 'audio_autoplay_blocked'): void;
+  audioProcessingApplied?(binding: {intentId: number; sessionId: string; generation: number}, facts: {eqApplied: boolean; levelingApplied: boolean}): boolean;
+  audioPreparationFailed(): void;
+};
 
 export class DecodeAudioRender {
   private context: AudioContext;
@@ -60,6 +66,7 @@ export class DecodeAudioRender {
   private factIntent = -1;
   private factPosition = -1;
   private starting = false;
+  private processingReport = '';
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum;
@@ -87,7 +94,7 @@ export class DecodeAudioRender {
   private interrupted = () => {
     if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
-    void this.context.resume().catch(() => {});
+    void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
   };
   /** While the context is not running nothing is heard, so the position stops; once it runs
    * again the schedule is brought up to date. An interruption is also answered as above. */
@@ -103,10 +110,29 @@ export class DecodeAudioRender {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
         this.carrier.play();
-        void this.context.resume().catch(() => this.service.audioEffectsNotice('Press play to allow audio in this browser.'));
+        void this.context.resume().then(() => { if (this.context.state !== 'running') this.autoplayBlocked(); }, () => this.autoplayBlocked());
       }
     });
   };
+
+  private autoplayBlocked(): void {
+    if (this.disposed || this.service.getSnapshot().intent !== 'playing') return;
+    this.service.pause();
+    (this.service as unknown as ListeningEffectsPort).listeningNotice?.('audio_autoplay_blocked');
+  }
+
+  private reportProcessing(): void {
+    const snapshot = this.service.getSnapshot(), session = snapshot.session;
+    if (!session) { this.processingReport = ''; return; }
+    const primary = this.primary;
+    const configured = !this.starting && primary?.key === sessionKey(session) && primary.deck.startFrame !== undefined && !primary.deck.failure && snapshot.audioEffects.rendering && snapshot.phase !== 'error' && snapshot.phase !== 'ended';
+    const gain = primary?.deck.norm.gain.value;
+    const facts = {eqApplied: false, levelingApplied: !!configured && gain !== undefined && Number.isFinite(gain) && gain !== 1};
+    const key = `${snapshot.intentId}:${session.id}:${session.generation}:${facts.levelingApplied}`;
+    if (key === this.processingReport) return;
+    this.processingReport = key;
+    (this.service as unknown as ListeningEffectsPort).audioProcessingApplied?.({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, facts);
+  }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
     if (plan.mode === 'converted') {
@@ -152,6 +178,7 @@ export class DecodeAudioRender {
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
     this.committing = undefined;
     this.starting = false;
+    this.reportProcessing();
   }
 
   apply(s: PlaybackSnapshot) {
@@ -184,8 +211,8 @@ export class DecodeAudioRender {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
       void this.context.resume().then(() => {
-        if (this.context.state !== 'running' && !this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); }
-      }).catch(() => { if (!this.disposed) { this.service.audioEffectsNotice('Press play to allow audio in this browser.'); this.service.pause(); } });
+        if (this.context.state !== 'running') this.autoplayBlocked();
+      }).catch(() => this.autoplayBlocked());
     }
   }
 
@@ -244,7 +271,7 @@ export class DecodeAudioRender {
         pending.ready = true;
         this.service.audioPrepared(token);
       } catch {
-        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; this.service.audioPreparationFailed('The next track could not be buffered. This edge will use ordinary playback.'); }
+        if (this.candidate === pending) { this.closePlaying(pending); this.candidate = undefined; console.debug('audio_transition_unavailable'); (this.service as unknown as ListeningEffectsPort).audioPreparationFailed(); }
       }
     })();
   }
@@ -259,7 +286,7 @@ export class DecodeAudioRender {
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
     const nowFrame = Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate);
     const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: s.audioEffects.settings.crossfadeSeconds, sameAlbum, earliest: nowFrame});
-    if (edge.late) this.service.audioEffectsNotice('The next track arrived after its edge. Playback is continuing.');
+    if (edge.late) console.debug('audio_edge_late');
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
   }
@@ -303,6 +330,7 @@ export class DecodeAudioRender {
   private tick() {
     if (this.disposed) return;
     const s = this.service.getSnapshot(), p = this.primary;
+    this.reportProcessing();
     if (!p || s.phase === 'error' || s.phase === 'ended') return;
     this.measureLag();
     const frame = Math.floor(this.context.currentTime * this.context.sampleRate);

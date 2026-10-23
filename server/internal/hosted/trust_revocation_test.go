@@ -107,7 +107,7 @@ func TestLearningASigningKeyWasRevokedEndsTheSessionsItAdmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Another member, admitted by a different key that stays good.
-	other, err := f.id.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "acc_other", SignerKeyID: "pin-good"})
+	other, err := f.id.PorticoSignIn(ctx, identity.PorticoIdentity{AccountID: "acc_other", Username: "local-n", SignerKeyID: "pin-good"})
 	if err != nil || other.Session == nil {
 		t.Fatal(err)
 	}

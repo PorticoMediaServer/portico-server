@@ -6,6 +6,7 @@ import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {V1Viewer} from '@core/playback-v1/v1-queue-player.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {Timers} from '@core/playback-v1/sessions.ts';
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
 import type {CapabilityDocument} from '@core/client-profile.ts';
 import type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
 import type {PlaybackService} from '@core/index.ts';
@@ -13,12 +14,15 @@ import type {WebMediaPlayerOptions} from './web-media-player.ts';
 import type {AudioEffectsSettings} from '@core/audio-effects.ts';
 import type {QualityRequest} from '@core/playback-v1/quality.ts';
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
+import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} from '../../../../packages/player-core/src/index.ts';
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
+export type WebPlaybackVersionStart = Readonly<{itemId: string; versionId: string; context: SelectionContext; signal: AbortSignal}>;
 export type WebPlaybackSettings = Readonly<{
+  subtitlePreferences?: () => SubtitlePreferences;
   videoSpeed: () => number;
   audiobookSpeed: () => number;
   /** Undefined leaves the saved delivery default to the server. Original is an explicit choice. */
@@ -68,6 +72,7 @@ export type WebPlaybackRuntimeSnapshot = Readonly<{
 export type WebPlaybackAction = Readonly<{
   kind: string; fence: PlaybackFence; remote?: Readonly<{id: string; sequence: string}>;
   seconds?: number; volume?: number; shuffle?: boolean; repeat?: 'off' | 'one' | 'all';
+  direction?: -1 | 1;
 }>;
 export type WebPlaybackTransition = DockTransition;
 export type WebPlaybackElement = VideoLike;

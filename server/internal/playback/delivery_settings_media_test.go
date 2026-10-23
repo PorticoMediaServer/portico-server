@@ -22,8 +22,29 @@ func TestStreamingMediaConfigurationContract(t *testing.T) {
 	bad.OutputFormat = "av1"
 	bad.DownloadMaxQuality = "automatic"
 	got := bad.Normalized()
-	if got.ConversionMode != "all" || got.OutputFormat != "auto" || got.DownloadMaxQuality != "original" {
+	if got.ConversionMode != "" || got.OutputFormat != "auto" || got.DownloadMaxQuality != "original" {
 		t.Fatal(got)
+	}
+}
+
+func TestAbsentConversionModeRetainsActualOwnerSwitch(t *testing.T) {
+	for _, mode := range []string{"", "unknown"} {
+		for _, enabled := range []bool{false, true} {
+			cfg := DefaultDeliveryConfiguration()
+			cfg.ConversionMode = mode
+			if got := cfg.Normalized().ConversionMode; got != "" {
+				t.Fatalf("unpublished mode became a policy write: %q", got)
+			}
+			source := videoSource("mkv", "h264", avcDetail, SourceAudio{Index: 1, Codec: "dts", Channels: 6})
+			in := DeliveryInput{Source: source, Client: chromeProfile(), FMP4Output: true, Policy: openPolicy(), Target: QualityTarget{RungID: "original", Kind: QualityAutomatic, AllowHDR: true}, Config: cfg, TranscodingEnabled: enabled}
+			plan, err := planDelivery(in)
+			if !enabled && err == nil {
+				t.Fatal("absent mode bypassed disabled owner conversion", plan)
+			}
+			if enabled && (err != nil || plan.Strategy != DeliveryAudioConversion) {
+				t.Fatal("absent mode lost the owner's enabled policy", plan, err)
+			}
+		}
 	}
 }
 

@@ -32,6 +32,10 @@ import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
 import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
+import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
+import {saveDeviceEqualizer} from './audio/equalizer-store';
+import type {BrowserAudioFacts} from './audio/output';
+import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
@@ -41,6 +45,12 @@ export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityR
 
 /** Structural native/web media port. A platform adapter owns one generation at a time. */
 export type PlaybackMediaPort = MediaPlayer & {
+  /** Actual decoder frame command only. At execution the adapter must recheck its private
+   * loaded entry/lifetime as well as this public generation, which can repeat across sessions.
+   * Native readiness belongs to the adapter; ordinary observations supply the resulting clock. */
+  stepFrame?(direction: -1 | 1, generation: number): void | Promise<void>;
+  /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
+  applyAudioEffects?(snapshot: PlaybackSnapshot): void;
   readonly nativeSurfaceActive?: boolean;
   readonly loaded: number;
   readonly settling: boolean;
@@ -51,7 +61,7 @@ export type PlaybackMediaPort = MediaPlayer & {
 };
 
 /** The device's own audio engine for music (`DecodeAudioRender`). */
-export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number};
+export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number; audioFacts?(): BrowserAudioFacts | undefined; applyEqualizer?(settings: EqualizerSettings): void};
 
 /** Failure codes this path stores as the service's error; `playbackFailure` words them. */
 export const failure = {
@@ -136,8 +146,26 @@ export class PlayerSlot implements MediaPlayer {
   dispose(): void { this.unmount(); this.listeners.clear(); this.notices.clear(); }
 
   get settling(): boolean { return !!this.real && !this.held && this.real.settling; }
-  get nativeSurfaceActive(): boolean { return !this.held && !!this.real?.loaded && this.real.nativeSurfaceActive === true; }
+  applyAudioEffects(snapshot: PlaybackSnapshot): void { this.real?.applyAudioEffects?.(snapshot); }
+  get nativeSurfaceActive(): boolean {
+    const real = this.real, source = this.source;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.nativeSurfaceActive !== true) return false;
+    const observed = real.observe();
+    return observed.generation === source.generation && !['idle', 'ended', 'error'].includes(observed.state);
+  }
   get mounted(): boolean { return !!this.real; }
+  get canStepFrame(): boolean {
+    const real = this.real, source = this.source;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.settling || typeof real.stepFrame !== 'function') return false;
+    const observed = real.observe();
+    return observed.generation === source.generation && observed.state === 'paused';
+  }
+  async stepFrame(direction: -1 | 1, generation: number): Promise<void> {
+    if ((direction !== -1 && direction !== 1) || this.source?.generation !== generation || !this.canStepFrame) throw new Error('playback_frame_step_unavailable');
+    const real = this.real!, source = this.source;
+    await real.stepFrame!(direction, generation);
+    if (this.real !== real || this.source !== source || this.source?.generation !== generation || !this.canStepFrame) throw new Error('stale_playback_command');
+  }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
 
@@ -203,6 +231,8 @@ export class WebPlayback implements PlaybackAdapter {
   private render?: RenderEngine;
   private renderRetained?: number;
   private renderState?: string;
+  private renderUnavailableSession?: string;
+  private renderCreating = false;
   private disposed = false;
   private blocked = false;
   private loadedKey = '';
@@ -293,6 +323,7 @@ export class WebPlayback implements PlaybackAdapter {
 
   apply = (next: PlaybackSnapshot): void => {
     if (this.disposed) return;
+    this.slot.applyAudioEffects(next);
     const session = next.session;
     // Nothing to play, or a failed play: the media is let go. A delayed event cannot revive it.
     if (!session || next.phase === 'error') { this.release(); return; }
@@ -479,10 +510,19 @@ export class WebPlayback implements PlaybackAdapter {
   private applyRender(next: PlaybackSnapshot, session: PlaybackSession) {
     const service = this.service, video = this.video;
     if (!service || !video || !this.host.createRender) return; // waits for the element
+    if (this.renderUnavailableSession === session.id) return; // this song already fell back
     if (!this.render) {
-      this.slot.hold(true);
-      try { this.render = this.host.createRender(service, video); }
-      catch { service.audioRenderFailed('Web Audio processing is not supported by this browser.'); return; }
+      if (this.renderCreating) return;
+      this.renderCreating = true;
+      try { this.slot.hold(true); this.render = this.host.createRender(service, video); }
+      catch {
+        this.renderUnavailableSession = session.id;
+        this.slot.hold(false);
+        listeningDiagnostic('audio_processing_unavailable');
+        if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
+        return;
+      }
+      finally { this.renderCreating = false; }
     }
     const key = `${session.id}:${session.generation}`;
     if (this.loadedKey !== key) {
@@ -506,6 +546,32 @@ export class WebPlayback implements PlaybackAdapter {
     this.controller.observe({state, positionMs: next.positionSeconds * 1000, rate: next.audioEffects.rate, volume: this.video?.volume, muted: this.video?.muted}, changed ? 'state' : 'time');
   }
 
+  audioFacts(): BrowserAudioFacts | undefined { return this.render?.audioFacts?.(); }
+  async setEqualizer(settings: EqualizerSettings): Promise<void> {
+    if (!this.host.createRender || !this.service) throw new Error('equalizer_unavailable');
+    const value = await saveDeviceEqualizer(settings);
+    this.applyEqualizer(value);
+  }
+
+  /** Same committed setting for the Settings entry and player shortcut, including while idle. */
+  applyEqualizer(settings: EqualizerSettings): void {
+    const value = parseEqualizer(settings), service = this.service;
+    if (!this.host.createRender || !service || this.disposed) throw new Error('equalizer_unavailable');
+    try {
+      // Apply off before releasing an EQ-only renderer. Turning on can create it synchronously.
+      const previous = this.render;
+      if (previous) {
+        if (!previous.applyEqualizer) throw new Error('equalizer_unavailable');
+        previous.applyEqualizer(value);
+      }
+      service.setDeviceAudioProcessing(value.enabled);
+      if (value.enabled && this.render && this.render !== previous) {
+        if (!this.render.applyEqualizer) throw new Error('equalizer_unavailable');
+        this.render.applyEqualizer(value);
+      }
+    } catch (error) { service.setDeviceAudioProcessing(false); throw error; }
+  }
+
   private endRender() {
     if (!this.render) return;
     this.render.dispose();
@@ -527,7 +593,10 @@ export class WebPlayback implements PlaybackAdapter {
       this.blocked = true;
       if (this.render) {
         this.renderRetained = this.render.transportPosition();
-        if (service.getSnapshot().audioEffects.prepared) service.audioPreparationFailed('Network changed; the prepared audio edge was cancelled.');
+        if (service.getSnapshot().audioEffects.prepared) {
+          listeningDiagnostic('audio_transition_unavailable');
+          (service as unknown as ListeningEffectsPort).audioPreparationFailed();
+        }
         this.render.dispose();
         this.render = undefined;
       }

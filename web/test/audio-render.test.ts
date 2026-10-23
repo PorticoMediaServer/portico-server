@@ -38,6 +38,18 @@ const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r =>
  * never answers fails the test instead of keeping the process (and the whole suite) alive. */
 const bounded = {timeout: 30_000};
 
+test('legacy processing facts do not turn a saved leveling choice into an applied gain', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
+  const t = setup(), render = new DecodeAudioRender(t.service, path => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  render.apply(t.set({audioEffects: {settings: {...t.get().audioEffects.settings, normalization: 'track'}}})); await settle();
+  (render as any).tick();
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's1', generation: 1}, {eqApplied: false, levelingApplied: false}]);
+  render.apply(t.set({session: {id: 's2', generation: 2, audio: {...t.a, gain: {trackDb: -6, trackPeak: 0.5}}}})); await settle();
+  (render as any).tick();
+  assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1), ['audioProcessingApplied', {intentId: 1, sessionId: 's2', generation: 2}, {eqApplied: false, levelingApplied: true}]);
+});
+
 test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
