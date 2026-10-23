@@ -11,6 +11,7 @@ import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
 import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
+import {useCoarsePointer} from '../../kit/theme';
 
 const t = defaultI18n.t;
 const subscribeWindow = (changed: () => void) => { window.addEventListener('resize', changed); return () => window.removeEventListener('resize', changed); };
@@ -35,6 +36,7 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
 /** Only drawn controls and geometry targets. The parent's MediaSurface remains its sole video. */
 export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, surfaceSlotRef, surfaces, windowPort, geometry}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
+  const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false);
   type Scrub = {snapshot: WatchScreenProps['snapshot']; fence: PlaybackFence; seconds: number; pointerId: number};
@@ -42,6 +44,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const scrubDrag = useRef<Scrub | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const keyboardFocus = useRef(false);
+  const lastLayout = useRef<string | null>(null);
   const current = useRef({binding, snapshot, expanded});
   current.current = {binding, snapshot, expanded};
   const presentation = snapshot.presentation, fence = snapshot.fence;
@@ -70,19 +73,25 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     try { void Promise.resolve(action()).catch(value.binding.reportError); } catch (error) { value.binding.reportError(error); }
   };
   const clearTimer = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
-  const reveal = useCallback(() => {
+  const revealFor = useCallback((milliseconds: number) => {
     clearTimer(); setVisible(true);
     if (!open || permanent || panel || more || shortcuts || scrubDrag.current || !presentation?.playing) return;
-    // Q7 and phone-player: controls show for three seconds after a settled window change.
     timer.current = setTimeout(() => {
       if (chrome.current?.contains(document.activeElement)) {
         if (keyboardFocus.current) return;
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       }
       setVisible(false);
-    }, 3000);
+    }, milliseconds);
   }, [clearTimer, open, permanent, panel, more, shortcuts, presentation?.playing]);
-  useEffect(() => { reveal(); return clearTimer; }, [reveal, clearTimer, width, height, geometry?.revision, sourceKey]);
+  const reveal = useCallback(() => revealFor(coarsePointer ? 4000 : 2800), [revealFor, coarsePointer]);
+  useEffect(() => {
+    const layout = `${width}:${height}:${geometry?.revision ?? ''}`, changed = lastLayout.current !== null && lastLayout.current !== layout;
+    lastLayout.current = layout;
+    // Q7 window/posture changes reveal for 3s; ordinary touch activity uses 4s.
+    revealFor(changed ? 3000 : coarsePointer ? 4000 : 2800);
+    return clearTimer;
+  }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
   useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, playbackKey]);
   useLayoutEffect(() => { scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, sourceKey]);
@@ -94,6 +103,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     setMore(false); setPanel(next); reveal();
   };
   const toggleFullscreen = () => {
+    if (touchTablet) return;
     if (windowPort?.fullscreen) effect(windowPort.fullscreen.toggle);
     else if (width < 1024) { setFullWindow(value => !value); reveal(); }
   };
@@ -111,8 +121,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       else if (key === 'arrowleft' || key === 'j' || key === 'arrowright' || key === 'l') {
         const back = key === 'arrowleft' || key === 'j', position = watchSeek(current.current.snapshot, p.positionSeconds + (back ? -binding.skips.back : binding.skips.forward));
         if (position !== null) intent = {kind: 'seek', seconds: position};
-      } else if ((key === 'arrowup' || key === 'arrowdown') && enabled('volume')) intent = {kind: 'volume', volume: Math.min(1, Math.max(0, p.volume + (key === 'arrowup' ? .05 : -.05)))};
-      else if (key === 'm' && enabled('volume')) intent = {kind: 'mute'};
+      } else if (!coarsePointer && (key === 'arrowup' || key === 'arrowdown') && enabled('volume')) intent = {kind: 'volume', volume: Math.min(1, Math.max(0, p.volume + (key === 'arrowup' ? .05 : -.05)))};
+      else if (!coarsePointer && key === 'm' && enabled('volume')) intent = {kind: 'mute'};
       else if (event.shiftKey && (key === 'n' || key === 'p') && enabled(key === 'n' ? 'next' : 'previous')) intent = {kind: key === 'n' ? 'next' : 'previous'};
       else if ((/^[0-9]$/.test(key) || key === 'home' || key === 'end') && enabled('seek')) {
         const bounds = watchSeekBounds(current.current.snapshot);
@@ -160,7 +170,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     ...(surfaces?.more ?? []).map(item => ({id: item.id, label: item.label, onSelect: () => effect(item.action)})),
     {id: 'shortcuts', label: t('player.shortcuts'), icon: 'i-kbd', onSelect: () => setShortcuts(true)},
   ];
-  return <div ref={root} className={styles.watch} hidden={!open} data-watch-screen data-mode={mode} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={root} className={styles.watch} hidden={!open} data-watch-screen data-mode={mode} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
@@ -198,7 +208,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
               onPointerMove={event => {
-                if (scrubDrag.current || event.pointerType !== 'mouse' || !bounds || !trickplay) return;
+                if (coarsePointer || scrubDrag.current || event.pointerType !== 'mouse' || !bounds || !trickplay) return;
                 const rect = event.currentTarget.getBoundingClientRect();
                 if (rect.width > 0) setHoverSeconds(watchSeek(snapshot, bounds.start + (event.clientX - rect.left) / rect.width * (bounds.end - bounds.start)));
               }}
@@ -227,14 +237,14 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
           <div className={styles.leading}>{surfaces?.available.includes('episodes') && <Button size="small" variant="glass" icon="i-stack" onClick={event => showPanel('episodes', event.currentTarget)}>{t('next.controls.episodes')}</Button>}</div>
           {transport}
           <div className={styles.trailing}>
-            {can('volume') && <span className={styles.volume}><Control icon="i-vol" label={t(presentation?.muted ? 'player.unmute' : 'player.mute')} action={() => send({kind: 'mute'})} />
+            {!coarsePointer && can('volume') && <span className={styles.volume}><Control icon="i-vol" label={t(presentation?.muted ? 'player.unmute' : 'player.mute')} action={() => send({kind: 'mute'})} />
               <Slider min={0} max={1} step={.01} value={presentation?.muted ? 0 : presentation?.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></span>}
             {!portrait && !mobile && panelButton('subtitles-audio', 'i-cc', t('next.dock.subtitlesAudio'))}
             {!portrait && mobile && <>{namedTrack('subtitles', tracks?.subtitles)}{namedTrack('audio', tracks?.audio)}</>}
             {qualityButton}
             {!mobile && surfaces?.available.includes('speed') && <button type="button" className={styles.pill} aria-label={t('next.dock.speed', {rate: presentation?.rate ?? 1})} onClick={event => showPanel('speed', event.currentTarget)}>{t('next.dock.rate', {rate: presentation?.rate ?? 1})}</button>}
             {!mobile && windowPort?.pictureInPicture && <Control icon="i-pip" label={t('player.pictureInPicture')} active={windowPort.pictureInPicture.active} action={() => effect(windowPort.pictureInPicture!.toggle)} />}
-            {(portrait || !mobile && windowPort?.fullscreen) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
+            {!touchTablet && (portrait || !mobile && windowPort?.fullscreen) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
           </div>
         </div>
       </div>

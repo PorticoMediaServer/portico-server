@@ -45,6 +45,6 @@ export function WatchVersionChooser<Choices extends WatchVersionSelection>({bind
     {layout === 'desktop' && <span className={styles.play} aria-hidden="true"><Icon name="i-play" size={18} /></span>}
   </button>)}</div>;
   const surface = {open, onOpenChange, initialFocusRef: first, returnFocusRef};
-  if (layout === 'phone') return <BottomSheet {...surface} title={<>{title}<small className={styles.subject}>{subject}</small></>} fitContent className={styles.sheet} headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>{body}</BottomSheet>;
+  if (layout === 'phone') return <BottomSheet {...surface} title={<>{title}<small className={styles.subject}>{subject}</small></>} fitContent headerClassName={styles.sheetHeader} bodyClassName={styles.sheetBody}>{body}</BottomSheet>;
   return <Dialog {...surface} title={title} description={subject} responsive={false} width={520} className={styles.dialog} headerClassName={styles.dialogHeader} bodyClassName={styles.dialogBody}>{body}</Dialog>;
 }

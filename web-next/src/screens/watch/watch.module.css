@@ -97,6 +97,17 @@
 .watch[data-mode='book'] .body, .watch[data-mode='tabletop'] .body { visibility: visible; overflow: auto; pointer-events: auto; background: var(--color-ink); }
 .watch[data-mode='tabletop'] .shade { background: var(--color-ink); }
 .watch[data-mode='tabletop'] .pictureTap { pointer-events: none; }
+.watch[data-touch-expanded='true'] .top { padding: 26px 32px; gap: 16px; }
+.watch[data-touch-expanded='true'] .together { margin-left: 6px; }
+.watch[data-touch-expanded='true'] .bottom { padding: 0 32px 32px; }
+.watch[data-touch-expanded='true'] .seek, .watch[data-touch-expanded='true'] .rail input { height: 44px; }
+.watch[data-touch-expanded='true'] .rail input::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: -7px; }
+.watch[data-touch-expanded='true'] .rail input::-moz-range-thumb { width: 20px; height: 20px; }
+.watch[data-touch-expanded='true'] .times { margin-top: 0; }
+.watch[data-touch-expanded='true'] .controls { margin-top: 8px; }
+.watch[data-touch-expanded='true'] .pill { --watch-time-size: 14px; height: 44px; padding: 0 16px; border-radius: 22px; margin: 0 2px; }
+.watch[data-touch-expanded='true'] .leading > button { height: 44px; }
+.watch[data-touch-expanded='true'] .scrubPreview { bottom: 40px; }
 @media (max-width: 1023px) and (orientation: landscape) {
   .watch { --watch-title-size: 16.5px; --watch-title-line: normal; --watch-title-tracking: -.015em; --watch-subtitle-size: 13px; --watch-subtitle-weight: 600; --watch-time-size: 12.5px; --watch-time-weight: 700; --watch-skip-size: 11.5px; --watch-track-size: 13.5px; }
   .trackPill { font-size: var(--watch-track-size); }

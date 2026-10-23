@@ -1,7 +1,7 @@
 import {sameFence, type PolicyView, type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
 
-/** Structural subset of the media owner's proposed action port; no policy execution here. */
+/** Structural subset of the media owner's action port; no policy execution here. */
 export type WatchMarkerAction = Readonly<{kind: 'skip' | 'dismiss' | 'undo'; markerId: string}>;
 export type WatchPolicyBinding = Readonly<{
   getSnapshot: () => WebPlaybackRuntimeSnapshot;
