@@ -47,6 +47,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		write(w, 200, moveStatus{out})
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/preview", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := d.owner(r); err != nil {
+			failure(w, err)
+			return
+		}
 		var q identity.MovePreviewRequest
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -64,6 +68,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/confirm", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := d.owner(r); err != nil {
+			failure(w, err)
+			return
+		}
 		var q identity.MoveConfirmRequest
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -102,6 +110,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		write(w, 200, moveConfirmation{Move: &out})
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := d.owner(r); err != nil {
+			failure(w, err)
+			return
+		}
 		var q moveRevision
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -114,6 +126,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/{id}/finish", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := d.owner(r); err != nil {
+			failure(w, err)
+			return
+		}
 		var q moveRevision
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -126,6 +142,10 @@ func (d Dependencies) accountMoveRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	d.httpHandle(mux, "POST /v1/admin/sign-in/move/codes", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := d.owner(r); err != nil {
+			failure(w, err)
+			return
+		}
 		var q identity.MoveCodeRequest
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
