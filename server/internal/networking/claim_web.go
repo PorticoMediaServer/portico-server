@@ -226,10 +226,18 @@ func (h *ClaimHandler) ResumeWebClaims(ctx context.Context, guard func(resume st
 	for _, note := range pending {
 		g := guard(note.Owner)
 		if g == nil {
+			if err := h.reconcileWebClaim(ctx, note.Expected.OperationID, nil, false); err != nil {
+				log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+			}
 			continue
 		}
-		if _, e := h.watchWebClaim(ctx, note.Expected, g, note.Owner); e != nil && e != ErrStale {
-			log.Printf("Waiting for the Portico Account approval could not resume: %v", e)
+		if _, e := h.watchWebClaim(ctx, note.Expected, g, note.Owner); e != nil {
+			if err := h.reconcileWebClaim(ctx, note.Expected.OperationID, g, false); err != nil {
+				log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+			}
+			if e != ErrStale {
+				log.Printf("Waiting for the Portico Account approval could not resume: %v", e)
+			}
 		}
 	}
 }
@@ -246,16 +254,11 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 	ctx, cancel := context.WithDeadline(context.Background(), local.ExpiresAt)
 	defer cancel()
 	withdraw := func() {
-		cleanup, stop := context.WithTimeout(context.Background(), time.Second*3)
+		cleanup, stop := context.WithTimeout(context.Background(), time.Second*8)
 		defer stop()
-		_ = h.runner.Do(cleanup, func(ctx context.Context) error {
-			v, e := h.store.Load(ctx, expected.OperationID)
-			if e != nil {
-				return e
-			}
-			_, _, e = h.store.WithdrawReplacement(ctx, v)
-			return e
-		})
+		if err := h.reconcileWebClaim(cleanup, expected.OperationID, guard, true); err != nil {
+			log.Printf("Abandoned Portico Account approval could not be reconciled: %v", err)
+		}
 	}
 	defer func() {
 		if !time.Now().Before(local.ExpiresAt) {
@@ -323,7 +326,7 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 		return ErrUnavailable
 	})
 	if e != nil {
-		if errors.Is(e, ErrOwnerCollision) {
+		if errors.Is(e, ErrOwnerCollision) || errors.Is(e, ErrClaimOwnerRequired) || errors.Is(e, ErrStale) || errors.Is(e, ErrApprovalRequired) {
 			withdraw()
 		}
 		log.Printf("Claim approval from the web could not be applied: %v", e)

@@ -42,6 +42,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "move_confirmation", Status: 409, Message: identity.ErrMoveConfirmation.Error(), Retry: apierror.Never},
 		{Code: "move_code_invalid", Status: 410, Message: identity.ErrMoveCode.Error(), Retry: apierror.Never},
 		{Code: "account_move_waiting", Status: 403, Message: identity.ErrMoveWaiting.Error(), Retry: apierror.Never},
+		{Code: "factor_setup_required", Status: 403, Message: identity.ErrFactorSetupRequired.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_portico", Status: 403, Message: identity.ErrSignInKindPortico.Error(), Retry: apierror.Never},
 		{Code: "sign_in_kind_local", Status: 403, Message: identity.ErrSignInKindLocal.Error(), Retry: apierror.Never},
 		{Code: "portico_services_unavailable", Status: 503, Message: hosted.ErrServicesUnavailable.Error(), Retry: apierror.SameRequest},
@@ -126,6 +127,8 @@ func v1Error(err error) error {
 		return &apierror.Error{Code: "invalid_request", Fields: fields, Cause: err}
 	case errors.Is(err, identity.ErrNotVisible):
 		code = "not_found"
+	case errors.Is(err, identity.ErrFactorSetupRequired):
+		code = "factor_setup_required"
 	case errors.Is(err, identity.ErrForbidden):
 		code = "not_permitted"
 	case errors.Is(err, identity.ErrUnauthorized):
