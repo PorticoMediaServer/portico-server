@@ -5,6 +5,12 @@ import type {ShellArtwork} from './artwork';
 import {playbackFence} from '../../../packages/player-core/src/index.ts';
 
 export const fenceKey = (fence: NonNullable<WebPlaybackRuntimeSnapshot['fence']>) => JSON.stringify(playbackFence(fence));
+/** A pending receiver choice preserves the current local picture. Only confirmed remote play takes it over. */
+export function localVideoSurfaceActive(snapshot: WebPlaybackRuntimeSnapshot | undefined): boolean {
+  const presentation = snapshot?.presentation, local = snapshot?.dock.local;
+  return !!snapshot && !snapshot.disposed && !!presentation && presentation.kind === 'video' && !!local
+    && snapshot.dock.remote?.phase !== 'playing' && fenceKey(local.fence) === fenceKey(presentation.fence);
+}
 /** A notice offers only the bookmark still owned by this exact runtime. */
 export function retainedPlaybackNotice<Runtime>(notice: Readonly<{runtime: Runtime; value: DockNoticeData}> | null, runtime: Runtime | undefined,
   dock: WebPlaybackRuntimeSnapshot['dock'] | undefined, presentations: readonly DockPresentation[]): DockNoticeData | null {

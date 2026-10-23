@@ -17,7 +17,7 @@ import {PlayerOffersService, type PlayerOffersData} from '@core/player-offers.ts
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
 import type {PlaybackOptions, Session} from '@core/playback-v1/types.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
-import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyCommand, type PolicyView, type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
+import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyCommand, type PolicyView, type QueuePlaybackFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import {WebPlayback} from './web-playback.ts';
 import {DecodeAudioRender} from './DecodeAudioRender.ts';
 import {loadDeviceEqualizer, subscribeDeviceEqualizer} from './audio/equalizer-store.ts';
@@ -474,7 +474,7 @@ export class WebShellPlaybackRuntime {
     }
     return Object.freeze(out);
   }
-  private fence(stack: Stack, playback: PlaybackSnapshot, session: Session | undefined, offers: PlayerOffersData | null): PlaybackFence | undefined {
+  private fence(stack: Stack, playback: PlaybackSnapshot, session: Session | undefined, offers: PlayerOffersData | null): QueuePlaybackFence | ChannelPlaybackFence | undefined {
     const channel = playback.channel;
     if (channel && playback.session && playback.session.generation > 0 && playback.playbackRun > 0) {
       const common = {kind: 'channel' as const, playback: {scope: queueScope({...this.authority, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}), run: playback.playbackRun}, sessionId: playback.session.id, generation: playback.session.generation, channelId: channel.channelId, channelGeneration: channel.generation, sourceId: channel.sourceId};

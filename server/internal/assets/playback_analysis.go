@@ -17,7 +17,7 @@ import (
 )
 
 // PlaybackAnalysisRevision invalidates earlier scan results on the next bounded inventory pass.
-const PlaybackAnalysisRevision = "playback_facts:2"
+const PlaybackAnalysisRevision = "playback_facts:3"
 
 func (p Probe) analysisOutput(ctx context.Context, path string, limit int, args ...string) ([]byte, error) {
 	if p.ReadGuard != nil {
