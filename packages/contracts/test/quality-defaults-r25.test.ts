@@ -15,7 +15,9 @@ test('quality defaults r25: actual item and container request schemas preserve o
   assert.deepEqual(schema.properties.quality.enum,allowed);
   assert.equal(allowed.length,12);
   for(const quality of allowed)assert.doesNotThrow(()=>decode(name,{...body,quality}));
-  for(const quality of ['',null,'invented-quality'])assert.throws(()=>decode(name,{...body,quality}));
+  for(const quality of ['','invented-quality',42,false,{},[]])assert.throws(()=>decode(name,{...body,quality}));
+  // The shared open-object decoder treats optional null as absence.
+  assert.ok(!Object.hasOwn(decode(name,{...body,quality:null}) as object,'quality'));
   assert.doesNotThrow(()=>decode(name,body));
  }
 });
