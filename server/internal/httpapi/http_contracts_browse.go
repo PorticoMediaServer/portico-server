@@ -187,9 +187,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/listening.go:31
 	if err := apikit.RegisterHTTP[struct {
 		Revision       *int64   "json:\"revision\""
-		MusicRate      *float64 "json:\"musicRate\""
 		BookRate       *float64 "json:\"bookRate\""
-		AutoplayNext   *bool    "json:\"autoplayNext\""
 		PassoutMinutes *int     "json:\"passoutMinutes\""
 	}, projectedViewerEnvelope[catalog.ListeningPreferences]](registry, apikit.Metadata{ID: "put_listening_preferences", Method: "PUT", Path: "/v1/listening/preferences", Summary: "Save listening preferences", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err

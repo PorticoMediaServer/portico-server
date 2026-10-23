@@ -13,7 +13,7 @@ export type BrowseView = Readonly<{value: 'grid' | 'list'; onValueChange: (value
 export type CardSizeChoice = Readonly<{value: string; label: ReactNode}>;
 export type CardSizeControl = Readonly<{value: string; options: readonly CardSizeChoice[]; onValueChange: (value: string) => void}>;
 export type SaveViewControl = Readonly<{canSave: boolean; onSave: () => void}>;
-export type FacetValue = Readonly<{value: string; label: string; count?: number}>;
+export type FacetValue = Readonly<{value: string; label: string; count?: number; countIsLowerBound?: boolean}>;
 export type FacetSelection = 'include' | 'exclude' | 'clear';
 export type FilterMatch = 'any' | 'all' | 'none';
 export type FilterValueState = Readonly<{

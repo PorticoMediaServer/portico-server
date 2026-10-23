@@ -51,7 +51,8 @@
                 "coding": 36,
                 "language": "",
                 "dolbyVisionEnhancementLayer": false,
-                "dolbyVisionEnhancementKnown": false
+                "dolbyVisionEnhancementKnown": false,
+                "videoRole": "primary"
               },
               {
                 "clipSequence": 0,
@@ -60,7 +61,8 @@
                 "coding": 36,
                 "language": "",
                 "dolbyVisionEnhancementLayer": true,
-                "dolbyVisionEnhancementKnown": true
+                "dolbyVisionEnhancementKnown": true,
+                "videoRole": "enhancement"
               }
             ],
             "chapters": [
@@ -117,7 +119,8 @@
                 "coding": 36,
                 "language": "",
                 "dolbyVisionEnhancementLayer": false,
-                "dolbyVisionEnhancementKnown": false
+                "dolbyVisionEnhancementKnown": false,
+                "videoRole": "primary"
               },
               {
                 "clipSequence": 0,
@@ -127,6 +130,7 @@
                 "language": "",
                 "dolbyVisionEnhancementLayer": true,
                 "dolbyVisionEnhancementKnown": true,
+                "videoRole": "enhancement",
                 "dolbyVisionBasePid": 4113
               }
             ],

@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -126,6 +127,7 @@ func TestListeningSimilarRequiresThreeActualSharingListeners(t *testing.T) {
 	c.Drain()
 	c.Exec(`INSERT OR REPLACE INTO console_documents VALUES('server',1,'{"home.communityActivityEnabled":true}',0)`)
 	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1)`)
+	shareFixtureProfiles(t, c.DB)
 	c.Exec(`UPDATE direct_memberships SET role='member',allowed_libraries='["music"]' WHERE account_id IN('a','b','c')`)
 	viewer := listeningRequest("music", "album", n["album"].Public).Viewer
 	check := func(want int) {
@@ -155,9 +157,11 @@ func TestListeningSimilarRequiresThreeActualSharingListeners(t *testing.T) {
 		}
 	}
 	for _, body := range []string{`{"privacy.pauseWatchHistory":true}`, `{"privacy.showActivityToMembers":false}`} {
-		c.Exec(`INSERT OR REPLACE INTO console_documents VALUES('profile:["local","b","q"]',1,?,0)`, body)
+		var patch map[string]any
+		json.Unmarshal([]byte(body), &patch)
+		storePreference(t, c.DB, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, patch)
 		check(0)
-		c.Exec(`DELETE FROM console_documents WHERE scope='profile:["local","b","q"]'`)
+		storePreference(t, c.DB, identity.Viewer{Authority: "local", AccountID: "b", ProfileID: "q"}, map[string]any{"privacy.showActivityToMembers": true, "privacy.pauseWatchHistory": false})
 		check(1)
 	}
 	c.Exec(`UPDATE direct_memberships SET allowed_libraries='[]' WHERE account_id='b'`)
