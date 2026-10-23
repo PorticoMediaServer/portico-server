@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:http';
-import {readFile, mkdir} from 'node:fs/promises';
+import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import {resolve, sep, extname} from 'node:path';
 import {once} from 'node:events';
 
 // Dependency-free runner for the provisioned Netcup Chromium. Run only inside
 // the approved remote heavy wrapper, after build-display.mjs. No auth or API.
 assert.ok(process.env.TMPDIR, 'owned TMPDIR required');
+assert.ok(process.env.PORTICO_RUNNER_OUTPUT, 'remote collector output required');
+const output = resolve(process.env.PORTICO_RUNNER_OUTPUT);
 const root = resolve(process.env.TMPDIR, 'reader-display-build');
 const profile = resolve(process.env.TMPDIR, 'reader-display-chromium');
 await mkdir(profile, {recursive: true});
@@ -27,6 +29,7 @@ const chrome = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bi
 ], {stdio: ['ignore', 'ignore', 'pipe'], detached: true});
 let socket, sequence = 0, stderr = '', session;
 const pending = new Map(), errors = [], observations = [];
+let result;
 function call(method, params = {}, sessionId = session) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
@@ -84,6 +87,15 @@ try {
   await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+10000;const check=()=>{if(document.querySelector('[data-reader-panel]')&&window.readerDisplayProof)document.fonts.ready.then(resolve);else if(performance.now()>until)reject(new Error('Display did not mount'));else requestAnimationFrame(check)};check()})`);
   await paint();
   assert.equal(await evaluate('document.activeElement?.textContent'), 'AaSepia');
+  const bounds = await evaluate('document.querySelector("[data-reader-panel]").getBoundingClientRect().toJSON()');
+  assert.equal(bounds.x, 460); assert.equal(bounds.y, 96); assert.equal(bounds.width, 360); assert.ok(bounds.height >= 720);
+  // Match the existing reference crop's size/state. This is only the supplied
+  // tablet Display controls, not a full book or accepted Read screen.
+  await evaluate('document.activeElement.blur()'); await paint();
+  const screenshot = await call('Page.captureScreenshot', {format: 'jpeg', quality: 94,
+    clip: {x: bounds.x, y: bounds.y, width: 360, height: 720, scale: 1}});
+  await writeFile(resolve(output, 'display-controls.jpg'), Buffer.from(screenshot.data, 'base64'));
+  await click('[role=radio][value=sepia]');
   await key('ArrowLeft', 37);
   assert.equal(await evaluate('document.querySelector("[role=radio][value=black]").getAttribute("aria-checked")'), 'true');
   await key('Escape', 27);
@@ -123,8 +135,12 @@ try {
   await evaluate('window.disposeReaderDisplay()');
   const final = await evaluate('window.readerDisplayProof');
   assert.deepEqual(final.cleanup, {listeners: 0, DOM: 0, fontFaces: 0}); assert.deepEqual(errors, []);
-  console.log('READER_DISPLAY_BROWSER ' + JSON.stringify({status: 'PASS', observations, callbacks, scroll, motion, final,
-    scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'}));
+  result = {status: 'PASS', observations, callbacks, scroll, motion, final, capture: {name: 'display-controls.jpg', width: 360, height: 720, bounds},
+    scope: 'controlled components only; no canonical Reading15, public Read session, whole frame or hardware acceptance'};
+  console.log('READER_DISPLAY_BROWSER ' + JSON.stringify(result));
+} catch (error) {
+  result = {status: 'FAIL', observations, errors, failure: String(error.stack ?? error)};
+  throw error;
 } finally {
   for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Browser closed')); }
   socket?.close();
@@ -134,4 +150,5 @@ try {
     await closed;
   }
   await new Promise(resolve => server.close(resolve));
+  await writeFile(resolve(output, 'display-results.log'), JSON.stringify({...result, ownedBrowserClosed: true, ownedServerClosed: true}, null, 2) + '\n');
 }
