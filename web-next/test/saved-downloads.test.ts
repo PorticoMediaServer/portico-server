@@ -4,7 +4,7 @@ import {SavedOperations} from '../src/screens/saved/operations.ts';
 import {sameSavedDownloadsScope, type SavedDownloadsScope, type SavedLocalDownload} from '../src/screens/saved/downloads-port.ts';
 import {diskFractions, localDownloadGroups, measuredPercent} from '../src/screens/saved/downloads-model.ts';
 import {createSavedRuntime} from '../src/screens/saved/runtime.ts';
-import {sameSavedRoute} from '../src/screens/saved/route.ts';
+import {sameSavedRoute, savedViewKey} from '../src/screens/saved/route.ts';
 
 const scope: SavedDownloadsScope = {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', sessionFamilyId: 'family'};
 test('every captured identity boundary distinguishes the binding', () => {
@@ -50,6 +50,12 @@ test('Saved route guards compare the complete query independently of property or
   assert.equal(sameSavedRoute({view: 'history', period: '30d'}, {view: 'history', period: 'all'}), false);
   assert.equal(sameSavedRoute({view: 'resource', resourceId: 'a'}, {view: 'resource', resourceId: 'b'}), false);
   assert.equal(sameSavedRoute(null, route), false);
+});
+test('dialogs and native actions cannot retain UI state in a replacement captured viewer', () => {
+  const key = savedViewKey(scope, {view: 'downloads'});
+  assert.equal(savedViewKey({...scope}, {view: 'downloads'}), key);
+  for (const field of ['serverId', 'authority', 'accountId', 'profileId', 'sessionFamilyId'] as const) assert.notEqual(savedViewKey({...scope, [field]: field === 'authority' ? 'hosted' : 'other'}, {view: 'downloads'}), key, field);
+  assert.notEqual(savedViewKey(scope, {view: 'playlists'}), key);
 });
 test('storage bar uses actual OS total/free and all native Portico bytes', () => {
   assert.deepEqual(diskFractions({totalBytes: 1000, freeBytes: 400, usedBytes: 70}), {portico: 0.07, other: 0.53});

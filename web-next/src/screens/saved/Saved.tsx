@@ -23,7 +23,7 @@ import {savedSectionWindow} from './window.ts';
 import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
 import type {SavedOperations} from './operations.ts';
-import {sameSavedRoute, savedRouteKey} from './route.ts';
+import {sameSavedRoute, savedViewKey} from './route.ts';
 import {useSavedViewOperations} from './use-view-operations.ts';
 import styles from './saved.module.css';
 
@@ -68,9 +68,9 @@ const tabLabels = {watchlist: 'saved.tab.watchlist', favorites: 'saved.tab.favor
 
 export function SavedScreen(bindings: SavedBindings) {
   const {runtime, route, presentation, effects} = bindings;
-  const routeKey = savedRouteKey(route), operations = useSavedViewOperations(runtime.operations, routeKey);
+  const viewKey = savedViewKey(runtime.scope, route), operations = useSavedViewOperations(runtime.operations, viewKey);
   const viewBindings: SavedViewBindings = {...bindings, operations};
-  const [creating, setCreating] = useState<Readonly<{routeKey: string; kind: 'playlist' | 'collection'}>>();
+  const [creating, setCreating] = useState<Readonly<{viewKey: string; kind: 'playlist' | 'collection'}>>();
   useEffect(() => {
     if (route.view === 'downloads') return;
     const current = ['collections', 'views', 'history', 'resource'].includes(route.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route;
@@ -89,21 +89,21 @@ export function SavedScreen(bindings: SavedBindings) {
   const localSnapshot = useSyncExternalStore(bindings.localDownloads?.subscribe ?? noSubscribe, bindings.localDownloads?.getSnapshot ?? noLocalSnapshot, noLocalSnapshot);
   const localUsable = !!bindings.localDownloads && sameSavedDownloadsScope(bindings.localDownloads.scope, runtime.scope) && !!localSnapshot?.available;
   if (!runtime.operations.current) return null;
-  if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={routeKey} bindings={viewBindings} />;
+  if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={viewKey} bindings={viewBindings} />;
   const active = route.view;
   const tabs = (Object.keys(tabLabels) as (keyof typeof tabLabels)[]).filter(tab => tab !== 'downloads' || bindings.downloadsOffered || localUsable);
-  const server = <ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
+  const server = <ServerDownloads key={viewKey} service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
   return <main className={styles.page}>
     {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
     <header className={styles.header}><h1>{t('saved.title')}</h1></header>
     <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
       items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
-      ? <LocalDownloads key={routeKey} port={bindings.localDownloads} operations={operations} effects={effects} /> : server
-      : route.view === 'history' ? <SavedHistory key={routeKey} bindings={viewBindings} />
-        : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={routeKey} {...viewBindings} onCreate={() => setCreating({routeKey, kind: 'collection'})} />
-          : <SavedLists key={routeKey} {...viewBindings} onCreate={() => setCreating({routeKey, kind: 'playlist'})} />}
-    <CreateResourceDialog key={routeKey} kind={creating?.routeKey === routeKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
+      ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} /> : server
+      : route.view === 'history' ? <SavedHistory key={viewKey} bindings={viewBindings} />
+        : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'collection'})} />
+          : <SavedLists key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'playlist'})} />}
+    <CreateResourceDialog key={viewKey} kind={creating?.viewKey === viewKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
   </main>;
 }
 const noSubscribe = () => () => {};

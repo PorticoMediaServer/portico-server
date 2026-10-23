@@ -18,6 +18,9 @@ export type SavedDownloadEffects = Readonly<{
   openItem(itemId: string): void;
   /** The parent supplies its real selected-authority browser file handoff. */
   saveFile(preparation: DownloadPreparation, signal: AbortSignal): Promise<void>;
+  /** Optional native handoff, closed over this runtime's preparation service and
+   * genuine authenticated coordinator by the parent. Never a browser store. */
+  saveReadyPreparation?: (preparation: DownloadPreparation, signal: AbortSignal) => Promise<void>;
   reportError(error: unknown): void;
   openServerSettings?: () => void;
 }>;
