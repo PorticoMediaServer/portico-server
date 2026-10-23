@@ -5,7 +5,7 @@ import {installWindowChromeHost,type WindowChromeInstallation} from '../../../we
 import {createDesktopWindowChromeHost} from './window-host';
 import {nativeWindowBridge} from './window';
 import {installSettingsPlatform} from '../../../web-next/src/platform/settings-platform.ts';
-import {DesktopSettingsEqualizer} from './SettingsEqualizer';
+import {DesktopSettingsEqualizer,desktopEqualizerPort} from './SettingsEqualizer';
 
 async function startDesktop() {
   // The Settings shell captures its platform before restoration. Only the native
@@ -21,6 +21,7 @@ async function startDesktop() {
     createPlayer: (video, options) => new DesktopMediaPlayer(video, options, nativeBridge),
     createRender: null,
     subtitleSurface: false,
+    equalizerPort: desktopEqualizerPort,
   });
   await import('../../../web-next/src/main.tsx');
 }
