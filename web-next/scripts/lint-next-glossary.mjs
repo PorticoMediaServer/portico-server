@@ -10,6 +10,12 @@ const approvedStateCopy = {
   'next.states.reload': 'Reload',
   'next.states.playbackInfo': 'Playback info',
 };
+// collections.html 24a/c/e/f and 26b explicitly use Reload for a conflicted Home layout.
+const approvedHomeCopy = {
+  'next.home.layoutChangedBody': 'Your Home layout changed on another device after you opened this. Nothing was overwritten. Reload it to see the latest, then make your changes again.',
+  'next.home.layoutChangedBodyCompact': 'Your Home layout changed on another device after you opened this. Nothing was overwritten. Reload it, then make your changes again.',
+  'next.home.reloadLayout': 'Reload layout',
+};
 // Settings 38b51b9 supersedes the older flat glossary at these exact rows only.
 const approvedSettingsCopy = {
   'next.settingsSpec.account.quality.advanced.groups.1.rows.0.help': 'Direct play. Best picture, no server cost.',
@@ -26,7 +32,7 @@ const approvedSettingsCopy = {
 };
 export function lintNextGlossary(messages) {
   const rules = [...AVOIDS, [/Portico Cloud/, 'Portico Services']];
-  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value) && approvedStateCopy[key] !== value && approvedSettingsCopy[key] !== value).map(([, expected]) => `${key}: use ${expected}`));
+  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value) && approvedStateCopy[key] !== value && approvedHomeCopy[key] !== value && approvedSettingsCopy[key] !== value).map(([, expected]) => `${key}: use ${expected}`));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const failures = lintNextGlossary(nextMessages);

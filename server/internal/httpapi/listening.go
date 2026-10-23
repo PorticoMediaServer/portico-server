@@ -36,20 +36,18 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 		}
 		var body struct {
 			Revision       *int64   `json:"revision"`
-			MusicRate      *float64 `json:"musicRate"`
 			BookRate       *float64 `json:"bookRate"`
-			AutoplayNext   *bool    `json:"autoplayNext"`
 			PassoutMinutes *int     `json:"passoutMinutes"`
 		}
 		if e = strictDecode(w, r, &body); e != nil {
 			failure(w, e)
 			return
 		}
-		if body.Revision == nil || body.MusicRate == nil || body.BookRate == nil || body.AutoplayNext == nil || body.PassoutMinutes == nil {
+		if body.Revision == nil || body.BookRate == nil || body.PassoutMinutes == nil {
 			failure(w, errStrictJSON)
 			return
 		}
-		data := catalog.ListeningPreferences{Revision: *body.Revision, MusicRate: *body.MusicRate, BookRate: *body.BookRate, AutoplayNext: *body.AutoplayNext, PassoutMinutes: *body.PassoutMinutes}
+		data := catalog.ListeningPreferences{Revision: *body.Revision, BookRate: *body.BookRate, PassoutMinutes: *body.PassoutMinutes}
 		data, e = d.Catalog.WithContext(r.Context()).SaveListeningPreferences(p.Viewer, data, d.consoleAuthority(p, false))
 		if e != nil {
 			failure(w, e)

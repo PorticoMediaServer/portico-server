@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/subtitles"
 )
 
@@ -20,6 +21,7 @@ type DeliveryContext struct {
 	ServerLocality string
 	TransportClass string
 	DeviceClass    string
+	AppLanguage    string
 }
 
 type deliveryContextKey struct{}
@@ -154,28 +156,75 @@ func preferredAudioLanguages(values DeliveryPreferenceReader) []string {
 
 // automaticSubtitles is what the viewer wants from subtitles without being
 // asked, beside the audio language this session will actually play.
-func automaticSubtitles(values DeliveryPreferenceReader, trace *DecisionTrace) subtitles.AutoChoice {
+func preferenceReaderOrDefaults(values DeliveryPreferenceReader) DeliveryPreferenceReader {
+	if values == nil {
+		return operations.PreferenceValues{}
+	}
+	return values
+}
+
+func resolvePreferenceLanguages(values DeliveryPreferenceReader, key, appLanguage string) []string {
+	values = preferenceReaderOrDefaults(values)
+	var languages []string
+	if lister, ok := values.(interface{ List(string) []string }); ok && values != nil {
+		languages = lister.List(key)
+	}
+	locale := appLanguage
+	if locale == "" && values != nil {
+		locale = values.Text("region.locale")
+	}
+	if locale == "auto" {
+		locale = ""
+	}
+	// The app's supported-catalogue fallback is English. A missing device fact
+	// follows that fallback; it never becomes a guessed title language.
+	if locale == "" {
+		locale = "en-US"
+	}
+	out := make([]string, 0, len(languages))
+	for _, lang := range languages {
+		if lang == "@appLanguage" {
+			lang = locale
+		}
+		out = append(out, lang)
+	}
+	return out
+}
+
+func automaticSubtitles(values DeliveryPreferenceReader, trace *DecisionTrace, appLanguages ...string) subtitles.AutoChoice {
 	var out subtitles.AutoChoice
+	appLanguage := ""
+	if len(appLanguages) > 0 {
+		appLanguage = appLanguages[0]
+	}
+	values = preferenceReaderOrDefaults(values)
+	mode := values.Text("playback.subtitleMode")
+	out.Enabled, out.Off = mode == "always", mode == "off"
+	out.Languages = resolvePreferenceLanguages(values, "playback.preferredSubtitleLanguages", appLanguage)
+	out.NoLanguage = len(out.Languages) == 0
+	out.PreferSDH = valuesBool(values, "playback.preferSdhSubtitles", false)
+	out.DisableUntaggedForced = !valuesBool(values, "playback.useUntaggedForced", true)
+	out.FullFallback = values.Text("playback.forcedSubtitleFallback") == "full"
 	if trace != nil && trace.Audio != nil {
 		out.AudioLanguage = trace.Audio.Language
-		languages := preferredAudioLanguages(values)
-		if languageKey(out.AudioLanguage) != "" && len(languages) > 0 {
+		if mode == "foreign" && languageKey(out.AudioLanguage) != "" {
+			// Original language is not one of 'my languages'. With an explicit empty
+			// audio list, no language is declared familiar.
 			out.ForeignAudio = true
-			for _, lang := range languages {
-				if languageKey(lang) == languageKey(out.AudioLanguage) {
+			for _, lang := range resolvePreferenceLanguages(values, "playback.preferredAudioLanguages", appLanguage) {
+				if lang != "@original" && languageKey(lang) == languageKey(out.AudioLanguage) {
 					out.ForeignAudio = false
 					break
 				}
 			}
 		}
 	}
-	if values == nil {
-		return out
-	}
-	mode := values.Text("playback.subtitleMode")
-	out.Enabled, out.Off = mode == "always", mode == "off"
-	if lister, ok := values.(interface{ List(string) []string }); ok {
-		out.Languages = lister.List("playback.preferredSubtitleLanguages")
-	}
 	return out
+}
+
+func valuesBool(values DeliveryPreferenceReader, key string, fallback bool) bool {
+	if v, ok := values.(interface{ Bool(string) bool }); ok {
+		return v.Bool(key)
+	}
+	return fallback
 }

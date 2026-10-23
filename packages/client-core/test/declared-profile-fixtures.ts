@@ -32,7 +32,7 @@ export const declaredProfiles={
    {codec:'mpeg2video',maxWidth:1920,maxHeight:1080,maxFrameRate:60},
    {codec:'vc1',maxWidth:1920,maxHeight:1080,maxFrameRate:60},
   ], displayHdr:['hdr10','dolby_vision'],
-  passthrough:[{codec:'ac3',maxChannels:6},{codec:'eac3',maxChannels:8,objectAudio:['atmos']},{codec:'dts',maxChannels:8,objectAudio:['dtsx']},{codec:'truehd',maxChannels:8,objectAudio:['atmos']}],
+  passthrough:[{codec:'ac3',maxChannels:6},{codec:'eac3',maxChannels:8,objectAudio:['atmos']},{codec:'dts',maxChannels:8,objectAudio:['dtsx'],variants:['dts_core','dts_hd_hra','dts_hd_ma','dtsx']},{codec:'truehd',maxChannels:8,objectAudio:['atmos']}],
   audio:{maxOutputChannels:8,route:'hdmi'},
  }),
  // The same Apple TV and Shield with the mpv engine beside the native one.
