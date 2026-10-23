@@ -78,8 +78,9 @@ export class PlayOnController {
     this.terminalAt = (this.options.now ?? Date.now)();
     const id = this.state.remote?.id;
     this.expiry = (this.options.setTimer ?? setTimeout)(() => {
-      if (!this.current() || this.state.remote?.id !== id) return;
-      this.dismiss(this.state.remote);
+      const remote = this.state.remote;
+      if (!this.current() || !remote || remote.id !== id) return;
+      this.dismiss(remote);
     }, 15_000);
   }
   private runtimeChanged = (): void => {
@@ -165,34 +166,34 @@ export class PlayOnController {
     return started.then(ok => this.current() && serial === this.serial && ok && this.options.sender.getSnapshot().phase === 'casting');
   }
   startAirPlay(): void { this.assertCurrent(); if (!this.state.airPlayAvailable) return; this.publish({panel: null}); this.options.airPlay?.showPicker(); }
-  private requireRemote(token: CastRemoteToken): CastRemoteView {
-    this.assertCurrent(); const remote = this.state.remote;
-    if (!remote || token.id !== remote.id || token.sequence !== remote.sequence) throw new Error('stale_remote_command');
-    return remote;
+  private requireRemote(token: CastRemoteToken): CastRemoteView | undefined {
+    if (!this.current()) return;
+    const remote = this.state.remote;
+    return remote && token.id === remote.id && token.sequence === remote.sequence ? remote : undefined;
   }
-  openRemote(token: CastRemoteToken): void { if (this.requireRemote(token).phase === 'playing') this.publish({panel: 'remote'}); }
+  openRemote(token: CastRemoteToken): void { if (this.requireRemote(token)?.phase === 'playing') this.publish({panel: 'remote'}); }
   openTracks(token: CastRemoteToken): void {
-    if (this.requireRemote(token).phase === 'playing' && (this.state.cast.audioTracks.length || this.state.cast.textTracks.length)) this.publish({panel: 'tracks'});
+    if (this.requireRemote(token)?.phase === 'playing' && (this.state.cast.audioTracks.length || this.state.cast.textTracks.length)) this.publish({panel: 'tracks'});
   }
-  toggle(token: CastRemoteToken): void { if (this.requireRemote(token).phase === 'playing') this.options.sender.toggle(); }
+  toggle(token: CastRemoteToken): void { if (this.requireRemote(token)?.phase === 'playing') this.options.sender.toggle(); }
   seek(token: CastRemoteToken, seconds: number): void {
     const remote = this.requireRemote(token);
-    if (remote.phase !== 'playing' || !remote.positionKnown || !Number.isFinite(seconds) || seconds < 0) return;
+    if (!remote || remote.phase !== 'playing' || !remote.positionKnown || !Number.isFinite(seconds) || seconds < 0) return;
     this.options.sender.seek(remote.durationSeconds > 0 ? Math.min(seconds, remote.durationSeconds) : seconds);
   }
-  audio(token: CastRemoteToken, id: number): void { if (this.requireRemote(token).phase === 'playing' && this.state.cast.audioTracks.some(track => track.id === id)) this.options.sender.setAudioTrack(id); }
-  subtitles(token: CastRemoteToken, id: number | null): void { if (this.requireRemote(token).phase === 'playing' && (id === null || this.state.cast.textTracks.some(track => track.id === id))) this.options.sender.setSubtitleTrack(id); }
+  audio(token: CastRemoteToken, id: number): void { if (this.requireRemote(token)?.phase === 'playing' && this.state.cast.audioTracks.some(track => track.id === id)) this.options.sender.setAudioTrack(id); }
+  subtitles(token: CastRemoteToken, id: number | null): void { if (this.requireRemote(token)?.phase === 'playing' && (id === null || this.state.cast.textTracks.some(track => track.id === id))) this.options.sender.setSubtitleTrack(id); }
   stop(token: CastRemoteToken): void {
-    const remote = this.requireRemote(token); ++this.serial;
+    const remote = this.requireRemote(token); if (!remote) return; ++this.serial;
     if (!remote.confirmed) { this.attempt = undefined; this.options.sender.cancelConnecting(); this.clearExpiry(); this.publish({remote: undefined, panel: null}); return; }
     this.options.sender.stop();
   }
-  dismiss(token: CastRemoteToken): void { this.requireRemote(token); ++this.serial; this.attempt = undefined; this.describedItem = undefined; this.clearExpiry(); this.dismissing = true;
+  dismiss(token: CastRemoteToken): void { if (!this.requireRemote(token)) return; ++this.serial; this.attempt = undefined; this.describedItem = undefined; this.clearExpiry(); this.dismissing = true;
     try { this.options.sender.dismiss(); } finally { this.dismissing = false; }
     this.publish({cast: this.options.sender.getSnapshot(), remote: undefined, panel: null}); }
   async continueHere(token: CastRemoteToken): Promise<void> {
     const remote = this.requireRemote(token);
-    if (!remote.confirmed || !remote.positionKnown || remote.phase !== 'stopped' || !remote.itemId) return;
+    if (!remote || !remote.confirmed || !remote.positionKnown || remote.phase !== 'stopped' || !remote.itemId) return;
     const position = remote.positionSeconds, itemId = remote.itemId;
     this.dismiss(token);
     await this.options.runtime.play(itemId, position);

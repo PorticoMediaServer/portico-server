@@ -62,7 +62,7 @@ export function CastTracks({controller, snapshot, returnFocusRef}: CastPlayerPro
 
 export function CastTakeover({controller, snapshot, returnFocusRef}: CastPlayerProps) {
   const t = defaultI18n.t, takeover = snapshot.cast.takeover;
-  return <Dialog open={!!takeover} onOpenChange={() => controller.answerTakeover(false)} title={t('cast.takeover.title')} returnFocusRef={returnFocusRef}
+  return <Dialog open={!!takeover} onOpenChange={() => controller.answerTakeover(false)} title={t('cast.takeover.title')} showCloseButton={false} returnFocusRef={returnFocusRef}
     description={takeover ? t('cast.takeover.body', {requester: takeover.requester}) : undefined} footer={<>
       <Button variant="glass" onClick={() => controller.answerTakeover(false)}>{t('cast.takeover.deny')}</Button>
       <Button variant="primary" onClick={() => controller.answerTakeover(true)}>{t('action.allow')}</Button>
