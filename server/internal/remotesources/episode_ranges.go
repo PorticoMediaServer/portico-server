@@ -98,6 +98,13 @@ func (r EpisodeAuthorityResolver) readEpisodeRemoteTx(ctx context.Context, tx *s
 	if err != nil {
 		return err
 	}
+	// Remote catalogue revisions include the source incarnation, but deliberately
+	// do not encode a remote root's identity. Check that independent admission
+	// against the actual source/path/generation namespace as well.
+	expectedRoot := storage.RemoteDirectoryIdentity(b.ID, s.ResolvedPath) + ":generation:" + out.RemoteGeneration
+	if !storage.SameRoot(s.RootIdentity, expectedRoot) {
+		return storage.ErrRemoteChanged
+	}
 	out.Profile, err = SourceReadProfileTx(ctx, tx, b.ID)
 	if err != nil {
 		return err
