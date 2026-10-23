@@ -8,7 +8,7 @@ import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Select, Switch, TextField} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
-import {Dialog, Menu, MenuRow, Popover} from '../../kit/overlays';
+import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
 import {WindowedGrid} from '../../kit/layout';
@@ -63,10 +63,12 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
         {effects.playResource && <><Button variant="primary" icon="i-play" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: false})).catch(effects.reportError); }}>{t('action.play')}</Button>
           <Button icon="i-shuffle" size="compact" onClick={() => { void bindings.operations.run(() => effects.playResource!({kind, id: resource.id, shuffle: true})).catch(effects.reportError); }}>{t('title.shuffle')}</Button></>}
         {actions.includes('pin') && <Button icon="i-bookmark" size="compact" disabled={busy} onClick={() => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}>{t(pinned ? 'pins.unpin' : 'pins.pin')}</Button>}
-        <Popover open={menu} onOpenChange={setMenu} title={t('player.more')} role="menu" width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}>
-          {(actions.includes('rename') || actions.includes('update')) && <MenuRow onClick={() => { setName(nameShown ?? ''); setSummary(resource.summary); setDialog('rename'); setMenu(false); }}>{t('web.saved.rename')}</MenuRow>}
-          {actions.includes('delete') && <MenuRow destructive onClick={() => { setDialog('delete'); setMenu(false); }}>{t(kind === 'playlist' ? 'web.saved.deletePlaylist' : kind === 'view' ? 'web.saved.deleteView' : 'web.saved.deleteCollection')}</MenuRow>}
-        </Popover>
+        <Menu open={menu} onOpenChange={setMenu} title={t('player.more')} width={260} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('player.more')} />}
+          items={[
+            ...(actions.includes('pin') ? [{id: 'pin', label: t(pinned ? 'pins.unpin' : 'pins.pin'), icon: 'i-bookmark' as const, disabled: busy, onSelect: () => perform({action: 'pin', pinned: !pinned}, {action: 'pin', pinned: !pinned})}] : []),
+            ...(actions.includes('rename') || actions.includes('update') ? [{id: 'rename', label: t('web.saved.rename'), icon: 'i-edit' as const, disabled: busy, onSelect: () => { setName(nameShown ?? ''); setSummary(resource.summary); setDialog('rename'); }}] : []),
+            ...(actions.includes('delete') ? [{id: 'delete-separator', separator: true} as const, {id: 'delete', label: t(kind === 'playlist' ? 'web.saved.deletePlaylist' : kind === 'view' ? 'web.saved.deleteView' : 'web.saved.deleteCollection'), icon: 'i-trash' as const, destructive: true, disabled: busy, onSelect: () => setDialog('delete')}] : []),
+          ]} />
       </div>
     </div></header>
     <div className={styles.toolbar}>{bindings.selection.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
@@ -78,14 +80,14 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
         if (!entry.media || entry.hidden || !bindings.operations.current) return;
         rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
       }} />}
-    <Menu open={!!rowMenu && !!menuMedia} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={menuMedia?.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
+    <Menu open={!!rowMenu && !!menuMedia} onOpenChange={open => { if (!open) setRowMenu(undefined); }} title={menuMedia?.displayTitle ?? menuMedia?.title ?? t('player.more')} anchorRef={rowAnchor} width={290}
       items={rowMenu && menuMedia ? [{id: 'go', label: t('web.saved.goToItem'), icon: 'i-info', onSelect: () => { if (bindings.operations.current) effects.openEntry(menuMedia); }},
         ...((isPlaylist ? actions.includes('remove') : kind === 'collection' && actions.includes('entries')) ? [
           {id: 'remove-separator', separator: true} as const,
           {id: 'remove', label: <span className={styles.removeMenuLabel}><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M6 12h12" /></svg>{t(isPlaylist ? 'web.saved.removeFromPlaylist' : 'web.saved.removeFromCollection')}</span>, destructive: true, disabled: busy, onSelect: () => {
             const removed = {...rowMenu, media: menuMedia};
             perform({action: 'remove', entryId: removed.entryId}, {action: 'entries', removeEntryIds: [removed.entryId]}, () => {
-              if (isPlaylist) setUndo(playlistRemovalUndo(runtime.saved.getSnapshot().lastReceipt, {serverId: runtime.scope.serverId, viewerFence: resource.viewerFence, playlistId: resource.id, entryId: removed.entryId}, removed.media.title));
+              if (isPlaylist) setUndo(playlistRemovalUndo(runtime.saved.getSnapshot().lastReceipt, {serverId: runtime.scope.serverId, viewerFence: resource.viewerFence, playlistId: resource.id, entryId: removed.entryId}, removed.media.displayTitle ?? removed.media.title));
             });
           }},
         ] : [])] : []} />
@@ -157,10 +159,10 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   </>;
 }
 function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
-  const position = entry.positionSeconds ?? 0, duration = media.duration, progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
+  const title = media.displayTitle ?? media.title, position = entry.positionSeconds ?? 0, duration = media.duration, progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
   return <div className={styles.historyRow}>
-    <button className={styles.historyArt} onClick={() => bindings.effects.openEntry(media)} aria-label={media.title}><Artwork source={bindings.artwork.foreground(media.backdropUrl ?? media.posterUrl, 320, 16 / 9)} alt="" /></button>
-    <div><b>{media.title}</b><small>{media.show?.name ?? media.artist?.name ?? media.author}</small></div>
+    <button className={styles.historyArt} onClick={() => bindings.effects.openEntry(media)} aria-label={title}><Artwork source={bindings.artwork.foreground(media.backdropUrl ?? media.posterUrl, 320, 16 / 9)} alt="" /></button>
+    <div><b>{title}</b><small>{media.show?.name ?? media.artist?.name ?? media.author}</small></div>
     <div>{progress !== undefined && <span className={styles.progress} aria-hidden="true"><span style={{width: `${progress * 100}%`}} /></span>}<small>{entry.completed ? t('web.saved.finished') : defaultI18n.clock(position)}</small></div>
     <time dateTime={entry.updatedAt}>{entry.updatedAt && defaultI18n.time(entry.updatedAt)}</time>
   </div>;
