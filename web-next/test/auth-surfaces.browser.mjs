@@ -54,6 +54,22 @@ export async function checkAccountSurfaces(page, origin) {
   assert.equal(await page.locator('input').count(), 0, 'a Portico server never offers a password field');
   await page.getByRole('button', {name: 'Continue to Portico Account', exact: true}).click();
   assert.deepEqual(await action(), {kind: 'portico'});
+  const pending = await page.evaluate(async () => {
+    const {secureBrowserPending} = await import('/src/platform/secure-pending.ts');
+    const open = indexedDB.open.bind(indexedDB); let opened = 0;
+    indexedDB.open = (...args) => {opened++; return open(...args);};
+    const codes = [];
+    try {
+      const store = secureBrowserPending('portico.secure-pending-browser-specimen');
+      for (const run of [() => store.read(), () => store.change(() => ({specimen: true}))]) {
+        try {await run();} catch (error) {codes.push(error.code);}
+      }
+      return {protocol: location.protocol, secureContext: isSecureContext, opened, codes};
+    } finally {indexedDB.open = open;}
+  });
+  assert.equal(pending.protocol, 'http:');
+  assert.equal(pending.opened, 0, 'the actual HTTP browser must refuse before IndexedDB access');
+  assert.deepEqual(pending.codes, ['secure_context_required', 'secure_context_required']);
   assert.deepEqual(errors, []); assert.deepEqual(requests, [], 'a presentation specimen must not contact any auth service');
-  return {profiles: true, keyboard: true, pin: true, remembered: true, passwordManager: true, porticoKind: true, errors, apiRequests: requests.length};
+  return {profiles: true, keyboard: true, pin: true, remembered: true, passwordManager: true, porticoKind: true, securePendingHTTP: pending, errors, apiRequests: requests.length};
 }

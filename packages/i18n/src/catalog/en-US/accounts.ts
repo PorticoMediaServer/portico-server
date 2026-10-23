@@ -5,6 +5,9 @@ export const accountMessages = {
   'accounts.provider.google': 'Google',
   'accounts.provider.apple': 'Apple',
   'accounts.legal.privacy': 'Privacy',
+  // Auth 8 renders these as two separate links, with no labels or bullet.
+  'accounts.legal.termsAddress': 'getportico.tv/terms',
+  'accounts.legal.privacyAddress': 'getportico.tv/privacy',
   'accounts.signIn.portico': 'Sign in with Portico Account',
   'accounts.signIn.onTV': 'Sign in on this TV',
   'accounts.signIn.local': 'Use a local server',
@@ -78,6 +81,10 @@ export const accountMessages = {
   'accounts.settings.movingToPortico': 'Moving to Portico Accounts',
   'accounts.settings.waiting': '{waiting} of {total} people waiting',
   'accounts.settings.codesOnWeb': 'Make their codes on the web.',
+  // Binding ruling 17.5, also applied to Start over with Portico Accounts.
+  'accounts.ownerSwitch.secureTitle': 'Switch from a secure page',
+  'accounts.ownerSwitch.secureBody': 'Switching sends sign-in details this page can’t protect. Open Portico at its secure address, or on the server itself at {localUrl}.',
+  'accounts.ownerSwitch.openSecure': 'Open secure address',
   'accounts.consent.portico': 'Scan the QR code, or visit web.getportico.tv/device and enter the code. Sign in with Google, Apple, or your Portico Account in the browser.',
   'accounts.consent.local': 'On a phone signed in to {server}, open Portico › Settings › Link a TV, or on a computer open {address}.',
 } as const;
