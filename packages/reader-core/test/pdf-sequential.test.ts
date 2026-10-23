@@ -35,3 +35,17 @@ test('byte streams use bounded BYOB buffers; abort during open cancels the retur
   await assert.rejects(pdfSequential({id:'late-stream',revision:'v1',size:bytes.length},async()=>{abort.abort();return new ReadableStream({cancel(){cancelled=true;}});},abort.signal),{name:'AbortError'});
   assert.equal(cancelled,true);
 });
+
+for(const change of ['before-start','during-buffer'] as const)test(`sequential buffered bytes stop at a source revision change ${change}`,async()=>{
+  const bytes=fixture(),source={id:'buffered-stream',revision:'v1',size:bytes.length};
+  let emitted=0,cancelled=0,error:unknown,sent=false;
+  const channel=await pdfSequential(source,async()=>new ReadableStream({
+    pull(controller){if(sent){controller.close();return;}sent=true;controller.enqueue(bytes);},
+    cancel(){cancelled++;}
+  },{highWaterMark:0}),signal());
+  if(change==='before-start')source.revision='v2';
+  await channel.start({chunk(){emitted++;if(change==='during-buffer')source.revision='v2';},done(){assert.fail('retired source must not complete');},error(value){error=value;}});
+  assert.equal(emitted,change==='before-start'?0:1);
+  assert.equal((error as {code:string}).code,'pdf_invalid');
+  assert.equal(cancelled,1);await channel.dispose();assert.equal(cancelled,1);
+});
