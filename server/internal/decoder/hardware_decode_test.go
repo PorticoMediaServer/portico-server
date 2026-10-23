@@ -2,13 +2,19 @@ package decoder
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/mediaexec"
 )
 
 func TestHardwareDecodeUsesSourceCellInsteadOfOutput(t *testing.T) {
@@ -38,6 +44,46 @@ func TestHardwareDecodeUsesSourceCellInsteadOfOutput(t *testing.T) {
 	filter := argValue(graph.Video, "-vf")
 	if err != nil || !strings.HasPrefix(filter, "hwdownload,format=p010le,fps=") || strings.Index(filter, "hwupload") < strings.Index(filter, "fps=") || argValue(graph.Input, "-hwaccel") != "vaapi" {
 		t.Fatal("hardware decode did not cross system-frame filters with bounded transfers", graph, err)
+	}
+}
+
+func TestHardwareDecodeTargetRuntime(t *testing.T) {
+	path := os.Getenv("PORTICO_TEST_HARDWARE_FFMPEG")
+	if path == "" {
+		t.Skip("explicit retained f3 pair and physical render device required")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.New()
+	_, err = io.Copy(sum, file)
+	file.Close()
+	if err != nil || hex.EncodeToString(sum.Sum(nil)) != "e45b768839cb9d169196f6b94845b334b7bfc439e6cf6b301efe769c5f3b5b2e" {
+		t.Fatal("physical target test requires the exact retained f3 FFmpeg", err)
+	}
+	backend := HardwareBackend(os.Getenv("PORTICO_TEST_HARDWARE_BACKEND"))
+	if backend != BackendVAAPI && backend != BackendQSV {
+		t.Fatal("this target gate is limited to the observed Intel render device")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	detector := HardwareDetector{Timeout: 5 * time.Second}
+	probe := detector.Probe(ctx, path, backend, "/dev/dri/renderD128")
+	posture := mediaexec.Decide(path)
+	result, _ := json.Marshal(struct {
+		Backend HardwareBackend `json:"backend"`
+		Encoder bool            `json:"encoder"`
+		Decode  map[string]bool `json:"decode"`
+		Sandbox bool            `json:"sandbox"`
+		Reason  string          `json:"sandboxReason"`
+	}{backend, probe.Available, probe.DecodeCodecs, posture.Sandboxed, posture.Reason})
+	t.Log(string(result))
+	if !probe.Available || !probe.DecodeCodecs["h264:8"] {
+		t.Fatal("observed Intel device did not pass the required H264 encode/decode cell", probe.Reason)
+	}
+	if _, claimed := probe.DecodeCodecs["vc1:8"]; claimed {
+		t.Fatal("unmeasured VC1 became a target claim")
 	}
 }
 
