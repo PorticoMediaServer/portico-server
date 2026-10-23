@@ -149,7 +149,7 @@ func Definitions() []apikit.Definition {
 		route[serverreturn.RegistrationRequest, serverreturn.Registration]("POST", "/v1/servers/{id}/return-registration", "server_return_registration", "Resolve an installed server's exact verified return origin.", ServerCredential, apikit.ScopeAdmin, 200).lane(security),
 		route[serverreturn.Start, serverreturn.Started]("POST", "/v1/server-returns/start", "server_return_start", "Begin a registered first-party server return.", AccountSession, apikit.ScopeSession, 201).lane(security),
 		route[serverreturn.Complete, serverreturn.Return]("POST", "/v1/server-returns/{id}/complete", "server_return_complete", "Complete a registered first-party server return.", AccountSession, apikit.ScopeSession, 200).lane(security),
-		route[serverreturn.Exchange, serverreturn.Grant]("POST", "/v1/server-returns/exchange", "server_return_exchange", "Spend a registered server return code.", Public, apikit.ScopeOpen, 200).lane(security),
+		route[serverreturn.ExchangeRequest, serverreturn.Grant]("POST", "/v1/server-returns/exchange", "server_return_exchange", "Spend a registered return code or an installed-server owner continuation.", Public, apikit.ScopeOpen, 200).lane(security),
 
 		// Device and TV authorization.
 		route[device.Start, device.Authorization]("POST", "/v1/device-authorizations", "device_authorization_create", "Start a device authorization.", Public, apikit.ScopeOpen, 201).lane(security),
@@ -227,7 +227,7 @@ func Definitions() []apikit.Definition {
 		route[httpapi.ClaimSignedRequest, claims.Commit]("POST", "/v1/server-claims/finalize", "server_claim_finalize", "Finalize a server claim.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.ResultValue]("POST", "/v1/server-claims/result", "server_claim_result", "Read a server claim's result.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
 		route[httpapi.ClaimSignedRequest, claims.CancellationResult]("POST", "/v1/server-claims/cancel", "server_claim_cancel", "Cancel a server claim.", SignedRequest, apikit.ScopeSession, 200).lane(security).body(ClaimBody),
-		route[claimweb.Signed, claimweb.Pending]("POST", "/v1/server-claims/pending", "server_claim_pending", "Register a web server claim for approval.", SignedRequest, apikit.ScopeSession, 200).lane(security),
+		route[claimweb.PendingRequest, claimweb.Pending]("POST", "/v1/server-claims/pending", "server_claim_pending", "Register a web server claim and any bound owner-start proof for approval.", SignedRequest, apikit.ScopeSession, 200).lane(security),
 		// contract: a long poll that writes whitespace heartbeats before this object.
 		route[claimweb.Signed, httpapi.ClaimEventResult]("POST", "/v1/server-claims/events", "server_claim_events", "Wait for a web server claim's decision.", SignedRequest, apikit.ScopeSession, 200).lane(apikit.Realtime),
 		route[httpapi.ClaimCodeRequest, claimweb.Pending]("POST", "/v1/server-claims/lookup", "server_claim_lookup", "Look up a web server claim by its code.", AccountSession, apikit.ScopeSession, 200).lane(security),

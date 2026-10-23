@@ -3543,6 +3543,9 @@ export const schemas = {
       "name": {
         "type": "string"
       },
+      "ownerTransactionId": {
+        "type": "string"
+      },
       "previousOwnerRole": {
         "type": "string"
       },
@@ -3632,19 +3635,63 @@ export const schemas = {
     "type": "object"
   },
   "ServerClaimPendingRequest": {
-    "properties": {
-      "payload": {
-        "type": "string"
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "payload": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
       },
-      "signature": {
-        "type": "string"
+      {
+        "additionalProperties": false,
+        "properties": {
+          "ownerStart": {
+            "additionalProperties": false,
+            "properties": {
+              "payload": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "signature": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "payload": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature",
+          "ownerStart"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "payload",
-      "signature"
-    ],
-    "type": "object"
+    ]
   },
   "ServerClaimPendingResponse": {
     "properties": {
@@ -3662,6 +3709,9 @@ export const schemas = {
         "type": "string"
       },
       "name": {
+        "type": "string"
+      },
+      "ownerTransactionId": {
         "type": "string"
       },
       "previousOwnerRole": {
@@ -4269,57 +4319,117 @@ export const schemas = {
     "type": "object"
   },
   "ServerReturnExchangeRequest": {
-    "properties": {
-      "code": {
-        "maxLength": 128,
-        "minLength": 32,
-        "pattern": "^[A-Za-z0-9_-]+$",
-        "type": "string"
-      },
-      "installationId": {
-        "maxLength": 128,
-        "minLength": 32,
-        "pattern": "^[A-Za-z0-9_-]+$",
-        "type": "string"
-      },
-      "purpose": {
-        "enum": [
-          "setup",
-          "switch",
-          "change-owner",
-          "sign-in"
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "installationId": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "setup",
+              "switch",
+              "change-owner",
+              "sign-in"
+            ],
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "serverChallenge": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "transactionId": {
+            "type": "string"
+          },
+          "verifier": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "transactionId",
+          "verifier",
+          "registrationId",
+          "serverChallenge",
+          "installationId",
+          "purpose"
         ],
-        "type": "string"
+        "type": "object"
       },
-      "registrationId": {
-        "type": "string"
-      },
-      "serverChallenge": {
-        "maxLength": 128,
-        "minLength": 32,
-        "pattern": "^[A-Za-z0-9_-]+$",
-        "type": "string"
-      },
-      "transactionId": {
-        "type": "string"
-      },
-      "verifier": {
-        "maxLength": 128,
-        "minLength": 32,
-        "pattern": "^[A-Za-z0-9_-]+$",
-        "type": "string"
+      {
+        "additionalProperties": false,
+        "properties": {
+          "installationId": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "purpose": {
+            "const": "switch",
+            "type": "string"
+          },
+          "registrationId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "serverChallenge": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "transactionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "verifier": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "state",
+          "verifier",
+          "registrationId",
+          "installationId",
+          "serverChallenge",
+          "purpose"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "code",
-      "transactionId",
-      "verifier",
-      "registrationId",
-      "serverChallenge",
-      "installationId",
-      "purpose"
-    ],
-    "type": "object"
+    ]
   },
   "ServerReturnExchangeResponse": {
     "properties": {

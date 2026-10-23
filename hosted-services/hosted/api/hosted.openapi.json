@@ -3544,6 +3544,9 @@
           "name": {
             "type": "string"
           },
+          "ownerTransactionId": {
+            "type": "string"
+          },
           "previousOwnerRole": {
             "type": "string"
           },
@@ -3633,19 +3636,63 @@
         "type": "object"
       },
       "ServerClaimPendingRequest": {
-        "properties": {
-          "payload": {
-            "type": "string"
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "payload": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "signature": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
           },
-          "signature": {
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "properties": {
+              "ownerStart": {
+                "additionalProperties": false,
+                "properties": {
+                  "payload": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "signature": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "payload",
+                  "signature"
+                ],
+                "type": "object"
+              },
+              "payload": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "signature": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature",
+              "ownerStart"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "payload",
-          "signature"
-        ],
-        "type": "object"
+        ]
       },
       "ServerClaimPendingResponse": {
         "properties": {
@@ -3663,6 +3710,9 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "ownerTransactionId": {
             "type": "string"
           },
           "previousOwnerRole": {
@@ -4276,57 +4326,117 @@
         "type": "object"
       },
       "ServerReturnExchangeRequest": {
-        "properties": {
-          "code": {
-            "maxLength": 128,
-            "minLength": 32,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
-          "installationId": {
-            "maxLength": 128,
-            "minLength": 32,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
-          "purpose": {
-            "enum": [
-              "setup",
-              "switch",
-              "change-owner",
-              "sign-in"
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "enum": [
+                  "setup",
+                  "switch",
+                  "change-owner",
+                  "sign-in"
+                ],
+                "type": "string"
+              },
+              "registrationId": {
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "transactionId": {
+                "type": "string"
+              },
+              "verifier": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "transactionId",
+              "verifier",
+              "registrationId",
+              "serverChallenge",
+              "installationId",
+              "purpose"
             ],
-            "type": "string"
+            "type": "object"
           },
-          "registrationId": {
-            "type": "string"
-          },
-          "serverChallenge": {
-            "maxLength": 128,
-            "minLength": 32,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
-          "transactionId": {
-            "type": "string"
-          },
-          "verifier": {
-            "maxLength": 128,
-            "minLength": 32,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
+          {
+            "additionalProperties": false,
+            "properties": {
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "const": "switch",
+                "type": "string"
+              },
+              "registrationId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "transactionId": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "verifier": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "transactionId",
+              "state",
+              "verifier",
+              "registrationId",
+              "installationId",
+              "serverChallenge",
+              "purpose"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "code",
-          "transactionId",
-          "verifier",
-          "registrationId",
-          "serverChallenge",
-          "installationId",
-          "purpose"
-        ],
-        "type": "object"
+        ]
       },
       "ServerReturnExchangeResponse": {
         "properties": {
@@ -12061,6 +12171,9 @@
                     "name": {
                       "type": "string"
                     },
+                    "ownerTransactionId": {
+                      "type": "string"
+                    },
                     "previousOwnerRole": {
                       "type": "string"
                     },
@@ -12260,19 +12373,63 @@
           "content": {
             "application/json": {
               "schema": {
-                "properties": {
-                  "payload": {
-                    "type": "string"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "payload": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "signature": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "payload",
+                      "signature"
+                    ],
+                    "type": "object"
                   },
-                  "signature": {
-                    "type": "string"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ownerStart": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "payload": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "signature": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "payload",
+                          "signature"
+                        ],
+                        "type": "object"
+                      },
+                      "payload": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "signature": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "payload",
+                      "signature",
+                      "ownerStart"
+                    ],
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "payload",
-                  "signature"
-                ],
-                "type": "object"
+                ]
               }
             }
           },
@@ -12298,6 +12455,9 @@
                       "type": "string"
                     },
                     "name": {
+                      "type": "string"
+                    },
+                    "ownerTransactionId": {
                       "type": "string"
                     },
                     "previousOwnerRole": {
@@ -12379,7 +12539,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Register a web server claim for approval.",
+        "summary": "Register a web server claim and any bound owner-start proof for approval.",
         "x-access": "signed_request",
         "x-admission": "",
         "x-cost": "constant",
@@ -12577,57 +12737,117 @@
           "content": {
             "application/json": {
               "schema": {
-                "properties": {
-                  "code": {
-                    "maxLength": 128,
-                    "minLength": 32,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
-                  },
-                  "installationId": {
-                    "maxLength": 128,
-                    "minLength": 32,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
-                  },
-                  "purpose": {
-                    "enum": [
-                      "setup",
-                      "switch",
-                      "change-owner",
-                      "sign-in"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "enum": [
+                          "setup",
+                          "switch",
+                          "change-owner",
+                          "sign-in"
+                        ],
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "transactionId": {
+                        "type": "string"
+                      },
+                      "verifier": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "transactionId",
+                      "verifier",
+                      "registrationId",
+                      "serverChallenge",
+                      "installationId",
+                      "purpose"
                     ],
-                    "type": "string"
+                    "type": "object"
                   },
-                  "registrationId": {
-                    "type": "string"
-                  },
-                  "serverChallenge": {
-                    "maxLength": 128,
-                    "minLength": 32,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
-                  },
-                  "transactionId": {
-                    "type": "string"
-                  },
-                  "verifier": {
-                    "maxLength": 128,
-                    "minLength": 32,
-                    "pattern": "^[A-Za-z0-9_-]+$",
-                    "type": "string"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "const": "switch",
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "state": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "transactionId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "verifier": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "transactionId",
+                      "state",
+                      "verifier",
+                      "registrationId",
+                      "installationId",
+                      "serverChallenge",
+                      "purpose"
+                    ],
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "code",
-                  "transactionId",
-                  "verifier",
-                  "registrationId",
-                  "serverChallenge",
-                  "installationId",
-                  "purpose"
-                ],
-                "type": "object"
+                ]
               }
             }
           },
@@ -12745,7 +12965,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Spend a registered server return code.",
+        "summary": "Spend a registered return code or an installed-server owner continuation.",
         "x-access": "public",
         "x-admission": "",
         "x-cost": "constant",
