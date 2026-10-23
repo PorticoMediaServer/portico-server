@@ -89,7 +89,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', e
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || username.trim().length < 3}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
       </form><AuthLinks><button type="button" disabled={busy} onClick={() => void flow.cancelProvider()}>{t('action.cancel')}</button></AuthLinks><ServicesTerms />
     </>}
-    {mode === 'ready' && <ServicesActions><Button variant="primary" onClick={() => flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
+    {mode === 'ready' && <ServicesActions><Button variant="primary" loading={busy} onClick={() => void flow.continue()}>{t('action.continue')}</Button></ServicesActions>}
   </>;
   return embedded ? content : <ServicesAuthStage variant={mode === 'create' || mode === 'provider' ? 'signup' : mode === 'verify' ? 'reset' : mode === 'ready' ? 'state' : 'auth'}>{content}</ServicesAuthStage>;
 }

@@ -25,12 +25,18 @@ function BoundAccount({account, session, section}: {account: ServicesAccount; se
   const feed = useMemo(() => new ServicesFeed(api.notifications), [api]);
   const state = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const [error, setError] = useState<unknown>();
+  const [contact, setContact] = useState<string>();
   useEffect(() => { void feed.refresh(); return () => feed.dispose(); }, [feed]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void api.security(controller.signal).then(value => { if (!controller.signal.aborted) setContact(value.contactAddress || undefined); }, () => {});
+    return () => controller.abort();
+  }, [api]);
   const name = session.account.displayName || session.account.username, initial = [...name][0]?.toLocaleUpperCase() ?? '';
   const select = (tab: ServicesSection) => location.assign('/account?tab=' + tab);
   const signOut = () => { void account.service.logout().catch(setError); };
   const header = <ServicesHeader unread={state.unread > 0} avatar={<ProfileAvatar appearance="session" initial={initial} name={name} onClick={() => select('devices')} />} />;
-  const frame = (children: ReactNode, actions?: ReactNode, description?: ReactNode) => <ServicesWorkspace header={header} account={{name, initial}} section={section}
+  const frame = (children: ReactNode, actions?: ReactNode, description?: ReactNode) => <ServicesWorkspace header={header} account={{name, email: contact, initial}} section={section}
     onSection={select} onSignOut={signOut} actions={actions} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
   if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
   if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
