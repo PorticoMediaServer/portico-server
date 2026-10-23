@@ -110,7 +110,9 @@ type ClientVideoCodec struct {
 	// is the display's list, or the engine's own tone mapping (toneMapsHdr).
 	DynamicRanges       []string `json:"dynamicRanges"`
 	DolbyVisionProfiles []int    `json:"dolbyVisionProfiles"`
-	Interlaced          bool     `json:"interlaced"`
+	// Optional exact profile-8 base compatibility: 1 HDR10, 2 SDR, 4 HLG.
+	DolbyVisionProfile8Compatibility []int `json:"dolbyVisionProfile8Compatibility,omitempty"`
+	Interlaced                       bool  `json:"interlaced"`
 	// CodecTags, when stated, are the only sample entries the engine plays from
 	// an original file (AVFoundation takes hvc1 but not hev1). Streams the server
 	// repackages are tagged by the server and are not checked against it.
@@ -490,6 +492,13 @@ func (e *EngineCapabilities) validate(path string) error {
 		if !validChroma(v.ChromaSubsampling) || !validFrameRateModes(v.FrameRateModes) {
 			return capabilityField(path + ".video")
 		}
+		seenCompatibility := map[int]bool{}
+		for _, compatibility := range v.DolbyVisionProfile8Compatibility {
+			if compatibility != 1 && compatibility != 2 && compatibility != 4 || seenCompatibility[compatibility] {
+				return capabilityField(path + ".video.dolbyVisionProfile8Compatibility")
+			}
+			seenCompatibility[compatibility] = true
+		}
 		for _, dv := range v.DolbyVisionProfiles {
 			if dv < 1 || dv > 31 {
 				return capabilityField(path + ".video")
@@ -644,6 +653,7 @@ func (e *EngineCapabilities) normalize() {
 		}
 		sort.Ints(v.BitDepths)
 		sort.Ints(v.DolbyVisionProfiles)
+		sort.Ints(v.DolbyVisionProfile8Compatibility)
 		v.Limits = normalizeVideoLimits(v.Limits)
 	}
 	for i := range e.Audio {
