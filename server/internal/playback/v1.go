@@ -58,8 +58,10 @@ type V1Choice struct {
 	PrivateUntilMs int64
 	// AudioPlanV2 pins the version 2 audio plan (spec §18.1: the client decodes)
 	// to an audio presentation, from the device's audioDecode.
-	AudioPlanV2 bool
-	AudioDecode []AudioDecodeCap
+	AudioServerRender bool
+	AudioCDQuality    bool
+	AudioPlanV2       bool
+	AudioDecode       []AudioDecodeCap
 }
 
 func narrowCeiling(a, b int) int {

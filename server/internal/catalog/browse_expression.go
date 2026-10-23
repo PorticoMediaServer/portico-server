@@ -1054,6 +1054,15 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 		return "", err
 	}
 	own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
+	// A playable title holds only itself. Expanding its personal state through
+	// the membership table adds no matches and prevents the direct profile
+	// index from driving an empty or selective filter.
+	if c.itemPivot {
+		if negative {
+			return "NOT " + own, nil
+		}
+		return own, nil
+	}
 	memberField := field
 	memberField.ID = "personal-member"
 	member, err := c.itemPredicate(memberField, node)

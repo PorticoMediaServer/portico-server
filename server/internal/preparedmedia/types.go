@@ -58,6 +58,13 @@ func canonicalProfiles() []Profile {
 		out = append(out, Profile{"portable-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, r.MaxAudioBitrateBPS / 1000, "H.264 SDR video and AAC audio in MP4."})
 		out = append(out, Profile{"hevc-" + r.ID + "-v3", r.Label, "video", r.Width(), r.Height, r.VideoBitrateBPS / 1000, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."})
 	}
+	out = append(out,
+		Profile{"music-original-flac-v1", "Original cue track", "audio", 0, 0, 0, 0, "FLAC at the source rate and depth, for a cue track."},
+		Profile{"music-cd-quality-v1", "CD quality", "audio", 0, 0, 0, 0, "FLAC, 16-bit, in the source rate family."},
+		Profile{"music-opus-320-v1", "320 kbps · Opus", "audio", 0, 0, 0, 320, "Opus with tags and artwork."},
+		Profile{"music-opus-96-v1", "96 kbps · Opus", "audio", 0, 0, 0, 96, "Opus with tags and artwork."},
+		Profile{"music-aac-320-v1", "320 kbps · AAC", "audio", 0, 0, 0, 320, "AAC with tags and artwork in M4A."},
+		Profile{"music-aac-96-v1", "96 kbps · AAC", "audio", 0, 0, 0, 96, "AAC with tags and artwork in M4A."})
 	return append(out, Profile{"audio-aac-v3", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC audio in M4A. Keeps the original."})
 }
 
@@ -84,6 +91,9 @@ func Producible(id string) bool {
 // recipeFor is the one translation from a recipe's identity to what the
 // encoder is asked for, shared by the encode and by the question above.
 func recipeFor(p Profile) decoder.PreparedRecipe {
+	if r, ok := musicRecipe(p); ok {
+		return r
+	}
 	if Rich(p.ID) {
 		return decoder.PreparedRecipe{DropChapters: true, BoundedFragments: true, VideoCodec: "hevc", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
 	}
@@ -163,13 +173,16 @@ type Job struct {
 	VersionID  string `json:"versionId"`
 }
 type Facts struct {
-	Container   string  `json:"container"`
-	VideoCodec  string  `json:"videoCodec"`
-	AudioCodec  string  `json:"audioCodec"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	Duration    float64 `json:"duration"`
-	AudioTracks int     `json:"audioTracks"`
+	AudioSampleRate   int     `json:"audioSampleRate,omitempty"`
+	AudioBitDepth     int     `json:"audioBitDepth,omitempty"`
+	AudioChannelCount int     `json:"audioChannels,omitempty"`
+	Container         string  `json:"container"`
+	VideoCodec        string  `json:"videoCodec"`
+	AudioCodec        string  `json:"audioCodec"`
+	Width             int     `json:"width"`
+	Height            int     `json:"height"`
+	Duration          float64 `json:"duration"`
+	AudioTracks       int     `json:"audioTracks"`
 }
 type Version struct {
 	ID             string  `json:"id"`

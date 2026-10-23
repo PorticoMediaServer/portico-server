@@ -453,6 +453,23 @@ func TestRecommendationDiscoverUsesWholeAvailableWorksForEveryLibrary(t *testing
 	s := New(f.db)
 	now := engineRequest().Now
 	for _, library := range []string{"movies", "tv", "music", "books"} {
+		// Whole-work recommendations retain this contract for every kind of
+		// library. Music Content also has the drawn artist/genre/playlist and
+		// most-played-song rows, which are not recommendation work rails.
+		discovery, err := s.DiscoverWithRestrictions(library, "p", identity.ContentRestrictions{}, now)
+		if err != nil || len(discovery.Sections) == 0 {
+			t.Fatal("empty whole-work discovery", library, discovery, err)
+		}
+		for _, row := range discovery.Sections {
+			if row.Total < len(row.Items) {
+				t.Fatal("wrong recommendation total", row)
+			}
+			for _, entry := range row.Items {
+				if entry.Kind != "movie" && entry.Kind != "show" && entry.Kind != "album" && entry.Kind != "book" {
+					t.Fatal("recommendation is not a whole work", library, entry)
+				}
+			}
+		}
 		out, err := s.Content(ContentRequest{Viewer: Viewer{Profile: "p", Fence: "v", Libraries: []string{library}}, Library: library, Profile: "p", View: "discover", ViewerFence: "v", Now: now})
 		if err != nil {
 			t.Fatal(library, err)
@@ -465,8 +482,17 @@ func TestRecommendationDiscoverUsesWholeAvailableWorksForEveryLibrary(t *testing
 				t.Fatal("wrong total", row)
 			}
 			for _, entry := range row.Entries {
+				if library == "music" {
+					kind := map[string]string{"artists": "artist", "genres": "genre", "playlists": "playlist", "most_played_songs": "song"}[row.ID]
+					if kind != "" {
+						if entry.Kind != kind {
+							t.Fatal("wrong music discovery row kind", row.ID, entry)
+						}
+						continue
+					}
+				}
 				if entry.Kind != "movie" && entry.Kind != "show" && entry.Kind != "album" && entry.Kind != "book" {
-					t.Fatal(library, entry)
+					t.Fatal(library, row.ID, entry)
 				}
 			}
 		}

@@ -354,6 +354,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	}
 	_, item, token := catalogFixture(t, db, "lib", "/test", compactcatalog.Movie, "item", "Film", compactcatalog.Asset{Path: "/test/file.mp4", Size: 20, ModifiedNS: 30, Container: "mp4", VideoCodec: "h264", AudioCodec: "aac", Width: 1920, Height: 1080, Duration: 100})
 	principal := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
+	insertFixtureAccount(t, db, principal.AccountID, principal.ProfileID)
 	session, err := New(db).Create(principal, item, "automatic", "request")
 	if err != nil {
 		t.Fatal(err)
