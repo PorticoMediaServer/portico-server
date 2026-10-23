@@ -90,3 +90,25 @@ func persistStreamBreadth(tx *sql.Tx, asset string, s Stream) error {
 	_, e := tx.Exec(`INSERT INTO asset_stream_breadth(asset_id,stream_index,audio_description,audio_variant,chroma_subsampling,fps_numerator,fps_denominator,frame_rate_mode,interlace_analysis,telecine,dovi_rpu,dovi_base_layer,dovi_metadata_known,dovi_enhancement_type,dovi_cm_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, asset, s.Index, b.AudioDescription, b.AudioVariant, b.ChromaSubsampling, b.FrameRateNumerator, b.FrameRateDenominator, b.FrameRateMode, b.InterlaceAnalysis, b.Telecine, b.DolbyVisionRPU, b.DolbyVisionBaseLayer, b.DolbyVisionMetadataKnown, b.DolbyVisionEnhancementType, b.DolbyVisionCMVersion)
 	return e
 }
+
+// These analysis values carry the actual scan assertion in the normalized
+// scalar row. Older decoded_frames means a window was read, not that the whole
+// stream was proved progressive. Its false legacy Interlaced value is unknown.
+const (
+	InterlaceFieldOrderProgressive = "field_order_progressive"
+	InterlaceFieldOrderInterlaced  = "field_order_interlaced"
+	InterlaceDecodedInterlaced     = "decoded_frames_interlaced"
+)
+
+func (b StreamBreadth) ObservedInterlaced() *bool {
+	var v bool
+	switch b.InterlaceAnalysis {
+	case InterlaceFieldOrderProgressive:
+		v = false
+	case InterlaceFieldOrderInterlaced, InterlaceDecodedInterlaced:
+		v = true
+	default:
+		return nil
+	}
+	return &v
+}
