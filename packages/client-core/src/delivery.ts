@@ -248,6 +248,7 @@ export function parseDeliveryPolicyDocument(raw:unknown):DeliveryPolicyDocument{
  * decides what that means; a declaration can only narrow the resolved lane. */
 export const transportClassHeader='X-Portico-Transport-Class';
 export const deviceClassHeader='X-Portico-Device-Class';
+export const appLanguageHeader='X-Portico-App-Language';
 
 export function normalizeTransportClass(value:string|null|undefined):TransportClass{
  switch((value??'').trim().toLowerCase()){
@@ -264,11 +265,13 @@ export function normalizeTransportClass(value:string|null|undefined):TransportCl
  * request that actually plans a session arrived without either header and every
  * per-network and per-device-class preference resolved to "unknown". */
 let sharedTransportClass:TransportClass='unknown';
-let sharedDeviceClass:''|'web'|'mobile'|'television'='';
-export function setDeliveryContext(context:{transportClass?:string|null;deviceClass?:''|'web'|'mobile'|'television'}){
+let sharedAppLanguage='';
+let sharedDeviceClass:''|'web'|'mobile'|'tablet'|'television'='';
+export function setDeliveryContext(context:{transportClass?:string|null;deviceClass?:''|'web'|'mobile'|'tablet'|'television';appLanguage?:string}){
  if(context.transportClass!==undefined)sharedTransportClass=normalizeTransportClass(context.transportClass);
  if(context.deviceClass!==undefined)sharedDeviceClass=context.deviceClass;
+ if(context.appLanguage!==undefined)sharedAppLanguage=context.appLanguage ? Intl.getCanonicalLocales(context.appLanguage)[0] ?? '' : '';
 }
 export function deliveryContextHeaders():Record<string,string>{
- return {...(sharedTransportClass==='unknown'?{}:{[transportClassHeader]:sharedTransportClass}),...(sharedDeviceClass?{[deviceClassHeader]:sharedDeviceClass}:{})};
+ return {...(sharedTransportClass==='unknown'?{}:{[transportClassHeader]:sharedTransportClass}),...(sharedDeviceClass?{[deviceClassHeader]:sharedDeviceClass}:{}),...(sharedAppLanguage?{[appLanguageHeader]:sharedAppLanguage}:{})};
 }

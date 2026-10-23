@@ -11,6 +11,7 @@ import type {ContentEntry} from '@core/library-content.ts';
 import {browseCapabilitiesPath} from '@core/browse.ts';
 import {titleCreditsWindow} from '../src/screens/detail/credits-window.ts';
 import {setImmediate} from 'node:timers/promises';
+import type {PreferenceSnapshot} from '@core/preferences.ts';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
 function setup(handler: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>) {
@@ -108,6 +109,26 @@ test('a late episode permission read cannot play after its show page is replaced
   await refused;
   assert.equal(starts, 0);
   binding.dispose();
+});
+
+test('the canonical episode preference changes the real Show layout and remains its next-title default', async () => {
+  const owner = setup(async () => showPage()), listeners = new Set<() => void>();
+  let value: 'auto' | 'tiles' | 'list' = 'list';
+  const snapshot = (): PreferenceSnapshot => ({registry: {revision: 'registry', fields: [{key: 'appearance.episodesLayout', type: 'string', default: 'auto', allowedValues: ['auto', 'tiles', 'list'], scopes: ['profile-device'], group: 'appearance', labelKey: 'preferences.appearance.episodesLayout'}]}, effective: {'appearance.episodesLayout': value}} as PreferenceSnapshot);
+  const binding = createShowBindings({...owner.context, preferences: {getSnapshot: snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }}});
+  assert.equal(owner.requests(), 0);
+  assert.equal(binding.view.getSnapshot().layout, 'list');
+  binding.view.layout('grid');
+  for (const listener of listeners) listener();
+  assert.equal(binding.view.getSnapshot().layout, 'grid');
+  binding.view.reset();
+  assert.equal(binding.view.getSnapshot().layout, 'list');
+  value = 'tiles'; for (const listener of listeners) listener();
+  assert.equal(binding.view.getSnapshot().layout, 'grid');
+  value = 'list'; owner.retire(); for (const listener of listeners) listener();
+  assert.equal(binding.view.getSnapshot().layout, 'grid');
+  binding.dispose();
+  assert.equal(listeners.size, 0);
 });
 
 test('switching people aborts the old read and ignores a transport that still returns it', async () => {

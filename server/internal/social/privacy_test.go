@@ -2,6 +2,7 @@ package social
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -35,7 +36,7 @@ func TestJoinedParticipantsRemainVisibleInsideTheirRoom(t *testing.T) {
 		}
 	}
 	publish()
-	if _, err = db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,?,0)`, "profile:"+operations.ViewerScopeKey(p.Viewer), `{"privacy.includeInWatchTogether":false}`); err != nil {
+	if _, err = operations.New(db).ApplyPreferences(ctx, p, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 1, IdempotencyKey: "private", Values: operations.PreferencePatch{"privacy.includeInWatchTogether": false}}); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := db.BeginTx(ctx, nil)
@@ -62,7 +63,7 @@ func TestJoinedParticipantsRemainVisibleInsideTheirRoom(t *testing.T) {
 	if strings.Contains(string(events[0].Payload), "500") || !strings.Contains(string(events[0].Payload), "mem_seeded") {
 		t.Fatal("privacy did not hide personal activity while preserving room occupancy", string(events[0].Payload))
 	}
-	if _, err = db.Exec(`UPDATE console_documents SET body='{"privacy.includeInWatchTogether":true}'`); err != nil {
+	if _, err = operations.New(db).ApplyPreferences(ctx, p, func(context.Context, *sql.Tx, string) error { return nil }, operations.PreferenceChange{Scope: operations.ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 2, IdempotencyKey: "public", Values: operations.PreferencePatch{"privacy.includeInWatchTogether": true}}); err != nil {
 		t.Fatal(err)
 	}
 	publish()

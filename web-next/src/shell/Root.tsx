@@ -13,7 +13,7 @@ function RouteContent() {
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  return <main id="portico-content" ref={content} data-route-content tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
+  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
 }
 export function ShellRoot() {
   const binding = useShellBindings();
