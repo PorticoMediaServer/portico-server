@@ -63,7 +63,16 @@ func TestLockedSMBMixedOperationBudget(t *testing.T) {
 	}
 	port := backendFixturePort(t)
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network=host", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", image, "/usr/sbin/smbd", "--foreground", "--no-process-group", "--debug-stdout", "--configfile=/etc/samba/smb.conf", "--option=smb ports="+strconv.Itoa(port)).Output()
+	configuration, err := os.ReadFile("testdata/smb/smb.conf")
+	if err != nil || len(configuration) > 4096 || strings.Count(string(configuration), "smb ports = 445") != 1 {
+		t.Fatal("bounded fixture configuration", err)
+	}
+	configuration = []byte(strings.Replace(string(configuration), "smb ports = 445", "smb ports = "+strconv.Itoa(port), 1))
+	configPath := filepath.Join(private, "smb.conf")
+	if err = os.WriteFile(configPath, configuration, 0600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network=host", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", "--mount", "type=bind,source="+configPath+",target=/etc/samba/smb.conf,readonly", image).Output()
 	if err != nil {
 		t.Fatal("owned Samba fixture start", err)
 	}
@@ -86,6 +95,12 @@ func TestLockedSMBMixedOperationBudget(t *testing.T) {
 			break
 		}
 		if time.Now().After(ready) {
+			// Only this guest fixture has ever reached the listener. Its bounded
+			// startup diagnostics contain no owner account or retained auth.
+			logs, e := command(ctx, "logs", "--tail", "16", container).Output()
+			if e == nil && len(logs) <= 16<<10 {
+				t.Logf("owned Samba fixture startup: %s", logs)
+			}
 			t.Fatal("Samba listener readiness timed out")
 		}
 		time.Sleep(10 * time.Millisecond)
