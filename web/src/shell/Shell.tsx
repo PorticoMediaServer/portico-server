@@ -224,7 +224,7 @@ export function Shell() {
 function AppearanceBridge() {
   const server = useServerPreferences();
   const {update} = usePreferences();
-  const reduce = server.value('appearance.reduceMotion', false);
+  const reduce = server.value<'follow' | 'reduce'>('appearance.motion', 'follow') === 'reduce';
   const size = server.value('appearance.cardSizePercent', 100);
   const backdrops = server.value('appearance.showBackdrops', true);
   useEffect(() => {

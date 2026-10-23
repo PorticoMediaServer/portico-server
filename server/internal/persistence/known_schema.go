@@ -619,6 +619,7 @@ table artwork_uploads
 table artwork_variants
 table asset_chapter_facts
 table asset_chapters
+table asset_stream_breadth
 table asset_stream_facts
 table asset_streams
 table asset_subtitle_facts
@@ -916,6 +917,7 @@ table identity_move_codes
 table identity_move_link_tickets
 table identity_move_waiting
 table identity_moves
+table identity_owner_completions
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors

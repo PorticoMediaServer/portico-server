@@ -3004,6 +3004,12 @@
       "objectAudio": [
        "dtsx"
       ],
+      "variants": [
+       "dts_core",
+       "dts_hd_hra",
+       "dts_hd_ma",
+       "dtsx"
+      ],
       "evidence": "probed"
      },
      {
@@ -3389,17 +3395,32 @@
      {
       "codec": "eac3",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "eac3",
+       "eac3_joc"
+      ]
      },
      {
       "codec": "dts",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "dts_core",
+       "dts_hd_hra",
+       "dts_hd_ma",
+       "dtsx",
+       "dts_express"
+      ]
      },
      {
       "codec": "truehd",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "truehd",
+       "truehd_atmos"
+      ]
      },
      {
       "codec": "flac",
@@ -3909,17 +3930,32 @@
      {
       "codec": "eac3",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "eac3",
+       "eac3_joc"
+      ]
      },
      {
       "codec": "dts",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "dts_core",
+       "dts_hd_hra",
+       "dts_hd_ma",
+       "dtsx",
+       "dts_express"
+      ]
      },
      {
       "codec": "truehd",
       "maxChannels": 8,
-      "evidence": "declared"
+      "evidence": "declared",
+      "variants": [
+       "truehd",
+       "truehd_atmos"
+      ]
      },
      {
       "codec": "flac",

@@ -4,7 +4,7 @@ import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 /** Server-owned Saved projections and playlist commands. No ranking, navigation or queue owner. */
-import type { ContentEntry, ContentHeading, ContentProjection } from './library-content.ts';
+import {validateContentEntry, type ContentEntry, type ContentHeading, type ContentProjection} from './library-content.ts';
 export type SavedScope = Readonly<{ serverId: string; viewerId: string }>;
 export interface SavedApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type SavedShape = 'posters' | 'squares';
@@ -121,9 +121,12 @@ function route(v: SavedRoute): SavedRoute {
  return freeze({ view: v.view,...(v.shape?{shape:v.shape}:{}),...(v.resourceId?{resourceId:v.resourceId}:{}), ...(v.sort === undefined ? {} : { sort: v.sort }), ...(v.direction === undefined ? {} : { direction: v.direction }), ...(v.filter === undefined ? {} : { filter: v.filter }), ...(v.period === undefined ? {} : { period: v.period }) });
 }
 function media(v: unknown): ContentEntry {
+ const wire = v;
  v=wireDurations(v,{duration:"durationMs",progressSeconds:"progressMs"});
  if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
- const out: Record<string, unknown> = { id: v.id, libraryId: v.libraryId, kind: v.kind, title: v.title };
+ // All shared catalogue facts use the canonical ContentEntry reader. Saved keeps
+ // its existing destination/play-action policy below, including hidden occurrences.
+ const out: Record<string, unknown> = {...validateContentEntry({...wire as Record<string, unknown>, navigation: undefined, playback: undefined})};
  for (const key of ['subtitle','posterUrl','backdropUrl','overview']) if (v[key] !== undefined) { if (key === 'overview' ? !prose(v[key], 16384, true) : !text(v[key], 4096)) invalid(); out[key] = v[key]; }
  for (const key of ['duration','progressSeconds']) if (v[key] !== undefined) { if (!number(v[key])) invalid(); out[key] = v[key]; }
  if (v.available !== undefined) { if (typeof v.available !== 'boolean') invalid(); out.available = v.available; }

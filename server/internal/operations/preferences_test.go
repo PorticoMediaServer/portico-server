@@ -18,7 +18,7 @@ func TestPreferenceRegistryIsWellFormed(t *testing.T) {
 			t.Fatalf("incomplete field %+v", f)
 		}
 		for _, scope := range f.Scopes {
-			if scope != ScopeProfileServer && scope != ScopeDeviceClass {
+			if scope != ScopeProfileServer && scope != ScopeDeviceClass && scope != ScopeDevice {
 				t.Fatalf("unpublished scope %q on %q", scope, f.Key)
 			}
 		}
@@ -73,8 +73,8 @@ func TestPreferencePatchValidationAndClamping(t *testing.T) {
 		t.Fatalf("unknown key was not named: %v", e)
 	}
 	// Known key in the wrong scope.
-	_, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 2, IdempotencyKey: "wrong-scope", Values: PreferencePatch{"appearance.reduceMotion": true}})
-	if !errors.As(e, &fields) || fields.Fields[0] != "values.appearance.reduceMotion" {
+	_, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 2, IdempotencyKey: "wrong-scope", Values: PreferencePatch{"appearance.motion": "reduce"}})
+	if !errors.As(e, &fields) || fields.Fields[0] != "values.appearance.motion" {
 		t.Fatalf("scope violation was not named: %v", e)
 	}
 	// Value outside an enumerated domain is refused rather than quietly rewritten.
@@ -139,7 +139,7 @@ func TestPreferenceSnapshotPublishesRegistryAndDefaults(t *testing.T) {
 	if out.Registry.Revision != PreferenceRegistryRevision || len(out.Registry.Fields) != len(PreferenceRegistry()) {
 		t.Fatalf("registry not published: %+v", out.Registry)
 	}
-	if len(out.Documents) != len(PreferenceScopes) {
+	if len(out.Documents) != 2 {
 		t.Fatalf("scope documents missing: %+v", out.Documents)
 	}
 	if len(out.Effective) != len(PreferenceRegistry()) {
@@ -170,55 +170,33 @@ func TestEffectivePreferencesAccessorReadsWithoutHTTP(t *testing.T) {
 // next save writes the document without it.
 func TestStoredPreferenceForARetiredKeyIsIgnored(t *testing.T) {
 	s, p, a := consoleFixture(t)
-	ctx := context.Background()
-	key, e := preferenceScopeKey(p.Viewer, ScopeProfileServer, "web")
-	if e != nil {
-		t.Fatal(e)
+	address, _ := preferenceAddressFor(p.Viewer, ScopeProfileServer, "web", "")
+	if _, err := s.DB.Exec(`INSERT INTO preference_scopes VALUES(?,?,?,?,?,4,0)`, address.args()...); err != nil {
+		t.Fatal(err)
 	}
-	body := `{"region.timeZone":"America/Halifax","region.hourCycle":"h23","playback.startedThresholdPercent":12}`
-	if _, e = s.DB.Exec(`INSERT INTO console_documents VALUES(?,?,?,?)`, key, 4, body, s.now()); e != nil {
-		t.Fatal(e)
+	for _, key := range []string{"region.timeZone", "music.defaultSpeed"} {
+		if _, err := s.DB.Exec(`INSERT INTO preference_values VALUES(?,?,?,?,?,?,'string',NULL,NULL,'retired')`, append(address.args(), key)...); err != nil {
+			t.Fatal(err)
+		}
 	}
-	out, e := s.Preferences(ctx, p, "web", a)
-	if e != nil {
-		t.Fatalf("a document with a retired key did not read: %v", e)
+	out, err := s.Preferences(context.Background(), p, "web", a)
+	if err != nil || out.Documents[0].Revision != 4 || len(out.Documents[0].Values) != 0 {
+		t.Fatal(out, err)
 	}
-	if _, ok := out.Effective["region.timeZone"]; ok {
-		t.Fatalf("retired key is effective: %+v", out.Effective)
+	for _, key := range []string{"region.timeZone", "music.defaultSpeed", "appearance.reduceMotion"} {
+		if _, ok := out.Effective[key]; ok {
+			t.Fatal("retired field published", key)
+		}
+		if _, err = s.ApplyPreferences(context.Background(), p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 4, IdempotencyKey: key, Values: PreferencePatch{key: "retired"}}); err == nil {
+			t.Fatal("retired patch accepted", key)
+		}
 	}
-	if _, ok := out.EffectiveSource["region.timeZone"]; ok {
-		t.Fatalf("retired key has a source: %+v", out.EffectiveSource)
+	if _, err = s.ApplyPreferences(context.Background(), p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 4, IdempotencyKey: "after-retirement", Values: PreferencePatch{"region.hourCycle": "h12"}}); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := out.Documents[0].Values["region.timeZone"]; ok || out.Documents[0].Revision != 4 {
-		t.Fatalf("retired key is published in the document: %+v", out.Documents[0])
-	}
-	if out.Effective.Text("region.hourCycle") != "h23" || out.Effective.Int("playback.startedThresholdPercent") != 12 {
-		t.Fatalf("the keys beside the retired one were lost: %+v", out.Effective)
-	}
-	values, source, _, e := EffectivePreferences(s.DB, p.Viewer, "")
-	if e != nil || values.Text("region.hourCycle") != "h23" || source["region.timeZone"] != "" {
-		t.Fatalf("accessor did not tolerate the retired key: %v %+v", e, values)
-	}
-	// A client that still sends the key is told which one, as for any unknown key.
-	var fields *ValidationError
-	_, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 4, IdempotencyKey: "retired", Values: PreferencePatch{"region.timeZone": "UTC"}})
-	if !errors.As(e, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "values.region.timeZone" {
-		t.Fatalf("retired key was not named: %v", e)
-	}
-	// The next save drops it from storage.
-	if _, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeProfileServer, DeviceClass: "web", ExpectedRevision: 4, IdempotencyKey: "after", Values: PreferencePatch{"region.hourCycle": "h12"}}); e != nil {
-		t.Fatal(e)
-	}
-	var stored string
-	if e = s.DB.QueryRow(`SELECT body FROM console_documents WHERE scope=?`, key).Scan(&stored); e != nil {
-		t.Fatal(e)
-	}
-	var saved map[string]any
-	if e = json.Unmarshal([]byte(stored), &saved); e != nil {
-		t.Fatal(e)
-	}
-	if _, ok := saved["region.timeZone"]; ok || saved["region.hourCycle"] != "h12" || len(saved) != 2 {
-		t.Fatalf("the saved document kept the retired key: %s", stored)
+	var count int
+	if err = s.DB.QueryRow(`SELECT count(*) FROM preference_values WHERE key IN('region.timeZone','music.defaultSpeed')`).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
 	}
 }
 

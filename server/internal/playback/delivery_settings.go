@@ -1,12 +1,18 @@
 package playback
 
-import "portico.local/server/internal/decoder"
+import (
+	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/qualityladder"
+)
 
 // DeliveryConfiguration is the owner-administered half of delivery planning.
 // Playback never reads the administration package: the owner settings registry
 // is wired to this struct through DeliverySettings, so the two concerns can be
 // built independently and neither owns the other's file.
 type DeliveryConfiguration struct {
+	ConversionMode     string `json:"conversionMode"`
+	OutputFormat       string `json:"outputFormat"`
+	DownloadMaxQuality string `json:"downloadMaxQuality"`
 	// HardwareBackend is "auto", "software" or a decoder backend name. A named
 	// backend that fails its probe falls back to software; it never fails a session.
 	HardwareBackend string `json:"hardwareBackend"`
@@ -65,7 +71,8 @@ func validPlanningPolicy(p string) bool {
 // does. It is deliberately the same shape the registry will fill in.
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
-		HardwareBackend:        "auto",
+		HardwareBackend: "auto",
+		ConversionMode:  "all", OutputFormat: "auto", DownloadMaxQuality: "original",
 		SessionStorageMiB:      4096,
 		ToneMapping:            true,
 		ToneMapAlgorithm:       decoder.DefaultToneMapAlgorithm,
@@ -83,6 +90,15 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	if c.ConversionMode != "all" && c.ConversionMode != "sound" && c.ConversionMode != "never" {
+		c.ConversionMode = d.ConversionMode
+	}
+	if c.OutputFormat != "auto" && c.OutputFormat != "h264" {
+		c.OutputFormat = d.OutputFormat
+	}
+	if !validDownloadQuality(c.DownloadMaxQuality) {
+		c.DownloadMaxQuality = d.DownloadMaxQuality
+	}
 	if c.SessionStorageMiB < 64 || c.SessionStorageMiB > 1048576 {
 		c.SessionStorageMiB = d.SessionStorageMiB
 	}
@@ -145,4 +161,16 @@ func deliveryConfiguration(s DeliverySettings) DeliveryConfiguration {
 		return DefaultDeliveryConfiguration()
 	}
 	return s.Delivery().Normalized()
+}
+
+func validDownloadQuality(v string) bool {
+	if v == "original" {
+		return true
+	}
+	for _, q := range qualityladder.Fixed() {
+		if v == q.ID {
+			return true
+		}
+	}
+	return false
 }

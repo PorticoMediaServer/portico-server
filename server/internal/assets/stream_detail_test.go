@@ -50,7 +50,7 @@ func TestInspectRecordsDetailForRealMedia(t *testing.T) {
 	ffmpeg := decodertest.QualifiedFFmpeg(t)
 	decodertest.QualifiedFFprobe(t)
 	path := filepath.Join(t.TempDir(), "sample.mkv")
-	out, err := exec.Command(ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-ac", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "ac3", path).CombinedOutput()
+	out, err := exec.Command(ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-ac", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "ac3", "-disposition:a", "visual_impaired", path).CombinedOutput()
 	if err != nil {
 		decodertest.Unavailable(t, fmt.Sprintf("fixture encode unavailable: %v %s", err, out))
 	}
@@ -73,12 +73,14 @@ func TestInspectRecordsDetailForRealMedia(t *testing.T) {
 	if video.Detail.BitDepth != 8 || video.Detail.FrameRate != 25 || video.Detail.Height != 180 || video.Detail.DynamicRange != RangeSDR || video.Detail.Profile == "" {
 		t.Fatalf("video detail %+v", video.Detail)
 	}
-	if audio.Channels != 6 || audio.Detail.SampleRate != 48000 {
+	if audio.Channels != 6 || audio.Detail.SampleRate != 48000 || !audio.Detail.AudioDescription {
 		t.Fatalf("audio detail %+v channels %d", audio.Detail, audio.Channels)
 	}
 	var restored Stream
 	restored.DecodeDetail(video.EncodeDetail())
-	if restored.Detail != video.Detail {
+	expected := video.Detail
+	expected.StreamBreadth = StreamBreadth{}
+	if restored.Detail != expected {
 		t.Fatalf("detail did not survive storage: %+v", restored.Detail)
 	}
 }

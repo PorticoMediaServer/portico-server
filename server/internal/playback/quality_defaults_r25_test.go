@@ -2,6 +2,34 @@ package playback
 
 import "testing"
 
+func TestSavedQualityReadsTheNetworkLaneAndItsProvenance(t *testing.T) {
+	values := stubPreferences{"quality.home": "original", "quality.remote": "480p"}
+	sources := map[string]string{"quality.home": "default", "quality.remote": "profile-device-class"}
+	for _, tc := range []struct {
+		class NetworkClass
+		want  string
+	}{
+		{NetworkLocal, "720p-high"},
+		{NetworkRemote, "480p"},
+		{NetworkUnknown, "480p"},
+	} {
+		got := ResolveDeliveryPolicy(WithPreferenceSources(values, sources), tc.class, LocalityUnknown, "cellular", DefaultDeliveryConfiguration())
+		if got.QualityMode != tc.want {
+			t.Fatalf("%s selected %s, want %s", tc.class, got.QualityMode, tc.want)
+		}
+	}
+	// Explicit Original must not become the cellular default, and a reset must
+	// restore the transport default without changing the other network's choice.
+	sources["quality.home"] = "profile-device-class"
+	if got := ResolveDeliveryPolicy(WithPreferenceSources(values, sources), NetworkLocal, LocalityLocal, "cellular", DefaultDeliveryConfiguration()); got.QualityMode != "original" {
+		t.Fatal(got)
+	}
+	sources["quality.remote"] = "default"
+	if got := ResolveDeliveryPolicy(WithPreferenceSources(values, sources), NetworkRemote, LocalityRemote, "cellular", DefaultDeliveryConfiguration()); got.QualityMode != "720p-high" {
+		t.Fatal(got)
+	}
+}
+
 func TestQualityDefaultsR25NetworkProvenanceAndCaps(t *testing.T) {
 	cfg := DefaultDeliveryConfiguration()
 	if cfg.MaxVideoBitrateBPS != 0 || cfg.MaxAudioBitrateBPS != 0 || cfg.MaxVideoHeight != 0 {

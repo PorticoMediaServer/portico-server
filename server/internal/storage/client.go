@@ -66,7 +66,10 @@ type request struct {
 }
 type Client struct {
 	// RecordingRoot is a canonical, private, server-managed root, never a viewer path.
-	RecordingRoot    string
+	RecordingRoot string
+	// RecordingLayout classifies exact private publication receipts only. A failed
+	// lookup must abort the acquisition, never omit physical artifact leases.
+	RecordingLayout  func(context.Context, string) (bool, error)
 	Remote           RemoteSources
 	SourceOperations *OperationScope
 	expectedIdentity string
@@ -101,7 +104,11 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	}
 	ctx, progress := progressio.NewDormant(ctx, duration)
 	defer progress.Close()
-	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
+	managed, err := c.managedRecording(ctx, path)
+	if err != nil {
+		return err
+	}
+	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: managed}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
@@ -448,7 +455,11 @@ func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, su
 	}
 	ctx, progress := progressio.NewDormant(ctx, 30*time.Second)
 	defer progress.Close()
-	req := request{Operation: "blob", Path: path, Limit: limit, ManagedArtifact: c.managedRecording(path)}
+	managed, err := c.managedRecording(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	req := request{Operation: "blob", Path: path, Limit: limit, ManagedArtifact: managed}
 	if subtitle {
 		req.Operation = "subtitle-blob"
 	}
