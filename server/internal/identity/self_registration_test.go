@@ -125,7 +125,18 @@ func TestInviteOnlyRegistrationRefusesWithoutARedeemedInvitation(t *testing.T) {
 
 func TestCapabilitiesDescribeTheServerAndNotAnAccount(t *testing.T) {
 	ctx := context.Background()
-	s, _, _ := directFixture(t)
+	s, db, _ := familyFixture(t)
+	// Advertise a genuinely initialized local server, not a legacy account row.
+	if _, e := db.Exec(`DELETE FROM accounts`); e != nil {
+		t.Fatal(e)
+	}
+	token, e := s.BrowserSetupToken(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.SetupWithOptions(ctx, SetupOptions{SetupToken: token, Name: "Home", AuthMode: "local", Username: "owner", Password: "Testing1!"}, true); e != nil {
+		t.Fatal(e)
+	}
 	out, e := s.Capabilities(ctx)
 	if e != nil {
 		t.Fatal(e)

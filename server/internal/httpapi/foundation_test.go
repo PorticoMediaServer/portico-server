@@ -19,7 +19,21 @@ import (
 )
 
 func TestFoundationContractAndReplay(t *testing.T) {
-	d, viewer := logoutHTTPFixture(t)
+	d, _ := logoutHTTPFixture(t)
+	// Capabilities require the real local onboarding state as well as an owner.
+	if _, err := d.DB.Exec(`DELETE FROM accounts`); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	token, err := d.Identity.BrowserSetupToken(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup, err := d.Identity.SetupWithOptions(ctx, identity.SetupOptions{SetupToken: token, Name: "Home", AuthMode: "local", Username: "owner", Password: "Testing1!"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer := setup.Envelope
 	settleCompactCatalogue(t, d.DB)
 	h := New(d)
 	w := httptest.NewRecorder()
@@ -70,7 +84,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 	if ratings.Header().Get("ETag") == "" || held.Code != 304 || held.Body.Len() != 0 {
 		t.Fatalf("a held rating list: %d %q %s", held.Code, ratings.Header().Get("ETag"), held.Body.String())
 	}
-	restrictionsRequest := httptest.NewRequest("GET", "/v1/direct/profiles/profile/restrictions", nil)
+	restrictionsRequest := httptest.NewRequest("GET", "/v1/direct/profiles/"+viewer.Viewer.ProfileID+"/restrictions", nil)
 	restrictionsRequest.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
 	restrictions := httptest.NewRecorder()
 	h.ServeHTTP(restrictions, restrictionsRequest)
@@ -135,7 +149,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		t.Fatalf("viewer bootstrap: %d %s", bootstrap.Code, bootstrap.Body.String())
 	}
 	var startup BootstrapDocument
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &startup); err != nil || startup.Server.ID != d.Identity.ID() || startup.Me.Viewer.ProfileID != "profile" || startup.Preferences.DeviceClass != "web" || startup.HomeLayout.Revision < 1 {
+	if err := json.Unmarshal(bootstrap.Body.Bytes(), &startup); err != nil || startup.Server.ID != d.Identity.ID() || startup.Me.Viewer.ProfileID != viewer.Viewer.ProfileID || startup.Preferences.DeviceClass != "web" || startup.HomeLayout.Revision < 1 {
 		t.Fatalf("bootstrap document: %+v %v", startup, err)
 	}
 	conditionalBootstrap := httptest.NewRequest("GET", "/v1/bootstrap", nil)
@@ -219,7 +233,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-rating-systems.json", "GetRatingSystemsResponse", "GET", "/v1/rating-systems", nil, ratings, "viewer"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-direct-profile-restrictions.json", "GetDirectProfileRestrictionsResponse", "GET", "/v1/direct/profiles/profile/restrictions", nil, restrictions, "owner"); err != nil {
+		if err := contract.Record("../../testdata/contracts/get-direct-profile-restrictions.json", "GetDirectProfileRestrictionsResponse", "GET", "/v1/direct/profiles/"+viewer.Viewer.ProfileID+"/restrictions", nil, restrictions, "owner"); err != nil {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-direct-pin-recovery.json", "GetDirectPinRecoveryResponse", "GET", "/v1/direct/pin-recovery", nil, pinRecovery, "owner"); err != nil {
