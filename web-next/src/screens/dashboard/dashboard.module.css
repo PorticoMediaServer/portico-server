@@ -42,7 +42,7 @@
 .routeDot { width: 7px; height: 7px; margin-right: -1px; border-radius: var(--radius-pill); flex: none; background: var(--color-healthy); }
 .delivery[data-route='repackaged'] .routeDot { background: var(--color-accent-strong); }
 .delivery[data-route='converted'] .routeDot { background: var(--color-amber); }
-.delivery b { margin-left: auto; font-size: var(--type-micro-size); }
+.delivery b { margin-left: auto; flex: none; padding: 1px 6px; border-radius: var(--radius-small); font-size: var(--type-micro-size); background: color-mix(in srgb, var(--color-amber) 18%, transparent); color: var(--color-hardware-text); }
 .device { grid-row: 2; display: flex; gap: 8px; min-width: 0; padding: 10px 12px; border-radius: var(--radius-panel); background: color-mix(in srgb, var(--color-text) 5%, transparent); font-size: var(--type-caption-size); }
 .device > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .device b, .device span, .device small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -124,12 +124,13 @@
 .task small { display: block; color: var(--color-text-tertiary); font-size: var(--type-caption-size); margin-top: 2px; }
 .retention { padding: 16px 20px; border-radius: var(--radius-overlay); background: var(--color-raised); }
 .retention summary { cursor: pointer; }
-.dashboard [data-series='home'], [data-series='homeMbps'], [data-series='softwareConversions'] { --series-color: var(--color-amber); color: var(--color-amber); }
-.dashboard [data-series='cpu'], [data-series='memory'], [data-series='tv'] { --series-color: var(--profile-art-violet); color: var(--profile-art-violet); }
-.dashboard [data-series='movies'], [data-series='away'], [data-series='awayMbps'], [data-series='hardwareConversions'], [data-series='processCPU'], [data-series='processMemory'] { --series-color: var(--color-accent-strong); color: var(--color-accent-strong); }
+.dashboard [data-series='home'], .dashboard [data-series='homeMbps'] { --series-color: var(--color-gold); color: var(--color-gold); }
+.dashboard [data-series='softwareConversions'] { --series-color: var(--color-amber); color: var(--color-amber); }
+.dashboard [data-series='cpu'], .dashboard [data-series='memory'], .dashboard [data-series='tv'] { --series-color: var(--color-lilac); color: var(--color-lilac); }
+.dashboard [data-series='movies'], .dashboard [data-series='away'], .dashboard [data-series='awayMbps'], .dashboard [data-series='hardwareConversions'], .dashboard [data-series='processCPU'], .dashboard [data-series='processMemory'] { --series-color: var(--color-accent-strong); color: var(--color-accent-strong); }
 .dashboard [data-series='music'] { --series-color: var(--color-healthy); color: var(--color-healthy); }
-.dashboard [data-series='audiobooks'] { --series-color: var(--color-amber); }
-.dashboard [data-series='live'] { --series-color: var(--color-danger); }
+.dashboard [data-series='audiobooks'] { --series-color: var(--color-gold); }
+.dashboard [data-series='live'] { --series-color: var(--color-rose); }
 @media (max-width: 1100px) {
   .session { grid-template-columns: 78px minmax(120px, 1fr) minmax(240px, 1fr); }
   .device { grid-column: 3; grid-row: 3; margin-top: 8px; }
