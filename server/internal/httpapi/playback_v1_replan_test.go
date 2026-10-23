@@ -280,9 +280,11 @@ func TestPlaybackV1InPlayerTrackChoicesLastOnePlayback(t *testing.T) {
 		t.Fatalf("an in-player choice outlived its playback: %+v", again.Presentation)
 	}
 	f.call("DELETE", "/v1/playback/sessions/"+again.ID, nil, nil, 204, nil)
+	// Current default languages are [@appLanguage, @original]: English is
+	// selected by that profile preference, independently of the prior player choice.
 	var options playbackv1.Options
 	f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", nil, nil, 200, &options)
-	if options.Preferred == nil || options.Preferred.AudioID != "a1" || options.Preferred.Reason != "default" {
+	if options.Preferred == nil || options.Preferred.AudioID != "a1" || options.Preferred.Reason != "profile_language" {
 		t.Fatalf("options preferred %+v", options.Preferred)
 	}
 	if w := f.raw("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", f.owner.AccessToken, nil, nil); w.Code != 404 && w.Code != 405 {
