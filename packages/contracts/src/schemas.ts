@@ -15937,6 +15937,11 @@ export const schemas = {
               },
               "type": "array"
             },
+            "limitsRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "liveState": {
               "type": "string"
             },
@@ -15976,6 +15981,7 @@ export const schemas = {
             "username",
             "role",
             "revision",
+            "limitsRevision",
             "disabled",
             "status",
             "allowedLibraries",
