@@ -81,7 +81,10 @@ def inference_graph(directory):
     embedding = tensor("embedding", "Add", [-1, 200])
     logits = tensor("logits", "BiasAdd", [-1, 50])
     graph = tf.compat.v1.graph_util.extract_sub_graph(original, [embedding.name, logits.name])
-    reader = tf.train.load_checkpoint(str(directory) + "/")
+    # The original checkpoint has an empty basename. Its historical `checkpoint`
+    # state file names the author's absolute training directory, which must
+    # never be followed. Open only the verified local .index/.data prefix.
+    reader = tf.compat.v1.train.NewCheckpointReader(str(directory) + "/")
     replaced = 0
     for node in graph.node:
         if node.op in ("Variable", "VariableV2"):
