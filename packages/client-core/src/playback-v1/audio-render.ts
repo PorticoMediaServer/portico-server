@@ -20,10 +20,12 @@ export type AudioGain = Readonly<{trackDb?: number; albumDb?: number; trackPeak?
 
 export type AudioRenderV2 = Readonly<{
   version: 2;
+ sourceBitrateBps?:number;conversionGainDb?:number;loudnessAppliedDb?:number;
+ loudnessEnvelope?:Readonly<{intervalMs:100;startLufs:readonly number[];endLufs:readonly number[]}>;
   mode: AudioRenderMode;
   /** This presentation's media (opaque; not the session id or the presentation generation). */
   id: string;
-  /** For people: why converted or unavailable. */
+  /** Diagnostic only: never display the server's reason. */
   reason?: string;
   /** Present unless `unavailable`. */
   url?: string;
@@ -90,7 +92,18 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
   const startFrames = count(trim?.startFrames), endFrames = count(trim?.endFrames);
   const gain = isObj(v.gain) ? v.gain : undefined;
   const seekIndex = mode === 'direct' && isObj(v.seekIndex) && text(v.seekIndex.url) ? Object.freeze({url: v.seekIndex.url as string}) : undefined;
-  const plan = {
+  let loudnessEnvelope:AudioRenderV2['loudnessEnvelope'];
+ if(v.loudnessEnvelope!==undefined){const e=v.loudnessEnvelope;if(!isObj(e)||e.intervalMs!==100||!Array.isArray(e.startLufs)||!Array.isArray(e.endLufs)||e.startLufs.length>30||e.endLufs.length>30||[...e.startLufs,...e.endLufs].some(x=>finite(x,-120,10)===undefined))return undefined;loudnessEnvelope=Object.freeze({intervalMs:100,startLufs:Object.freeze([...e.startLufs]),endLufs:Object.freeze([...e.endLufs])});}
+ // A baked stream cannot also instruct the device to apply source gain.
+ // Refuse contradictory metadata instead of relying on every renderer to
+ // notice that the gain has already been applied.
+ if(v.loudnessAppliedDb!==undefined&&(finite(v.loudnessAppliedDb,-60,30)===undefined||isObj(v.gain)))return undefined;
+ if(v.conversionGainDb!==undefined&&finite(v.conversionGainDb,-60,30)===undefined)return undefined;
+ const plan = {
+ ...(loudnessEnvelope?{loudnessEnvelope}:{}),
+ ...(count(v.sourceBitrateBps)!==undefined?{sourceBitrateBps:v.sourceBitrateBps as number}:{}),
+ ...(v.conversionGainDb!==undefined?{conversionGainDb:v.conversionGainDb as number}:{}),
+ ...(v.loudnessAppliedDb!==undefined?{loudnessAppliedDb:v.loudnessAppliedDb as number}:{}),
     version: 2 as const, mode, id: v.id,
     ...(reason ? {reason} : {}),
     url: text(v.url), container: text(v.container, 32), codec: text(v.codec, 32),
@@ -131,7 +144,8 @@ export type Normalization = 'off' | 'track' | 'album';
  * peak stays at or under full scale when the peak is known. Album mode falls back to track values.
  * 1 when normalization is off or the gain is unknown.
  */
-export function audioGainLinear(plan: AudioRenderV2 | undefined, mode: Normalization, preampDb = 0): number {
+export function audioGainLinear(plan: AudioRenderV2 | undefined, mode: Normalization, preampDb = 0, neverBoost = false): number {
+ if(plan?.loudnessAppliedDb!==undefined)return 1;
   const g = plan?.gain;
   if (!g || mode === 'off') return 1;
   const album = mode === 'album' && g.albumDb !== undefined;
@@ -141,7 +155,7 @@ export function audioGainLinear(plan: AudioRenderV2 | undefined, mode: Normaliza
   let linear = Math.pow(10, (db + preampDb) / 20);
   if (peak !== undefined && peak * linear > 1) linear = 1 / peak;
   // A gain without a measured peak may attenuate, but cannot safely amplify.
-  return Math.max(0, Math.min(linear, peak === undefined ? 1 : 32));
+  return Math.max(0, Math.min(linear, neverBoost || peak === undefined ? 1 : 32));
 }
 
 /**

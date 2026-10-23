@@ -9,6 +9,10 @@ func PreparedProducible(r PreparedRecipe) bool {
 	if err != nil {
 		return false
 	}
+	if r.MusicQuality != "" {
+		o, err := PreparedMusicFormat(r)
+		return err == nil && AvailableConversionOutputs(CurrentToolchain()).SupportsConversion("", o.Depth, o.Codec, o.Channels)
+	}
 	video, depth, channels := "h264", 8, 2
 	if r.AudioOnly {
 		video = ""

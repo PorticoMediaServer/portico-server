@@ -28,7 +28,7 @@ func protocolInfo(mime string) string { return "http-get:*:" + mime + ":" + cont
 // type an original can be served as.
 func sourceProtocols() string {
 	types := []string{"video/mp4", "video/x-matroska", "video/webm", "video/x-msvideo", "video/mp2t", "video/mpeg",
-		"audio/mpeg", "audio/aac", "audio/flac", "audio/ogg", "audio/wav", "audio/aiff", "audio/mp4"}
+		"audio/mpeg", "audio/aac", "audio/flac", "audio/ogg", "audio/wav", "audio/aiff", "audio/mp4", "audio/x-ape", "audio/x-wavpack", "audio/x-dsf", "audio/x-dff", "audio/x-matroska", "audio/x-ms-wma", "audio/x-tta", "audio/x-musepack"}
 	out := make([]string, len(types))
 	for i, v := range types {
 		out[i] = protocolInfo(v)
@@ -101,6 +101,15 @@ func didl(base string, objects []object) string {
 		if r := o.res; r != nil {
 			b.WriteString("<res")
 			attribute(&b, "protocolInfo", protocolInfo(mediaType(r.container, r.video)))
+			if r.sampleRate > 0 {
+				attribute(&b, "sampleFrequency", strconv.Itoa(r.sampleRate))
+			}
+			if r.bitDepth > 0 {
+				attribute(&b, "bitsPerSample", strconv.Itoa(r.bitDepth))
+			}
+			if r.channels > 0 {
+				attribute(&b, "nrAudioChannels", strconv.Itoa(r.channels))
+			}
 			if r.size > 0 {
 				attribute(&b, "size", strconv.FormatInt(r.size, 10))
 			}

@@ -2,6 +2,7 @@ package playbackv1
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"portico.local/server/internal/audiofacts"
@@ -16,7 +17,26 @@ func (s *Service) audioChoice(ctx context.Context, c Caller, item, kind string, 
 		return nil
 	}
 	choice.AudioPlanV2 = true
-	choice.AudioDecode = s.deviceDocument(ctx, c.DeviceID).DecodeCaps()
+	doc := s.deviceDocument(ctx, c.DeviceID)
+	choice.AudioDecode = doc.DecodeCaps()
+	// Receivers use their ordinary, declared media decoder. They do not have a
+	// client gain stage, so the server pins a stream with gain already applied.
+	if len(choice.AudioDecode) == 0 && (doc.Client.Family == "cast" || doc.Client.Family == "roku") {
+		choice.AudioServerRender = true
+		p := doc.Profile(playback.EngineNative)
+		for _, a := range p.Audio {
+			containers := []string{}
+			for _, t := range p.Transports {
+				if t.Transport == playback.TransportDirect && slices.Contains(t.Audio, a.Codec) {
+					containers = append(containers, t.Containers...)
+				}
+			}
+			if slices.Contains(containers, "aac") {
+				containers = append(containers, "adts")
+			}
+			choice.AudioDecode = append(choice.AudioDecode, playback.AudioDecodeCap{Codec: a.Codec, Containers: containers, MaxChannels: a.MaxChannels, MaxSampleRate: a.MaxSampleRate, MaxBitDepth: a.MaxBitDepth})
+		}
+	}
 	asset, err := s.Playback.SelectedAsset(ctx, item, choice)
 	if err != nil {
 		return nil // the start itself reports a missing version
