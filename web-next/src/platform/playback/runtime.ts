@@ -848,6 +848,7 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: Math.round(Number(track.offsetUs) / 1000)} : {})});
     if (this.current(stack)) this.sync();
   }
+  /** Drawn temporary choices for this actual subject; music and live have no speed picker. */
   speedChoices(fence: PlaybackFence): readonly number[] {
     const stack = this.require(fence);
     return Object.freeze([...(fence.kind === 'channel' || stack.subject?.kind === 'music' ? [] : stack.subject?.kind === 'audiobook' ? audiobookRates : stack.subject?.kind === 'video' ? listeningRates : [])]);
@@ -867,6 +868,8 @@ export class WebShellPlaybackRuntime {
     const next = direction === 1 ? offered.find(value => value > rate) : [...offered].reverse().find(value => value < rate);
     if (next !== undefined) this.setSpeed(fence, next);
   }
+  /** The ordinary browser has no qualified frame primitive. A platform command still owns
+   * its actual decoder/entry readiness and may refuse without publishing a guessed clock. */
   canStepFrame(fence: PlaybackFence): boolean {
     if (!this.matches(fence)) return false;
     const presentation = this.snapshot.presentation, playback = this.stack.service.getSnapshot();

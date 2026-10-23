@@ -45,8 +45,9 @@ export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityR
 
 /** Structural native/web media port. A platform adapter owns one generation at a time. */
 export type PlaybackMediaPort = MediaPlayer & {
-  /** Actual decoder frame command only. The adapter must recheck this loaded generation at
-   * execution; ordinary media observations, never the request, supply the resulting clock. */
+  /** Actual decoder frame command only. At execution the adapter must recheck its private
+   * loaded entry/lifetime as well as this public generation, which can repeat across sessions.
+   * Native readiness belongs to the adapter; ordinary observations supply the resulting clock. */
   stepFrame?(direction: -1 | 1, generation: number): void | Promise<void>;
   /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
   applyAudioEffects?(snapshot: PlaybackSnapshot): void;
