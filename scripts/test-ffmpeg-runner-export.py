@@ -65,6 +65,9 @@ class ExportTests(unittest.TestCase):
         result = self.export(self.bundle())
         self.assertEqual(set(result['tools']), set(exporter.TOOLS))
         self.assertEqual(set(p.name for p in self.output.iterdir()), set(exporter.TOOLS))
+        self.assertEqual(result['bundleManifest']['licenseMode'], 'gpl3')
+        self.assertIn('corresponding-source.tar.xz', result['bundleManifest']['files'])
+        self.assertEqual(result['originalBuildReceipt']['buildSourceCommit'], self.commit)
         for name in exporter.TOOLS:
             self.assertEqual((self.output / name).stat().st_mode & 0o777, 0o755)
             self.assertEqual(hashlib.sha256((self.output / name).read_bytes()).hexdigest(),

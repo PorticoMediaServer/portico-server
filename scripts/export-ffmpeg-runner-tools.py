@@ -116,6 +116,7 @@ def export_tools(artifact_root, output, build_commit, build_job, expected):
         raise ValueError('Retained bundle is missing a required executable')
     return {'schema': 1, 'buildSourceCommit': build_commit, 'buildJob': build_job,
             'qualifiedBundleHashes': expected, 'tools': result,
+            'originalBuildReceipt': receipt, 'bundleManifest': manifest,
             'scope': 'Custody of the original source-built tools only; no new build, hardware, playback or platform acceptance.'}
 
 
