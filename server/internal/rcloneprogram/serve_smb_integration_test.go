@@ -72,8 +72,13 @@ func TestLockedSMBMixedOperationBudget(t *testing.T) {
 	if err = os.WriteFile(configPath, configuration, 0600); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network=host", "--log-driver=local", "--log-opt=max-size=32k", "--log-opt=max-file=1", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", "--mount", "type=bind,source="+configPath+",target=/etc/samba/smb.conf,readonly", image).Output()
+	startCommand := command(ctx, "run", "--detach", "--rm", "--label", "portico=remote-sources-r40", "--label", "portico.job="+job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network=host", "--log-driver=local", "--log-opt=max-size=32k", "--log-opt=max-file=1", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source="+root+",target=/media,readonly", "--mount", "type=bind,source="+configPath+",target=/etc/samba/smb.conf,readonly", image)
+	startCommand.Stderr = nil // Output retains only bounded exec.ExitError diagnostics.
+	raw, err := startCommand.Output()
 	if err != nil {
+		if failure, ok := err.(*exec.ExitError); ok {
+			t.Logf("owned Samba container start: %s", failure.Stderr[:min(len(failure.Stderr), 16<<10)])
+		}
 		t.Fatal("owned Samba fixture start", err)
 	}
 	container := strings.TrimSpace(string(raw))
