@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestRegisteredReturnActualHostedProducerConsumer(t *testing.T) {
 	}
 	// Export only this disposable fixture key to its private temporary exchange;
 	// no real user/server credential or state is read.
-	files, e := filepath.Glob(filepath.Join(f.state, "networking-keys", "*.ed25519"))
+	files, e := filepath.Glob(storagepaths.Path(f.state, "networking-keys", "*.ed25519"))
 	if e != nil || len(files) != 1 {
 		t.Fatal("fixture key registry")
 	}

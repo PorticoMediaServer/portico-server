@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
+	"portico.local/server/internal/storagepaths"
 	"testing"
 
 	"portico.local/server/internal/identity"
@@ -19,7 +19,7 @@ func pendingClaimFixture(t *testing.T) (*claimFixture, string) {
 		if _, e := f.db.Exec(`DELETE FROM accounts;DELETE FROM onboarding_state_v1`); e != nil {
 			t.Fatal(e)
 		}
-		if e := os.WriteFile(filepath.Join(f.state, "setup-token"), []byte(secret), 0600); e != nil {
+		if e := os.WriteFile(storagepaths.Path(f.state, "setup-token"), []byte(secret), 0600); e != nil {
 			t.Fatal(e)
 		}
 		out, e := f.id.SetupWithOptions(context.Background(), identity.SetupOptions{RequestID: pendingSetupID, SetupToken: secret, Name: "Account server"}, true)

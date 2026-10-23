@@ -1,7 +1,6 @@
 package hosted
 
 import (
- "portico.local/server/internal/storagepaths"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -11,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/hostedtrust"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +43,7 @@ func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimF
 	t.Helper()
 	state := t.TempDir()
 	os.Chmod(state, 0700)
-	db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(state, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}

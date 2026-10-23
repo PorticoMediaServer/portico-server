@@ -21,6 +21,7 @@ import (
 	"portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"sync"
 	"testing"
@@ -72,7 +73,7 @@ func startOwnerBridge(t *testing.T, f *claimFixture) *repairBridge {
 	if checkout == "" {
 		t.Skip("real isolated Hosted checkout required")
 	}
-	files, _ := filepath.Glob(filepath.Join(f.state, "networking-keys", "*.ed25519"))
+	files, _ := filepath.Glob(storagepaths.Path(f.state, "networking-keys", "*.ed25519"))
 	if len(files) != 1 {
 		t.Fatal("fixture key")
 	}
