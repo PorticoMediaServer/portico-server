@@ -20,23 +20,24 @@ import (
 
 // Connectivity routes use the same typed registry as the first-party API.
 type ConnectivityChange struct {
-	ExpectedRevision int64     `json:"expectedRevision"`
-	OperationID      string    `json:"operationId"`
-	RemoteSignIn     *string   `json:"remoteSignInPolicy,omitempty"`
-	RemoteBitrate    *int      `json:"remoteBitrateLimitKbps,omitempty"`
-	LANNetworks      *[]string `json:"lanNetworks,omitempty"`
-	AccessURLs       *[]string `json:"accessUrls,omitempty"`
-	LANDiscovery     *bool     `json:"lanDiscoveryEnabled,omitempty"`
-	DLNA             *bool     `json:"dlnaEnabled,omitempty"`
-	TrustedProxies   *[]string `json:"trustedProxies,omitempty"`
-	UploadCapacity   *int      `json:"uploadCapacityKbps,omitempty"`
-	PausedTimeout    *int      `json:"pausedSessionTimeoutMinutes,omitempty"`
-	Interface        *string   `json:"advertisedInterface,omitempty"`
-	CertificatePath  *string   `json:"customCertificatePath,omitempty"`
-	CertificateKey   *string   `json:"customCertificateKeyPath,omitempty"`
-	CertificateHost  *string   `json:"customCertificateDomain,omitempty"`
-	ConnectionLimit  *int      `json:"connectionLimit,omitempty"`
-	AdvertiseURL     *string   `json:"advertiseUrl,omitempty"`
+	ExpectedRevision  int64     `json:"expectedRevision"`
+	OperationID       string    `json:"operationId"`
+	RemoteSignIn      *string   `json:"remoteSignInPolicy,omitempty"`
+	RemoteBitrate     *int      `json:"remoteBitrateLimitKbps,omitempty"`
+	LANNetworks       *[]string `json:"lanNetworks,omitempty"`
+	AccessURLs        *[]string `json:"accessUrls,omitempty"`
+	LANDiscovery      *bool     `json:"lanDiscoveryEnabled,omitempty"`
+	DLNA              *bool     `json:"dlnaEnabled,omitempty"`
+	TrustedProxies    *[]string `json:"trustedProxies,omitempty"`
+	UploadCapacity    *int      `json:"uploadCapacityKbps,omitempty"`
+	PausedTimeout     *int      `json:"pausedSessionTimeoutMinutes,omitempty"`
+	Interface         *string   `json:"advertisedInterface,omitempty"`
+	OwnAddressEnabled *bool     `json:"ownAddressEnabled,omitempty"`
+	CertificatePath   *string   `json:"customCertificatePath,omitempty"`
+	CertificateKey    *string   `json:"customCertificateKeyPath,omitempty"`
+	CertificateHost   *string   `json:"customCertificateDomain,omitempty"`
+	ConnectionLimit   *int      `json:"connectionLimit,omitempty"`
+	AdvertiseURL      *string   `json:"advertiseUrl,omitempty"`
 }
 
 func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChange) (connectivity.Policy, error) {
@@ -74,6 +75,9 @@ func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChang
 		}
 		if body.Interface != nil {
 			v.AdvertisedInterface = *body.Interface
+		}
+		if body.OwnAddressEnabled != nil {
+			v.OwnAddressEnabled = *body.OwnAddressEnabled
 		}
 		if body.CertificatePath != nil {
 			v.CustomCertificatePath = *body.CertificatePath

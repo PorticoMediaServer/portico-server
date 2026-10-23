@@ -371,11 +371,11 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if !spec.supported() {
 		return out
 	}
-	if hardwareCircuitOpen(backend) {
+	if deviceCircuitOpen(backend, device) {
 		out.Reason = ProbeCircuitOpen
 		return out
 	}
-	recovery := hardwareNeedsProbe(backend)
+	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
 	d.mu.Lock()
 	if cached, ok := d.cache[key]; ok && !recovery {
@@ -464,11 +464,11 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	}
 	d.cache[key] = out
 	if out.Available {
-		clearHardwareCircuit(backend)
+		clearDeviceCircuit(backend, device)
 	} else if recovery {
 		// Retry after the same cooldown, not on every new playback request.
 		for range 3 {
-			RecordHardwareFailure(backend)
+			RecordHardwareDeviceFailure(backend, device)
 		}
 	}
 	d.mu.Unlock()
@@ -503,15 +503,15 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 		if !ok || !spec.supported() {
 			continue
 		}
-		if hardwareCircuitOpen(backend) {
+		if deviceCircuitOpen(backend, device) {
 			continue
 		}
 		cached, ok := d.cache[identity+"/"+string(backend)+"/"+device]
-		if !ok || hardwareNeedsProbe(backend) {
+		if !ok || deviceNeedsProbe(backend, device) {
 			cold = true
 			break
 		}
-		if cached.Available && !hardwareCircuitOpen(backend) {
+		if cached.Available && !deviceCircuitOpen(backend, device) {
 			d.mu.Unlock()
 			return cached
 		}
@@ -559,7 +559,7 @@ func (d *HardwareDetector) Select(ctx context.Context, executable, configured, d
 			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
 		}
 		probe := d.Probe(ctx, executable, HardwareBackend(configured), device)
-		if probe.Available && !hardwareCircuitOpen(probe.Backend) {
+		if probe.Available && !deviceCircuitOpen(probe.Backend, probe.Device) {
 			return probe
 		}
 		fallback := HardwareProbe{Backend: BackendSoftware, Available: true, Reason: probe.Reason, Identity: probe.Identity}
@@ -588,6 +588,11 @@ func (d *HardwareDetector) Report(ctx context.Context, executable, device string
 // ConversionRequest describes one video output rung. It is deliberately free of
 // session identity: the same request always produces the same argument graph.
 type ConversionRequest struct {
+	// SoftwareDecode disables only hardware decoding. Qualified hardware
+	// filters/encoding may still upload the software-decoded frames.
+	SoftwareDecode bool
+	// DisableHardwareDecode also forces system-frame filters for legacy source
+	// geometry corrections (rotation and non-square pixels). Keep that meaning.
 	DisableHardwareDecode bool
 	Target                *ConversionTarget
 	BurnIn                *BurnIn
@@ -805,11 +810,11 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if backend != BackendSoftware && spec.device != nil {
 			out.Input = append(out.Input, spec.device(r.Probe.Device)...)
 			// Device initialization alone is software decode.
-		} else if backend == BackendVideoToolbox && !r.DisableHardwareDecode && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
+		} else if backend == BackendVideoToolbox && !r.SoftwareDecode && !r.DisableHardwareDecode && r.BurnIn == nil && !r.ToneMap && !r.Deinterlace && r.MaxFrameRate == 0 && r.MaxHeight == 0 && r.MaxWidth == 0 {
 			out.Input = append(out.Input, "-hwaccel", "videotoolbox")
 			decode = ExecutionHardware
 		}
-		if native && !r.Deinterlace && r.MaxFrameRate == 0 {
+		if native && !r.SoftwareDecode && !r.DisableHardwareDecode && !r.Deinterlace && r.MaxFrameRate == 0 {
 			switch backend {
 			case BackendNVENC:
 				out.Input = append(out.Input, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")

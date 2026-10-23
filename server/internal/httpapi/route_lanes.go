@@ -143,6 +143,7 @@ var routeLanes = map[string]string{
 	"GET /v1/admin/segments/titles/{id}":                                         "admin",
 	"GET /v1/admin/sessions":                                                     "admin",
 	"GET /v1/admin/sessions/{id}/controls":                                       "media",
+	"GET /v1/admin/settings/configuration":                                       "admin",
 	"GET /v1/admin/sign-in":                                                      "security-fence",
 	"GET /v1/admin/sign-in/move":                                                 "security-fence",
 	"GET /v1/admin/sign-in/policy":                                               "admin",

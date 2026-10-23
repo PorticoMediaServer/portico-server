@@ -4,6 +4,7 @@ import {router} from '../../router';
 import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
+import {openWatchVersionChooser} from '../watch/version-presentation';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -49,6 +50,10 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
           if (!playback) throw new DOMException('Playback is still loading', 'AbortError');
           await playback.runtime.playFromScreen(target, {signal, isCurrent: current});
           assert();signal.throwIfAborted();
+        },
+        async chooseVersion(request) {
+          assert();request.signal.throwIfAborted();
+          await openWatchVersionChooser(context, {...request, isCurrent: () => current() && request.isCurrent()});
         },
       },
     };

@@ -25,17 +25,15 @@ test('claim page: a malformed code is scrubbed and rejected; no fragment means n
   assert.equal(m.takeClaimFragment({hash: '', pathname: '/claim', search: ''}, () => { throw new Error('nothing to scrub'); }), null);
 });
 
-test('claim page: lookup, approve-code and deny post the code (and the owner profile when chosen)', async () => {
+test('claim page: lookup, approve-code and deny post only the code; Hosted has no server profile choice', async () => {
   const m = await helpers();
   const calls: any[] = [];
   const api = {request: async (path: string, method: string, body: unknown) => { calls.push([path, method, body]); return {}; }};
   await m.claimLookup(api, code);
-  await m.claimApprove(api, code, 'prof_2');
   await m.claimApprove(api, code);
   await m.claimDeny(api, code);
   assert.deepEqual(calls, [
     ['/v1/server-claims/lookup', 'POST', {code}],
-    ['/v1/server-claims/approve-code', 'POST', {code, ownerProfileId: 'prof_2'}],
     ['/v1/server-claims/approve-code', 'POST', {code}],
     ['/v1/server-claims/deny', 'POST', {code}],
   ]);

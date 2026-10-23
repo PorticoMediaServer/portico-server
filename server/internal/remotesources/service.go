@@ -54,6 +54,10 @@ type Service struct {
 	serveClosed         bool
 	serveLife           context.Context
 	readLeaseSequence   atomic.Int64
+	sharedRangeMu       sync.Mutex
+	sharedRanges        map[sourceRangeKey]*sourceRangeRead
+	sharedRangeCount    map[string]int
+	sharedRangeJoiners  atomic.Uint64
 	mu                  sync.Mutex
 	active              map[string]map[string]activeRead
 	bindings            atomic.Value

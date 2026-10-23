@@ -2,6 +2,7 @@ import {t, locale, environment as env} from './text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
+import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
 import {titleRecommendationRows} from '@core/recommendations.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
@@ -116,8 +117,25 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
   const [manage, setManage] = useState<FileInfoAction>();
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
+  const versionRead = useRef<AbortController | undefined>(undefined), versionChoice = useRef<AbortController | undefined>(undefined);
+  const [versions, setVersions] = useState<Readonly<{data: DetailProjection; options: PlaybackOptions; request: AbortController}>>();
   useEffect(() => { setOpen(false); setFileOpen(false); setFiles(undefined); setManage(undefined); }, [data]);
-  useEffect(() => () => fileRead.current?.abort(), [data]);
+  useEffect(() => () => {fileRead.current?.abort();versionRead.current?.abort();versionChoice.current?.abort();}, [data]);
+  useEffect(() => {
+    if (!open || !binding.context.effects.chooseVersion || !data.actions.some(action => action.enabled && action.playback?.itemId === data.item.id && action.id !== 'start_over')) return;
+    const request = new AbortController();versionRead.current = request;setVersions(undefined);
+    void binding.readVersions(data, request.signal).then(options => {if (!request.signal.aborted) setVersions({data, options, request});}, error => {
+      if (!request.signal.aborted) binding.context.effects.reportError(error);
+    });
+    return () => {if (versionChoice.current !== request) request.abort();};
+  }, [binding, data, open]);
+  const chooseVersion = () => {
+    if (!versions || versions.data !== data || versions.request.signal.aborted) return;
+    versionChoice.current?.abort();versionChoice.current = versions.request;
+    void binding.chooseVersion(data, versions.options, versions.request.signal, trigger).catch(binding.context.effects.reportError).finally(() => {
+      versions.request.abort();if (versionChoice.current === versions.request) versionChoice.current = undefined;
+    });
+  };
   const loadFiles = () => {
     fileRead.current?.abort(); const controller = new AbortController(); fileRead.current = controller;
     setFileOpen(true); setFailed(false);
@@ -129,6 +147,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
     <Menu open={open} onOpenChange={setOpen} title={data.item.title} trigger={<Button ref={trigger} icon="i-more" iconOnly aria-label={t('next.controls.more')} />}>
       {phone && data.actions.some(action => action.id === 'watched' && action.enabled) && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
       {data.actions.some(action => action.id === 'favorite' && action.enabled) && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
+      {versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1 && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
     </Menu>
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}

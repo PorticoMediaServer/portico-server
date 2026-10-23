@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,9 @@ type ServeEndpoint struct {
 	authorization string
 	client        *http.Client
 	budget        *OperationBudget
+	rangesMu      sync.Mutex
+	ranges        map[sharedRangeKey]*sharedRange
+	coalesced     uint64
 }
 
 type serveReconnectKey struct{}
@@ -89,19 +93,44 @@ func (s *ServeEndpoint) ReadRange(ctx context.Context, relative, etag string, si
 	if reconnect == nil {
 		return nil, ErrPolicy
 	}
-	ctx, release, err := s.budget.enter(ctx)
+	if relative == "" || !cleanDAVRelative(relative) || strings.Contains(relative, ":") || !serveETag(etag) || size <= 0 || offset < 0 || length < 1 || length > 1<<20 || offset >= size || length > size-offset {
+		return nil, ErrRepresentationRange
+	}
+	// Each viewer checks its own authority/observation before joining. The
+	// shared transfer never supplies that permission to another viewer.
+	if err := reconnect(ctx); err != nil {
+		return nil, err
+	}
+	key := sharedRangeKey{relative, etag, size, offset, length}
+	if shared := s.joinRange(key); shared != nil {
+		return s.rangeResult(ctx, shared, reconnect)
+	}
+	parent := ctx
+	ctx, release, err := s.budget.enter(parent)
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	// A matching transfer may have started while this request waited for its
+	// slot. Return the extra reservation before joining that one operation.
+	shared, leader := s.startRange(key)
+	if !leader {
+		release()
+		return s.rangeResult(parent, shared, reconnect)
+	}
+	data, err := s.readRange(ctx, relative, etag, size, offset, length, reconnect)
+	// Release the provider operation before each viewer's post-read metadata
+	// fence. Otherwise a one-slot source would wait on its own completed read.
+	release()
+	s.finishRange(key, shared, data, err)
+	return s.rangeResult(parent, shared, reconnect)
+}
+
+func (s *ServeEndpoint) readRange(ctx context.Context, relative, etag string, size, offset, length int64, reconnect func(context.Context) error) ([]byte, error) {
 	if err := reconnect(ctx); err != nil {
 		return nil, err
 	}
 	requestContext := ctx
 	ctx = context.WithValue(ctx, serveReconnectKey{}, func() error { return reconnect(requestContext) })
-	if relative == "" || !cleanDAVRelative(relative) || strings.Contains(relative, ":") || !serveETag(etag) || size <= 0 || offset < 0 || length < 1 || length > 1<<20 || offset >= size || length > size-offset {
-		return nil, ErrRepresentationRange
-	}
 	target := s.root
 	target.Path += relative
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
