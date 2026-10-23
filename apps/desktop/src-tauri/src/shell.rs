@@ -284,7 +284,7 @@ async fn desktop_surface(window:WebviewWindow,state:tauri::State<'_,EngineState>
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
-struct UiProof{frames:u64,elapsed_ms:f64,longest_frame_ms:f64,width:u32,height:u32}
+struct UiProof{frames:u64,elapsed_ms:f64,longest_frame_ms:f64,width:u32,height:u32,root_mounted:bool,desktop_host:bool}
 #[tauri::command]
 async fn desktop_spike_report(window:WebviewWindow,state:tauri::State<'_,EngineState>,report:UiProof)->Result<()> {
     caller(&window)?;
@@ -296,7 +296,7 @@ async fn desktop_spike_report(window:WebviewWindow,state:tauri::State<'_,EngineS
         let value=tauri::async_runtime::spawn_blocking(move||{
             let native=receive.recv().map_err(|_|Error::EngineFailure)?;
             let (observation,audio)=match engine.as_ref(){Some(e)=>(Some(e.observation()),Some(e.audio_facts())),None=>(None,None)};
-            Ok(serde_json::json!({"platform":std::env::consts::OS,"networkCost":crate::network::current(),"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height},"native":native,"player":observation,"audio":audio}))
+            Ok(serde_json::json!({"platform":std::env::consts::OS,"networkCost":crate::network::current(),"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height,"rootMounted":report.root_mounted,"desktopHost":report.desktop_host},"native":native,"player":observation,"audio":audio}))
         }).await.map_err(|_|Error::EngineFailure)??;
         let path=PathBuf::from(path);let temp=path.with_extension("tmp");
         std::fs::write(&temp,serde_json::to_vec_pretty(&value).map_err(|_|Error::EngineFailure)?).map_err(|_|Error::EngineFailure)?;
@@ -354,7 +354,7 @@ pub fn run() {
                     crate::spike::record(if payload.event()==tauri::webview::PageLoadEvent::Finished{"page-finished"}else{"page-started"},0);
                     if cfg!(debug_assertions)&&std::env::var_os("PORTICO_SPIKE_REPORT").is_some()&&payload.event()==tauri::webview::PageLoadEvent::Finished {
                         if std::env::var_os("PORTICO_SPIKE_MEDIA").is_some(){let _=window.eval(r#"window.__porticoNativeProbe=setInterval(()=>window.__TAURI_INTERNALS__.invoke('desktop_observe').then(o=>o.generation?window.__TAURI_INTERNALS__.invoke('desktop_surface',{generation:o.generation,bounds:{x:0,y:0,width:innerWidth,height:innerHeight}}):undefined).catch(()=>{}),200);setTimeout(()=>clearInterval(window.__porticoNativeProbe),9000)"#);}
-                        let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight}})}requestAnimationFrame(measure)},3000)"#);
+                        let _=window.eval(r#"setTimeout(()=>{let frames=0,start=performance.now(),last=start,longest=0;function measure(now){longest=Math.max(longest,now-last);last=now;frames++;if(now-start<5000)requestAnimationFrame(measure);else window.__TAURI_INTERNALS__.invoke('desktop_spike_report',{report:{frames,elapsedMs:now-start,longestFrameMs:longest,width:innerWidth,height:innerHeight,rootMounted:!!document.getElementById('root')?.childElementCount,desktopHost:!!document.querySelector('[data-desktop-window-chrome]')}})}requestAnimationFrame(measure)},3000)"#);
                     }
                 });
             let main=main.build()?;
