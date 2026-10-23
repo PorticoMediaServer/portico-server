@@ -43,7 +43,7 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
     await driver.fill('input[autocomplete=one-time-code]', code);
     code = ''; rmSync(codeFile, {force: true});
     await driver.clickText('Create account');
-    await driver.waitFor("document.body.innerText.includes('Your servers')", 30000);
+    await driver.waitFor("document.body.innerText.includes('No servers yet')", 30000);
     family = await identity(); assert(family?.familyId && family.accountId);
     report.family = family;
     const cookies = (await driver.send('Network.getAllCookies')).cookies;
@@ -52,7 +52,7 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
     report.cookie = {httpOnly: true, sameSite: 'Lax', secure: false, qualification: 'IP-loopback development cookie only'};
     await capture('hosted-no-server');
     await driver.navigate(`http://127.0.0.1:${port}/account`);
-    await driver.waitFor("document.body.innerText.includes('Your devices')", 30000);
+    await driver.waitFor("document.querySelector('h1')?.textContent==='Portico Account'", 30000);
     assert.deepEqual(await identity(), family);
     await capture('hosted-account');
     await driver.clickText('Sign out');
@@ -64,7 +64,10 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
   } finally {
     rmSync(channel, {recursive: true, force: true});
     // Retire only this test-created current family even after an assertion failure.
-    if (family) {
+    const current = await identity().catch(() => null);
+    if (current?.familyId) {
+      report.family ??= current;
+      assert(!family || current.familyId === family.familyId, 'Cleanup must never replace a different account family.');
       report.cleanup = await driver.evaluate("import('/src/services/session.ts').then(async({servicesAccount})=>{const a=servicesAccount();await a.service.logout();return {signedOut:!a.service.getSnapshot().session}})").catch(() => ({signedOut: false}));
     }
   }
