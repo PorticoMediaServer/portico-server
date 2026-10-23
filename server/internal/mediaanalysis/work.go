@@ -120,6 +120,11 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	}
 	stage := ""
 	for _, op := range catalog.DeepScanOperations {
+		// Episode artwork has its own metadata publication/CAS and runs through
+		// ingestion's same durable job after these immutable analysis stages.
+		if op == catalog.EpisodeThumbnailOperation {
+			continue
+		}
 		ready, wait, code, e := due(op)
 		if e != nil {
 			return false, "", e

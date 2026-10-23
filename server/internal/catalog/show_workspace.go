@@ -275,13 +275,13 @@ func (s *Service) showCredits(show string, viewer Viewer) ([]ShowCredit, error) 
 	if err != nil {
 		return nil, err
 	}
-	digests, err := s.portraitDigests(ids, viewer)
+	portraits, err := s.portraitSelections(ids, viewer)
 	if err != nil {
 		return nil, err
 	}
 	for i := range credits {
 		if credits[i].PortraitURL == "" && credits[i].ID != "" {
-			credits[i].PortraitURL = personPortraitURL(credits[i].ID, digests[credits[i].ID])
+			credits[i].PortraitURL = portraits[credits[i].ID].url()
 		}
 	}
 	return credits, nil

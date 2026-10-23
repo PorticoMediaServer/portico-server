@@ -52,7 +52,11 @@ func (s *Service) RememberBrowserAccount(ctx context.Context, bearer, installati
 	if e = tx.QueryRowContext(ctx, `SELECT remember_account FROM identity_devices WHERE account_id=? AND installation_id=?`, c.account.ID, installation).Scan(&remember); e != nil {
 		return nil, ErrDeviceUnknown
 	}
-	if !remember {
+	allowed, e := rememberAccountsTx(ctx, tx)
+	if e != nil {
+		return nil, e
+	}
+	if !remember || !allowed {
 		return nil, ErrUnauthorized
 	}
 	name := c.account.Username
@@ -82,6 +86,13 @@ func (s *Service) RememberBrowserAccount(ctx context.Context, bearer, installati
 }
 
 func (s *Service) browserAccountsTx(ctx context.Context, tx *sql.Tx, installation string) ([]BrowserAccount, error) {
+	allowed, e := rememberAccountsTx(ctx, tx)
+	if e != nil {
+		return nil, e
+	}
+	if !allowed {
+		return []BrowserAccount{}, nil
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT account_id,username,display_name,avatar_version,automatic_sign_in,last_used FROM identity_browser_accounts WHERE installation_id=? ORDER BY last_used DESC LIMIT 10`, installation)
 	if e != nil {
 		return nil, e
@@ -108,20 +119,12 @@ func (s *Service) BrowserAccounts(ctx context.Context, installation string) ([]B
 	if !validInstallationID(installation) {
 		return nil, ErrBrowserAccountInput
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT account_id,username,display_name,avatar_version,automatic_sign_in,last_used FROM identity_browser_accounts WHERE installation_id=? ORDER BY last_used DESC LIMIT 10`, installation)
+	g, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
-	out := []BrowserAccount{}
-	for rows.Next() {
-		var a BrowserAccount
-		if e = rows.Scan(&a.AccountID, &a.Username, &a.DisplayName, &a.AvatarVersion, &a.AutomaticSignIn, &a.LastUsed); e != nil {
-			return nil, e
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
+	defer g.Rollback()
+	return s.browserAccountsTx(ctx, g.Tx(), installation)
 }
 
 // ForgetBrowserAccount removes one entry. The caller must hold a session for the
