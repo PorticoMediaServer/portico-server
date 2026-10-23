@@ -41,7 +41,8 @@ export const subtitleRenderingKinds:readonly SubtitleRendering[]=['text','ass','
 export type ClientIdentity={family:string;form?:'tv'|'phone'|'tablet'|'desktop'|'browser'|'cast'|'speaker';platform?:string;platformVersion?:string;os?:string;osVersion?:string;model?:string;app?:string;appVersion?:string};
 /** What the panel or HDMI sink shows, as distinct from what an engine decodes. */
 export type ClientDisplay={width?:number;height?:number;dynamicRanges?:DynamicRange[];maxFrameRate?:number};
-export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;
+export type AudioVariant='dts_core'|'dts_hd_hra'|'dts_hd_ma'|'dtsx'|'dts_express'|'truehd'|'truehd_atmos'|'ac3'|'eac3'|'eac3_joc'|'ac4'|'lpcm';
+export type ClientVideoCodec={chromaSubsampling?:('4:2:0'|'4:2:2'|'4:4:4'|'4:0:0')[];frameRateModes?:('constant'|'variable')[];codec:string;profiles?:string[];maxLevel?:number;bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;
  /** What the decoder decodes. Whether it can be shown is the display's list or the engine's `toneMapsHdr`. */
  dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];interlaced?:boolean;
  /** The only sample entries the engine plays from an original file (AVFoundation: `hvc1`, not `hev1`). */
@@ -53,10 +54,10 @@ export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;b
 /** One operating point of a video decoder. `bitDepths` absent: every depth the codec lists. */
 export type ClientVideoLimit={bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxLevel?:number};
 /** An audio codec the engine decodes itself. */
-export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
+export type ClientAudioCodec={variants?:AudioVariant[];codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 /** An audio codec the engine can hand to the audio output undecoded. Used only while
  * `audioOutput.route` is hdmi, arc, earc, optical or spdif and the viewer has not turned it off. */
-export type ClientAudioPassthrough={codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
+export type ClientAudioPassthrough={variants?:AudioVariant[];codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 export type ClientTransport={transport:ProfileTransportKind;containers?:string[];video?:string[];audio?:string[]};
 export type ClientAudioOutput={route?:string;maxChannels?:number;spatial?:boolean};
 /** The viewer's "if something looks or sounds wrong" switches. They only ever narrow. */
@@ -90,6 +91,8 @@ export type StoredCapabilities=Readonly<{revision:number;capabilities:Capability
 
 const token=/^[a-z0-9][a-z0-9_.+-]{0,31}$/;
 const ranges:readonly string[]=['sdr','hdr10','hdr10plus','hlg','dolby_vision'];
+const audioVariants:readonly string[]=['dts_core','dts_hd_hra','dts_hd_ma','dtsx','dts_express','truehd','truehd_atmos','ac3','eac3','eac3_joc','ac4','lpcm'];
+const variantsAccepted=(v:unknown)=>v===undefined||Array.isArray(v)&&v.length<=16&&v.every(x=>audioVariants.includes(x as string));
 const evidences:readonly string[]=['declared','probed','mixed'];
 const text=(v:unknown,max:number)=>v===undefined||typeof v==='string'&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
 const int=(v:unknown,max:number)=>v===undefined||Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=max;
@@ -111,14 +114,16 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if((v.bitDepths??[]).length>8||!(v.bitDepths??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=16))return path+'.video.'+v.codec+'.bitDepths';
   if(v.limits!==undefined&&!(Array.isArray(v.limits)&&v.limits.length<=16&&v.limits.every(limitAccepted)))return path+'.video.'+v.codec+'.limits';
   if((v.dolbyVisionProfiles??[]).length>16||!(v.dolbyVisionProfiles??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=31))return path+'.video.'+v.codec+'.dolbyVisionProfiles';
+  if(v.chromaSubsampling!==undefined&&!(Array.isArray(v.chromaSubsampling)&&v.chromaSubsampling.length<=4&&v.chromaSubsampling.every(x=>['4:2:0','4:2:2','4:4:4','4:0:0'].includes(x))))return path+'.video.'+v.codec+'.chromaSubsampling';
+  if(v.frameRateModes!==undefined&&!(Array.isArray(v.frameRateModes)&&v.frameRateModes.length<=2&&v.frameRateModes.every(x=>['constant','variable'].includes(x))))return path+'.video.'+v.codec+'.frameRateModes';
   if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
  }
  for(const a of e.audio??[]){
-  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!int(a.maxBitDepth,64)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
+  if(!variantsAccepted(a.variants)||typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!int(a.maxBitDepth,64)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
   if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audio.'+a.codec+'.evidence';
  }
  for(const a of e.audioPassthrough??[]){
-  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!tokens(a.objectAudio,4))return path+'.audioPassthrough.'+a.codec;
+  if(!variantsAccepted(a.variants)||typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!tokens(a.objectAudio,4))return path+'.audioPassthrough.'+a.codec;
   if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audioPassthrough.'+a.codec+'.evidence';
  }
  for(const t of e.transports??[]){
@@ -438,7 +443,7 @@ export function mpvEngine(native:EngineCapabilities,facts:MpvFacts={}):EngineCap
  // Without a hardware decoder, H.264 10-bit and the heavy codecs stay within the software ceiling.
  for(const x of video)if(['h264','hevc','vp9','av1'].includes(x.codec)&&!hard.has(x.codec)){x.maxWidth=softWidth;x.maxHeight=softHeight;}
  const audio:ClientAudioCodec[]=[
-  a('aac',8),a('mp3',2),a('mp2',2),a('ac3',6),a('eac3',8),a('dts',8),a('truehd',8),a('flac',8),a('alac',8),a('opus',8),a('vorbis',8),a('pcm',8),a('wmav2',2),a('wmapro',8),
+  a('aac',8),a('mp3',2),a('mp2',2),a('ac3',6),a('eac3',8,{variants:['eac3','eac3_joc']}),a('dts',8,{variants:['dts_core','dts_hd_hra','dts_hd_ma','dtsx','dts_express']}),a('truehd',8,{variants:['truehd','truehd_atmos']}),a('flac',8),a('alac',8),a('opus',8),a('vorbis',8),a('pcm',8),a('wmav2',2),a('wmapro',8),
  ].filter(x=>!(facts.missingAudio??[]).includes(x.codec));
  const videoNames=video.map(x=>x.codec),audioNames=audio.map(x=>x.codec);
  const rendering:SubtitleRendering[]=['text'];
@@ -625,11 +630,13 @@ export type AppleNativeFacts={
  /** `VTIsHardwareDecodeSupported` per codec. */
  hardwareDecode?:{hevc?:boolean;av1?:boolean;dolbyVision?:boolean};
  /** `AVPlayer.availableHDRModes`, and whether the display is currently eligible. */
- hdrModes?:{hdr10?:boolean;hlg?:boolean;dolbyVision?:boolean};
+ hdrModes?:{hdr10?:boolean;hlg?:boolean;dolbyVision?:boolean;hdr10Plus?:boolean};
+ /** Public AVURLAsset MIME eligibility, tested per exact sample entry. */
+ videoEligibility?:{dolbyVision5?:boolean;dolbyVision81?:boolean;dolbyVision84?:boolean;hdr10Plus?:boolean};
  eligibleForHDRPlayback?:boolean;
  screen?:{width:number;height:number;maxFrameRate?:number};
  /** `AVAudioSession.maximumOutputNumberOfChannels`, the current route's port type, and spatial audio. */
- audio?:{maxOutputChannels?:number;route?:string;spatial?:boolean};
+ audio?:{maxOutputChannels?:number;route?:string;spatial?:boolean;currentOutputSampleRate?:number;outputNumberOfChannels?:number;maximumOutputNumberOfChannels?:number;routeUID?:string;eac3JocEligible?:boolean};
 };
 
 /** AVAudioSession port types folded to the route names the server knows. */
@@ -701,7 +708,7 @@ export type AndroidNativeFacts={
  displayHdr?:DynamicRange[];
  screen?:{width:number;height:number;maxFrameRate?:number};
  /** `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` encodings of the *active* sink: what the receiver takes as a bitstream right now. */
- passthrough?:{codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[]}[];
+ passthrough?:{codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];variants?:AudioVariant[]}[];
  /** The active output: hdmi, arc, earc, optical, speaker, headphones, bluetooth, usb. */
  audio?:{maxOutputChannels?:number;route?:string};
  /** The app's own renderers beyond text (a real ASS or PGS renderer in the app). */
@@ -726,7 +733,7 @@ export function androidProfile(options:{family?:'android'|'androidtv'|'firetv';t
  const audio:ClientAudioCodec[]=(base.audio??[]).filter(x=>!facts.audioDecoders||decoded.has(x.codec)).map(x=>({...x,maxChannels:channelsOf(x.codec,x.maxChannels??8),evidence:decoded.has(x.codec)?'probed' as const:'declared' as const}));
  for(const d of facts.audioDecoders??[])if(!audio.some(x=>x.codec===d.codec))audio.push({codec:d.codec,maxChannels:d.maxChannels||8,evidence:'probed'});
  // Passthrough is beside decoding, never instead of it: a codec the device also decodes stays decodable.
- const audioPassthrough:ClientAudioPassthrough[]=(facts.passthrough??[]).map(p=>defined({codec:p.codec,maxChannels:p.maxChannels??8,objectAudio:p.objectAudio,evidence:'probed' as const}));
+ const audioPassthrough:ClientAudioPassthrough[]=(facts.passthrough??[]).map(p=>defined({codec:p.codec,maxChannels:p.maxChannels??8,objectAudio:p.objectAudio,variants:p.variants,evidence:'probed' as const}));
  const videoNames=video.map(x=>x.codec),audioNames=[...new Set([...audio.map(x=>x.codec),...audioPassthrough.map(x=>x.codec)])];
  const transports=(base.transports??[]).map(t=>t.transport==='direct'&&t.video?.length?{...t,video:videoNames,audio:audioNames}:{...t,video:(t.video??[]).filter(x=>videoNames.includes(x)),audio:(t.audio??[]).filter(x=>audioNames.includes(x))});
  const passthroughChannels=Math.max(0,...audioPassthrough.map(x=>x.maxChannels??8));

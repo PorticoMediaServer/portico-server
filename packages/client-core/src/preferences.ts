@@ -4,8 +4,8 @@ import {noteSkipped} from './tolerant.ts';
  * `GET /v1/preferences`. The server owns every default, domain and clamp; a
  * client renders settings from the registry it is handed and never invents a
  * field, a default or a limit of its own. */
-export type PreferenceScope='profile-server'|'profile-device-class';
-export type DeviceClass='web'|'mobile'|'television';
+export type PreferenceScope='profile-server'|'profile-device-class'|'profile-device';
+export type DeviceClass='web'|'mobile'|'tablet'|'television';
 /** `locale` is a string with a semantic domain; `languageList` is an ordered list of language
  * codes (the server's semantic types). There is no `timeZone` type: times are shown in the
  * device's zone, and a server that still publishes such a field has it left out like any other
@@ -19,15 +19,15 @@ export type PreferenceRegistry=Readonly<{revision:string;fields:readonly Prefere
 export type PreferenceValues=Readonly<Record<string,PreferenceValue>>;
 export type PreferenceDocument=Readonly<{scope:PreferenceScope;revision:number;digest:string;activeRevision:number;values:PreferenceValues}>;
 export type PreferenceSnapshot=Readonly<{
- deviceClass:DeviceClass;registry:PreferenceRegistry;documents:readonly PreferenceDocument[];
+ deviceClass:DeviceClass;deviceBound?:boolean;registry:PreferenceRegistry;documents:readonly PreferenceDocument[];
  effective:PreferenceValues;effectiveSource:Readonly<Record<string,string>>;
  clampedFields:readonly string[];registryRevision:string}>;
 /** A patch carries only the keys it changes. `null` removes that scope's
  * override so the registry default becomes effective again. */
 export type PreferencePatch=Readonly<Record<string,PreferenceValue|null>>;
 
-const preferenceScopes:readonly PreferenceScope[]=['profile-server','profile-device-class'];
-const deviceClasses:readonly DeviceClass[]=['web','mobile','television'];
+const preferenceScopes:readonly PreferenceScope[]=['profile-server','profile-device-class','profile-device'];
+const deviceClasses:readonly DeviceClass[]=['web','mobile','tablet','television'];
 const preferenceTypes:readonly PreferenceType[]=['boolean','integer','number','string','string-list','locale','languageList'];
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const counter=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
@@ -117,10 +117,12 @@ export function parsePreferenceSnapshot(raw:unknown):PreferenceSnapshot {
   }
   fields.set(field.key,field);parsed.push(field);
  }
- if(!Array.isArray(raw.documents)||raw.documents.length!==preferenceScopes.length)invalid();
+ if(raw.deviceBound!==undefined&&typeof raw.deviceBound!=='boolean')invalid();
+ const expectedScopes=raw.deviceBound===true?preferenceScopes:preferenceScopes.slice(0,2);
+ if(!Array.isArray(raw.documents)||raw.documents.length!==expectedScopes.length)invalid();
  const seen=new Set<PreferenceScope>();
  const documents=raw.documents.map(entry=>{
-  if(!object(entry)||!preferenceScopes.includes(entry.scope as PreferenceScope)||seen.has(entry.scope as PreferenceScope))invalid();
+  if(!object(entry)||!expectedScopes.includes(entry.scope as PreferenceScope)||seen.has(entry.scope as PreferenceScope))invalid();
   seen.add(entry.scope as PreferenceScope);
   if(!counter(entry.revision)||entry.revision<1||entry.activeRevision!==entry.revision)invalid();
   if(typeof entry.digest!=='string'||!/^[a-f0-9]{64}$/.test(entry.digest))invalid();
@@ -133,7 +135,8 @@ export function parsePreferenceSnapshot(raw:unknown):PreferenceSnapshot {
  const source:Record<string,string>={};
  for(const [name,value] of Object.entries(raw.effectiveSource)){
   if(unknown.has(name))continue;
-  if(!fields.has(name)||!text(value,40))invalid();
+  const field=fields.get(name);
+  if(!field||!text(value,40)||value!=='default'&&value!=='policy'&&!field.scopes.includes(value as PreferenceScope))invalid();
   source[name]=value;
  }
  if(Object.keys(source).length!==fields.size)invalid();
@@ -141,7 +144,7 @@ export function parsePreferenceSnapshot(raw:unknown):PreferenceSnapshot {
  const clamped=new Set<string>();
  for(const name of raw.clampedFields){if(typeof name==='string'&&unknown.has(name))continue;if(typeof name!=='string'||!fields.has(name)||clamped.has(name))invalid();clamped.add(name);}
  return Object.freeze({deviceClass:raw.deviceClass as DeviceClass,
-  registry:Object.freeze({revision:raw.registry.revision,fields:Object.freeze(parsed)}),
+  deviceBound:raw.deviceBound===true,registry:Object.freeze({revision:raw.registry.revision,fields:Object.freeze(parsed)}),
   documents:Object.freeze(documents),effective,effectiveSource:Object.freeze(source),
   clampedFields:Object.freeze([...clamped]),registryRevision:raw.registryRevision as string});
 }
@@ -185,6 +188,7 @@ export function validatePreferencePatch(registry:PreferenceRegistry,scope:Prefer
   if(value===null){out[name]=null;continue;}
   const parsed=parseValue(field,value);
   if(field.allowedValues&&typeof parsed!=='object'&&!field.allowedValues.includes(parsed as number|string))throw new Error(`${String(parsed)} is not an accepted value for ${name}.`);
+  if(typeof parsed==='number'&&(field.min!==undefined&&parsed<field.min||field.max!==undefined&&parsed>field.max))throw new Error(`${String(parsed)} is outside the accepted range for ${name}.`);
   out[name]=parsed;
  }
  return Object.freeze(out);

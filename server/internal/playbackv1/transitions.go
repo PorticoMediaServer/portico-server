@@ -569,6 +569,10 @@ type PostPlayPolicy struct {
 
 func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout) (QueuePostPlay, error) {
 	out := QueuePostPlay{Autoplay: true, CountdownMs: 10000, AutomaticAdvances: l.q.automatic}
+	if currentListeningItem(ctx, tx, l) {
+		out.CountdownMs = 0
+		return out, nil
+	}
 	if s.PostPlay == nil {
 		return out, nil
 	}

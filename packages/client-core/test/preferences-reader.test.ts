@@ -88,3 +88,22 @@ test('disposal ends in-flight work and refuses new reads', async () => {
 test('a selected viewer is required', () => {
   assert.throws(() => new PreferencesReader({request: async () => { throw new Error('unused'); }}, {serverId: '', viewerId: 'v'}));
 });
+
+
+test('confirmed snapshots feed live consumers; late reads cannot undo an applied patch',async()=>{
+ let defer=false,finish!:(value:unknown)=>void;
+ const r=reader(async(_path,method)=>method==='PATCH'?envelope(snapshot(3)):defer?await new Promise(resolve=>{finish=resolve;}):envelope(snapshot(1)));
+ let publications=0;const unsubscribe=r.subscribe(()=>publications++);
+ await r.preferences('web');assert.equal(r.getSnapshot()?.documents[0]?.revision,1);
+ defer=true;const late=r.preferences('web');await new Promise(resolve=>setImmediate(resolve));
+ await r.applyPreferences('profile-server','web',1,{'search.rememberHistory':true});
+ finish(envelope(snapshot(2)));await late;
+ assert.equal(r.getSnapshot()?.documents[0]?.revision,3);assert.equal(publications,2);
+ unsubscribe();r.dispose();assert.equal(r.getSnapshot(),undefined);
+});
+
+test('device-class caches remain separate inside one fenced viewer',async()=>{
+ const r=reader(async(path)=>envelope({...snapshot(),deviceClass:path.endsWith('tablet')?'tablet':'web'}));
+ await r.preferences('web');await r.preferences('tablet');
+ assert.equal(r.getSnapshot('web')?.deviceClass,'web');assert.equal(r.getSnapshot('tablet')?.deviceClass,'tablet');r.dispose();
+});
