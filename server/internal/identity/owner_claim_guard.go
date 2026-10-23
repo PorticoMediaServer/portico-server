@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/dbwork"
 	"time"
 )
 
@@ -16,6 +17,66 @@ type ownerCompletion struct {
 	generation, epoch, moveRevision, expires              int64
 	consumed                                              int64
 	attempt                                               string
+}
+
+func ownerCompletionOperationTx(ctx context.Context, tx *sql.Tx, token string) (string, error) {
+	var operation string
+	err := tx.QueryRowContext(ctx, `SELECT c.operation_id FROM authorization_family_tokens t JOIN identity_owner_completions c ON c.family_id=t.family_id AND c.token_hash=t.token_hash WHERE t.token_hash=?`, token).Scan(&operation)
+	return operation, err
+}
+
+// CheckClaimRequestOwnerTx is only the networking claim edge's captured guard.
+// Once this family has a bound operation, including a terminal one, it can
+// never fall back to general owner authority through this method.
+func (s *Service) CheckClaimRequestOwnerTx(ctx context.Context, tx *sql.Tx, expected Principal) error {
+	if tx == nil || expected.Hash == "" || expected.Authority != "local" || expected.Role != TierOwner {
+		return ErrUnauthorized
+	}
+	operation, err := ownerCompletionOperationTx(ctx, tx, expected.Hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return s.RequireMainProfileTx(ctx, tx, expected)
+	}
+	if err != nil {
+		return err
+	}
+	return s.CheckOwnerClaimTx(ctx, tx, expected, operation)
+}
+
+// ClaimRequestOwnerByDigestTx restores only a claim guard after a process
+// restart. It does not return an ordinary authenticated principal for routes.
+func (s *Service) ClaimRequestOwnerByDigestTx(ctx context.Context, tx *sql.Tx, digest string) (Principal, error) {
+	if tx == nil || digest == "" {
+		return Principal{}, ErrUnauthorized
+	}
+	family, err := s.familyTokenTx(ctx, tx, digest)
+	if err != nil {
+		return Principal{}, err
+	}
+	if err = s.CheckClaimRequestOwnerTx(ctx, tx, family.principal); err != nil {
+		return Principal{}, err
+	}
+	return family.principal, nil
+}
+
+// OwnerClaimAuthority admits an already narrowed token only to the dedicated
+// claim-operation HTTP edge. Ordinary AuthenticateContext remains default-deny.
+func (s *Service) OwnerClaimAuthority(ctx context.Context, bearer string) (Principal, error) {
+	if len(bearer) < 43 || len(bearer) > 2048 || CredentialShaped(bearer) {
+		return Principal{}, ErrUnauthorized
+	}
+	g, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return Principal{}, err
+	}
+	defer g.Rollback()
+	p, err := s.ClaimRequestOwnerByDigestTx(ctx, g.Tx(), Digest(bearer))
+	if err != nil {
+		return Principal{}, err
+	}
+	if p.Grant != GrantOwnerClaimCompletion {
+		return Principal{}, ErrForbidden
+	}
+	return p, nil
 }
 
 func ownerCompletionTx(ctx context.Context, tx *sql.Tx, operation string) (ownerCompletion, error) {

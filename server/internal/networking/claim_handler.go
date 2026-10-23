@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -62,6 +63,7 @@ type ClaimStatus struct {
 	ApprovalRequest          *ClaimApprovalRequest `json:"approvalRequest,omitempty"`
 }
 type ClaimHandler struct {
+	recoveryWake        chan struct{}
 	webWatches          sync.Map
 	certificates        *CertificateManager
 	remote              *RemoteManager
@@ -88,7 +90,7 @@ func NewClaimHandler(store *SQLiteStore, runner *AuthorityRunner, transport Tran
 	if store == nil || runner == nil || transport == nil || signer == nil || authorize == nil || name == nil {
 		return nil, ErrInvalid
 	}
-	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
+	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, recoveryWake: make(chan struct{}, 1), endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
 }
 
 // HTTPRegistrar is the route binding surface shared by net/http and the API registry.
@@ -136,6 +138,9 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return checkClaimRequest(ctx)
 	})
 	if e != nil {
+		if r.Method == http.MethodPost {
+			h.wakeClaimRecovery()
+		}
 		h.failure(w, r, e)
 		return
 	}
@@ -332,9 +337,6 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 		return ClaimStatus{}, e
 	}
 	result := ClaimStatus{State: "unconfigured", Identity: ClaimIdentityExpected{id.ServerID, id.ResetGeneration}, Actions: []string{"prepare"}}
-	if !active.Valid {
-		return result, nil
-	}
 	var pending sql.NullString
 	if e = tx.QueryRowContext(ctx, `SELECT pending_operation_id FROM networking_claim_identity WHERE singleton=1`).Scan(&pending); e != nil {
 		return ClaimStatus{}, e
@@ -342,11 +344,19 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	if pending.Valid {
 		active = pending
 	}
+	// The first Local-to-Portico switch has only a pending pointer. It must be
+	// visible without inventing an active or installed central claim.
+	if !active.Valid {
+		return result, nil
+	}
 	stored, e := loadIntentTx(ctx, tx, active.String)
 	if e != nil {
 		return ClaimStatus{}, e
 	}
 	v := stored.Intent
+	if pending.Valid && (v.ServerID != id.ServerID || v.LocalGeneration != id.ResetGeneration || !bytes.Equal(v.PublicKey, id.PublicKey)) {
+		return ClaimStatus{}, ErrStale
+	}
 	result.State = string(v.Stage)
 	result.Operation = &ClaimExpected{v.OperationID, v.LocalGeneration, v.Revision}
 	result.AccountID = v.AccountID

@@ -487,7 +487,18 @@ func (s *Service) linkClaimOwnerTx(ctx context.Context, tx *sql.Tx, v networking
 		return networking.ErrStale
 	}
 	if v.Purpose == "switch" && v.CurrentOwnerAccountID == "" {
-		return s.identity.InstallOwnerClaimTx(ctx, tx, v.OperationID)
+		err := s.identity.InstallOwnerClaimTx(ctx, tx, v.OperationID)
+		switch {
+		case errors.Is(err, identity.ErrMoveCollision):
+			return networking.ErrOwnerCollision
+		case errors.Is(err, identity.ErrUnauthorized), errors.Is(err, identity.ErrForbidden), errors.Is(err, identity.ErrProfileChanged), errors.Is(err, identity.ErrMoveConfirmation), errors.Is(err, identity.ErrSignInKindLocal), errors.Is(err, identity.ErrSignInKindPortico):
+			// The central commit may already exist. Classify a rejected local
+			// capture as stale so the caller reconciles its durable deny-only
+			// intent rather than presenting a retry as a fresh authorization.
+			return networking.ErrStale
+		default:
+			return err
+		}
 	}
 	if v.Purpose != "setup" {
 		return nil

@@ -38,6 +38,12 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 
 		secret := strings.TrimPrefix(header, "Bearer ")
 		p, e := id.Authenticate(secret)
+		// A narrowed owner token is recognized on exactly these operation
+		// reads/continuation calls. It cannot prepare or approve another claim,
+		// cancel the installed central claim, or configure routes/certificates.
+		if e != nil && (r.Method == http.MethodGet && r.URL.Path == "/v1/networking/claim" || r.Method == http.MethodPost && (r.URL.Path == "/v1/networking/claim/continue" || r.URL.Path == "/v1/networking/claim/await-approval")) {
+			p, e = id.OwnerClaimAuthority(r.Context(), secret)
+		}
 		if e != nil && (r.URL.Path == "/v1/networking/claim" || strings.HasPrefix(r.URL.Path, "/v1/networking/claim/")) {
 			pending, proof, setupErr := id.SetupClaimAuthority(r.Context(), secret)
 			if setupErr == nil {
@@ -53,7 +59,7 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 		}
 		resume, _ := json.Marshal(claimResume{Digest: p.Hash, AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch})
 		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, WebOrigin: d.ownerSwitchWebOrigin(r), Guard: func(ctx context.Context, tx *sql.Tx) error {
-			e := id.RequireMainProfileTx(ctx, tx, p)
+			e := id.CheckClaimRequestOwnerTx(ctx, tx, p)
 			if errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, identity.ErrForbidden) {
 				return networking.ErrClaimOwnerRequired
 			}
@@ -115,14 +121,14 @@ func NetworkingClaimResume(id *identity.Service) func(string) networking.ClaimRe
 			return nil
 		}
 		return func(ctx context.Context, tx *sql.Tx) error {
-			p, e := id.PrincipalByDigestTx(ctx, tx, r.Digest)
+			p, e := id.ClaimRequestOwnerByDigestTx(ctx, tx, r.Digest)
 			if errors.Is(e, identity.ErrUnauthorized) || e == nil && (p.Authority != "local" || p.Role != "owner" || p.AccountID != r.AccountID || p.ProfileID != r.ProfileID || p.Epoch != r.Epoch) {
 				return networking.ErrClaimOwnerRequired
 			}
 			if e != nil {
 				return e
 			}
-			return id.RequireMainProfileTx(ctx, tx, p)
+			return id.CheckClaimRequestOwnerTx(ctx, tx, p)
 		}
 	}
 }
