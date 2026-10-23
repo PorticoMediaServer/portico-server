@@ -57,7 +57,7 @@ func (r EpisodeAuthorityResolver) ResolveEpisodeReadSourceTx(ctx context.Context
 				return policy.CheckTx(ctx, tx)
 			}})
 	case "local":
-		if r.LocalStorage == nil {
+		if r.LocalStorage == nil || r.Sources.mounts == nil {
 			err = ErrEpisodeAuthority
 		} else {
 			source.roots = sourceaccess.New(r.LocalStorage, r.Sources.mounts)
