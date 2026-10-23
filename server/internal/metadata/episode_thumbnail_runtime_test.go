@@ -203,8 +203,8 @@ func TestEpisodeThumbnailAvailabilityUsesRealVideoAndRangesWithoutAutomaticGates
 		}
 		return ok
 	}
-	// No mode column exists on the current checked baseline; this actual
-	// availability path still runs without guessing a mode/provider default.
+	// Availability does not consult the automatic mode or provider policy;
+	// an unknown duration is an invocation error, not an availability gate.
 	if !read() || sources.target.EpisodeID != target.ID || sources.target.SourceRevision != "revision-a" {
 		t.Fatal("real video/range target absent", sources.target)
 	}
