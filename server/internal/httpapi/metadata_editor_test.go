@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"image"
@@ -57,6 +58,9 @@ func editorRequest(t *testing.T, h http.Handler, method, path, token, contentTyp
 		reader = bytes.NewReader(body)
 	}
 	r := httptest.NewRequest(method, path, reader)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(ctx)
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -73,6 +77,9 @@ func editorRequest(t *testing.T, h http.Handler, method, path, token, contentTyp
 func editorRequestWithHeader(t *testing.T, h http.Handler, method, path, token string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(method, path, bytes.NewReader(nil))
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(ctx)
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}

@@ -27,12 +27,13 @@ func TestArtworkRepresentationsBoundBytesDimensionsAndKeepAlpha(t *testing.T) {
 				img.SetNRGBA(x, y, color.NRGBA{uint8(random), uint8(random >> 8), uint8(random >> 16), a})
 			}
 		}
-		for _, edge := range []int{artworkSmallEdge, artworkLargeEdge} {
+		for _, choice := range []struct{ edge, ceiling int }{{400, 500000}, {1280, 500000}, {1920, 500000}, {2560, 888888}} {
+			edge := choice.edge
 			data, w, h, err := encodeDisplayArtwork(img, edge, false)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(data) > artworkDisplayBytes || max(w, h) > edge || (w*2-h*3 > 3 || w*2-h*3 < -3) {
+			if len(data) > choice.ceiling || max(w, h) > min(edge, 2400) || (w*2-h*3 > 3 || w*2-h*3 < -3) {
 				t.Fatal("unbounded or distorted representation", len(data), w, h)
 			}
 			decoded, format, err := image.Decode(bytes.NewReader(data))

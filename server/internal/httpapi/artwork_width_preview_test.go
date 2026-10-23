@@ -23,7 +23,7 @@ func TestArtworkWidthPrefersExplicitWidth(t *testing.T) {
 	}{
 		{"size=thumbnail&w=800", 800},
 		{"size=thumbnail&w=200", 400},
-		{"size=thumbnail&w=10000", 1920},
+		{"size=thumbnail&w=10000", 2560},
 		{"size=thumbnail", 400},
 		{"size=full", 1920},
 		{"", 1920},
