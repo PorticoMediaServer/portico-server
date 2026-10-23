@@ -86,7 +86,7 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		sub := subtitles.ChooseAutomatic(automaticSubtitles(values, preview.Trace, "en-US"), []subtitles.Track{{ID: "english", Language: "eng", Format: "srt", Origin: "embedded"}})
+		sub := subtitles.ChooseAutomatic(automaticSubtitles(values, preview.Trace, "en-US"), []subtitles.AutoCandidate{{ID: "english", Language: "eng"}})
 		if (sub != nil) != (tc.want != 1) {
 			t.Fatalf("foreign subtitles ignored actual selected audio: stream=%d subtitle=%+v", tc.want, sub)
 		}
