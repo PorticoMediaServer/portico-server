@@ -126,7 +126,8 @@ export class DecodeAudioRender {
     if (!session) { this.processingReport = ''; return; }
     const primary = this.primary;
     const configured = !this.starting && primary?.key === sessionKey(session) && primary.deck.startFrame !== undefined && !primary.deck.failure && snapshot.audioEffects.rendering && snapshot.phase !== 'error' && snapshot.phase !== 'ended';
-    const facts = {eqApplied: false, levelingApplied: !!configured && snapshot.audioEffects.settings.normalization !== 'off'};
+    const gain = primary?.deck.norm.gain.value;
+    const facts = {eqApplied: false, levelingApplied: !!configured && gain !== undefined && Number.isFinite(gain) && gain !== 1};
     const key = `${snapshot.intentId}:${session.id}:${session.generation}:${facts.levelingApplied}`;
     if (key === this.processingReport) return;
     this.processingReport = key;

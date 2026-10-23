@@ -35,7 +35,7 @@ import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {saveDeviceEqualizer} from './audio/equalizer-store';
 import type {BrowserAudioFacts} from './audio/output';
-import {listeningDiagnostic} from './listening-effects';
+import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
@@ -143,7 +143,12 @@ export class PlayerSlot implements MediaPlayer {
 
   get settling(): boolean { return !!this.real && !this.held && this.real.settling; }
   applyAudioEffects(snapshot: PlaybackSnapshot): void { this.real?.applyAudioEffects?.(snapshot); }
-  get nativeSurfaceActive(): boolean { return !this.held && !!this.real?.loaded && this.real.nativeSurfaceActive === true; }
+  get nativeSurfaceActive(): boolean {
+    const real = this.real, source = this.source;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.nativeSurfaceActive !== true) return false;
+    const observed = real.observe();
+    return observed.generation === source.generation && !['idle', 'ended', 'error'].includes(observed.state);
+  }
   get mounted(): boolean { return !!this.real; }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
@@ -572,7 +577,10 @@ export class WebPlayback implements PlaybackAdapter {
       this.blocked = true;
       if (this.render) {
         this.renderRetained = this.render.transportPosition();
-        if (service.getSnapshot().audioEffects.prepared) service.audioPreparationFailed('Network changed; the prepared audio edge was cancelled.');
+        if (service.getSnapshot().audioEffects.prepared) {
+          listeningDiagnostic('audio_transition_unavailable');
+          (service as unknown as ListeningEffectsPort).audioPreparationFailed();
+        }
         this.render.dispose();
         this.render = undefined;
       }
