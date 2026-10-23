@@ -14,11 +14,14 @@ try {
   const root=fileURLToPath(new URL('./browser/',import.meta.url));
   const fixed=process.env.PORTICO_READER_MODE==='fixed';
   const floor=process.env.PORTICO_READER_MODE==='floor';
+  const retainedBuild=process.env.PORTICO_READER_BUILD_DIR;
+  assert(!retainedBuild||floor,'only the explicit floor artifact may be supplied prebuilt');
+  const built=retainedBuild??join(scratch,'dist');
   const fixtures=floor?{}:fixed?{'/fixture.pdf':{bytes:await readFile(process.env.PORTICO_READER_PDF),mime:'application/pdf'},'/fixture.cbz':{bytes:await readFile(process.env.PORTICO_READER_CBZ),mime:'application/zip'}}
     :{'/publication.epub':{bytes:await readFile(process.env.PORTICO_READER_EPUB),mime:'application/epub+zip'}};
-  if(floor)await buildFloorWitness(join(scratch,'dist'),process.env.PORTICO_READER_PDF,process.env.PORTICO_READER_CBZ);
+  if(floor&&!retainedBuild)await buildFloorWitness(built,process.env.PORTICO_READER_PDF,process.env.PORTICO_READER_CBZ);
   else await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true,rolldownOptions:{input:join(root,fixed?'fixed.html':'index.html')}}});
-  server=await preview({root,configFile:false,build:{outDir:join(scratch,'dist')},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
+  server=await preview({root,configFile:false,build:{outDir:built},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
     const fixture=fixtures[req.url];if(fixture){res.setHeader('Content-Type',fixture.mime);res.setHeader('Content-Length',fixture.bytes.length);res.end(fixture.bytes);}else next();
   });}}]});
   const httpPort=server.httpServer.address().port;
