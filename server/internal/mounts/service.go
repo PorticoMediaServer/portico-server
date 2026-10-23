@@ -63,6 +63,7 @@ type Service struct {
 	// NativeBusy is installed by the remote source registry for playback removal safety.
 	NativeBusy            func(string) bool
 	NativeInvalidated     func(string)
+	NativeSourceCandidate func(context.Context, []byte, string, func(*sql.Tx) error) (*SourceCandidatePublication, error)
 	commands              sync.Mutex
 	db                    *sql.DB
 	root, private, helper string
@@ -238,9 +239,9 @@ func (s *Service) get(id string) (Mount, error) {
 	return Mount{}, sql.ErrNoRows
 }
 func (s *Service) Create(ctx context.Context, input CreateInput) (Mount, error) {
-	return s.create(ctx, input, nil)
+	return s.create(ctx, input, nil, nil)
 }
-func (s *Service) create(ctx context.Context, input CreateInput, record func(*sql.Tx, Mount) error) (Mount, error) {
+func (s *Service) create(ctx context.Context, input CreateInput, record func(*sql.Tx, Mount) error, authorize func(*sql.Tx) error) (Mount, error) {
 	select {
 	case s.validation <- struct{}{}:
 		defer func() { <-s.validation }()
@@ -259,6 +260,10 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 		return Mount{}, err
 	}
 	input.Executable = executable
+	publication, err := s.sourceCandidate(ctx, []byte(input.Config), input.Remote, authorize)
+	if err != nil {
+		return Mount{}, err
+	}
 	candidate, err := s.candidateFile([]byte(input.Config))
 	if err != nil {
 		return Mount{}, err
@@ -266,6 +271,11 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 	defer os.Remove(candidate)
 	if err = s.validateCandidate(ctx, executable, digest, input.Remote, candidate); err != nil {
 		return Mount{}, err
+	}
+	if publication != nil {
+		if err = publication.CheckAfterTest(ctx); err != nil {
+			return Mount{}, err
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -327,6 +337,9 @@ func (s *Service) create(ctx context.Context, input CreateInput, record func(*sq
 		}
 		if err == nil && record != nil {
 			err = record(tx, m)
+		}
+		if err == nil && publication != nil {
+			err = publication.CommitTx(ctx, tx, m)
 		}
 		if err == nil {
 			err = gated.Commit()

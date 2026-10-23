@@ -184,7 +184,7 @@ func TestAllocationByteBudgetPreservesUnknownLargeFile(t *testing.T) {
 func TestCreateCommitAbortRecovery(t *testing.T) {
 	s, input := fixture(t)
 	denied := errors.New("injected acceptance failure")
-	_, e := s.create(context.Background(), input, func(*sql.Tx, Mount) error { return denied })
+	_, e := s.create(context.Background(), input, func(*sql.Tx, Mount) error { return denied }, nil)
 	if !errors.Is(e, denied) {
 		t.Fatal(e)
 	}
