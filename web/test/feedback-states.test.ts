@@ -92,14 +92,16 @@ test('CON-18: loading and empty copy keys resolve to the §4.4 wording', () => {
   assert.match((enUS as Record<string, string>)['web.downloads.emptyBody'], /menu/);
 });
 
-test('X-04 addendum: the ServerSetup strings live in web.setup.* with the same wording', () => {
+test('ServerSetup keeps local owner copy and retires the Hosted recovery-owner branch', () => {
   const c = enUS as Record<string, string>;
-  assert.equal(c['web.setup.recoveryTitleHosted'], 'Create a recovery owner');
+  assert.equal(c['web.setup.recoveryTitleHosted'], undefined);
   assert.equal(c['web.setup.recoveryTitleLocal'], 'Create the owner account');
   assert.equal(c['web.setup.mismatch'], c['web.directJoin.mismatch']);
-  assert.equal(c['web.setup.createRecoveryOwner'], 'Create recovery owner');
+  assert.equal(c['web.setup.createRecoveryOwner'], undefined);
+  assert.equal(c['web.setup.recoveryBodyHosted'], undefined);
+  assert.equal(c['web.setup.savedPassword'], undefined);
   assert.equal(c['web.setup.createOwner'], 'Create owner');
-  for (const key of ['web.setup.recoveryTitleHosted', 'web.setup.recoveryTitleLocal', 'web.setup.recoveryBodyHosted', 'web.setup.recoveryBodyLocal', 'web.setup.mismatch', 'web.setup.createRecoveryOwner', 'web.setup.createOwner', 'web.signin.hostedLede', 'web.signin.accountLede']) {
+  for (const key of ['web.setup.recoveryTitleLocal', 'web.setup.recoveryBodyLocal', 'web.setup.mismatch', 'web.setup.createOwner', 'web.signin.hostedLede', 'web.signin.accountLede']) {
     assert.doesNotMatch(c[key], /…|\.\.\./, `${key} has no ellipsis`);
   }
 });
