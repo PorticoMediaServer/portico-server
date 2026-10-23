@@ -1187,6 +1187,69 @@ test('runtime resets a session speed on a new play and rejects unsupported remot
   await assert.rejects(f.runtime.onAction({kind: 'play', fence: f.runtime.getSnapshot().fence!, remote: {id: 'unbound', sequence: '1'}}), /remote_playback_binding_unavailable/);
 });
 
+test('speed shortcuts use only the current subject choices and preserve the actual playback session', async t => {
+  const f = setup(t); await f.runtime.play('movie', 5); await f.arrive();
+  const fence = f.runtime.getSnapshot().fence!, sessionId = fence.sessionId, loads = f.video.loads;
+  assert.deepEqual(f.runtime.speedChoices(fence), [.5,.75,1,1.25,1.5,1.75,2]);
+  await f.runtime.onAction({kind:'step-speed',fence,direction:-1});
+  assert.equal(f.video.playbackRate,.75); assert.equal(f.runtime.getSnapshot().playback.audioEffects.rate,.75);
+  await f.runtime.onAction({kind:'step-speed',fence,direction:1}); assert.equal(f.video.playbackRate,1);
+  for (let i=0;i<8;i++) f.runtime.stepSpeed(fence,1);
+  assert.equal(f.video.playbackRate,2); assert.equal(f.runtime.getSnapshot().session?.id,sessionId); assert.equal(f.video.loads,loads);
+  for (const rate of [NaN,Infinity,.3,2.5,0,-1]) assert.throws(()=>f.runtime.setSpeed(fence,rate),/playback_speed_unavailable/);
+  f.runtime.collapse(fence); assert.throws(()=>f.runtime.stepSpeed(fence,-1),/playback_speed_unavailable/); f.runtime.open(fence);
+  await f.runtime.play('book_file',5); await f.arrive();
+  const book=f.runtime.getSnapshot().fence!; assert.equal(f.runtime.speedChoices(book).at(-1),3);
+  f.runtime.setSpeed(book,2); f.runtime.stepSpeed(book,1); assert.equal(f.video.playbackRate,2.5);
+  assert.throws(()=>f.runtime.stepSpeed(fence,-1),/stale_playback_command/);
+  await f.runtime.play('song_one',5); await f.arrive();
+  const song=f.runtime.getSnapshot().fence!; assert.deepEqual(f.runtime.speedChoices(song),[]);
+  assert.throws(()=>f.runtime.stepSpeed(song,1),/playback_speed_unavailable/); assert.equal(f.video.playbackRate,1);
+});
+
+test('an ordinary browser without a real frame primitive never substitutes a seek or an assumed frame rate', async t => {
+  const f=setup(t); await f.runtime.play('movie',5);await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  await f.runtime.pause(fence);await settle();const seeks=f.video.seeks.length,position=f.runtime.getSnapshot().playback.positionSeconds;
+  assert.equal(f.runtime.canStepFrame(fence),false);
+  await assert.rejects(f.runtime.onAction({kind:'step-frame',fence,direction:1}),/playback_frame_step_unavailable/);
+  assert.equal(f.video.seeks.length,seeks);assert.equal(f.runtime.getSnapshot().playback.positionSeconds,position);
+});
+
+test('paused frame shortcuts call only the actual loaded generation and publish only the engine observation', async t => {
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+  const calls:{direction:number;generation:number}[]=[];
+  const f=setup(t,{}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player=new WebMediaPlayer(video,options);
+    return Object.assign(player,{stepFrame:(direction:-1|1,generation:number)=>{
+      assert.equal(player.loaded,generation);assert.equal(video.paused,true);calls.push({direction,generation});
+      // The controlled decoder reports an actual irregular PTS, never runtime 1/fps arithmetic.
+      f.video.advance(direction===1?5.037:4.991);
+    }});
+  }});
+  await f.runtime.play('movie',5);await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  assert.equal(f.runtime.canStepFrame(fence),false);await assert.rejects(f.runtime.stepFrame(fence,1),/playback_frame_step_unavailable/);
+  await f.runtime.pause(fence);await settle();assert.equal(f.runtime.canStepFrame(fence),true);const seeks=f.video.seeks.length;
+  await f.runtime.onAction({kind:'step-frame',fence,direction:1});await settle();assert.equal(f.runtime.getSnapshot().playback.positionSeconds,5.037);
+  await f.runtime.stepFrame(fence,-1);await settle();assert.equal(f.runtime.getSnapshot().playback.positionSeconds,4.991);
+  assert.deepEqual(calls,[{direction:1,generation:fence.generation},{direction:-1,generation:fence.generation}]);assert.equal(f.video.seeks.length,seeks);
+  f.runtime.collapse(fence);assert.equal(f.runtime.canStepFrame(fence),false);await assert.rejects(f.runtime.stepFrame(fence,1),/playback_frame_step_unavailable/);
+  f.runtime.open(fence);await f.runtime.seek(fence,10);assert.equal(f.runtime.canStepFrame(fence),false);
+});
+
+test('a delayed native frame command cannot publish into a replacement source or retired authority', async t => {
+  const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');const gate=deferred();let effects=0;
+  const f=setup(t,{}, {createRender:null,subtitleSurface:false,createPlayer:(video,options)=>{
+    const player=new WebMediaPlayer(video,options);
+    return Object.assign(player,{stepFrame:async(_direction:-1|1,generation:number)=>{await gate.hold();if(player.loaded!==generation || player.observe().state!=='paused')throw new Error('native_frame_retired');effects++;}});
+  }});
+  await f.runtime.play('movie',5);await f.arrive();const old=f.runtime.getSnapshot().fence!;await f.runtime.pause(old);await settle();
+  const pending=f.runtime.stepFrame(old,1),rejected=assert.rejects(pending,/native_frame_retired|stale_playback_command/);await gate.started;
+  await f.runtime.play('replacement',20);await f.arrive();const next=f.runtime.getSnapshot().fence!;gate.resolve();await rejected;
+  assert.equal(effects,0);assert.deepEqual(f.runtime.getSnapshot().fence,next);assert.equal(f.runtime.getSnapshot().playback.positionSeconds,20);
+  assert.equal(f.runtime.canStepFrame(old),false);await assert.rejects(f.runtime.stepFrame(old,1),/stale_playback_command/);
+  f.invalidate();assert.equal(f.runtime.canStepFrame(next),false);
+});
+
 test('runtime uses the resolved subject preference for both actual engine and service speed', async t => {
   const f = setup(t, {videoSpeed: () => 1.75, audiobookSpeed: () => 1.25});
   for (const [itemId, kind, rate] of [['movie', 'video', 1.75], ['book_file', 'audiobook', 1.25], ['song_one', 'music', 1]] as const) {

@@ -235,6 +235,27 @@ test('a native paint surface belongs only to the loaded current source and disap
   slot.unload(); assert.equal(slot.nativeSurfaceActive, false); slot.dispose();
 });
 
+test('frame commands require an unheld settled paused port with matching loaded and observed generations', async () => {
+  let loaded=0,generation=0,settling=false,state:import('@core/playback-v1/port.ts').PlayerState='paused',calls=0;
+  const slot=new PlayerSlot();
+  const real:PlaybackMediaPort={
+    get loaded(){return loaded},get settling(){return settling},
+    load(){},play(){},pause(){},seek(){},setRate(){},selectSidecarSubtitle(){},
+    stepFrame(direction,expected){assert.equal(direction,1);assert.equal(expected,2);calls++},
+    observe:()=>({generation,state,positionMs:123,rate:1}),onEvent:()=>()=>{},onNotice:()=>()=>{},unload(){},suspend(){},resume(){},dispose(){},
+  };
+  slot.mount(real);slot.load({url:'/source',generation:2,mode:'direct',startPositionMs:123,subtitles:[],autoplay:false});
+  assert.equal(slot.canStepFrame,false);loaded=2;assert.equal(slot.canStepFrame,false);generation=2;assert.equal(slot.canStepFrame,true);
+  settling=true;assert.equal(slot.canStepFrame,false);await assert.rejects(slot.stepFrame(1,2),/playback_frame_step_unavailable/);settling=false;
+  for(state of ['loading','playing','buffering','ended','error','idle'])assert.equal(slot.canStepFrame,false);
+  state='paused';slot.hold(true);assert.equal(slot.canStepFrame,false);slot.hold(false);assert.equal(slot.canStepFrame,true);
+  await assert.rejects(slot.stepFrame(1,1),/playback_frame_step_unavailable/);assert.equal(calls,0);
+  await slot.stepFrame(1,2);assert.equal(calls,1);assert.equal(slot.observe().positionMs,123,'a command receipt cannot invent a resulting frame clock');
+  real.stepFrame=()=>{slot.load({url:'/different-session-same-generation',generation:2,mode:'direct',startPositionMs:0,subtitles:[],autoplay:false});};
+  await assert.rejects(slot.stepFrame(1,2),/stale_playback_command/,'generation reuse cannot validate a replaced source');
+  slot.unload();assert.equal(slot.canStepFrame,false);slot.dispose();
+});
+
 test('a network interruption discards the actual prepared edge silently and retains the same queue session', async ctx => {
   let route = 'ready', changed = () => {}, disposed = 0;
   const t = setup(ctx, {

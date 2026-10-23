@@ -9,6 +9,7 @@ import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeChannel} from '@core/home.ts';
+import {listeningRates, audiobookRates} from '@core/listening.ts';
 import {idempotencyKey, type V1Http} from '@core/playback-v1/http.ts';
 import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import {audioStreamIndex, qualityChoiceOf, qualityRequest, offeredQualities, type QualityChoice} from '@core/playback-v1/choices.ts';
@@ -835,10 +836,36 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: Math.round(Number(track.offsetUs) / 1000)} : {})});
     if (this.current(stack)) this.sync();
   }
+  speedChoices(fence: PlaybackFence): readonly number[] {
+    const stack = this.require(fence);
+    return Object.freeze([...(fence.kind === 'channel' || stack.subject?.kind === 'music' ? [] : stack.subject?.kind === 'audiobook' ? audiobookRates : stack.subject?.kind === 'video' ? listeningRates : [])]);
+  }
   setSpeed(fence: PlaybackFence, speed: number): void {
     const stack = this.require(fence);
-    if ((stack.subject?.kind === 'music' || fence.kind === 'channel') && speed !== 1) problem('playback_speed_unavailable');
+    const fixed = stack.subject?.kind === 'music' || fence.kind === 'channel';
+    if (!Number.isFinite(speed) || (fixed ? speed !== 1 : !this.speedChoices(fence).includes(speed))) problem('playback_speed_unavailable');
     this.choices.set('speed', fence.playback, speed); stack.service.setPlaybackRate(speed); stack.web.setRate(speed); this.sync();
+  }
+  stepSpeed(fence: PlaybackFence, direction: -1 | 1): void {
+    this.require(fence);
+    const presentation = this.snapshot.presentation;
+    if ((direction !== -1 && direction !== 1) || !presentation?.expanded || presentation.finished || this.snapshot.dock.remote?.phase === 'playing') problem('playback_speed_unavailable');
+    const offered = this.speedChoices(fence), rate = presentation.rate;
+    if (!offered.length) problem('playback_speed_unavailable');
+    const next = direction === 1 ? offered.find(value => value > rate) : [...offered].reverse().find(value => value < rate);
+    if (next !== undefined) this.setSpeed(fence, next);
+  }
+  canStepFrame(fence: PlaybackFence): boolean {
+    if (!this.matches(fence)) return false;
+    const presentation = this.snapshot.presentation, playback = this.stack.service.getSnapshot();
+    return fence.kind === 'queue' && presentation?.kind === 'video' && presentation.expanded && !presentation.playing && !presentation.finished && !playback.pendingSeek && this.snapshot.dock.remote?.phase !== 'playing' && this.stack.web.slot.loaded === fence.generation && this.stack.web.slot.canStepFrame;
+  }
+  async stepFrame(fence: PlaybackFence, direction: -1 | 1): Promise<void> {
+    const stack = this.require(fence);
+    if ((direction !== -1 && direction !== 1) || !this.canStepFrame(fence)) problem('playback_frame_step_unavailable');
+    await stack.web.slot.stepFrame(direction, fence.generation);
+    this.require(fence);
+    // The port's actual ordinary observations own the frame's position; no seek or clock guess.
   }
   audioEngineFacts(fence: PlaybackFence) { return this.require(fence).web.audioFacts(); }
   async setEqualizer(fence: PlaybackFence, settings: EqualizerSettings): Promise<void> {
@@ -864,6 +891,8 @@ export class WebShellPlaybackRuntime {
       case 'previous': await this.previous(action.fence); return;
       case 'next': await this.next(action.fence); return;
       case 'seek': if (action.seconds === undefined) problem('invalid_playback_position'); await this.seek(action.fence, action.seconds); return;
+      case 'step-speed': if (action.direction === undefined) problem('playback_speed_unavailable'); this.stepSpeed(action.fence, action.direction); return;
+      case 'step-frame': if (action.direction === undefined) problem('playback_frame_step_unavailable'); await this.stepFrame(action.fence, action.direction); return;
       case 'expand': this.open(action.fence); return;
       case 'collapse': this.collapse(action.fence); return;
       case 'stop': await this.stop(action.fence); return;

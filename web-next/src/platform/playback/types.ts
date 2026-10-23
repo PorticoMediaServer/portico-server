@@ -72,6 +72,7 @@ export type WebPlaybackRuntimeSnapshot = Readonly<{
 export type WebPlaybackAction = Readonly<{
   kind: string; fence: PlaybackFence; remote?: Readonly<{id: string; sequence: string}>;
   seconds?: number; volume?: number; shuffle?: boolean; repeat?: 'off' | 'one' | 'all';
+  direction?: -1 | 1;
 }>;
 export type WebPlaybackTransition = DockTransition;
 export type WebPlaybackElement = VideoLike;

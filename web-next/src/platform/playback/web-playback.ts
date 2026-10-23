@@ -45,6 +45,9 @@ export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityR
 
 /** Structural native/web media port. A platform adapter owns one generation at a time. */
 export type PlaybackMediaPort = MediaPlayer & {
+  /** Actual decoder frame command only. The adapter must recheck this loaded generation at
+   * execution; ordinary media observations, never the request, supply the resulting clock. */
+  stepFrame?(direction: -1 | 1, generation: number): void | Promise<void>;
   /** Validated session/processing input. Native adapters serialize commands and fence by session+generation. */
   applyAudioEffects?(snapshot: PlaybackSnapshot): void;
   readonly nativeSurfaceActive?: boolean;
@@ -150,6 +153,18 @@ export class PlayerSlot implements MediaPlayer {
     return observed.generation === source.generation && !['idle', 'ended', 'error'].includes(observed.state);
   }
   get mounted(): boolean { return !!this.real; }
+  get canStepFrame(): boolean {
+    const real = this.real, source = this.source;
+    if (this.held || !source || !real || !real.loaded || real.loaded !== source.generation || real.settling || typeof real.stepFrame !== 'function') return false;
+    const observed = real.observe();
+    return observed.generation === source.generation && observed.state === 'paused';
+  }
+  async stepFrame(direction: -1 | 1, generation: number): Promise<void> {
+    if ((direction !== -1 && direction !== 1) || this.source?.generation !== generation || !this.canStepFrame) throw new Error('playback_frame_step_unavailable');
+    const real = this.real!, source = this.source;
+    await real.stepFrame!(direction, generation);
+    if (this.real !== real || this.source !== source || this.source?.generation !== generation || !this.canStepFrame) throw new Error('stale_playback_command');
+  }
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
 
