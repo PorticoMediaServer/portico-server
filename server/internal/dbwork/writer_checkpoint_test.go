@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// The writer copies pages into the database only as a backstop; readers and
-// the maintenance schedule keep the policy's threshold.
-func TestWriterAutomaticCheckpointIsOnlyABackstop(t *testing.T) {
+// Only read/maintenance connections checkpoint; the committing writer must
+// never inherit a synchronous database copy from the public pool's policy.
+func TestWriterCheckpointStaysOnMaintenanceConnections(t *testing.T) {
 	db, err := OpenHandle(filepath.Join(t.TempDir(), "writer.sqlite"), DefaultPolicy())
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +24,7 @@ func TestWriterAutomaticCheckpointIsOnlyABackstop(t *testing.T) {
 	if err = db.QueryRow(`PRAGMA wal_autocheckpoint`).Scan(&reader); err != nil {
 		t.Fatal(err)
 	}
-	if writer != writerWALAutocheckpoint || reader != DefaultPolicy().WALAutocheckpoint {
+	if writer != 0 || reader != DefaultPolicy().WALAutocheckpoint {
 		t.Fatalf("writer %d reader %d", writer, reader)
 	}
 	if CheckpointCopyInterval >= CheckpointRegularInterval {
