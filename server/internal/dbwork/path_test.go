@@ -1,10 +1,12 @@
 package dbwork
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -14,6 +16,7 @@ func TestPolicyDSNKeepsLiteralPathSeparateFromQuery(t *testing.T) {
 		"/data/fresh #00/server.sqlite",
 		"/data/server?mode=memory&cache=shared.sqlite",
 		"relative data/percent%2F space.sqlite",
+		"/data/wal_autocheckpoint(1000).sqlite",
 	} {
 		for _, writer := range []bool{false, true} {
 			var dsn string
@@ -38,6 +41,13 @@ func TestPolicyDSNKeepsLiteralPathSeparateFromQuery(t *testing.T) {
 			params, err := url.ParseQuery(query)
 			if err != nil || len(params) != 2 || params.Get("_txlock") != "immediate" || len(params["_pragma"]) != 8 {
 				t.Fatalf("filename changed policy parameters: %q: %v", query, err)
+			}
+			checkpoint := DefaultPolicy().WALAutocheckpoint
+			if writer {
+				checkpoint = writerWALAutocheckpoint
+			}
+			if !slices.Contains(params["_pragma"], fmt.Sprintf("wal_autocheckpoint(%d)", checkpoint)) {
+				t.Fatalf("writer=%v checkpoint missing from %q", writer, query)
 			}
 		}
 	}
