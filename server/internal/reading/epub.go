@@ -76,6 +76,16 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openEPUBArchive(ctx, a)
+}
+func OpenSequentialEPUB(ctx context.Context, source SequentialSource) (*EPUB, error) {
+	a, err := openSequentialArchive(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return openEPUBArchive(ctx, a)
+}
+func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 	if a.files["META-INF/encryption.xml"] != nil || a.files["META-INF/rights.xml"] != nil {
 		return nil, ErrInvalid
 	}
@@ -100,12 +110,12 @@ func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
 	if err = decodeXML(b, &p); err != nil || len(p.Manifest) == 0 || len(p.Manifest) > MaxEntries || len(p.Spine.Items) == 0 {
 		return nil, ErrInvalid
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, Direction: "ltr"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
 	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
 		return nil, ErrLimit
 	}
-	if p.Spine.Direction == "rtl" {
-		e.Metadata.Direction = "rtl"
+	if p.Spine.Direction == "rtl" || p.Spine.Direction == "ltr" {
+		e.Metadata.Direction = p.Spine.Direction
 	}
 	ids := map[string]string{}
 	for _, item := range p.Manifest {

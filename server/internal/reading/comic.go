@@ -36,7 +36,17 @@ func OpenComic(ctx context.Context, r io.ReaderAt, size int64) (*Comic, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Comic{archive: a, Metadata: Metadata{Direction: "ltr"}}
+	return openComicArchive(ctx, a)
+}
+func OpenSequentialComic(ctx context.Context, source SequentialSource) (*Comic, error) {
+	a, err := openSequentialArchive(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return openComicArchive(ctx, a)
+}
+func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
+	c := &Comic{archive: a}
 	for _, name := range a.order {
 		switch extension(name) {
 		case ".jpg", ".jpeg", ".png", ".webp":
