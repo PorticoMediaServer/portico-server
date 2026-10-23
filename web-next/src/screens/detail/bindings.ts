@@ -8,6 +8,7 @@ import {createRecommendations} from './recommendations';
 import {versionDeletionService, deletionAllowed, type VersionDeletePreview} from '@core/administration.ts';
 import {findLibraryFile, libraryFolders, folderOfPath, separateLibraryFile, canMergeTitles, mergeTitles, SPLITTABLE_KINDS} from '@core/title-identity.ts';
 import {validateContentEntry, type ContentEntry} from '@core/library-content.ts';
+import {titleView} from './view-state';
 
 /** Constructor is inert. Only select/readFileInfo/readVersions perform reads. */
 export function createDetailBindings(context: ScreenContext) {
@@ -15,8 +16,13 @@ export function createDetailBindings(context: ScreenContext) {
   const service = new DetailService({api: life.api, scope: context.scope, requestId: async () => { life.assert(); return crypto.randomUUID(); }});
   const options = new PlaybackOptionsClient(localV1Http(life.api));
   const recommendations = createRecommendations(context);
+  const view = titleView('related', ['related', 'details', 'extras'], life.assert);
+  let viewIdentity = '';
   let selected: DetailTarget | undefined, intent = 0;
+  let subject: Readonly<{itemId: string; libraryId: string; title: string}> | undefined;
+  const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {itemId: data.item.id, libraryId: data.scope.libraryId, title: data.item.title}; });
   const fileReads = new WeakSet<FileInfoProjection>();
+  const fileContexts = new WeakMap<DetailProjection, FileInfoProjection>();
   const previews = new WeakMap<VersionDeletePreview, Readonly<{data: DetailProjection; fileId: string}>>();
   const current = (data: DetailProjection) => {
     life.assert();
@@ -30,6 +36,8 @@ export function createDetailBindings(context: ScreenContext) {
     const libraryId = 'libraryId' in target ? target.libraryId : parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(target.itemId)}), 'GET', undefined, signal)).libraryId;
     life.assert(); if (generation !== intent) return;
     signal?.throwIfAborted();
+    const identity = JSON.stringify([libraryId, target.itemId]);
+    if (identity !== viewIdentity) { viewIdentity = identity; view.reset(); }
     selected = {libraryId, itemId: target.itemId};
     const cancel = () => { if (generation === intent) service.cancel(); }; signal?.addEventListener('abort', cancel, {once: true});
     try { await service.select(selected); signal?.throwIfAborted(); } finally { signal?.removeEventListener('abort', cancel); }
@@ -38,7 +46,12 @@ export function createDetailBindings(context: ScreenContext) {
     current(data);
     const value = await readFileInfo(life.api, context.scope, data.scope, {cursor, limit: 40}, life.signal(signal));
     current(data);
-    if (value.scope.viewerFence !== data.scope.viewerFence || value.revision.catalog !== data.revision.catalog || value.revision.viewer !== data.revision.viewer) throw new DOMException('File facts changed', 'AbortError');
+    // FileInfo uses the server's Home authority fence; detail has its own fence.
+    // Their library revisions agree, while continuations stay in FileInfo's own domain.
+    if (value.revision.catalog !== data.revision.catalog || value.revision.viewer !== data.revision.viewer) throw new DOMException('File facts changed', 'AbortError');
+    const before = fileContexts.get(data);
+    if (cursor && (!before || value.scope.viewerFence !== before.scope.viewerFence)) throw new DOMException('File authority changed', 'AbortError');
+    fileContexts.set(data, value);
     fileReads.add(value);
     return value;
   };
@@ -47,6 +60,7 @@ export function createDetailBindings(context: ScreenContext) {
     if (!fileReads.has(captured) || !captured.manage?.[action] || captured.scope.itemId !== data.item.id) throw new DOMException('File action unavailable', 'AbortError');
     // The panel is informational. Its old permission bit cannot authorize a later command.
     const fresh = await files(data, undefined, signal);
+    if (fresh.scope.viewerFence !== captured.scope.viewerFence) throw new DOMException('File authority changed', 'AbortError');
     if (!fresh.manage?.[action]) throw new DOMException('File permission changed', 'AbortError');
     if (fileId && !fresh.files.some(file => file.id === fileId)) throw new DOMException('File changed', 'AbortError');
     return fresh;
@@ -62,7 +76,8 @@ export function createDetailBindings(context: ScreenContext) {
     return value;
   };
   return {
-    context, service, select, current, recommendations,
+    context, service, select, current, recommendations, view,
+    subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     readFileInfo: files, readVersions: versions,
     async previewDelete(data: DetailProjection, captured: FileInfoProjection, fileId: string, signal?: AbortSignal) {
       await authorizeFileCommand(data, captured, 'delete', fileId, signal);
@@ -122,7 +137,7 @@ export function createDetailBindings(context: ScreenContext) {
       current(data);
       await context.effects.play({...action.playback, startSeconds, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal(signal));
     },
-    dispose() { intent++; selected = undefined; life.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
+    dispose() { intent++; selected = undefined; subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type DetailBindings = ReturnType<typeof createDetailBindings>;

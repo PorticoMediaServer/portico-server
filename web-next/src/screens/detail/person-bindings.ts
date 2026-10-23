@@ -11,6 +11,7 @@ export function createPersonBindings(context: ScreenContext) {
   const collections = new Map<string, WindowedCollection<PersonCredit>>();
   const publish = (next: PersonSnapshot) => { state = Object.freeze(next); for (const listener of listeners) listener(); };
   const clear = () => { for (const collection of collections.values()) collection.dispose(); collections.clear(); };
+  const current = (page: PersonPage) => { life.assert(); if (state.phase !== 'ready' || state.page !== page) throw new DOMException('Person changed', 'AbortError'); };
   const select = async (id: string, role: PersonRole = 'all') => {
     life.assert(); const request = ++generation; read?.abort(); clear(); personId = id;
     const controller = new AbortController(); read = controller;
@@ -54,7 +55,7 @@ export function createPersonBindings(context: ScreenContext) {
     collections.set(key, collection); return collection;
   };
   return {
-    context, select, credits,
+    context, select, credits, current,
     getSnapshot: () => state,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     open(page: PersonPage, credit: PersonCredit) {

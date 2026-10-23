@@ -22,7 +22,9 @@ export function createEntryDetailsBindings(context: ScreenContext, authority: En
     details(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) { guard(captured, signal); context.effects.openEntry(entry); },
     async fileInfo(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) {
       guard(captured, signal); const value = await readFileInfo(life.api, context.scope, target(entry), {limit: 40}, life.signal(signal)); guard(captured, signal);
-      if (value.scope.viewerFence !== captured.scope.privacyFence || String(value.revision.catalog) !== captured.revision.catalogRevision || String(value.revision.viewer) !== captured.revision.viewerRevision) throw new DOMException('File facts revision changed', 'AbortError');
+      // The outer Search/Home context and item FileInfo have distinct server-owned
+      // fence/revision domains. The caller's authority guard validates the former;
+      // readFileInfo validates the fresh item's own scope and target.
       return value;
     },
     async versions(entry: ContentEntry, captured: SelectionContext, signal: AbortSignal) {
@@ -38,7 +40,8 @@ export function createEntryDetailsBindings(context: ScreenContext, authority: En
       guard(captured, signal);
       const action = data?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
       if (!data || !action?.playback || offered.itemId !== item.itemId || !offered.versions.some(value => value.id === versionId)) throw new Error('Version playback unavailable');
-      if (data.scope.viewerFence !== captured.scope.privacyFence || String(data.revision.catalog) !== captured.revision.catalogRevision || String(data.revision.viewer) !== captured.revision.viewerRevision) throw new DOMException('Title revision changed', 'AbortError');
+      // Do not compare a Search aggregate revision/fence to a library's detail revision.
+      // Both owners must still be current, and the item endpoint reauthorizes its read.
       detail.current(data);
       // A manual choice resumes the title now, not the position captured by the menu.
       // This remains an explicit one-shot version start; ordinary Play keeps its automatic choice.

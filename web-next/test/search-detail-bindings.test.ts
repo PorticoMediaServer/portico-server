@@ -8,6 +8,7 @@ import {createSearchBindings} from '../src/screens/search/bindings.ts';
 import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
+import {setImmediate} from 'node:timers/promises';
 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return {promise, resolve}; }
 function setup(handler: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>) {
@@ -149,4 +150,72 @@ test('the entry version command preserves nested authority and refuses a removed
   await assert.rejects(binding.playVersion(entry, 'current-version', captured, new AbortController().signal), {name: 'AbortError'});
   assert.equal(owner.requests(), requests); assert.equal(starts, 0);
   binding.dispose();
+});
+
+test('person credits expose only cursor-addressable pages and retain a bounded window', async () => {
+  let pages = 0, active = 0, concurrent = 0;
+  const owner = setup(async path => {
+    const query = new URL('https://unit.invalid' + path).searchParams;
+    if (query.get('limit') === '1') return {...personPage('one'), pageInfo: {total: 1000000, nextCursor: ''}};
+    const page = Number(query.get('cursor') ?? 0); pages++; active++; concurrent = Math.max(concurrent, active);
+    await setImmediate(); active--;
+    return {...personPage('one'), credits: Array.from({length: 40}, (_, index) => ({creditKind: 'cast', roles: [], media: {id: `title-${page * 40 + index}`, libraryId: 'library', kind: 'movie', title: `title-${page * 40 + index}`}})), pageInfo: {total: 1000000, nextCursor: String(page + 1)}};
+  });
+  const binding = createPersonBindings(owner.context); await binding.select('one');
+  const collection = binding.credits(binding.getSnapshot().page!); collection.ensureRange(0, 10);
+  for (let turn = 0; turn < 8; turn++) await setImmediate();
+  assert.equal(collection.getSnapshot().totalIsLowerBound, true);
+  assert.ok(collection.getSnapshot().total! <= 120); assert.ok(pages <= 2);
+  const last = collection.getSnapshot().total! - 1; collection.ensureRange(last - 10, last);
+  for (let turn = 0; turn < 10; turn++) await setImmediate();
+  assert.equal(concurrent, 1); assert.ok(pages <= 6); assert.ok(collection.residentItems().length <= 200);
+  binding.cancel(); assert.equal(binding.getSnapshot().page, undefined);
+  binding.dispose();
+});
+
+test('a retained title body keeps its tab for the same real identity and resets for another title', async () => {
+  const owner = setup(async path => detailPage(path.includes('/second/') ? 'second' : 'first'));
+  const binding = createDetailBindings(owner.context);
+  await binding.select({libraryId: 'library', itemId: 'first'}); binding.view.tab('details');
+  binding.service.cancel(); await binding.select({libraryId: 'library', itemId: 'first'});
+  assert.equal(binding.view.getSnapshot().tab, 'details');
+  await binding.select({libraryId: 'library', itemId: 'second'});
+  assert.equal(binding.view.getSnapshot().tab, 'related');
+  owner.retire(); assert.throws(() => binding.view.tab('details'), {name: 'AbortError'});
+  binding.dispose();
+});
+
+test('entry playback keeps the source context and item detail in their own revision domains', async () => {
+  const starts: unknown[] = [];
+  const captured: SelectionContext = {scope: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', viewId: 'search', privacyFence: 'search-fence'}, revision: {catalogRevision: '8573', viewerRevision: '0'}};
+  const entry: ContentEntry = {id: 'one', libraryId: 'library', kind: 'movie', title: 'one', navigation: {view: 'item', entityId: 'one'}};
+  const owner = setup(async path => path.includes('/playback-options') ? {itemId: 'one', versions: [{id: 'grouped-version', durationMs: 1000}], resume: {positionMs: 500, partIndex: 0}} : {...detailPage('one'), scope: {...detailPage('one').scope, viewerFence: 'detail-fence'}, revision: {catalog: 2189, viewer: 0}, actions: [{id: 'play', labelKey: 'title.play', enabled: true, playback: {itemId: 'one', startMs: 0}}]});
+  const binding = createEntryDetailsBindings({...owner.context, effects: {...owner.context.effects, play: async target => { starts.push(target); }}}, {isCurrent: value => value === captured});
+  await binding.playVersion(entry, 'grouped-version', captured, new AbortController().signal);
+  assert.deepEqual(starts, [{libraryId: 'library', itemId: 'one', startSeconds: 0.5, versionId: 'grouped-version'}]);
+  binding.dispose();
+});
+
+test('lazy FileInfo keeps its own authority fence and rejects a changed fence before a command', async () => {
+  let reads = 0; const writes: string[] = [];
+  const owner = setup(async (path, method) => {
+    if (method !== 'GET') { writes.push(path); throw new Error('A changed file authority cannot reach a command'); }
+    if (path.includes('/file-info')) return {scope: {...detailPage('one').scope, viewerFence: ++reads === 1 ? 'file-fence' : 'changed-file-fence'}, revision: {catalog: 1, viewer: 1}, kind: 'movie', files: [], manage: {delete: true, split: false, merge: false}};
+    return detailPage('one');
+  });
+  const binding = createDetailBindings(owner.context); await binding.select({libraryId: 'library', itemId: 'one'});
+  const data = binding.service.getSnapshot().data!, files = await binding.readFileInfo(data);
+  assert.notEqual(files.scope.viewerFence, data.scope.viewerFence);
+  await assert.rejects(binding.previewDelete(data, files, 'asset'), /File authority changed/);
+  assert.deepEqual(writes, []); binding.dispose();
+});
+
+test('a removed title retains only its genuine same-target subject and clears it at disposal', async () => {
+  let removed = false;
+  const owner = setup(async () => { if (removed) throw Object.assign(new Error('gone'), {code: 'not_found', status: 404}); return detailPage('one'); });
+  const binding = createDetailBindings(owner.context); await binding.select({libraryId: 'library', itemId: 'one'});
+  removed = true; await binding.service.refresh();
+  assert.equal(binding.service.getSnapshot().data, null); assert.equal(binding.subject(), 'one');
+  await binding.select({libraryId: 'library', itemId: 'another'}); assert.equal(binding.subject(), undefined);
+  binding.dispose(); assert.equal(binding.subject(), undefined);
 });

@@ -17,6 +17,8 @@
 .blurb { max-width: 640px; font-size: var(--type-episode-title-size); color: var(--color-text-secondary); margin: 18px 0; }
 
 .credits { display: flex; gap: 20px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.inlineLink { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; box-shadow: 0 1px color-mix(in srgb,var(--color-text-tertiary) 35%,transparent); }
+.inlineLink:hover { color: var(--color-text); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 24px; }
 

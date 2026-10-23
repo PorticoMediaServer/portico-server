@@ -1,6 +1,24 @@
 import type {ContentEntry} from '@core/library-content.ts';
 import type {TitleFile} from '@core/detail.ts';
-import {cardText, type CardSubject, type TextEnvironment, type FileFacts} from '@core/presentation/kit-model';
+import {cardText, titleFactParts, type CardSubject, type TextEnvironment, type FileFacts, type TitleFacts, type FactPart} from '@core/presentation/kit-model';
+
+/** Full title pages group genuine genres together, between length/seasons and the rating. */
+export function titlePageFacts(facts: TitleFacts, env: TextEnvironment): readonly FactPart[] {
+  const parts = titleFactParts({...facts, genres: undefined}, env), genres = (facts.genres ?? []).filter(value => value.trim());
+  const group: FactPart[] = genres.length ? [{id: 'genres', role: 'supplement', text: genres.reduce((list, genre) => env.t('next.kit.genres.append', {list, genre}))}] : [];
+  return [...parts.filter(part => part.id !== 'content-rating'), ...group, ...parts.filter(part => part.id === 'content-rating')];
+}
+/** A published calendar day is not shifted into the previous day by the viewer's zone. */
+export function calendarDate(value: string | undefined, language: string): string | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? new Intl.DateTimeFormat(language, {dateStyle: 'long', timeZone: 'UTC'}).format(parsed) : undefined;
+}
+export function instantDate(value: string | null | undefined, language: string): string | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat(language, {dateStyle: 'long'}).format(parsed) : undefined;
+}
 
 /** Same semantic TitleKind projection for Search, browse and details; no joined subtitle parsing. */
 export function entrySubject(entry: ContentEntry): CardSubject {

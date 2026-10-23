@@ -12,7 +12,7 @@ import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {DetailLoading, ScreenFailure, TitleActions, TitleDetails, TitleRow} from './Detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
-import {entryCard} from './model';
+import {entryCard, titlePageFacts} from './model';
 import type {ShowBindings} from './show-bindings';
 import styles from './show.module.css';
 import detail from './detail.module.css';
@@ -39,12 +39,11 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   const personal = useSyncExternalStore(binding.personal.subscribe, binding.personal.getSnapshot, binding.personal.getSnapshot);
   const busy = useSyncExternalStore(binding.personal.subscribe, binding.personal.getBusy, binding.personal.getBusy);
   const primary = useSyncExternalStore(binding.primary.service.subscribe, binding.primary.service.getSnapshot, binding.primary.service.getSnapshot);
-  const [tab, setTab] = useState('episodes'), [layout, setLayout] = useState('grid'), [seasonMenu, setSeasonMenu] = useState(false);
+  const {tab, layout} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot), [seasonMenu, setSeasonMenu] = useState(false);
   const width = useShellWidth(), phone = width < 1024, data = snapshot.data;
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data && tab === 'related') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data, tab]);
-  useEffect(() => setTab('episodes'), [data?.show.id]);
-  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.service.retry(); }} /> : <DetailLoading />;
+  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} subject={binding.subject()} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.route?.showId ?? snapshot.route?.episodeId ?? snapshot.route?.seasonId} />;
   const {show} = data, selectedSeason = data.seasons.find(season => season.id === data.selected.seasonId);
   const episodes = data.episodes.sections[0]?.entries ?? [], art = binding.context.artwork;
   const actions = <div className={detail.actions}>
@@ -52,14 +51,14 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     {personal && <Button disabled={busy} icon={personal.watchlisted ? 'i-check' : 'i-plus'} aria-pressed={personal.watchlisted} onClick={() => { void binding.setMyList(data, !personal.watchlisted).catch(binding.context.effects.reportError); }}>{t('next.controls.myList')}</Button>}
     {personal && <Button disabled={busy} icon="i-check" iconOnly aria-label={t(personal.watched ? 'title.markUnwatched' : 'title.markWatched')} aria-pressed={personal.watched} onClick={() => { void binding.setWatched(data, !personal.watched).catch(binding.context.effects.reportError); }} />}
   </div>;
-  const facts = titleFactParts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env, 'home-show');
+  const facts = titlePageFacts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env);
   const columns = phone ? 2 : 4;
   return <article className={detail.page} data-show-id={show.id} data-compact={compact || undefined}>
     {!compact ? <header className={detail.hero}>
       {preferenceValue<boolean>(preferences, 'appearance.showBackdrops') && <AmbientArt className={detail.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(show.backdropUrl ?? show.posterUrl)} foreground={art.foreground(show.backdropUrl ?? show.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
       <div className={detail.copy}><Lockup title={show.title} platform={phone ? 'phone-web' : 'desktop'} /><TitleFactsLine parts={facts} />{show.overview && <TitleProse variant="hero" className={detail.blurb}>{show.overview}</TitleProse>}{actions}</div>
     </header> : <div className={detail.compactHeader}><h1>{show.title}</h1>{actions}</div>}
-    <TitleTabs title={show.title} compact={compact}><Tabs value={tab} onValueChange={setTab} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
+    <TitleTabs title={show.title} compact={compact}><Tabs value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'episodes' || value === 'related' || value === 'details') binding.view.tab(value); })} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
     <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
@@ -71,7 +70,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         </Menu>
         {selectedSeason?.episodeCount !== undefined && selectedSeason.watchedCount !== undefined && <span className={styles.progress}>{t('title.seasonProgress', {watched: selectedSeason.watchedCount, total: selectedSeason.episodeCount})}</span>}
         <label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => { const route = snapshot.route; if (route) void binding.select({...route, playState: checked ? 'unplayed' : 'all'}).catch(binding.context.effects.reportError); }} /></label>
-        <Segmented value={layout} onValueChange={setLayout} aria-label={t('title.episodeLayout')} variant="view" items={[{value: 'list', label: t('title.viewList'), icon: 'i-list'}, {value: 'grid', label: t('title.viewGrid'), icon: 'i-grid'}]} />
+        <Segmented value={layout} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'list' || value === 'grid') binding.view.layout(value); })} aria-label={t('title.episodeLayout')} variant="view" items={[{value: 'list', label: t('title.viewList'), icon: 'i-list'}, {value: 'grid', label: t('title.viewGrid'), icon: 'i-grid'}]} />
       </div>
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}
@@ -97,7 +96,7 @@ export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowW
   const snapshot = useSyncExternalStore(binding.episode.service.subscribe, binding.episode.service.getSnapshot, binding.episode.service.getSnapshot), episode = snapshot.data;
   if (!episode) return snapshot.phase === 'error' ? <ScreenFailure retry={() => { void binding.episode.service.retry(); }} /> : <DetailLoading shape="episode" />;
   const adjacent = <div className={styles.adjacent}>{(['previous', 'next'] as const).map(direction => { const target = episode.episodeDetails?.[direction]; return target && <Button key={direction} variant="text" size="small" aria-label={t(direction === 'previous' ? 'title.previousEpisode' : 'title.nextEpisode')} onClick={() => {
-        binding.current(data); void binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: target.id}).catch(binding.context.effects.reportError);
+        runScreenCommand(binding.context, () => { binding.current(data); return binding.select({libraryId: data.scope.libraryId, showId: data.show.id, episodeId: target.id}); });
       }}>{target.title}<small>{t('next.kit.episode', {number: target.number})}</small></Button>; })}</div>;
   return <EpisodeDetailsLayout title={episode.item.title} onClose={() => runScreenCommand(binding.context, binding.closeEpisode)} context={<b>{data.show.title}</b>}
     artwork={binding.context.artwork.foreground(episode.item.stillUrl ?? data.show.backdropUrl, 880, 16 / 9)} backdrop={!episode.item.stillUrl}

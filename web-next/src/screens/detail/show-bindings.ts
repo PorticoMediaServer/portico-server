@@ -4,11 +4,16 @@ import {createDetailBindings} from './bindings';
 import {screenLifetime, type ScreenContext} from './context';
 import {getContainerState, setContainerFlag, setContainerState, type ContainerState} from '@core/container-state.ts';
 import {createRecommendations} from './recommendations';
+import {titleView} from './view-state';
 
 export function createShowBindings(context: ScreenContext) {
   const life = screenLifetime(context), service = new ShowWorkspaceService({api: life.api, scope: context.scope});
   const episode = createDetailBindings(context), primary = createDetailBindings(context);
   const recommendations = createRecommendations(context);
+  const view = titleView('episodes', ['episodes', 'related', 'details'], life.assert);
+  let viewIdentity = '';
+  let subject: Readonly<{libraryId: string; showId: string; title: string}> | undefined;
+  const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {libraryId: data.scope.libraryId, showId: data.show.id, title: data.show.title}; });
   let personal: ContainerState | undefined, busy = false, intent = 0;
   let selection: AbortController | undefined;
   const listeners = new Set<() => void>(), publish = () => { for (const listener of listeners) listener(); };
@@ -17,7 +22,8 @@ export function createShowBindings(context: ScreenContext) {
     if (service.getSnapshot().phase !== 'ready' || service.getSnapshot().data !== data) throw new DOMException('Show revision changed', 'AbortError');
   };
   return {
-    context, service, episode, primary, current, recommendations,
+    context, service, episode, primary, current, recommendations, view,
+    subject() { const route = service.getSnapshot().route; return life.current() && route?.showId === subject?.showId && route?.libraryId === subject?.libraryId ? subject?.title : undefined; },
     personal: {getSnapshot: () => personal, getBusy: () => busy, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }},
     async select(route: ShowWorkspaceRoute, signal?: AbortSignal) {
       life.assert(); signal?.throwIfAborted(); const generation = ++intent;
@@ -29,6 +35,7 @@ export function createShowBindings(context: ScreenContext) {
       try {
         await service.select(route); life.assert(); active.throwIfAborted(); if (generation !== intent) return;
         const data = service.getSnapshot().data;
+        if (data) { const identity = JSON.stringify([data.scope.libraryId, data.show.id]); if (identity !== viewIdentity) { viewIdentity = identity; view.reset(); } }
         if (data) { const value = await getContainerState(life.api, 'show', data.show.id, active); if (generation !== intent) return; current(data); personal = value; publish(); }
         if (data?.nextUp?.libraryId && data.nextUp.playback) await primary.select({libraryId: data.nextUp.libraryId, itemId: data.nextUp.playback.itemId}, active);
       } finally { active.removeEventListener('abort', cancel); }
@@ -74,7 +81,7 @@ export function createShowBindings(context: ScreenContext) {
       current(data); signal?.throwIfAborted(); await service.refresh();
     },
     cancel() { intent++; selection?.abort(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
-    dispose() { intent++; selection?.abort(); life.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
+    dispose() { intent++; selection?.abort(); subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;

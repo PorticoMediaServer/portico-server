@@ -13,13 +13,13 @@ import {PosterCard, SquareCard} from '../../kit/cards';
 import {Menu, MenuItem, FileInfo, Dialog, type FileInfoAction} from '../../kit/overlays';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
-import {entryCard, fileFacts} from './model';
+import {entryCard, fileFacts, titlePageFacts, calendarDate, instantDate} from './model';
 import type {DetailBindings} from './bindings';
 import styles from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
-import {TitlePeople} from './People';
+import {TitlePeople, CreditLine, CreditNames} from './People';
 import {FileManagement} from './FileManagement';
 import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
@@ -39,16 +39,15 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(binding.service.getSnapshot().target?.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
-  const data = snapshot.data, [tab, setTab] = useState('related');
+  const data = snapshot.data, {tab} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot);
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
-  useEffect(() => setTab('related'), [data?.scope.itemId]);
-  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.target?.itemId} />;
+  if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} subject={binding.subject()} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.target?.itemId} />;
   const tabs = [{value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}, ...(data.extras?.some(extra => extra.items.length) ? [{value: 'extras', label: t('next.controls.extras')}] : [])];
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
     {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
     {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
-    <TitleTabs title={data.item.title} compact={compact} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={setTab} items={tabs} /></TitleTabs>
+    <TitleTabs title={data.item.title} compact={compact} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
     <div key={tab} className={styles.tabPanel}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
@@ -59,18 +58,18 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
 
 function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; data: DetailProjection; showBackdrops: boolean}) {
   const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
-  const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director').map(credit => credit.name);
-  const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4).map(credit => credit.name);
-  const parts = titleFactParts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
+  const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
+  const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
+  const parts = titlePageFacts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
   return <header className={styles.hero}>
     {showBackdrops && <AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} />}
     <div className={styles.copy}>
-      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); }}>{data.collections[0].name}</button>}
+      {data.collections?.[0] && <button className={styles.collection} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })}>{data.collections[0].name}</button>}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
       {item.overview && <TitleProse variant="hero" className={styles.blurb}>{item.overview}</TitleProse>}
-      {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <span>{t('title.directedBy', {names: directed.join(', ')})}</span>}{starring.length > 0 && <span>{t('title.starring', {names: starring.join(', ')})}</span>}</div>}
+      {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <CreditLine message="title.directedBy" credits={directed} binding={binding} data={data} />}{starring.length > 0 && <CreditLine message="title.starring" credits={starring} binding={binding} data={data} />}</div>}
       <TitleActions binding={binding} data={data} />
     </div>
   </header>;
@@ -122,13 +121,19 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
 export function TitleDetails({binding, data}: {binding: DetailBindings; data: DetailProjection}) {
   const {item, facts, metadata} = data;
   const language = (code: string) => { try { return new Intl.DisplayNames(locale(), {type: 'language'}).of(code) ?? code; } catch { return code; } };
-  const rows = [
-    [t('title.releaseDate'), facts?.releaseDate], [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country],
+  const directors = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director'), writers = metadata.credits.filter(credit => /writer|writing|screenplay|teleplay|novel/i.test(credit.role));
+  const rows: (readonly [string, ReactNode])[] = [
+    [t('title.releaseDate'), calendarDate(facts?.releaseDate, locale())],
+    [t('library.column.runtime'), titleFactParts({durationSeconds: item.duration}, env).find(part => part.id === 'duration')?.text],
+    [t('title.genres'), metadata.genres.map(value => value.name).join(', ')],
+    [t('title.directedByLabel'), directors.length ? <CreditNames binding={binding} data={data} credits={directors} /> : undefined],
+    [t('title.writtenByLabel'), writers.length ? <CreditNames binding={binding} data={data} credits={writers} /> : undefined],
+    [t('title.studio'), facts?.studio], [t('title.network'), facts?.network], [t('title.country'), facts?.country], [t('title.edition'), facts?.edition],
     [t('next.selection.language'), facts?.originalLanguage ? language(facts.originalLanguage) : undefined],
-    [t('title.genres'), metadata.genres.map(value => value.name).join(', ')], [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
-    [t('title.added'), item.addedAt ? new Intl.DateTimeFormat(locale(), {dateStyle: 'long'}).format(new Date(item.addedAt)) : undefined],
-  ].filter((row): row is [string, string] => !!row[1]);
-  return <div className={styles.details}><section>{item.overview && <TitleProse className={styles.about}>{item.overview}</TitleProse>}<dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
+    [t('title.audio'), data.languages.audio.map(language).join(', ')], [t('title.subtitles'), data.languages.subtitles.map(language).join(', ')],
+    [t('title.added'), instantDate(item.addedAt, locale())],
+  ];
+  return <div className={styles.details}><section><dl>{rows.filter(row => !!row[1]).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
     {metadata.credits.length > 0 && <TitlePeople binding={binding} data={data} />}
   </div>;
 }

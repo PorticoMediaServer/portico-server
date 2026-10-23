@@ -1,10 +1,10 @@
-import {useEffect, useRef, useState} from 'react';
+import {Fragment, useEffect, useRef, useState} from 'react';
 import type {CreditPage, DetailCredit, DetailProjection} from '@core/detail.ts';
 import {PersonCircle} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
 import type {DetailBindings} from './bindings';
-import {t} from './text';
+import {t, locale} from './text';
 import styles from './detail.module.css';
 import {runScreenCommand} from './context';
 
@@ -15,6 +15,19 @@ function Person({credit, binding, data}: {credit: DetailCredit; binding: DetailB
   })}><PersonCircle covers={art ? [art] : []} initials={credit.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} alt="" /><b>{credit.name}</b>{credit.role && <small>{credit.role}</small>}</button>;
 }
 const castCredit = (credit: DetailCredit) => credit.department.toLowerCase() === 'acting' || credit.department.toLowerCase() === 'cast';
+export function CreditNames({binding, data, credits}: {binding: DetailBindings; data: DetailProjection; credits: readonly DetailCredit[]}) {
+  let index = 0;
+  return <>{new Intl.ListFormat(locale(), {type: 'unit', style: 'long'}).formatToParts(credits.map(credit => credit.name)).map((part, position) => {
+    if (part.type === 'literal') return <Fragment key={position}>{part.value}</Fragment>;
+    const credit = credits[index++];
+    return credit.personId ? <button className={styles.inlineLink} key={position} type="button" onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: credit.personId!, kind: 'person', title: credit.name, navigation: {view: 'person', entityId: credit.personId!}}); })}>{credit.name}</button> : <Fragment key={position}>{credit.name}</Fragment>;
+  })}</>;
+}
+/** A controlled translation slot keeps the exact catalogue sentence around its live links. */
+export function CreditLine({message, ...props}: {message: 'title.directedBy' | 'title.starring'; binding: DetailBindings; data: DetailProjection; credits: readonly DetailCredit[]}) {
+  const [before, after] = t(message, {names: '\uFFF0'}).split('\uFFF0');
+  return <span>{before}<CreditNames {...props} />{after}</span>;
+}
 export function TitlePeople({binding, data, episode = false}: {binding: DetailBindings; data: DetailProjection; episode?: boolean}) {
   const [group, setGroup] = useState<'cast' | 'crew'>(), [page, setPage] = useState<CreditPage>(), [failed, setFailed] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null);

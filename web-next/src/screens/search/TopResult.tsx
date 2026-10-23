@@ -3,7 +3,7 @@ import {preferenceValue} from '@core/preferences.ts';
 import type {SearchEntry} from '@core/search.ts';
 import type {TopSearchResult} from '@core/presentation/search-model.ts';
 import {topResultKindLabel} from '@core/presentation/search-model.ts';
-import {titleFactParts} from '@core/presentation/kit-model';
+import {titlePageFacts} from '../detail/model';
 import {episodeCode} from '@core/presentation/card-caption.ts';
 import {AmbientArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
@@ -12,6 +12,7 @@ import {TitleActions} from '../detail/Detail';
 import {t, environment} from '../detail/text';
 import type {SearchBindings} from './bindings';
 import detailStyles from '../detail/detail.module.css';
+import {runScreenCommand} from '../detail/context';
 
 export function TopResult({binding, result}: {binding: SearchBindings; result: TopSearchResult}) {
   const entry = result.entry, title = binding.topTitle, show = binding.topShow;
@@ -32,12 +33,12 @@ export function TopResult({binding, result}: {binding: SearchBindings; result: T
   const series = entry.kind === 'show' && showState.data?.show.id === entry.id && showState.phase === 'ready' ? showState.data : undefined;
   const media = 'libraryId' in entry ? entry : undefined;
   const source = media?.backdropUrl || series?.show.backdropUrl || movie?.item.backdropUrl || entry.posterUrl;
-  const facts = titleFactParts(movie ? {year: movie.item.year, durationSeconds: movie.item.duration, genres: movie.metadata.genres.map(value => value.name), contentRating: movie.facts?.contentRating}
+  const facts = titlePageFacts(movie ? {year: movie.item.year, durationSeconds: movie.item.duration, genres: movie.metadata.genres.map(value => value.name), contentRating: movie.facts?.contentRating}
     : series ? {year: series.show.year, seasonCount: series.seasonTotalCount, genres: series.show.genres}
-      : media ? {year: media.year, seasonCount: media.seasonCount, genres: media.genres, artist: media.artist?.name, author: media.author, durationSeconds: media.duration} : {}, environment, entry.kind === 'show' ? 'home-show' : 'video');
+      : media ? {year: media.year, seasonCount: media.seasonCount, genres: media.genres, artist: media.artist?.name, author: media.author, durationSeconds: media.duration} : {}, environment);
   const kind = topResultKindLabel(result.group), allFacts = kind ? [{id: 'kind', role: 'context' as const, text: t(kind)}, ...facts] : facts;
   const next = series?.nextUp, code = next && episodeCode(next, t), action = primary.data?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
-  const showPlay = () => { if (series && primary.data && action) { show.current(series); void show.primary.play(primary.data, action.id).catch(binding.context.effects.reportError); } };
+  const showPlay = () => runScreenCommand(binding.context, () => { if (series && primary.data && action) { show.current(series); return show.primary.play(primary.data, action.id); } });
   return <SearchResultHero title={entry.title} eyebrow={t('search.topResult')} facts={<TitleFactsLine parts={allFacts} />} synopsis={movie?.item.overview ?? series?.show.overview ?? media?.overview}
     artwork={<AmbientArt treatment="title" source={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.ambient(source) : undefined} foreground={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.foreground(source, 1600, 16 / 9) : undefined} foregroundFrameStyle={{left: '30%', width: '70%', height: '100%'}} position="50% 6%" />}
     actions={movie ? <TitleActions binding={title} data={movie} topResult /> : series ? <div className={detailStyles.actions}>
