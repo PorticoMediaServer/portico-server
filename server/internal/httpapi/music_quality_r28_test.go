@@ -27,3 +27,23 @@ func TestMusicQualityR28HTTPSourceAndSession(t *testing.T) {
 		t.Fatal(session)
 	}
 }
+
+func TestMusicSourceBitrateRequiresMeasuredMediaR36(t *testing.T) {
+	f := musicFixture(t, 2)
+	if _, err := f.db.Exec(`UPDATE audio_render_facts SET duration_frames=22050,raw_frames=2112+22050+16,bit_rate=0`); err != nil {
+		t.Fatal(err)
+	}
+	var first playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "music-unknown-media-bitrate"}, startBody(f.items[0], nil), 201, &first)
+	if first.Presentation.AudioRender.SourceBitrateBPS != 0 {
+		t.Fatal("file bytes mistaken for measured media bitrate", first.Presentation.AudioRender)
+	}
+	if _, err := f.db.Exec(`UPDATE audio_render_facts SET bit_rate=192000`); err != nil {
+		t.Fatal(err)
+	}
+	var next playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "music-measured-media-bitrate"}, startBody(f.items[1], nil), 201, &next)
+	if next.Presentation.AudioRender.SourceBitrateBPS != 192000 {
+		t.Fatal(next.Presentation.AudioRender)
+	}
+}

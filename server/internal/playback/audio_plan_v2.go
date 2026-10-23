@@ -270,7 +270,11 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 	if f.BitRate > 0 {
 		sourceBPS = int(f.BitRate)
 	}
-	p.SourceBitrateBPS = int64(sourceBPS)
+	// The file-average fallback above is conservative planning input (artwork
+	// and tags also travel). A displayed media bitrate requires packet evidence.
+	if f.BitRate > 0 && f.BitRate < 1<<40 {
+		p.SourceBitrateBPS = f.BitRate
+	}
 	p.LoudnessEnvelope, err = audioEnvelope(ctx, tx, asset)
 	if err != nil {
 		return nil, err
