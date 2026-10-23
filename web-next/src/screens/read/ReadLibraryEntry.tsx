@@ -17,13 +17,13 @@ type Resources = ReturnType<typeof createReadingCollection> & {bindings: ReturnT
 const {t} = defaultI18n;
 function LibraryRows({resources, name, comic, onMore}: {resources: Resources; name: string; comic: boolean; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void}) {
   const root = useRef<HTMLDivElement>(null), width = useShellWidth(), [height, setHeight] = useState(600);
-  const state = useSyncExternalStore(resources.collection.subscribe, resources.collection.getSnapshot, resources.collection.getSnapshot);
+  const state = useSyncExternalStore(resources.collection.subscribe, resources.collection.getSnapshot, resources.collection.getSnapshot), failed = state.status === 'error';
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
     const read = () => setHeight(Math.max(280, window.innerHeight - element.getBoundingClientRect().top));
     const observer = new ResizeObserver(read); observer.observe(element); window.addEventListener('resize', read); read();
     return () => {observer.disconnect(); window.removeEventListener('resize', read);};
-  }, []);
+  }, [failed]);
   const cardWidth = width < 600 ? 108 : 190;
   if (state.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: resources.collection.retry}}/>;
@@ -45,13 +45,14 @@ export function ReadLibraryEntry({libraryId, header, onMore}: {libraryId: string
   return captured ? <BoundReadLibrary key={libraryId} captured={captured} libraryId={libraryId} header={header} onMore={onMore}/> : null;
 }
 function BoundReadLibrary({captured, libraryId, header, onMore}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void}) {
+  const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const library = captured.context.facts.identity.libraries.find(library => library.id === libraryId);
   const reading = library?.kind === 'book' || library?.kind === 'comic';
   const [resources, setResources] = useState<Resources>();
   useEffect(() => {
     if (!reading) return;
     const bindings = createReadBindings(captured.context), rows = createReadingCollection(bindings.client, libraryId);
-    setResources({...rows, bindings, reportError: captured.binding.home.effects.reportError});
+    setResources({...rows, bindings, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, reading]);
   if (!reading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;

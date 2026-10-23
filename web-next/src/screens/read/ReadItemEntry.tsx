@@ -19,6 +19,7 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
   return captured && eligibility.itemId === itemId ? <BoundReadItem key={itemId} captured={captured} eligibility={eligibility}/> : null;
 }
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
+  const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
   const [detail, setDetail] = useState<Readonly<{manifest?: ReadingManifest; progress?: ReadingProgress; failed?: boolean}>>({});
@@ -31,9 +32,9 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     else void (async () => {
       const session = await bindings.open({itemId: eligibility.itemId, sourceId});
       const progress = await session.progress();
-      await bindings.close().catch(captured.binding.home.effects.reportError);
+      await bindings.close().catch(error => {if (active && bindings.authority.isCurrent()) errorSink.current(error);});
       if (active && bindings.authority.isCurrent()) setDetail({manifest: session.manifest, progress});
-    })().catch(error => {if (active && bindings.authority.isCurrent()) {captured.binding.home.effects.reportError(error); setDetail({failed: true});} void bindings.close().catch(() => {});});
+    })().catch(error => {if (active && bindings.authority.isCurrent()) {errorSink.current(error); setDetail({failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; off(); void bindings.dispose().catch(() => {});};
   }, [captured.context, eligibility.itemId, sourceId, retry]);
   if (detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
