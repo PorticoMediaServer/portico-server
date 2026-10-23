@@ -145,7 +145,9 @@ func TestOriginalAudioFormatTiesAndFallbackIdentity(t *testing.T) {
 	}
 }
 
-func TestPublishedOriginalLanguageReachesPlanTrace(t *testing.T) {
+// The server-only input is a supplied planner fact here. Publication and the
+// authorized same-snapshot metadata reader are covered by their producer lane.
+func TestOriginalLanguageInputReachesPlanTrace(t *testing.T) {
 	source := videoSource("mp4", "h264", assets.StreamDetail{Width: 1920, Height: 1080, BitDepth: 8, DynamicRange: "sdr"}, SourceAudio{Codec: "aac", Channels: 2, Language: "eng", Default: true}, SourceAudio{Codec: "aac", Channels: 2, Language: "jpn"})
 	plan := decide(t, source, appleTVProfile(), func(in *DeliveryInput) {
 		in.PreferredAudioLanguages = []string{"@original"}

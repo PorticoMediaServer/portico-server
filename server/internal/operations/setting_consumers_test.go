@@ -266,7 +266,7 @@ var preferenceRuntimeSources = map[string][2]string{
 	// The network lane builds the key dynamically. Witness the actual runtime
 	// invocation that feeds QualityMode, not the key prefix in a local assignment.
 	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
-	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
+	"quality.remote":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
 	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
 	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
 	"audiobooks.defaultSpeed":             {"server/internal/catalog/listening_preferences.go", "audiobooks.defaultSpeed"},
@@ -363,8 +363,14 @@ func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
 				if !ok {
 					return true
 				}
-				if name, ok := call.Fun.(*ast.Ident); ok && strings.HasPrefix(witness[1], "function:") {
-					found = found || name.Name == strings.TrimPrefix(witness[1], "function:")
+				if strings.HasPrefix(witness[1], "function:") {
+					want := strings.TrimPrefix(witness[1], "function:")
+					switch name := call.Fun.(type) {
+					case *ast.Ident:
+						found = found || name.Name == want
+					case *ast.SelectorExpr:
+						found = found || name.Sel.Name == want
+					}
 				}
 				for _, arg := range call.Args {
 					ast.Inspect(arg, func(node ast.Node) bool {
