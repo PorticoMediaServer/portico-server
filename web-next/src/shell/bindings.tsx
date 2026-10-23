@@ -12,7 +12,7 @@ export type ShellBindings = Readonly<{
   scopeKey: string;
   shell: Omit<ShellProps, 'children'>;
   home: HomeBindings;
-  playback: ShellPlaybackBinding;
+  playback?: ShellPlaybackBinding;
 }>;
 const Context = createContext<ShellBindings | undefined>(undefined);
 export function ShellBindingsProvider({value, children}: {value: ShellBindings | undefined; children: ReactNode}) {
