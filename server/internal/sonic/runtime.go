@@ -242,6 +242,8 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 	cmd.Stdin = input
 	produced := 0
 	producerDone := make(chan error, 1)
+	firstPatch := make(chan struct{})
+	var signalPatch sync.Once
 	supervise.Go("sonic.feature-producer", func() {
 		producerErr := ErrEmbedding
 		defer func() { writer.CloseWithError(producerErr); producerDone <- producerErr }()
@@ -259,6 +261,7 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 				}
 				binary.LittleEndian.PutUint32(data[i*4:], math.Float32bits(v))
 			}
+			signalPatch.Do(func() { close(firstPatch) })
 			if _, err := writer.Write(data); err != nil {
 				return err
 			}
@@ -266,6 +269,29 @@ func (r *Runtime) Run(ctx context.Context, key string, physical *os.File, produc
 			return nil
 		})
 	})
+	if physical != nil {
+		// The decoder must own its ordinary background permit before the
+		// numeric helper joins that same durable allocation. Starting the
+		// helper first would occupy the last generic permit and deadlock its
+		// own decoder. One validated patch proves the decoder has started;
+		// the pipe then bounds it while the helper loads, without buffering a
+		// recording or inventing a second admission/scheduler.
+		select {
+		case <-firstPatch:
+		case producerErr := <-producerDone:
+			input.Close()
+			writer.Close()
+			if producerErr != nil {
+				return Analysis{}, producerErr
+			}
+			return Analysis{}, ErrEmbedding
+		case <-ctx.Done():
+			input.Close()
+			writer.Close()
+			<-producerDone
+			return Analysis{}, ctx.Err()
+		}
+	}
 	var sums [Dimensions + TagCount]float64
 	consume := func(output io.Reader) error {
 		var header [8]byte
