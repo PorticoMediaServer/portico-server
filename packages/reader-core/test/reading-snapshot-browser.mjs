@@ -19,7 +19,7 @@ try {
   const built=retainedBuild??join(scratch,'dist');
   const fixtures=floor?{}:fixed?{'/fixture.pdf':{bytes:await readFile(process.env.PORTICO_READER_PDF),mime:'application/pdf'},'/fixture.cbz':{bytes:await readFile(process.env.PORTICO_READER_CBZ),mime:'application/zip'}}
     :{'/publication.epub':{bytes:await readFile(process.env.PORTICO_READER_EPUB),mime:'application/epub+zip'}};
-  if(floor&&!retainedBuild)await buildFloorWitness(built,process.env.PORTICO_READER_PDF,process.env.PORTICO_READER_CBZ);
+  if(floor){if(!retainedBuild)await buildFloorWitness(built,process.env.PORTICO_READER_PDF,process.env.PORTICO_READER_CBZ);}
   else await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true,rolldownOptions:{input:join(root,fixed?'fixed.html':'index.html')}}});
   server=await preview({root,configFile:false,build:{outDir:built},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
     const fixture=fixtures[req.url];if(fixture){res.setHeader('Content-Type',fixture.mime);res.setHeader('Content-Length',fixture.bytes.length);res.end(fixture.bytes);}else next();
