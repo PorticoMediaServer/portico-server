@@ -1,3 +1,5 @@
+import {playbackEnvironment} from './environment';
+import {configureDestination} from './audio/output';
 import {browserConfigCheck, probeAudioDecode} from './audio/capabilities';
 import {probeWebProfile, withViewerSettings, type CapabilityDocument, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
 import {currentPlaybackFixes, onPlaybackFixesChanged} from './playback-fixes';
@@ -25,7 +27,7 @@ function outputChannels(): number | undefined {
     const Context = window.AudioContext ?? (window as unknown as {webkitAudioContext?: typeof AudioContext}).webkitAudioContext;
     if (!Context) return undefined;
     const context = new Context();
-    const channels = context.destination.maxChannelCount;
+    const channels = configureDestination(context.destination);
     void context.close().catch(() => {});
     return channels || undefined;
   } catch { return undefined; }
@@ -41,8 +43,8 @@ function environment(): WebProbeEnvironment {
     canPlayType: type => { try { return element.canPlayType(type); } catch { return ''; } },
     mediaSourceSupports: Source ? type => { try { return Source.isTypeSupported(type); } catch { return false; } } : null,
     decodingInfo: capabilities?.decodingInfo
-      ? async question => {
-          const answer = await capabilities.decodingInfo({type: 'media-source', video: question as VideoConfiguration});
+      ? async (question, type = 'media-source') => {
+          const answer = await capabilities.decodingInfo({type, video: question as VideoConfiguration});
           return {supported: answer.supported, smooth: answer.smooth, powerEfficient: answer.powerEfficient} satisfies DecodingAnswer;
         }
       : undefined,
@@ -64,9 +66,9 @@ export function browserClientProfile(fresh = false): Promise<CapabilityDocument>
   return probedProfile(fresh).then(profile => withViewerSettings(profile, {overrides: currentPlaybackFixes()}));
 }
 function probedProfile(fresh: boolean): Promise<CapabilityDocument> {
-  if (fresh || !asked) asked = Promise.all([probeWebProfile(environment()), probeAudioDecode(browserConfigCheck()).catch(() => [])])
+  if (fresh || !asked) { const env = environment(); asked = Promise.all([probeWebProfile(env), probeAudioDecode(browserConfigCheck(), undefined, env.audioOutputChannels).catch(() => [])])
     // Declare only the subtitle surface actually mounted by this platform runtime.
-    .then(([profile, audioDecode]): CapabilityDocument => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
+    .then(([profile, audioDecode]): CapabilityDocument => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))})); }
   return asked;
 }
 
@@ -80,7 +82,12 @@ type Api = Pick<HttpLocalApi, 'requestRaw'>;
 export function keepBrowserProfilePublished(api: Api, signIn: string): () => void {
   const publisher = new CapabilityPublisher(localV1Http(api), () => signIn);
   let stopped = false;
-  const publish = (fresh: boolean) => { void browserClientProfile(fresh).then(profile => { if (!stopped) void publisher.publish(profile); }).catch(() => {}); };
+  const publish = (fresh: boolean) => { void Promise.resolve().then(() => {
+    const capabilities = playbackEnvironment().capabilities;
+    // An installed engine owns its facts even when it cannot report them. Never replace an
+    // absent or failed native answer with this WebView/browser's decoder or output claims.
+    return capabilities ? capabilities() : browserClientProfile(fresh);
+  }).then(profile => { if (!stopped && profile) void publisher.publish(profile); }).catch(() => {}); };
   publish(false);
   const changed = () => publish(true);
   const hdr = (() => { try { return matchMedia('(dynamic-range: high)'); } catch { return undefined; } })();
