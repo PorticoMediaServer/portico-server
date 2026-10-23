@@ -238,19 +238,46 @@
     {
       "id": "live-exception",
       "assert": [
-        "live2-second detail remains moving",
-        "no historical bucket reconstruction",
-        "producer explicitly defines until behavior for live"
+        "sent context is validated",
+        "actual2-second detail uses moving server-now until",
+        "flat returned until/observedAt identify the live read",
+        "frozen request context remains the disposal identity",
+        "no historical bucket reconstruction"
       ]
     },
     {
-      "id": "today-collision",
-      "status": "Await Root/data owner decision",
-      "assert": [
-        "approved Today choice is not silently mapped to24 real hourly buckets",
-        "use checked explicit today contract if approved",
-        "no invented replacement UI wording"
+      "id": "today-distinct-from-twenty-four-hours",
+      "request": {
+        "period": "today",
+        "timeZone": "Asia/Kathmandu",
+        "until": "2026-10-23T12:34:56Z"
+      },
+      "expected": {
+        "bucketCount": 1,
+        "from": "2026-10-22T18:15:00Z",
+        "until": "2026-10-23T12:34:56Z"
+      },
+      "consumerAssert": [
+        "approved Today sends period=today",
+        "24h remains24 hourly buckets",
+        "no silent alias or replacement wording"
       ]
     }
-  ]
+  ],
+  "canonicalContract": {
+    "queryNames": [
+      "timeZone",
+      "until"
+    ],
+    "type": "readonly ReportContext {timeZone:string,until:string}",
+    "factory": "captureReportContext(timeZone, until?=nowISO)",
+    "exports": [
+      "admin",
+      "root"
+    ],
+    "telemetrySignature": "ConsoleClient.telemetry(window:TelemetryWindow,context:ReportContext)",
+    "responseFields": "flat period/timeZone/from/until/buckets(start/end/partial); DashboardHistory buckets additionally retain kinds",
+    "lifetime": "once per view/refresh; See full history carries same context",
+    "implementationHold": "No UI source changes or dependent intake until checked generated pin"
+  }
 }
