@@ -94,7 +94,7 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
     const index = entries.findIndex(entry => entry.id === 'details' || entry.id === 'group:manage');
     entries.splice(index < 0 ? entries.length : index, 0, {id: 'select', label: t('next.selection.select'), icon: 'i-check', onSelect: () => run(source, () => {
       const current = controller.getSnapshot();
-      if (current.menu?.key !== menu.key || current.menu.windowId !== menu.windowId) return;
+      if (current.menu !== menu) return;
       if (!current.selection.selectedKeys.includes(menu.key)) {
         const result = controller.toggle(menu.windowId, menu.key);
         if (!result.ok) throw Object.assign(new Error(result.reason), {code: result.reason});

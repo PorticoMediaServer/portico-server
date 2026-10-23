@@ -40,7 +40,13 @@ export function Popover({open, onOpenChange, title, children, description, trigg
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef ?? triggerElement);
   const withinDialog = useInDialog(open, anchorRef ?? triggerElement);
   const present = usePresence(open, touchContext ? 120 : 160), motionRef = useSurfaceMotion(open, 'menu'), scrimMotion = useSurfaceMotion(open, 'fade');
-  const anchor = useMemo(() => ({current: {get contextElement() {return anchorRef?.current ?? undefined;}, getBoundingClientRect: () => anchorRef?.current?.getBoundingClientRect() ?? new DOMRect()}}), [anchorRef]);
+  const anchor = useMemo(() => {
+    const item = () => {
+      const element = anchorRef?.current;
+      return touchContext ? element?.closest<HTMLElement>('[data-card-kind],[data-track-item]') ?? element : element;
+    };
+    return {current: {get contextElement() {return item() ?? undefined;}, getBoundingClientRect: () => item()?.getBoundingClientRect() ?? new DOMRect()}};
+  }, [anchorRef, touchContext]);
   useOverlayKeys(open, onOpenChange); const superseded = useExclusiveAnchor(open, onOpenChange);
   if (superseded) focus.suppressRestore.current = true;
   useLayoutEffect(() => {
@@ -61,7 +67,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       {left: 0, top: spotlight.top, width: Math.max(0, spotlight.left), height: spotlight.height},
       {left: spotlight.right, top: spotlight.top, right: 0, height: spotlight.height},
     ].map((rect, index) => <div key={index} style={{position: 'absolute', background: 'rgba(3,8,12,.58)', ...rect}} />)}</div>}<div style={{pointerEvents: 'none'}}><RadixPopover.Content forceMount ref={motionRef}
-      side={touchContext ? spotlight && spotlight.right + 312 > window.innerWidth - 8 ? 'left' : 'right' : placement.startsWith('top') ? 'top' : 'bottom'} align={touchContext ? 'start' : placement.endsWith('start') ? 'start' : 'end'} sideOffset={touchContext ? 12 : sideOffset} alignOffset={alignOffset} updatePositionStrategy={touchContext ? 'always' : 'optimized'} collisionPadding={8}
+      side={touchContext ? spotlight && spotlight.right + 314 > window.innerWidth - 8 ? 'left' : 'right' : placement.startsWith('top') ? 'top' : 'bottom'} align={touchContext ? 'start' : placement.endsWith('start') ? 'start' : 'end'} sideOffset={touchContext ? 4 : sideOffset} alignOffset={alignOffset} updatePositionStrategy={touchContext ? 'always' : 'optimized'} collisionPadding={8}
       id={`${id}-content`} className={classes(styles.popover, touchContext && touchStyles.popover, className)} style={{'--overlay-width': `${touchContext ? 300 : width}px`, pointerEvents: open ? 'auto' : 'none', ...(touchContext ? {borderRadius: 16, padding: 8, overflow: 'visible', background: 'rgba(22,44,58,.97)', backdropFilter: 'blur(26px) saturate(1.3)'} : {})} as OverlayStyle} role={role} aria-modal={modal && role === 'dialog' && open || undefined}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
       data-state={open ? 'open' : 'closed'} data-within-dialog={withinDialog || undefined} data-testid={testID}
@@ -79,7 +85,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       {touchContext ? <div id={`${id}-title`} className={touchStyles.popoverTitle}>{title}</div> : <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>}
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
-      {touchContext && <RadixPopover.Arrow width={14} height={7} style={{fill: 'rgba(22,44,58,.97)'}} />}
+      {touchContext && <RadixPopover.Arrow width={20} height={10} asChild><svg viewBox="0 0 20 10" aria-hidden="true"><rect x={3} y={-7} width={14} height={14} rx={3} transform="rotate(45 10 0)" fill="rgba(22,44,58,.97)" stroke="rgba(237,245,250,.1)" /></svg></RadixPopover.Arrow>}
     </RadixPopover.Content></div></div></RadixPopover.Portal>}
   </RadixPopover.Root>;
 }
