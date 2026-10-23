@@ -2822,9 +2822,16 @@ maintenance_policy.background_priority
 maintenance_policy.paused_until_ms
 maintenance_policy.revision
 maintenance_policy.singleton
+maintenance_retention.category
+maintenance_retention.days
 maintenance_retention_rows.created_ms
 maintenance_retention_rows.record_key
 maintenance_retention_rows.table_name
+maintenance_settings.background_speed
+maintenance_settings.backup_keep_count
+maintenance_settings.revision
+maintenance_settings.singleton
+maintenance_settings.updated_ms
 maintenance_table_bounds.maximum
 maintenance_table_bounds.rows
 maintenance_table_bounds.table_name
