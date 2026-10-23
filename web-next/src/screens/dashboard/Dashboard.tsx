@@ -60,7 +60,7 @@ function NowPlaying({bindings: b, state}: {bindings: DashboardBindings; state: S
     (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
   }, [state.value, state.loading, state.failed]);
   return <Section title={t('next.dashboard.now')} extra={totals && totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check'});} state.refresh();}} />)}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check', durationMs: 3200});} state.refresh();}} />)}
       {!sessions.length && <p className={styles.empty}>{t('next.dashboard.nobody')}</p>}
     </div>}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />
