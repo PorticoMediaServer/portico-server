@@ -178,7 +178,7 @@ func TestOwnerCaptureRechecksLiveFamilyMoveAndKeyBeforeAnyChallenge(t *testing.T
 	for name, mutation := range map[string]string{
 		"family revoked":         `UPDATE authorization_session_families SET revoked=1`,
 		"token retired":          `UPDATE authorization_family_tokens SET retired=1`,
-		"reset-only family":      `INSERT INTO reset_file_sessions(family_id,kind) SELECT id,'local' FROM authorization_session_families`,
+		"reset-only family":      `INSERT INTO reset_file_sessions(family_id,kind) SELECT id,'password' FROM authorization_session_families`,
 		"epoch changed":          `UPDATE accounts SET epoch=epoch+1`,
 		"key generation changed": `UPDATE networking_claim_identity SET reset_generation=reset_generation+1`,
 		"confirmation withdrawn": `UPDATE identity_moves SET owner_confirmed=0`,
