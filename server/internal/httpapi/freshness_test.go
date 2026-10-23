@@ -83,6 +83,20 @@ func TestGridValidatorSurvivesTokenRotationAndUnrelatedWrites(t *testing.T) {
 		t.Fatal("affected resource kept validator")
 	}
 	before = d.gridTag(req, p, 24*time.Hour)
+	if _, err := d.DB.Exec(`UPDATE console_settings_revision SET revision=revision+1 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	if after := d.gridTag(req, p, 24*time.Hour); before == after {
+		t.Fatal("committed owner settings kept a stale grid validator")
+	}
+	before = d.gridTag(req, p, 24*time.Hour)
+	if _, err := d.DB.Exec(`INSERT INTO console_documents VALUES('server',900,'{}',0)`); err != nil {
+		t.Fatal(err)
+	}
+	if after := d.gridTag(req, p, 24*time.Hour); before != after {
+		t.Fatal("retired server document still changed the grid validator")
+	}
+	before = d.gridTag(req, p, 24*time.Hour)
 	if _, err := d.DB.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age) VALUES(?,1) ON CONFLICT(profile_id) DO UPDATE SET maximum_age=1`, p.ProfileID); err != nil {
 		t.Fatal(err)
 	}
