@@ -52,7 +52,8 @@ def main():
     # to contain both library types. Dependencies come from the same private pc files.
     links = [archives.get(flag, flag) for flag in links]
     compiler = shlex.split(env.get('CC', 'cc'))
-    command = (compiler + shlex.split(env.get('CFLAGS', '')) + ['-D_FILE_OFFSET_BITS=64'] +
+    command = (compiler + shlex.split(env.get('CFLAGS', '')) +
+               ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-D_FILE_OFFSET_BITS=64'] +
                shlex.split(pkg('--cflags', *modules)) + [str(args.source), '-o', str(args.output)] +
                shlex.split(env.get('LDFLAGS', '')) + links + shlex.split(env.get('LIBS', '')))
     if any(name in flag.lower() for flag in command for name in ('dvdcss', 'libaacs', '-laacs', 'bdplus')):

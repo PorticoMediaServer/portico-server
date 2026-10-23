@@ -77,7 +77,9 @@ def main():
         if digest(destination) != hashes[name]:
             raise ValueError('Build input changed during capture: ' + name)
     (work / 'linux-build-inputs.json').write_text(json.dumps({'files': hashes,
-        'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage']}, indent=2) + '\n')
+        'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
+        'dependencyPrefixFilesSHA256': digest(deps / 'prefix-files.json'),
+        'nativeBuildTools': {'glslc': digest(deps / 'extra/glslc')}}, indent=2) + '\n')
     results = []
     for index in (1, 2):
         build = work / 'linux-compile'
@@ -140,6 +142,8 @@ cp COPYING.GPLv3 /ffbuild/prefix/COPYING.GPLv3
             shutil.copyfile(deps / 'compiler.txt', output / 'compiler.txt')
         elif binaries != results[0]['binaries']:
             raise ValueError('Source-built executable bytes differ between repeat builds')
+    shutil.copyfile(work / 'repeat-build.json', work / 'linux-output/repeat-build.json')
+    shutil.copyfile(work / 'linux-build-inputs.json', work / 'linux-output/linux-build-inputs.json')
     shutil.rmtree(work / 'linux-compile')
     print('Two source builds produced identical ffmpeg, ffprobe and portico-disc executable hashes')
 
