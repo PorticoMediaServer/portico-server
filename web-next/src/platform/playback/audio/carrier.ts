@@ -1,3 +1,4 @@
+import {configureDestination} from './output';
 /**
  * The media element music decoded on the device plays through (B-17.19).
  *
@@ -29,6 +30,7 @@ export class MediaCarrier {
   private stream: MediaStreamAudioDestinationNode | null = null;
   private ours = false;
   private disposed = false;
+  private playAttempt = 0;
   private readonly onPause: () => void;
   private readonly paused = () => {
     // The page's own pause is not news; any other while carrying is the system's or the viewer's.
@@ -41,7 +43,8 @@ export class MediaCarrier {
     this.context = context; this.output = output; this.onPause = onPause;
     let element: CarrierElement | null = null, stream: MediaStreamAudioDestinationNode | null = null;
     try {
-      if (typeof context.createMediaStreamDestination === 'function') {
+      // MediaStreamAudioDestination defaults to stereo. Surround uses the real endpoint.
+      if (configureDestination(context.destination) <= 2 && typeof context.createMediaStreamDestination === 'function') {
         element = make();
         if (element) {
           stream = context.createMediaStreamDestination();
@@ -57,18 +60,31 @@ export class MediaCarrier {
     } else output.connect(context.destination);
   }
 
+  /** Re-read the actual endpoint when the selected/default output changes. Never fold surround to stereo. */
+  refreshOutput(): number {
+    const channels = configureDestination(this.context.destination);
+    if (channels > 2) this.direct();
+    return channels;
+  }
+
   /** Whether the audio goes through the element (and so reaches media keys and the lock screen). */
   get carrying(): boolean { return this.element !== null; }
 
   /** Playing: the element plays its stream. One that refuses gives the speakers the audio directly. */
-  play(): void {
+  play(onRefused?: (error: unknown) => void): void {
     const element = this.element;
     if (!element || !element.paused) return;
-    void element.play().catch(() => this.direct());
+    const attempt = ++this.playAttempt;
+    void element.play().catch(error => {
+      if (this.disposed || this.element !== element || attempt !== this.playAttempt) return;
+      this.direct();
+      onRefused?.(error);
+    });
   }
 
   /** Paused by the page: the element follows, without that being reported back as the viewer's pause. */
   pause(): void {
+    ++this.playAttempt;
     const element = this.element;
     if (!element || element.paused) return;
     this.ours = true;
@@ -91,6 +107,7 @@ export class MediaCarrier {
   }
 
   private release() {
+    ++this.playAttempt;
     const element = this.element;
     if (!element) return;
     this.element = null;
