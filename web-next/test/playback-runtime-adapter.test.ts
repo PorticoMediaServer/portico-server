@@ -376,6 +376,16 @@ test('Skip credits on an actual up-next offer uses its marker and never advances
   await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:credits.id}),/playback_policy_unavailable/);
 });
 
+test('an overlapping up-next marker cannot dismiss or skip a different active segment', async t => {
+  const f=setup(t,{skipModes:()=>({intro:'ask',credits:'ask'})});
+  policyFixture(f,[{...introMarker,endMs:7150000},creditsMarker]);const fence=await policyQueue(f);
+  f.video.advance(7110);await settle();assert.equal(f.runtime.getSnapshot().presentation?.policy?.prompt?.kind,'up-next');
+  const seeks=f.video.seeks.length;await assert.rejects(f.runtime.policyAction(fence,{kind:'skip',markerId:creditsMarker.id}),/playback_policy_unavailable/);
+  assert.equal(f.video.seeks.length,seeks);
+  f.video.advance(40);await settle();const prompt=f.runtime.getSnapshot().presentation?.policy?.prompt;
+  assert.equal(prompt?.kind,'skip');if(prompt?.kind==='skip')assert.equal(prompt.marker.id,introMarker.id,'the canonical expected-ID guard refuses before dismissing the unrelated active intro');
+});
+
 test('explicit automatic credits advance uses the real completion request before media end in both expanded and quiet modes', async t => {
   for (const collapsed of [false, true]) {
     const f = setup(t, {skipModes: () => ({credits: 'ask'})}); policyFixture(f, [creditsMarker], {startDuringCredits: true});
@@ -790,6 +800,31 @@ test('accepted chooser replacement drops old facts while its actual start remain
   await f.runtime.play('newer', 20); await f.arrive(); const newer = f.runtime.getSnapshot().session!.id;
   abort.abort(); gate.resolve(); await done; await settle();
   assert.equal(f.runtime.getSnapshot().session!.id, newer); assert.equal(f.video.paused, false);
+});
+
+test('a changed genuine entry context abandons its late version POST before any engine adoption', async t => {
+  const f=setup(t),fixture=versionFixture(f),gate=deferred();let current=true,created='';
+  f.intercept(async(request,response)=>{
+    if(request.method==='POST'&&request.path==='/v1/playback/sessions'&&(request.body as {versionId?:string})?.versionId==='v2'){created=(response.body as {id:string}).id;await gate.hold();}
+    return fixture.handle(request,response);
+  });
+  const pending=f.runtime.playVersion({itemId:'movie',versionId:'v2',context:selectionContext,signal:new AbortController().signal},()=>current),rejected=assert.rejects(pending,/stale_selection_context|playback_version_failed/);
+  await gate.started;assert.ok(created);current=false;gate.resolve();await rejected;await settle();
+  assert.equal(f.hls.instances.length,0,'the obsolete genuine response never reaches a media engine');
+  assert.equal(f.server.session(created)?.ended,true);assert.equal(f.log.some(request=>request.method==='DELETE'&&request.path===`/v1/playback/sessions/${created}`),true);
+});
+
+test('the original chooser read lifetime can cancel an in-flight version command independently of its action signal', async t => {
+  const f=setup(t);await f.runtime.play('movie',25);await f.arrive();const fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')assert.fail('queue fence required');
+  const fixture=versionFixture(f),read=new AbortController(),action=new AbortController(),choices=await f.runtime.readVersions(fence,read.signal);assert.ok(choices);
+  const gate=deferred();let created='';f.intercept(async(request,response)=>{
+    if(request.method==='POST'&&request.path==='/v1/playback/sessions'&&(request.body as {versionId?:string})?.versionId==='v2'){created=(response.body as {id:string}).id;await gate.hold();}
+    return fixture.handle(request,response);
+  });
+  const loads=f.video.loads,pending=f.runtime.playVersion({choices,versionId:'v2',signal:action.signal}),rejected=assert.rejects(pending);
+  await gate.started;assert.equal(choices.isCurrent(),false,'intentional output replacement is allowed while the original read controller remains alive');
+  read.abort();assert.equal(action.signal.aborted,false);gate.resolve();await rejected;await settle();
+  assert.ok(created);assert.equal(f.server.session(created)?.ended,true);assert.equal(f.runtime.getSnapshot().session,undefined);assert.equal(f.video.loads,loads);
 });
 
 test('unavailable or mismatched version offer never stops the existing playback or starts a source link', async t => {

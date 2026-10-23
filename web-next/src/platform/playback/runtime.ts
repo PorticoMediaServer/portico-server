@@ -72,7 +72,7 @@ export class WebShellPlaybackRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly bookmarks = new Map<string, Bookmark>();
   private readonly retiredFences = new Set<string>();
-  private readonly versionChoices = new WeakMap<WebPlaybackVersionChoices, Readonly<{isCurrent(): boolean; failedVersionId?: string}>>();
+  private readonly versionChoices = new WeakMap<WebPlaybackVersionChoices, Readonly<{isCurrent(): boolean; signal: AbortSignal; failedVersionId?: string}>>();
   private stack: Stack;
   private video?: VideoLike;
   private surface?: SubtitleSurface;
@@ -321,7 +321,7 @@ export class WebShellPlaybackRuntime {
     if (options.itemId !== fence.itemId) problem('playback_version_unavailable');
     const versions = Object.freeze(options.versions.filter(version => !excludeFailed || version.id !== failedVersionId));
     const choices = Object.freeze({fence, options, versions, selectedVersionId, ...(failedVersionId ? {failedVersionId} : {}), isCurrent});
-    this.versionChoices.set(choices, {isCurrent, ...(excludeFailed ? {failedVersionId} : {})});
+    this.versionChoices.set(choices, {isCurrent, signal, ...(excludeFailed ? {failedVersionId} : {})});
     return choices;
   }
 
@@ -348,13 +348,21 @@ export class WebShellPlaybackRuntime {
     const startSeconds = options.resume ? options.resume.positionMs / 1000 : 0;
     if (!validSeconds(startSeconds)) problem('invalid_playback_position');
     const stack = this.replace(); stack.expanded = true;
+    const lifetime = AbortSignal.any([signal, ...(selection ? [selection.signal] : []), stack.life.signal]);
+    const current = () => {
+      if (lifetime.aborted || !this.current(stack) || serial !== this.operation) return false;
+      // The accepted new output intentionally retires the old chooser fence. Only its original
+      // read/action lifetime and genuine parent authority remain command prerequisites here.
+      if ('choices' in request) return true;
+      try { this.selectionCurrent(request.context, lifetime, isCurrent!); return true; } catch { return false; }
+    };
     const cancel = () => { if (this.current(stack) && serial === this.operation) {
       this.replacing = true; this.retire(stack); this.stack = this.makeStack(); this.activate(this.stack); this.replacing = false; this.sync();
     } };
-    signal.addEventListener('abort', cancel, {once: true});
+    lifetime.addEventListener('abort', cancel, {once: true});
     try {
-      await stack.service.play(itemId, startSeconds, undefined, undefined, undefined, {versionId});
-      if ('choices' in request) { if (signal.aborted) problem('stale_playback_command'); }
+      await stack.queue.playItem(itemId, startSeconds, undefined, undefined, undefined, {versionId}, {signal: lifetime, isCurrent: current});
+      if ('choices' in request) { if (lifetime.aborted) problem('stale_playback_command'); }
       else this.selectionCurrent(request.context, signal, isCurrent!);
       if (!this.current(stack) || serial !== this.operation) problem('stale_selection_context');
       const started = stack.service.getSnapshot(), session = stack.queue.currentSession();
@@ -362,7 +370,7 @@ export class WebShellPlaybackRuntime {
         || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_version_failed');
       this.sync();
     } catch (error) { cancel(); throw error; }
-    finally { signal.removeEventListener('abort', cancel); }
+    finally { lifetime.removeEventListener('abort', cancel); }
   }
 
   /** The shell supplies the same current Home context guard used by its selection controller.
@@ -678,7 +686,7 @@ export class WebShellPlaybackRuntime {
       case 'skip': {
         const marker = prompt?.kind === 'skip' ? prompt.marker : prompt?.kind === 'up-next' ? prompt.offer.marker : undefined;
         if (!marker || marker.id !== action.markerId || prompt?.kind === 'up-next' && marker.kind !== 'credits' && marker.kind !== 'outro') problem('playback_policy_unavailable');
-        command = this.policy.skip(fence);
+        command = this.policy.skip(fence, action.markerId);
         if (command?.kind !== 'seek' || command.markerId !== action.markerId) problem('playback_policy_unavailable');
         break;
       }
