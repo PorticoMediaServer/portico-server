@@ -37,7 +37,11 @@ export function createReadBindings(context: ReadBindingContext): ReadBindings {
     pending?.abort(new ReadingError('cancelled')); pending = undefined;
     const previous = session; session = undefined;
     // Retirement never issues cleanup using another viewer's authority.
-    const task = previous && authorized() ? previous.close() : Promise.resolve();
+    let task = Promise.resolve();
+    if (previous && authorized()) {
+      const cleanup = new AbortController(), deadline = setTimeout(() => cleanup.abort(), 2000);
+      task = previous.close(cleanup.signal).finally(() => clearTimeout(deadline));
+    }
     closing = Promise.all([closing.catch(() => {}), task]).then(() => {});
     return closing;
   };

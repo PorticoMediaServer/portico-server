@@ -28,3 +28,4 @@ export type {ReadingDisplayCopy, ReadingDisplayScale} from './display';
 export {readingDisplayCopy} from './display-copy';
 export {createReadBindings} from './bindings';
 export type {ReadBindings, ReadBindingContext} from './bindings';
+export {ReadEntry} from './ReadEntry';
