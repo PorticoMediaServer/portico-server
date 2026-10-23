@@ -68,6 +68,19 @@ test('cancelled preparation cannot leave a late durable pending record', async (
   const f = await fixture(); f.hold(); const work = f.prepare(); await new Promise(resolve => setImmediate(resolve));
   f.flow.cancel(); f.release(); await assert.rejects(work, {code: 'cancelled'}); assert.equal(f.saved(), undefined);
 });
+test('leaving after a completed preparation spends only its own pending before another controller can return', async () => {
+  const f = await fixture(); await f.prepare(); assert.ok(f.saved());
+  await f.flow.cancel(); assert.equal(f.saved(), undefined);
+  await assert.rejects(f.another().finish(f.callback), {code: 'invalid_return'});
+  assert.equal(f.calls.includes('exchange'), false);
+});
+test('an old or idle controller cancellation cannot spend a successor pending attempt', async () => {
+  const f = await fixture(); await f.prepare();
+  const successor = f.another(); await successor.prepare(f.api, origin, hostedOrigin, installation);
+  const actual = f.saved(); await f.flow.cancel(); assert.equal(f.saved(), actual);
+  await f.another().cancel(); assert.equal(f.saved(), actual);
+  await successor.finish(f.callback); assert.equal(f.calls.includes('remember'), true);
+});
 test('a changed app selection prevents handoff and removes only this pending attempt', async () => {
   const f = await fixture(); f.hold(); const work = f.prepare(); await new Promise(resolve => setImmediate(resolve));
   f.revise(); f.release(); await assert.rejects(work, {code: 'cancelled'}); assert.equal(f.saved(), undefined);

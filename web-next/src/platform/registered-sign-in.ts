@@ -38,12 +38,17 @@ const invalid = () => new CodedError('invalid_return', 'This sign-in is no longe
 export class BrowserRegisteredSignIn {
   private epoch = 0;
   private controller?: AbortController;
+  private attemptId?: string;
   constructor(private readonly ports: Ports) {}
   private operation() {
     this.controller?.abort(); const epoch = ++this.epoch, controller = this.controller = new AbortController();
     return {signal: controller.signal, current: () => this.epoch === epoch && !controller.signal.aborted};
   }
-  cancel() {++this.epoch; this.controller?.abort();}
+  async cancel() {
+    ++this.epoch; this.controller?.abort();
+    const attemptId = this.attemptId; this.attemptId = undefined;
+    if (attemptId) await this.ports.journal.change(old => old?.attemptId === attemptId ? undefined : old);
+  }
   async prepare(api: HttpLocalApi, origin: string, hostedOrigin: string, installationId: string,
     move: Readonly<{moveTicket?: string; moveCode?: string}> = {}) {
     this.ports.journal.assertAvailable();
@@ -58,6 +63,7 @@ export class BrowserRegisteredSignIn {
     // vault wins atomically, even if the earlier prepare answers much later.
     await this.ports.journal.change(() => {
       if (!operation.current()) throw cancelled();
+      this.attemptId = attemptId;
       return {version: 1, kind: 'registered', origin, hostedOrigin, pin: route.pin,
         expectedRevision: state.revision, attemptId, expiresAt: ''};
     });
@@ -86,6 +92,7 @@ export class BrowserRegisteredSignIn {
       return url;
     } catch (error) {
       await this.ports.journal.change(old => old?.attemptId === attemptId ? undefined : old);
+      if (this.attemptId === attemptId) this.attemptId = undefined;
       throw error;
     }
   }
@@ -101,6 +108,7 @@ export class BrowserRegisteredSignIn {
     this.ports.journal.assertAvailable();
     const operation = this.operation(); let record: Pending | undefined;
     await this.ports.journal.change(old => {record = old; return undefined;});
+    this.attemptId = undefined;
     if (!record || record.version !== 1 || record.kind !== 'registered' || !record.pending) throw invalid();
     const saved = {...record, pending: record.pending}, url = new URL(captured.href), expires = Date.parse(saved.expiresAt), now = Date.now();
     if (!Number.isSafeInteger(saved.pending.createdAt) || saved.pending.createdAt < 0 || saved.pending.createdAt > now + 60_000 ||
