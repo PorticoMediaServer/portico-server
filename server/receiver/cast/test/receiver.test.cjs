@@ -350,6 +350,14 @@ test('catalogue identity without a new poster restores the current occurrence co
  assert.equal(h.metadataUpdates.at(-1).media.metadata.artist,'Read artist');
 });
 
+test('catalogue film year uses only its genuine bounded numeric year and omits invalid facts',async()=>{
+ for(const year of [2002,undefined,0,-1,10000,2002.5,'2002',null]){
+  const views=[],h=await harness({direct:true,container:'mp4',catalog:{movie:{id:'movie',title:'Film',kind:'movie',...(year===undefined?{}:{year})}},view:{playing:s=>views.push(s)}});
+  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0,{title:'Film',kind:'movie',subtitle:'1999'});await settle();h.events.LOADED_DATA();
+  assert.equal(views.at(-1).meta.subtitle,year===2002?'2002':'');assert.equal(h.metadataUpdates.at(-1).media.metadata.subtitle,year===2002?'2002':'');
+ }
+});
+
 test('refused and mismatched catalogue reads keep next identity absent without a notice',async()=>{
  for(const fixture of [{catalogStatus:403},{catalog:{'song-2':{id:'other',title:'Wrong title',kind:'song'}}}]){
   const views=[],notices=[],h=await harness({...fixture,queue:true,direct:true,audioOnly:true,container:'mp3',view:{playing:s=>views.push(s),notice:s=>notices.push(s)}});

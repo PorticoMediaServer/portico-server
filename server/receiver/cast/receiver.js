@@ -501,7 +501,8 @@
     try {
       var item=(await api('/v1/items/'+encodeURIComponent(owner.itemId),{method:'GET'})).body;
       if(!current()||!item||item.id!==owner.itemId||item.missing)return;
-      var identity=displayMeta({title:item.title,kind:item.kind,artworkPath:item.posterUrl});
+      var year=item.kind==='movie'&&Number.isSafeInteger(item.year)&&item.year>0&&item.year<=9999?String(item.year):undefined;
+      var identity=displayMeta({title:item.title,kind:item.kind,subtitle:year,artworkPath:item.posterUrl});
       if(!identity)return;
       if(item.song&&typeof item.song==='object'){
         var artist=cleanText(item.song.artist),album=cleanText(item.song.albumTitle);
