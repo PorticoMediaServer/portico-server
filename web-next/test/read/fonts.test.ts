@@ -43,3 +43,12 @@ test('a font that finishes loading after retirement is never registered in the a
   life.abort(); env.release(); await assert.rejects(pending);
   assert.equal(env.faces.size, 0);
 });
+
+test('the actual public font loaders need no WebCrypto in an HTTP host', async t => {
+  const env = await environment(t), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {value: Object.freeze({}), configurable: true});
+  t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor); else Reflect.deleteProperty(globalThis, 'crypto'); });
+  const resource = await loadReadFonts({document: env.document, signal: new AbortController().signal}); t.after(resource.dispose);
+  assert.equal(resource.fonts.literata.size, 955132); assert.equal(env.faces.size, 1);
+  resource.dispose(); assert.equal(env.faces.size, 0);
+});
