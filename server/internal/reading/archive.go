@@ -28,8 +28,13 @@ const (
 )
 
 type archive struct {
-	files map[string]*zip.File
-	order []string
+	files      map[string]*archiveFile
+	order      []string
+	sequential *sequentialArchive
+}
+type archiveFile struct {
+	UncompressedSize64 uint64
+	zipped             *zip.File
 }
 
 // inspectDirectory bounds archive/zip's allocation before it parses the central
@@ -68,6 +73,11 @@ func safePath(name string) bool {
 	if name == "" || len(name) > 1024 || strings.ContainsAny(name, "\\\x00%?#:") || strings.HasPrefix(name, "/") {
 		return false
 	}
+	for _, c := range name {
+		if c < 32 || c == 127 {
+			return false
+		}
+	}
 	for _, p := range strings.Split(name, "/") {
 		if p == "" || p == "." || p == ".." {
 			return false
@@ -84,7 +94,7 @@ func openArchive(r io.ReaderAt, size int64) (*archive, error) {
 	if err != nil {
 		return nil, ErrInvalid
 	}
-	a := &archive{files: map[string]*zip.File{}}
+	a := &archive{files: map[string]*archiveFile{}}
 	var expanded uint64
 	for _, f := range z.File {
 		name := strings.TrimSuffix(f.Name, "/")
@@ -107,7 +117,7 @@ func openArchive(r io.ReaderAt, size int64) (*archive, error) {
 		if expanded > MaxExpanded {
 			return nil, ErrLimit
 		}
-		a.files[name] = f
+		a.files[name] = &archiveFile{f.UncompressedSize64, f}
 		a.order = append(a.order, name)
 	}
 	return a, nil
@@ -133,7 +143,10 @@ func (a *archive) read(ctx context.Context, name string, limit int64) ([]byte, e
 	if f.UncompressedSize64 > uint64(limit) {
 		return nil, ErrLimit
 	}
-	r, err := f.Open()
+	if a.sequential != nil {
+		return a.sequential.read(ctx, name, limit)
+	}
+	r, err := f.zipped.Open()
 	if err != nil {
 		return nil, ErrInvalid
 	}

@@ -125,6 +125,7 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	// season, album or book covers it.
 	rows, err := tx.QueryContext(ctx, `SELECT profile_id FROM personal_items INDEXED BY personal_items_item_id_fk WHERE item_id=?1
  UNION SELECT profile_id FROM progress INDEXED BY progress_item_state WHERE item_id=?1
+ UNION SELECT owner_key FROM reading_progress WHERE item_id=?1
  UNION SELECT profile_id FROM personal_watched_intents WHERE item_id=?1
  UNION SELECT profile_id FROM personal_play_counts INDEXED BY personal_play_counts_item WHERE item_id=?1
  UNION SELECT s.profile_id FROM container_personal_state s WHERE s.watched=1 AND s.container_id IN(
@@ -149,7 +150,7 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	}
 	now := time.Now().UnixMilli()
 	for _, profile := range profiles {
-		var watched, watchlisted, favorite, notInterested, completed bool
+		var watched, watchlisted, favorite, notInterested, completed, reading bool
 		var rating sql.NullFloat64
 		var lastPlayed, progressAt string
 		var plays, position, unit int64
@@ -162,14 +163,11 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 			Scan(&watched, &watchlisted, &favorite, &notInterested, &rating, &lastPlayed, &plays, &position, &unit, &completed, &progressAt); err != nil {
 			return err
 		}
-		if !watched && !watchlisted && !favorite && !notInterested && !rating.Valid && plays == 0 && position == 0 {
-			continue
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM reading_progress WHERE owner_key=? AND item_id=?)`, profile, entity).Scan(&reading); err != nil {
+			return err
 		}
-		// An older copy under any of these identities is superseded.
-		for _, identity := range identities {
-			if _, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT state_id FROM retained_title_identities WHERE identity=? AND profile_id=?)`, identity, profile); err != nil {
-				return err
-			}
+		if !watched && !watchlisted && !favorite && !notInterested && !rating.Valid && plays == 0 && position == 0 && !reading {
+			continue
 		}
 		var id int64
 		if err = tx.QueryRowContext(ctx, `INSERT INTO retained_title_state(profile_id,kind,title,watched,watchlisted,favorite,not_interested,rating,last_played_at,plays,position,unit,completed,progress_at,retained_ms)
@@ -177,9 +175,18 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 			return err
 		}
 		for _, identity := range identities {
+			if err = mergeRetainedReadingTx(ctx, tx, id, identity, profile); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id<>? AND id IN(SELECT state_id FROM retained_title_identities WHERE identity=? AND profile_id=?)`, id, identity, profile); err != nil {
+				return err
+			}
 			if _, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO retained_title_identities(identity,profile_id,state_id) VALUES(?,?,?)`, identity, profile, id); err != nil {
 				return err
 			}
+		}
+		if err = retainReadingTx(ctx, tx, entity, profile, id); err != nil {
+			return err
 		}
 		if err = pruneRetainedProfileTx(ctx, tx, profile); err != nil {
 			return err
@@ -289,6 +296,13 @@ func restoreIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, identity s
 			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO personal_play_counts(profile_id,item_id,plays) VALUES(?,?,?)`, k.profile, entity, k.plays); err != nil {
 				return err
 			}
+		}
+		remaining, e := restoreReadingTx(ctx, tx, entity, k.profile, k.id)
+		if e != nil {
+			return e
+		}
+		if remaining {
+			continue
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id=?`, k.id); err != nil {
 			return err
