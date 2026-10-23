@@ -55,7 +55,7 @@
  extern const FFBitStreamFilter ff_dv_error_marker_bsf;
 --- /dev/null
 +++ b/libavcodec/bsf/dovi_profile.c
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,196 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -93,7 +93,7 @@
 +} DoviProfileContext;
 +
 +/* The input must be an observed dual-layer profile 7 stream. Conversion mode
-+ * 2 produces profile 8.1 no-op mapping; it DOES NOT reconstruct FEL residuals.
++ * 2 produces profile 8.1 (FEL mapping removed), without reconstructing residuals.
 + * The BL and packet timestamps are retained. Every EL NAL is discarded. */
 +static int convert_rpu(AVBSFContext *bsf, CodedBitstreamUnit *nal)
 +{
@@ -104,7 +104,10 @@
 +    AVBufferRef *ref = NULL;
 +    int ret = AVERROR_INVALIDDATA;
 +
-+    rpu = dovi_parse_unspec62_nalu(nal->data, nal->data_size);
++    /* CBS owns HEVC escaping: its unit data is already unescaped. */
++    if (nal->data_size < 3)
++        return AVERROR_INVALIDDATA;
++    rpu = dovi_parse_rpu(nal->data + 2, nal->data_size - 2);
 +    if (!rpu)
 +        return AVERROR(ENOMEM);
 +    if (dovi_rpu_get_error(rpu))
@@ -121,20 +124,21 @@
 +    header = dovi_rpu_get_header(rpu);
 +    if (!header || header->guessed_profile != 8)
 +        goto fail;
-+    data = dovi_write_unspec62_nalu(rpu);
++    data = dovi_write_rpu(rpu);
 +    if (!data || !data->data || data->len < 3 ||
-+        data->len > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE || dovi_rpu_get_error(rpu))
++        data->len > INT_MAX - 2 - AV_INPUT_BUFFER_PADDING_SIZE || dovi_rpu_get_error(rpu))
 +        goto fail;
-+    ref = av_buffer_allocz(data->len + AV_INPUT_BUFFER_PADDING_SIZE);
++    ref = av_buffer_allocz(data->len + 2 + AV_INPUT_BUFFER_PADDING_SIZE);
 +    if (!ref) {
 +        ret = AVERROR(ENOMEM);
 +        goto fail;
 +    }
-+    memcpy(ref->data, data->data, data->len);
++    memcpy(ref->data, nal->data, 2);
++    memcpy(ref->data + 2, data->data, data->len);
 +    av_buffer_unref(&nal->data_ref);
 +    nal->data_ref = ref;
 +    nal->data = ref->data;
-+    nal->data_size = data->len;
++    nal->data_size = data->len + 2;
 +    nal->data_bit_padding = 0;
 +    s->seen_rpu = 1;
 +    ret = 0;

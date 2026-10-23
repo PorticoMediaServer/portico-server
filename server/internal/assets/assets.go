@@ -208,7 +208,6 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	knownStreams := true
 	seenStreams := map[int]bool{}
 	for position, s := range raw.Streams {
-		s.Codec = canonicalProbeCodec(s.Codec)
 		if s.Disposition.AttachedPic != 0 {
 			f.AttachedPicture = true
 			continue
