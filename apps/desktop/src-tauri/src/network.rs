@@ -1,16 +1,9 @@
 //! Read-only OS network facts. Unknown never grants automatic unmetered transfer.
-use serde::Serialize;
-
-#[derive(Clone,Copy,Debug,Default,PartialEq,Eq,Serialize)]
-#[serde(rename_all="lowercase")]
-pub enum NetworkCost { #[default] Unknown, Metered, Unmetered }
-
-fn network_manager_cost(state:Option<u32>,metered:Option<u32>)->NetworkCost {
-    // NM_STATE_CONNECTED_LOCAL/SITE/GLOBAL. A local media server needs no Internet
-    // connectivity probe. GUESS_YES/GUESS_NO remain unknown, not measured costs.
-    if !state.is_some_and(|v|matches!(v,50|60|70)){return NetworkCost::Unknown}
-    match metered {Some(1)=>NetworkCost::Metered,Some(2)=>NetworkCost::Unmetered,_=>NetworkCost::Unknown}
-}
+pub use crate::network_cost::NetworkCost;
+#[cfg(target_os="linux")]
+use crate::network_cost::network_manager_cost;
+#[cfg(target_os="windows")]
+#[path="network_windows.rs"]mod windows;
 
 #[cfg(target_os="linux")]
 pub fn current()->NetworkCost {
@@ -33,21 +26,7 @@ pub fn start(){#[cfg(target_os="macos")]unsafe{portico_network_start();}}
 pub fn stop(){#[cfg(target_os="macos")]unsafe{portico_network_stop();}}
 #[cfg(target_os="macos")]
 pub fn current()->NetworkCost{match unsafe{portico_network_cost()}{1=>NetworkCost::Metered,2=>NetworkCost::Unmetered,_=>NetworkCost::Unknown}}
-#[cfg(not(any(target_os="linux",target_os="macos")))]
+#[cfg(target_os="windows")]
+pub fn current()->NetworkCost{windows::current()}
+#[cfg(not(any(target_os="linux",target_os="macos",target_os="windows")))]
 pub fn current()->NetworkCost{NetworkCost::Unknown}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn only_explicit_connected_network_cost_grants_unmetered(){
-        for state in [None,Some(0),Some(10),Some(20),Some(30),Some(40),Some(99)]{
-            for metered in [None,Some(0),Some(1),Some(2),Some(3),Some(4)]{assert_eq!(network_manager_cost(state,metered),NetworkCost::Unknown);}
-        }
-        for state in [50,60,70]{
-            assert_eq!(network_manager_cost(Some(state),Some(1)),NetworkCost::Metered);
-            assert_eq!(network_manager_cost(Some(state),Some(2)),NetworkCost::Unmetered);
-            for guess in [None,Some(0),Some(3),Some(4)]{assert_eq!(network_manager_cost(Some(state),guess),NetworkCost::Unknown);}
-        }
-    }
-}
