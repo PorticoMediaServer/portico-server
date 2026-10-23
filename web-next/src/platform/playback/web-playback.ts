@@ -34,10 +34,20 @@ import {PlaybackSessionController, SessionsClient, type SessionChange, type Star
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
-import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers} from './web-media-player.ts';
+import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
 
 /** What the binding tells the player screen in words (the screen owns the wording). */
 export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityRaised';
+
+/** Structural native/web media port. A platform adapter owns one generation at a time. */
+export type PlaybackMediaPort = MediaPlayer & {
+  readonly loaded: number;
+  readonly settling: boolean;
+  onNotice(listener: (notice: WebPlayerNotice) => void): () => void;
+  unload(): void;
+  suspend(): void;
+  resume(): void;
+};
 
 /** The device's own audio engine for music (`DecodeAudioRender`). */
 export type RenderEngine = {apply(snapshot: PlaybackSnapshot): void; dispose(): void; transportPosition(): number};
@@ -61,6 +71,7 @@ export type WebPlaybackHost = Readonly<{
   /** Ask the app to find the server again (it may have moved to another of its addresses). */
   recoverRoute?(): Promise<unknown> | void;
   loadHls?: () => Promise<HlsModule>;
+  createPlayer?: (video: VideoLike, options: WebMediaPlayerOptions) => PlaybackMediaPort;
   createRender?: (service: PlaybackService, video: VideoLike) => RenderEngine;
   /** A request that outlives the page (`HttpLocalApi.farewell`). */
   farewell?(path: string, method: string, body?: unknown): void;
@@ -86,7 +97,7 @@ export function webPlaybackResourceKey(snapshot: {audioEffects?: {rendering: boo
  * element is left idle.
  */
 export class PlayerSlot implements MediaPlayer {
-  private real?: WebMediaPlayer;
+  private real?: PlaybackMediaPort;
   private off?: () => void;
   private offNotice?: () => void;
   private source?: PlayerSource;
@@ -128,7 +139,7 @@ export class PlayerSlot implements MediaPlayer {
   /** The generation the element has loaded (0: nothing). */
   get loaded(): number { return this.real && !this.held ? this.real.loaded : 0; }
 
-  mount(real: WebMediaPlayer): void {
+  mount(real: PlaybackMediaPort): void {
     this.unmount();
     this.real = real;
     this.off = real.onEvent(e => { for (const l of [...this.listeners]) l(e); });
@@ -238,7 +249,7 @@ export class WebPlayback implements PlaybackAdapter {
 
   /** The player screen's element is in the page. Returns the undo for when it leaves. */
   mount(video: VideoLike, subtitles?: SubtitleTimeline, externalRoute?: () => PlayerObservation['externalRoute']): () => void {
-    const player = new WebMediaPlayer(video, {
+    const player = (this.host.createPlayer ?? ((element, options) => new WebMediaPlayer(element, options)))(video, {
       loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, nativeHls: this.host.nativeHls, externalRoute, timers: this.host.playerTimers,
     });
     this.video = video;
@@ -284,7 +295,7 @@ export class WebPlayback implements PlaybackAdapter {
     // Nothing to play, or a failed play: the media is let go. A delayed event cannot revive it.
     if (!session || next.phase === 'error') { this.release(); return; }
     if (this.blocked) return;
-    if (next.audioEffects.rendering) { this.applyRender(next, session); return; }
+    if (this.host.createRender && next.audioEffects.rendering) { this.applyRender(next, session); return; }
     this.endRender();
     const key = `${session.id}:${session.generation}`;
     if (this.loadedKey !== key && this.load(next, session)) {
@@ -366,7 +377,7 @@ export class WebPlayback implements PlaybackAdapter {
 
   private current(o: PlayerObservation): {service: PlaybackService; snapshot: PlaybackSnapshot} | undefined {
     const service = this.service, snapshot = service?.getSnapshot(), session = snapshot?.session;
-    if (!service || !snapshot || !session || snapshot.audioEffects.rendering || this.blocked || snapshot.phase === 'error') return undefined;
+    if (!service || !snapshot || !session || !!this.render || this.blocked || snapshot.phase === 'error') return undefined;
     if (o.generation !== session.generation || this.loadedKey !== `${session.id}:${session.generation}`) return undefined;
     return {service, snapshot};
   }
@@ -429,7 +440,7 @@ export class WebPlayback implements PlaybackAdapter {
 
   private playerNotice(n: WebPlayerNotice) {
     const service = this.service, snapshot = service?.getSnapshot();
-    if (!service || !snapshot?.session || snapshot.audioEffects.rendering) return;
+    if (!service || !snapshot?.session || !!this.render) return;
     const intent = snapshot.intentId;
     switch (n.type) {
       case 'alive': service.engineProgress(intent); return;
@@ -598,7 +609,7 @@ export class WebPlayback implements PlaybackAdapter {
     if (at - this.decidedAt < 1000) return;
     this.decidedAt = at;
     const snapshot = service.getSnapshot();
-    if (snapshot.channel || snapshot.phase !== 'ready' || snapshot.pendingSeek || snapshot.audioEffects.rendering) return;
+    if (snapshot.channel || snapshot.phase !== 'ready' || snapshot.pendingSeek || !!this.render) return;
     const step = auto.decide();
     if (step === undefined) return;
     const lowered = !!step && (!this.automaticStep || step.height < this.automaticStep.height);
@@ -628,7 +639,7 @@ export class WebPlayback implements PlaybackAdapter {
     if (!held.session || held.phase === 'ended') return;
     if (!final || !this.host.farewell) { void this.controller.flush().catch(() => {}); return; }
     const service = this.service?.getSnapshot();
-    const positionMs = service?.audioEffects.rendering && service.session?.id === held.session.id ? service.positionSeconds * 1000 : held.observation?.positionMs;
+    const positionMs = this.render && service?.session?.id === held.session.id ? service.positionSeconds * 1000 : held.observation?.positionMs;
     this.host.farewell(`/v1/playback/sessions/${encodeURIComponent(held.session.id)}`, 'DELETE', positionMs !== undefined ? {positionMs: Math.max(0, Math.round(positionMs))} : undefined);
   }
 

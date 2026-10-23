@@ -515,7 +515,7 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
   const t = setup(ctx);
   await t.player.playEntries(['e1', 'e2'].map(queueItemInput));
   const hls = await t.arrive();
-  t.web.setAutomatic({steps: [{id: '1080', height: 1080, videoKbps: 8000}, {id: '720', height: 720, videoKbps: 4000}, {id: '480', height: 480, videoKbps: 1500}], originalKbps: 20_000});
+  t.web.setAutomatic({steps: [{id: '1080p-low', height: 1080, videoKbps: 8000}, {id: '720p-high', height: 720, videoKbps: 4000}, {id: '480p', height: 480, videoKbps: 1500}], originalKbps: 20_000});
   assert.equal(t.web.automaticOn, true);
   assert.equal(t.web.automaticAt, undefined, 'it starts at Original');
   // Twelve seconds of fragments arriving at about 5 Mbps against a 20 Mbps original.
@@ -527,10 +527,10 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
     t.video.advance(1 + i);
   }
   await settle();
-  assert.equal(t.web.automaticAt?.id, '720', 'the best step the connection carries with room to spare');
+  assert.equal(t.web.automaticAt?.id, '720p-high', 'the best step the connection carries with room to spare');
   assert.deepEqual(t.notices, ['qualityLowered']);
   const patch = t.log.find(r => r.method === 'PATCH');
-  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'automatic', id: '720p'}, 'Automatic, on the step the connection carries');
+  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'automatic', id: '720p-high'}, 'Automatic, on the step the connection carries');
   assert.equal(t.queues().length, 1);
 });
 
