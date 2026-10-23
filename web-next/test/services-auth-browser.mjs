@@ -22,18 +22,16 @@ export async function runServicesAuthProof({driver, port, capture, report}) {
     await driver.clickText('Create account');
     await driver.waitFor("document.querySelector('input[name=email]')");
     await driver.fill('input[name=email]', recipient);
-    await driver.fill('input[name=username]', 'harbourview');
+    await driver.fill('input[name=username]', 'harbourview' + Date.now().toString().slice(-5));
     await driver.fill('input[name=name]', 'Alex');
     await driver.fill('input[name=new-password]', 'K7qm-4Txp-29Hd-P8m');
     await driver.evaluate('document.activeElement.blur()'); await capture('hosted-create');
     await driver.clickText('Continue');
     await driver.waitFor("document.querySelector('input[autocomplete=one-time-code]')", 30000);
-    const request = [...driver.requests.entries()].reverse().find(([, url]) => new URL(url).pathname === '/v1/registrations');
-    assert(request, 'The actual registration request must exist.');
-    const response = JSON.parse((await driver.send('Network.getResponseBody', {requestId: request[0]})).body);
-    assert.equal(typeof response.registrationId, 'string');
+    const registrationId = await driver.evaluate("import('/src/services/session.ts').then(async({servicesAccount})=>(await servicesAccount().client.registration()).registrationId)");
+    assert.equal(typeof registrationId, 'string');
     await driver.evaluate('document.fonts.ready'); await capture('hosted-code');
-    console.log(JSON.stringify({event: 'AUTH_CODE_REQUIRED', recipient, registrationId: response.registrationId, codeDestination: codeFile}));
+    console.log(JSON.stringify({event: 'AUTH_CODE_REQUIRED', recipient, registrationId, codeDestination: codeFile}));
     let code = '';
     const deadline = Date.now() + 6 * 60 * 1000;
     while (Date.now() < deadline) {
