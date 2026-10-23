@@ -1,0 +1,48 @@
+[package]
+name = "portico-desktop"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-only"
+publish = false
+
+[lib]
+name = "portico_desktop"
+
+[[bin]]
+name = "portico-desktop"
+path = "src/main.rs"
+required-features = ["shell"]
+
+[[bin]]
+name = "portico-engine-proof"
+path = "src/bin/engine-proof.rs"
+
+[features]
+default = []
+shell = ["dep:tauri", "dep:tauri-build", "dep:gtk", "dep:webkit2gtk"]
+updater = ["shell", "dep:tauri-plugin-updater"]
+
+[dependencies]
+libloading = "=0.9.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+url = "=2.5.7"
+tauri = { version = "=2.12.5", optional = true, features = ["macos-private-api"] }
+tauri-plugin-updater = { version = "=2.10.1", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "=0.18.2", optional = true }
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"], optional = true }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", optional = true }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

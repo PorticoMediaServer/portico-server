@@ -1,0 +1,49 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DesktopMediaPlayer} from '../src/player.ts';
+import {observation, type Bridge, type NativeCommand, type NativeObservation} from '../src/bridge.ts';
+import type {VideoLike} from '../../../web-next/src/platform/playback/index.ts';
+
+const source = {url:'/v1/media/opaque',generation:1,mode:'direct' as const,startPositionMs:0,autoplay:true,subtitles:[]};
+function harness() {
+  const commands: NativeCommand[] = [], handlers = new Map<string,()=>void>();
+  let reading: NativeObservation = {generation:0,state:'paused',positionMs:0,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false};
+  let answer: (()=>Promise<NativeObservation>) | undefined;
+  const bridge: Bridge = {async command(command) {commands.push(command); if (command.source) reading={...reading,generation:command.source.generation};},observe:()=>answer?.() ?? Promise.resolve(reading)};
+  const video = {volume:1,muted:false,pause(){},load(){},removeAttribute(){},addEventListener(k:string,fn:()=>void){handlers.set(k,fn);},removeEventListener(k:string){handlers.delete(k);}} as unknown as VideoLike;
+  const player = new DesktopMediaPlayer(video,{resolveUrl:path=>'https://server.test'+path},bridge,false);
+  return {player,commands,handlers,setReading:(x:Partial<NativeObservation>)=>{reading={...reading,...x};},setAnswer:(x:()=>Promise<NativeObservation>)=>{answer=x;}};
+}
+test('real port forwards only projection and translates private native generations',async()=>{
+  const h=harness();h.player.load({...source,sessionId:'session-private',itemId:'private-item'});await h.player.tick();
+  assert.equal(h.commands[0].source?.url,'https://server.test/v1/media/opaque');
+  assert.equal(JSON.stringify(h.commands).includes('session-private'),false);
+  assert.equal(h.player.observe().generation,1);
+  h.player.play();h.player.setRate(1.5);await h.player.tick();
+  assert.equal(h.commands.at(-1)?.rate,1.5);h.player.dispose();assert.equal(h.handlers.size,0);
+});
+test('late observation cannot report for new source with same protocol generation',async()=>{
+  const h=harness();h.player.load(source);await h.player.tick();
+  let release!:(x:NativeObservation)=>void;h.setAnswer(()=>new Promise(resolve=>{release=resolve;}));
+  const pending=h.player.tick();await Promise.resolve();await Promise.resolve();
+  const old=h.commands[0].source!.generation;
+  h.player.load({...source,url:'/v1/media/new'});
+  release({generation:old,state:'playing',positionMs:999,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false});await pending;
+  assert.equal(h.player.observe().positionMs,0);assert.equal(h.player.observe().state,'loading');h.player.dispose();
+});
+test('native failures report fixed code without exception/session/path strings',async()=>{
+  const h=harness();let detail='';h.player.onEvent(e=>{if(e.type==='error')detail=JSON.stringify(e);});
+  h.player.load(source);h.setAnswer(async()=>{throw new Error('https://server/v1/media?token=SECRET /home/private');});await h.player.tick();
+  assert.match(detail,/engine_unavailable/);assert.doesNotMatch(detail,/SECRET|private|https:/);h.player.dispose();
+});
+test('native observation validator rejects malformed bytes and projects extra fields away',()=>{
+  assert.throws(()=>observation({generation:1,state:'playing',positionMs:NaN}));
+  const value=observation({generation:1,state:'playing',positionMs:1,rate:1,volume:1,muted:false,droppedFrames:0,nativeSurfaceActive:false,url:'SECRET',path:'/private'});
+  assert.doesNotMatch(JSON.stringify(value),/SECRET|private|url|path/);
+});
+
+test('native paint flag requires an actual current-generation confirmation and clears on end/unload',async()=>{
+ const h=harness();assert.equal(h.player.nativeSurfaceActive,false);h.player.load(source);await h.player.tick();
+ assert.equal(h.player.nativeSurfaceActive,false);h.setReading({nativeSurfaceActive:true,state:'playing'});await h.player.tick();
+ assert.equal(h.player.nativeSurfaceActive,true);h.setReading({state:'ended'});await h.player.tick();assert.equal(h.player.nativeSurfaceActive,false);h.player.dispose();
+});

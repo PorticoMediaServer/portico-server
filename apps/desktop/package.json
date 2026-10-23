@@ -1,0 +1,17 @@
+{
+  "name": "portico-desktop-spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": "24.22.1"},
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build:web": "vite build --config vite.config.ts",
+    "check": "tsc --noEmit && node --experimental-strip-types --test test/*.test.ts",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
+    "build:unsigned": "npm run build:web && cargo build --manifest-path src-tauri/Cargo.toml --features shell --bin portico-desktop",
+    "tauri": "tauri"
+  },
+  "dependencies": {"@tauri-apps/api": "2.11.1"},
+  "devDependencies": {"@tauri-apps/cli": "2.11.3", "vite": "8.2.2", "typescript": "7.0.2", "@types/node": "24.10.1"}
+}

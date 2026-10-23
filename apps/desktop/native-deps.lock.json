@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "node": "24.22.1",
+  "rust": "1.99.0",
+  "mpv": {
+    "version": "0.41.0",
+    "repository": "https://github.com/mpv-player/mpv",
+    "commit": "41f6a645068483470267271e1d09966ca3b9f413",
+    "url": "https://codeload.github.com/mpv-player/mpv/tar.gz/refs/tags/v0.41.0",
+    "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+    "license": "GPL-2.0-or-later",
+    "clientApiMajor": 2
+  },
+  "ffmpeg": {
+    "contractCommit": "e278449caa84753b738ac13a8ac434cc33a81eb5",
+    "lockPath": "third_party/ffmpeg/sources.lock.json",
+    "preparerPath": "scripts/prepare-ffmpeg-source.py",
+    "sourceCommit": "253db2a7b0a8045c54ce68ce33d7f601229b1822",
+    "sharedAbi": {
+      "avcodec": 62,
+      "avformat": 62,
+      "avutil": 60
+    },
+    "license": "GPL-3.0-or-later",
+    "requiredPatches": 100
+  },
+  "packageLimits": {
+    "downloadBytes": 268435456,
+    "installedBytes": 805306368
+  },
+  "releaseReady": false
+}
