@@ -200,6 +200,8 @@ type Presentation struct {
 	Linear *LinearView `json:"linear,omitempty"`
 }
 type SubtitleFile struct {
+	TimeDomain   string `json:"timeDomain"`
+	OffsetMs     int64  `json:"offsetMs"`
 	CompanionURL string `json:"companionUrl,omitempty"`
 	FontsURL     string `json:"fontsUrl,omitempty"`
 	// LinesURL (image subtitles): how many of the track's lines are forced.
