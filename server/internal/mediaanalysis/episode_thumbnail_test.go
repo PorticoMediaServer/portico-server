@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"testing"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/decoder"
 )
 
@@ -50,7 +51,7 @@ func TestEpisodeThumbnailPolicyProviderAndRangedGeneration(t *testing.T) {
 	expectedManual := false
 	video := decoder.PreviewVideoFacts{DynamicRange: "hdr10"}
 	request := EpisodeThumbnailRequest{
-		Mode: EpisodeThumbnailDefaultMode, DurationUS: requestDurationUS, SourceVideo: video,
+		Mode: EpisodeThumbnailDefaultMode, DurationUS: requestDurationUS, EndUS: requestDurationUS, SourceVideo: video,
 		Open: func(context.Context) (Input, error) { opened++; return input, nil },
 		Authorize: func(_ context.Context, operation, cost string, manual bool) error {
 			if operation != "episode_thumbnail" || cost != "decode" || manual != expectedManual {
@@ -131,7 +132,7 @@ func TestEpisodeThumbnailExplicitCommandGeneratesUnderEveryAutomaticMode(t *test
 			t.Run(mode+"/provider="+strconv.FormatBool(provider), func(t *testing.T) {
 				input := &thumbnailRangeInput{}
 				authorized, opened, decoded := 0, 0, 0
-				r := EpisodeThumbnailRequest{Mode: mode, Manual: true, ProviderStill: provider, DurationUS: requestDurationUS,
+				r := EpisodeThumbnailRequest{Mode: mode, Manual: true, ProviderStill: provider, DurationUS: requestDurationUS, EndUS: requestDurationUS,
 					Authorize: func(_ context.Context, operation, cost string, manual bool) error {
 						if operation != EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || !manual {
 							t.Fatal("explicit invocation used different authority")
@@ -167,12 +168,12 @@ func TestEpisodeThumbnailDefaultModes(t *testing.T) {
 		t.Fatal("stored mode vocabulary changed")
 	}
 	for _, kind := range []string{"tv", "anime"} {
-		if EpisodeThumbnailMode(kind) != "provider_then_made" {
+		if catalog.DefaultEpisodeThumbnailMode(kind) != "provider_then_made" {
 			t.Fatalf("wrong episode default for %s", kind)
 		}
 	}
 	for _, kind := range []string{"movie", "music", "audiobook", "book", "comic", "", "unknown"} {
-		if EpisodeThumbnailMode(kind) != "off" {
+		if catalog.DefaultEpisodeThumbnailMode(kind) != "off" {
 			t.Fatalf("wrong non-episode default for %s", kind)
 		}
 	}
@@ -189,7 +190,7 @@ func TestEpisodeThumbnailRejectsPermissionRevocationAtEveryBoundary(t *testing.T
 				t.Run(mode+"/manual="+strconv.FormatBool(manual)+"/deny="+strconv.Itoa(denyAt), func(t *testing.T) {
 					input := &thumbnailRangeInput{}
 					authorized, opened, decoded := 0, 0, 0
-					r := EpisodeThumbnailRequest{Mode: mode, Manual: manual, DurationUS: 10,
+					r := EpisodeThumbnailRequest{Mode: mode, Manual: manual, DurationUS: 10, EndUS: 10,
 						Open: func(context.Context) (Input, error) { opened++; return input, nil },
 						Authorize: func(_ context.Context, operation, cost string, explicit bool) error {
 							if operation != EpisodeThumbnailOperation || cost != EpisodeThumbnailCostClass || explicit != manual {
@@ -229,7 +230,7 @@ func TestEpisodeThumbnailRejectsChangedOrInvalidOutput(t *testing.T) {
 	valid := thumbnailJPEG(320, 180)
 	for _, data := range [][]byte{[]byte("bad image"), thumbnailJPEG(1, 1), valid[:len(valid)/2], make([]byte, (1<<20)+1)} {
 		input := &thumbnailRangeInput{}
-		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10,
+		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10, EndUS: 10,
 			Open: func(context.Context) (Input, error) { return input, nil }, Authorize: thumbnailAuthorization,
 			Decoder: func(Input) Decode {
 				return func(_ context.Context, _ string, _ decoder.AnalysisSpec, consume func(io.Reader) error) error {
@@ -243,7 +244,7 @@ func TestEpisodeThumbnailRejectsChangedOrInvalidOutput(t *testing.T) {
 	}
 	for _, changeDuringDecode := range []bool{false, true} {
 		input := &thumbnailRangeInput{changed: !changeDuringDecode}
-		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10,
+		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10, EndUS: 10,
 			Open: func(context.Context) (Input, error) { return input, nil }, Authorize: thumbnailAuthorization,
 			Decoder: func(Input) Decode {
 				if !changeDuringDecode {
@@ -263,7 +264,7 @@ func TestEpisodeThumbnailRejectsChangedOrInvalidOutput(t *testing.T) {
 
 func TestEpisodeThumbnailRejectsMissingAuthorityAndCancelledAcquisition(t *testing.T) {
 	for _, missing := range []string{"authority", "open", "decoder", "duration", "excessive_duration"} {
-		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10,
+		r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10, EndUS: 10,
 			Authorize: thumbnailAuthorization,
 			Open:      func(context.Context) (Input, error) { t.Fatal("invalid request opened media"); return nil, nil },
 			Decoder:   func(Input) Decode { t.Fatal("invalid request acquired decoder"); return nil },
@@ -286,11 +287,37 @@ func TestEpisodeThumbnailRejectsMissingAuthorityAndCancelledAcquisition(t *testi
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	input := &thumbnailRangeInput{}
-	r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10, Authorize: thumbnailAuthorization,
+	r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, DurationUS: 10, EndUS: 10, Authorize: thumbnailAuthorization,
 		Open:    func(context.Context) (Input, error) { cancel(); return input, nil },
 		Decoder: func(Input) Decode { t.Fatal("decoder acquired after cancellation"); return nil },
 	}
 	if result, err := MakeEpisodeThumbnail(ctx, r); !errors.Is(err, context.Canceled) || len(result.JPEG) != 0 || input.closed != 1 {
 		t.Fatalf("cancelled acquisition accepted or leaked: %+v %v closed=%d", result, err, input.closed)
+	}
+}
+
+func TestEpisodeThumbnailKeepsSharedFileEpisodeClock(t *testing.T) {
+	input := &thumbnailRangeInput{}
+	r := EpisodeThumbnailRequest{Mode: EpisodeThumbnailDefaultMode, Manual: true, DurationUS: 120000000, StartUS: 60000000, EndUS: 90000000,
+		Authorize: thumbnailAuthorization, Open: func(context.Context) (Input, error) { return input, nil },
+		Decoder: func(Input) Decode {
+			return func(_ context.Context, _ string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
+				if spec.StartUS != 63000000 || spec.MaxDurationUS != 120000000 {
+					t.Fatalf("wrong logical episode clock: %+v", spec)
+				}
+				return consume(bytes.NewReader(thumbnailJPEG(320, 180)))
+			}
+		},
+	}
+	out, err := MakeEpisodeThumbnail(context.Background(), r)
+	if err != nil || out.PositionUS != 63000000 {
+		t.Fatalf("%+v %v", out, err)
+	}
+	for _, bounds := range [][2]int64{{-1, 90000000}, {90000000, 90000000}, {60000000, 120000001}, {60000000, 0}} {
+		r.StartUS, r.EndUS = bounds[0], bounds[1]
+		r.Open = func(context.Context) (Input, error) { t.Fatal("invalid clock opened input"); return nil, nil }
+		if _, err = MakeEpisodeThumbnail(context.Background(), r); !errors.Is(err, ErrInput) {
+			t.Fatalf("invalid bounds %v: %v", bounds, err)
+		}
 	}
 }

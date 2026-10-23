@@ -27,6 +27,8 @@ type EpisodeThumbnailRequest struct {
 	Manual        bool
 	ProviderStill bool
 	DurationUS    int64
+	StartUS       int64
+	EndUS         int64
 	Open          func(context.Context) (Input, error)
 	Decoder       func(Input) Decode
 	Authorize     func(ctx context.Context, operation, costClass string, manual bool) error
@@ -37,15 +39,6 @@ type EpisodeThumbnailResult struct {
 	JPEG          []byte
 	Width, Height int
 	PositionUS    int64
-}
-
-// EpisodeThumbnailMode is the product default independent of settings layout.
-// Callers apply the library/source policy before invoking generation.
-func EpisodeThumbnailMode(libraryKind string) string {
-	if libraryKind == "tv" || libraryKind == "anime" {
-		return EpisodeThumbnailDefaultMode
-	}
-	return EpisodeThumbnailOffMode
 }
 
 // MakeEpisodeThumbnail produces exactly one bounded picture, or chooses an
@@ -75,7 +68,7 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 			return out, nil
 		}
 	}
-	if r.Open == nil || r.Decoder == nil || r.Authorize == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 {
+	if r.Open == nil || r.Decoder == nil || r.Authorize == nil || r.DurationUS <= 0 || r.DurationUS > (1<<53)-1 || r.StartUS < 0 || r.EndUS <= r.StartUS || r.EndUS > r.DurationUS {
 		return out, ErrInput
 	}
 	authorize := func() error {
@@ -103,7 +96,7 @@ func MakeEpisodeThumbnail(ctx context.Context, r EpisodeThumbnailRequest) (Episo
 	}
 	// Ten percent avoids most opening cards; a short episode still has a valid
 	// seek strictly inside its duration. Decode uses the existing ranged bridge.
-	position := min(r.DurationUS-1, r.DurationUS/10)
+	position := min(r.EndUS-1, r.StartUS+(r.EndUS-r.StartUS)/10)
 	spec := decoder.AnalysisSpec{Kind: "image", StartUS: position, MaxDurationUS: r.DurationUS, SourceVideo: r.SourceVideo}
 	var data []byte
 	decode := r.Decoder(input)
