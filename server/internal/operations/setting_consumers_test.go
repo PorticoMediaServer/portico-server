@@ -261,10 +261,11 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 }
 
 var preferenceRuntimeSources = map[string][2]string{
-	"quality.home":                        {"server/internal/playback/delivery_policy.go", "quality."},
-	"quality.remote":                      {"server/internal/playback/delivery_policy.go", "quality."},
+	// The network lane builds the key dynamically. Witness the actual runtime
+	// invocation that feeds QualityMode, not the key prefix in a local assignment.
+	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
+	"quality.remote":                      {"server/internal/httpapi/playback_v1_routes.go", "function:SavedQualityPreference"},
 	"appearance.cardSizePercent":          {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
-	"appearance.reduceMotion":             {"web/src/shell/Shell.tsx", "appearance.reduceMotion"},
 	"appearance.showBackdrops":            {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
 	"audiobooks.defaultSpeed":             {"server/internal/catalog/listening_preferences.go", "audiobooks.defaultSpeed"},
 	"delivery.directPlay":                 {"server/internal/playback/delivery_policy.go", "delivery.directPlay"},
@@ -274,7 +275,6 @@ var preferenceRuntimeSources = map[string][2]string{
 	"home.rowOrder":                       {"server/internal/operations/home_layout.go", "home.rowOrder"},
 	"music.audioNormalization":            {"packages/client-core/src/music-preferences.ts", "music.audioNormalization"},
 	"music.crossfadeMs":                   {"packages/client-core/src/music-preferences.ts", "music.crossfadeMs"},
-	"music.defaultSpeed":                  {"server/internal/catalog/listening_preferences.go", "music.defaultSpeed"},
 	"music.gapless":                       {"packages/client-core/src/music-preferences.ts", "music.gapless"},
 	"notifications.badges":                {"web/src/shell/Shell.tsx", "notifications.badges"},
 	"playback.autoplayNext":               {"server/internal/httpapi/playback_v1_routes.go", "playback.autoplayNext"},
@@ -303,6 +303,40 @@ var preferenceRuntimeSources = map[string][2]string{
 	"region.hourCycle":                    {"web/src/app/i18n.ts", "region.hourCycle"},
 	"region.locale":                       {"web/src/app/i18n.ts", "region.locale"},
 	"search.rememberHistory":              {"server/internal/catalog/search_history.go", "search.rememberHistory"},
+	"playback.subtitleColor":              {"packages/client-core/src/preference-effects.ts", "playback.subtitleColor"},
+	"playback.subtitlePosition":           {"packages/client-core/src/preference-effects.ts", "playback.subtitlePosition"},
+	"playback.subtitleFont":               {"packages/client-core/src/preference-effects.ts", "playback.subtitleFont"},
+	"playback.keepSubtitleStyling":        {"packages/client-core/src/preference-effects.ts", "playback.keepSubtitleStyling"},
+	"playback.useSystemCaptionStyle":      {"packages/client-core/src/preference-effects.ts", "playback.useSystemCaptionStyle"},
+	"appearance.motion":                   {"packages/client-core/src/preference-effects.ts", "appearance.motion"},
+	"appearance.textSize":                 {"packages/client-core/src/preference-effects.ts", "appearance.textSize"},
+	"appearance.layout":                   {"packages/client-core/src/preference-effects.ts", "appearance.layout"},
+	"appearance.libraryView":              {"packages/client-core/src/preference-effects.ts", "appearance.libraryView"},
+	"appearance.episodesLayout":           {"packages/client-core/src/preference-effects.ts", "appearance.episodesLayout"},
+	"reading.theme":                       {"packages/client-core/src/preference-effects.ts", "reading.theme"},
+	"reading.font":                        {"packages/client-core/src/preference-effects.ts", "reading.font"},
+	"reading.textSize":                    {"packages/client-core/src/preference-effects.ts", "reading.textSize"},
+	"reading.lineSpacing":                 {"packages/client-core/src/preference-effects.ts", "reading.lineSpacing"},
+	"reading.margins":                     {"packages/client-core/src/preference-effects.ts", "reading.margins"},
+	"reading.alignment":                   {"packages/client-core/src/preference-effects.ts", "reading.alignment"},
+	"reading.layout":                      {"packages/client-core/src/preference-effects.ts", "reading.layout"},
+	"reading.twoPages":                    {"packages/client-core/src/preference-effects.ts", "reading.twoPages"},
+	"reading.tapToTurn":                   {"packages/client-core/src/preference-effects.ts", "reading.tapToTurn"},
+	"reading.hyphenation":                 {"packages/client-core/src/preference-effects.ts", "reading.hyphenation"},
+	"reading.highlightColour":             {"packages/client-core/src/preference-effects.ts", "reading.highlightColour"},
+	"reading.pdfView":                     {"packages/client-core/src/preference-effects.ts", "reading.pdfView"},
+	"comics.fit":                          {"packages/client-core/src/preference-effects.ts", "comics.fit"},
+	"comics.direction":                    {"packages/client-core/src/preference-effects.ts", "comics.direction"},
+	"comics.firstPageAlone":               {"packages/client-core/src/preference-effects.ts", "comics.firstPageAlone"},
+	"region.formats":                      {"packages/client-core/src/preference-effects.ts", "region.formats"},
+	"region.dateOrder":                    {"packages/client-core/src/preference-effects.ts", "region.dateOrder"},
+	"region.firstDay":                     {"packages/client-core/src/preference-effects.ts", "region.firstDay"},
+	"region.sizeUnits":                    {"packages/client-core/src/preference-effects.ts", "region.sizeUnits"},
+	"playback.preferSdhSubtitles":         {"server/internal/playback/delivery_context.go", "playback.preferSdhSubtitles"},
+	"playback.forcedSubtitleFallback":     {"server/internal/playback/delivery_context.go", "playback.forcedSubtitleFallback"},
+	"playback.useUntaggedForced":          {"server/internal/playback/delivery_context.go", "playback.useUntaggedForced"},
+	"playback.audioDescription":           {"server/internal/playback/service.go", "playback.audioDescription"},
+	"playback.audioTrackChoice":           {"server/internal/playback/service.go", "playback.audioTrackChoice"},
 }
 
 func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
@@ -327,8 +361,14 @@ func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
 				if !ok {
 					return true
 				}
-				if name, ok := call.Fun.(*ast.Ident); ok && strings.HasPrefix(witness[1], "function:") {
-					found = found || name.Name == strings.TrimPrefix(witness[1], "function:")
+				if strings.HasPrefix(witness[1], "function:") {
+					want := strings.TrimPrefix(witness[1], "function:")
+					switch name := call.Fun.(type) {
+					case *ast.Ident:
+						found = found || name.Name == want
+					case *ast.SelectorExpr:
+						found = found || name.Sel.Name == want
+					}
 				}
 				for _, arg := range call.Args {
 					ast.Inspect(arg, func(node ast.Node) bool {
@@ -347,8 +387,9 @@ func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
 				t.Error(err)
 				continue
 			}
-			// Count a runtime reader call, never a catalogue, form or comment.
-			pattern := `(?:value|read)(?:<[^;\n]*?>)?\(\s*['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
+			// Local readers take the key first; the canonical projection takes
+			// its parsed snapshot first and the literal key second.
+			pattern := `(?:\b(?:value|read)(?:<[^;\n]*?>)?\(\s*|\bpreferenceValue(?:<[^;\n]*?>)?\(\s*snapshot\s*,\s*)['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
 			found = regexp.MustCompile(pattern).Match(source)
 		}
 		if !found {

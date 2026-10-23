@@ -505,6 +505,7 @@ func TestHomeTrendingGating(t *testing.T) {
 	p := persistence.PersonalOwnerKey("local", "a", "p")
 	q := persistence.PersonalOwnerKey("local", "b", "q")
 	homeExec(t, db, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('a','user',x'00','p',1),('b','user2',x'00','q',1),('c','user3',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	shareFixtureProfiles(t, db)
 	item := homeItem(t, db, "m1")
 	homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,10000,0,'play')`, p, item.ID)
 	homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,20000,0,'play')`, q, item.ID)

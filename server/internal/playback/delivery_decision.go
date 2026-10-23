@@ -14,6 +14,9 @@ import (
 // They are wire strings: added to, never reworded.
 const (
 	RejectContainer           = "container_unsupported"
+	RejectChroma              = "chroma_subsampling_unsupported"
+	RejectFrameRateMode       = "frame_rate_mode_unsupported"
+	RejectAudioVariant        = "audio_variant_unsupported"
 	RejectVideoCodec          = "video_codec_unsupported"
 	RejectVideoProfile        = "video_profile_unsupported"
 	RejectVideoLevel          = "video_level_exceeds_device"
@@ -164,7 +167,7 @@ func effectiveRange(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) s
 // Vision: it decodes the profile, and the display shows Dolby Vision or the
 // engine maps it to what the display shows.
 func nativeDolbyVision(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) bool {
-	return v.DynamicRange == assets.RangeDolbyVision && c != nil && containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile) && client.presents(assets.RangeDolbyVision)
+	return v.DynamicRange == assets.RangeDolbyVision && (!v.DolbyVisionMetadataKnown || v.DolbyVisionRPU) && c != nil && containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile) && client.presents(assets.RangeDolbyVision)
 }
 
 // videoRejections checks one source video stream against one transport of the
@@ -200,6 +203,12 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	}
 	if c.MaxBitrateBPS > 0 && max(v.BitRate, v.MaxBitRate) > int64(c.MaxBitrateBPS) {
 		out = append(out, RouteRejection{RejectVideoBitrate, fmt.Sprintf("%d", max(v.BitRate, v.MaxBitRate))})
+	}
+	if v.ChromaSubsampling != "" && len(c.ChromaSubsampling) > 0 && !containsString(c.ChromaSubsampling, v.ChromaSubsampling) {
+		out = append(out, RouteRejection{RejectChroma, v.ChromaSubsampling})
+	}
+	if v.FrameRateMode != "" && len(c.FrameRateModes) > 0 && !containsString(c.FrameRateModes, v.FrameRateMode) {
+		out = append(out, RouteRejection{RejectFrameRateMode, v.FrameRateMode})
 	}
 	if v.Interlaced && !c.Interlaced {
 		out = append(out, RouteRejection{RejectInterlaced, ""})
@@ -253,6 +262,9 @@ func audioRejections(a *SourceAudio, client ClientProfile, t ClientTransport) []
 		return []RouteRejection{{RejectAudioCodec, a.Codec}}
 	}
 	var out []RouteRejection
+	if !acceptsAudioVariant(c.Variants, a, c.ObjectAudio, false) {
+		out = append(out, RouteRejection{RejectAudioVariant, sourceVariant(a)})
+	}
 	if c.MaxChannels > 0 && a.Channels > c.MaxChannels {
 		out = append(out, RouteRejection{RejectAudioChannels, fmt.Sprintf("%d>%d", a.Channels, c.MaxChannels)})
 	}
@@ -270,7 +282,7 @@ func audioRejections(a *SourceAudio, client ClientProfile, t ClientTransport) []
 // carries bitstreams, and the track fits the channels the receiver takes.
 func audioPassedThrough(a *SourceAudio, client ClientProfile) bool {
 	p := client.passthroughCodec(a.Codec)
-	return p != nil && (p.MaxChannels == 0 || a.Channels <= p.MaxChannels)
+	return p != nil && (p.MaxChannels == 0 || a.Channels <= p.MaxChannels) && acceptsAudioVariant(p.Variants, a, p.ObjectAudio, true)
 }
 
 // passthroughDeclared reports whether the engine lists the codec for
@@ -287,9 +299,9 @@ func (p ClientProfile) passthroughDeclared(codec string) bool {
 // chooseAudio picks the programme audio for a session: the viewer's explicit
 // choice, else the language picked earlier in this playback, else
 // the first track in a preferred language, else the container's default, else
-// the first track. A commentary is never chosen automatically while an
-// ordinary track exists.
-func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred []string) (*SourceAudio, string) {
+// the first track. Original language comes only from published catalogue facts;
+// when unknown, @original keeps the file default, then an ordinary track.
+func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred []string, originalLanguage string) (*SourceAudio, string) {
 	if len(tracks) == 0 {
 		return nil, ""
 	}
@@ -307,7 +319,32 @@ func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred [
 			}
 		}
 	}
+	if len(preferred) == 0 {
+		preferred = []string{"@original"}
+	}
+	original := languageKey(originalLanguage)
 	for _, want := range preferred {
+		if want == "@original" {
+			if original != "" {
+				for i := range tracks {
+					if !tracks[i].Commentary && languageKey(tracks[i].Language) == original {
+						return &tracks[i], "original_language"
+					}
+				}
+				continue
+			}
+			for i := range tracks {
+				if tracks[i].Default {
+					return &tracks[i], "original_default"
+				}
+			}
+			for i := range tracks {
+				if !tracks[i].Commentary {
+					return &tracks[i], "original_first"
+				}
+			}
+			continue
+		}
 		want = languageKey(want)
 		if want == "" {
 			continue
@@ -321,13 +358,8 @@ func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred [
 		}
 	}
 	for i := range tracks {
-		if tracks[i].Default && !tracks[i].Commentary {
+		if tracks[i].Default {
 			return &tracks[i], "default"
-		}
-	}
-	for i := range tracks {
-		if !tracks[i].Commentary {
-			return &tracks[i], "first"
 		}
 	}
 	return &tracks[0], "first"
@@ -340,12 +372,15 @@ func languageKey(s string) string {
 	if i := strings.IndexAny(s, "-_"); i > 0 {
 		s = s[:i]
 	}
+	if s == "cn" {
+		return "yue"
+	}
 	if len(s) == 3 {
 		if two, ok := subtitles.TwoLetterLanguage(s); ok {
 			return two
 		}
 	}
-	if s == "und" || s == "unknown" {
+	if s == "und" || s == "unknown" || s == "xx" {
 		return ""
 	}
 	return s
