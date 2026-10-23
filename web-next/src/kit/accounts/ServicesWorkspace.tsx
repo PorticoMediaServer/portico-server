@@ -1,4 +1,4 @@
-import type {ReactNode} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {ProfileAvatarFace} from '../shell/AccountSurfaces';
@@ -8,6 +8,25 @@ import wordmark from '../../shell/wordmark.svg';
 import styles from './services-workspace.module.css';
 
 const t = createI18n(resolveRegion(undefined, deviceRegion())).t;
+type QREncoder = typeof import('qrcode');
+let qrEncoder: Promise<QREncoder> | undefined;
+function AuthenticatorQR({value, onError}: {value: string; onError: (error: unknown) => void}) {
+  const [cells, setCells] = useState<{size: number; path: string}>();
+  useEffect(() => {
+    let active = true;
+    setCells(undefined);
+    // This is a local encoder of the actual otpauth URI. No image service receives the secret.
+    void (qrEncoder ??= import('qrcode')).then(encoder => {
+      const code = encoder.create(value, {errorCorrectionLevel: 'M'}), path: string[] = [];
+      for (let y = 0; y < code.modules.size; y++) for (let x = 0; x < code.modules.size; x++)
+        if (code.modules.get(y, x)) path.push(`M${x} ${y}h1v1h-1z`);
+      if (active) setCells({size: code.modules.size, path: path.join('')});
+    }).catch(error => { if (active) onError(error); });
+    return () => { active = false; };
+  }, [value, onError]);
+  return cells ? <svg className={styles.authenticatorQR} viewBox={`-4 -4 ${cells.size + 8} ${cells.size + 8}`} role="img" aria-label={t('qr.label')} shapeRendering="crispEdges"><path d={cells.path} /></svg> : null;
+}
+
 export type ServicesSection = 'devices' | 'security' | 'servers' | 'notifications';
 const sections: readonly {id: ServicesSection; icon: IconName; label: string}[] = [
   {id: 'devices', icon: 'i-laptop', label: t('services.workspace.devices')},
@@ -26,8 +45,8 @@ export function ServicesHeader({avatar, unread = false, notifications = true}: {
 }
 
 /** account22: display the actual enrollment secret; copying keeps its original bytes. */
-export function ServicesAuthenticator({secret, uri, qr, onCopy}: {secret: string; uri?: string; qr?: ReactNode; onCopy: () => void}) {
-  return <div className={styles.authenticator}>{qr}<div>
+export function ServicesAuthenticator({secret, uri, onCopy, onError}: {secret: string; uri?: string; onCopy: () => void; onError: (error: unknown) => void}) {
+  return <div className={styles.authenticator}>{uri && <AuthenticatorQR value={uri} onError={onError} />}<div>
     <div className={styles.keyLine}><code>{secret.match(/.{1,4}/g)?.join(' ') ?? secret}</code><button type="button" aria-label={t('web.twoStep.copy')} onClick={onCopy}><Icon name="i-copy" size={18} /></button></div>
     {uri && <a className={styles.authenticatorLink} href={uri}>{t('web.hostedSecurity.openAuthenticator')}</a>}
   </div></div>;
