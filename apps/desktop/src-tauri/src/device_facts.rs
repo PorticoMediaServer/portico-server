@@ -19,6 +19,7 @@ fn project(name:Option<String>)->DeviceFacts {
     }
 }
 pub fn current()->DeviceFacts {project(computer_name())}
+impl DeviceFacts{pub fn computer_name(&self)->Option<&str>{self.name.as_ref().map(|name|name.value.as_str())}}
 
 #[cfg(target_os="linux")]
 fn computer_name()->Option<String> {

@@ -12,6 +12,7 @@ use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::Equa
 
 pub struct EngineState(pub Mutex<std::result::Result<Arc<Mpv>,Error>>);
 pub struct EqualizerState(pub Mutex<std::result::Result<EqualizerStore,Error>>);
+pub struct InstallationState(pub Mutex<std::result::Result<crate::installation_store::InstallationStore,Error>>);
 pub struct DownloadsState(pub Arc<Mutex<std::result::Result<crate::download_commands::DownloadsSession,Error>>>);
 #[derive(Default)]
 struct ShutdownState(AtomicU8);
@@ -69,6 +70,18 @@ async fn desktop_device_facts(window:WebviewWindow)->Result<crate::device_facts:
 }
 #[derive(serde::Serialize)]
 struct DecoderInventory {version:String,decoders:Vec<String>}
+#[derive(serde::Serialize)]
+#[serde(rename_all="camelCase")]
+struct NativeInstallation {installation_id:String,name:String,platform:&'static str,app:&'static str,app_version:&'static str}
+#[tauri::command]
+async fn desktop_installation(window:WebviewWindow)->Result<NativeInstallation>{
+    caller(&window)?;
+    let app=window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move||{
+        let state=app.state::<InstallationState>();let id=state.0.lock().map_err(|_|Error::PreferencesUnavailable)?.as_ref().map_err(|error|*error)?.read()?;
+        Ok(NativeInstallation{installation_id:id,name:crate::device_facts::current().computer_name().unwrap_or("").to_owned(),platform:std::env::consts::OS,app:"Portico",app_version:env!("CARGO_PKG_VERSION")})
+    }).await.map_err(|_|Error::PreferencesUnavailable)?
+}
 #[tauri::command]
 async fn desktop_capabilities(window:WebviewWindow,state:tauri::State<'_,EngineState>)->Result<DecoderInventory>{
     caller(&window)?;let native=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
@@ -310,17 +323,20 @@ pub fn run() {
     let builder=tauri::Builder::default()
         .manage(EngineState(Mutex::new(Err(Error::EngineUnavailable))))
         .manage(EqualizerState(Mutex::new(Err(Error::PreferencesUnavailable))))
+        .manage(InstallationState(Mutex::new(Err(Error::PreferencesUnavailable))))
         .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
         .manage(ShutdownState::default())
         .manage(Arc::new(crate::window::ChromeState::default()))
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire])
+        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
             let data=local_data(app.handle()).map_err(|_|preference_error())?;
+            let installation=crate::installation_store::InstallationStore::open(&data.join("installation.sqlite3")).map_err(|_|preference_error())?;
+            *app.state::<InstallationState>().0.lock().map_err(|_|preference_error())?=Ok(installation);
             let path=data.join("equalizer.sqlite3");
             let store=EqualizerStore::open(&path).map_err(|_|preference_error())?;
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);

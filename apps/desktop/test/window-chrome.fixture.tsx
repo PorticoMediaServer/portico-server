@@ -8,7 +8,7 @@ import type {WindowSnapshot,ChromeUpdate} from '../src/window';
 export function mountCaption(parent:HTMLElement,native:WindowSnapshot){
  const mount=document.createElement('div');
  // Match the production body mount and its single fixed stacking context. A
- // contained wrapper adds another alpha-compositing pass over the reference.
+ // contained wrapper has an extra stacking context absent from the actual host.
  document.body.append(mount);const root=createRoot(mount);
  let geometry:ChromeUpdate['captions']=null;
  const actions:string[]=[];
