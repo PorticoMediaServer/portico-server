@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storagepaths"
 	"strings"
 	"testing"
 )
@@ -27,7 +27,7 @@ func TestRepairPublicHTTPBridge(t *testing.T) {
 		t.Skip("real client/handler protocol driver")
 	}
 	root := t.TempDir()
-	db, e := persistence.Open(filepath.Join(root, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(root, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -160,7 +160,7 @@ func TestRepairCapabilitiesExistingClaimHTTP(t *testing.T) {
 	if root == "" {
 		t.Skip("genuine completed claim driver")
 	}
-	db, e := persistence.Open(filepath.Join(root, "server.sqlite"))
+	db, e := persistence.Open(storagepaths.Path(root, "server.sqlite"))
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -464,7 +464,7 @@ func TestOwnerChangeRepairActualProducerConsumer(t *testing.T) {
 				<-entered
 				// These independent SQL writers race the real network finalization; none
 				// relies on an API preflight or an in-memory lock.
-				other, e := sql.Open("sqlite", filepath.Join(f.state, "server.sqlite"))
+				other, e := sql.Open("sqlite", storagepaths.Path(f.state, "server.sqlite"))
 				if e != nil {
 					t.Fatal(e)
 				}
