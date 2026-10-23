@@ -4,6 +4,7 @@ import {openComicArchive,type ComicPageProvider,type ComicPage} from './archive.
 import {checkAbort,ComicInputError} from './zip.ts';
 import {rasterInfo} from './image.ts';
 import {abortScope,abortReason} from '../abort.ts';
+import {comicPreview} from './preview.ts';
 
 type Source=Parameters<ReaderAdapter<object>['open']>[0]['source'];
 export type ComicAdapterOptions=Readonly<{
@@ -65,10 +66,7 @@ export function createComicAdapter<P extends FixedPreferences>(options:ComicAdap
         if(page.image.width<=width&&page.bytes.length<=16*1024*1024&&page.image.mime!=='image/gif')return {mime:page.image.mime,bytes:new Uint8Array(page.bytes),width:page.image.width,height:page.image.height};
         const bitmap=await bitmapFor(page,combined);
         try{
-          const scaledWidth=Math.min(width,bitmap.width),scaledHeight=Math.max(1,Math.round(bitmap.height*scaledWidth/bitmap.width));
-          if(scaledWidth*scaledHeight>16_000_000)throw new ComicInputError('image_limit');
-          const canvas=new OffscreenCanvas(scaledWidth,scaledHeight),ctx=canvas.getContext('2d');if(!ctx)throw new ComicInputError('image_invalid');ctx.drawImage(bitmap,0,0,scaledWidth,scaledHeight);
-          const blob=await canvas.convertToBlob({type:'image/png'});checkAbort(combined);if(blob.size>16*1024*1024)throw new ComicInputError('image_limit');return {mime:'image/png',bytes:new Uint8Array(await blob.arrayBuffer()),width:scaledWidth,height:scaledHeight};
+          const preview=await comicPreview(bitmap,width,combined);active(combined);return preview;
         }finally{bitmap.close();}
         }finally{scope.dispose();}
       },
