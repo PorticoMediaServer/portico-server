@@ -25,6 +25,10 @@ var ErrDeviceUnknown = errors.New("This device is not registered on this account
 // Installation ids are random installation secrets, never device fingerprints.
 func validInstallationID(v string) bool { return len(v) >= 32 && validFamilyID(v) }
 
+// ValidInstallationID applies the device registry's existing installation grammar
+// at protocol boundaries. Installation ids are opaque; they need not encode 32 bytes.
+func ValidInstallationID(v string) bool { return validInstallationID(v) }
+
 // Device is the record a person sees and manages.
 type Device struct {
 	ID              string `json:"id"`

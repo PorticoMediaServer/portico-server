@@ -58,6 +58,8 @@ const WINDOW_BEFORE = 20, WINDOW_AFTER = 50;
 const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
+/** Captured caller lifetime; its predicate must remain current across this start's own output change. */
+export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean}>;
 
 /**
  * How the queue player starts, adopts and ends sessions. The web gives it the session controller's
@@ -329,14 +331,15 @@ export class V1QueuePlayer implements QueueController {
    * no selector of their own on this protocol: the planner picks a prepared copy when it fits the
    * requested quality, so `choices.quality` is what reaches the server.
    */
-  playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, audioStream?: number, choices?: PlaybackChoices): Promise<void> {
+  playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, audioStream?: number, choices?: PlaybackChoices, context?: V1PlayItemContext): Promise<void> {
+    if (this.disposed || context?.signal?.aborted || context?.isCurrent?.() === false) return Promise.reject(Object.assign(new Error('cancelled'), {name: 'AbortError'}));
     const track = choices?.audioTrackId ?? audioTrackId(audioStream);
     const chosen: PlaybackChoices = {...choices, ...(track ? {audioTrackId: track} : {})};
     // Replay, a retry on another route: the title is the queue's current entry, which starts again
     // in place. The rest of the queue is untouched.
     const current = this.currentEntry();
-    if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen);
-    return this.play(segments([itemId], false), itemId, {startSeconds}, chosen).then(() => {});
+    if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen, 'playing', false, context);
+    return this.play(segments([itemId], false), itemId, {startSeconds, ...context}, chosen).then(() => {});
   }
 
   /** A fresh start outside the player captures the entire show on the server.
@@ -394,23 +397,27 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /** Starts the current entry again in place: a new session for the same entry, replacing the old one. */
-  private async restartCurrent(startSeconds: number | undefined, choices: PlaybackChoices, state: 'playing' | 'paused' = 'playing', keepIntent = false): Promise<void> {
+  private async restartCurrent(startSeconds: number | undefined, choices: PlaybackChoices, state: 'playing' | 'paused' = 'playing', keepIntent = false, context?: V1PlayItemContext): Promise<void> {
+    if (context?.signal?.aborted || context?.isCurrent?.() === false) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
     const header = this.header, entry = this.currentEntry();
     if (!header?.current) return;
     const generation = ++this.generation;
     ++this.epoch;
+    const current = () => !this.disposed && generation === this.generation && !context?.signal?.aborted && context?.isCurrent?.() !== false;
+    const cancel = () => { if (generation === this.generation && !this.disposed) this.playback.leave(); };
+    context?.signal?.addEventListener('abort', cancel, {once: true});
     this.listening.interact();
     if (choices.quality) this.qualityOverride = choices.quality;
     const intent = keepIntent ? this.playback.getSnapshot().intentId : this.playback.beginQueueIntent(entry?.itemId);
     this.publish({phase: 'preparing', error: null, completion: null});
     try {
-      if (!keepIntent && (!await this.playback.prepareQueueIntent(intent) || generation !== this.generation)) return;
-      await this.startEntry(header.id, header.current.entryId, intent, startSeconds, generation, choices, state);
-      if (generation === this.generation) this.publish({phase: 'ready'});
+      if (!keepIntent && (!await this.playback.prepareQueueIntent(intent) || !current())) return;
+      await this.startEntry(header.id, header.current.entryId, intent, startSeconds, generation, choices, state, context?.signal, context ? current : undefined);
+      if (current()) this.publish({phase: 'ready'});
     } catch (e) {
-      if (generation !== this.generation) return;
+      if (!current()) return;
       this.fail(entry?.itemId ?? '', e, serviceText('queuePlayer.startFailed'));
-    }
+    } finally { context?.signal?.removeEventListener('abort', cancel); }
   }
 
   /**
