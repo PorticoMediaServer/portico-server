@@ -82,7 +82,12 @@ type Api = Pick<HttpLocalApi, 'requestRaw'>;
 export function keepBrowserProfilePublished(api: Api, signIn: string): () => void {
   const publisher = new CapabilityPublisher(localV1Http(api), () => signIn);
   let stopped = false;
-  const publish = (fresh: boolean) => { void Promise.resolve().then(() => playbackEnvironment().capabilities?.() ?? browserClientProfile(fresh)).then(profile => { if (!stopped) void publisher.publish(profile); }).catch(() => {}); };
+  const publish = (fresh: boolean) => { void Promise.resolve().then(() => {
+    const capabilities = playbackEnvironment().capabilities;
+    // An installed engine owns its facts even when it cannot report them. Never replace an
+    // absent or failed native answer with this WebView/browser's decoder or output claims.
+    return capabilities ? capabilities() : browserClientProfile(fresh);
+  }).then(profile => { if (!stopped && profile) void publisher.publish(profile); }).catch(() => {}); };
   publish(false);
   const changed = () => publish(true);
   const hdr = (() => { try { return matchMedia('(dynamic-range: high)'); } catch { return undefined; } })();
