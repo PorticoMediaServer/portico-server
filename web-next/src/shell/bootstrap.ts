@@ -31,7 +31,7 @@ export type ShellFacts = Readonly<{identity: ShellIdentity; preferences: Prefere
 export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
-  facts: ShellFacts; preferences?: PreferencesReader; epoch: number; viewerFence: string; isCurrent: () => boolean;
+  facts: ShellFacts; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
   signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
@@ -47,6 +47,25 @@ export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out'
 function viewerId(session: LocalSession): string { const v = session.viewer; return JSON.stringify([v.authority, v.accountId, v.profileId]); }
 export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
   return a.sessionFamilyId === b.sessionFamilyId && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => a.viewer[key] === b.viewer[key]);
+}
+/** A cache discriminator from admitted authority, never a substitute Home fence. */
+export function shellArtworkAuthorityKey(session: LocalSession, epoch: number): string {
+  return JSON.stringify([session.viewer.serverId, session.sessionFamilyId, viewerId(session), session.viewer.role, epoch]);
+}
+/** Subscribe before the initial load. The first actual document establishes the
+ * baseline without remounting Settings; a later missing/replaced fence retires it. */
+export function watchHomeViewerFence(home: Pick<HomeService, 'getSnapshot' | 'subscribe'>, isCurrent: () => boolean, replaced: () => void) {
+  let fence: string | undefined, closed = false, off = () => {};
+  const dispose = () => {if (closed) return; closed = true; off();};
+  const read = () => {
+    if (closed) return;
+    if (!isCurrent()) {dispose(); return;}
+    const next = home.getSnapshot().document?.viewerFence;
+    if (fence === undefined) {if (next) fence = next; return;}
+    if (next !== fence) {dispose(); replaced();}
+  };
+  off = home.subscribe(read); read();
+  return {get viewerFence() {return !closed && isCurrent() ? fence : undefined;}, dispose};
 }
 
 type ShellAccount = Pick<ShellIdentity, 'username' | 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts' | 'capabilities'>;
@@ -175,11 +194,9 @@ export class ShellBootstrap {
     cleanups.push(() => { home.dispose(); inbox.dispose(); });
     const facts = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
-    await home.load();
-    if (!isCurrent()) return;
-    const document = home.getSnapshot().document;
-    if (!document) throw home.getSnapshot().error ?? new Error('Home could not be loaded.');
-    const authorityKey = JSON.stringify([session.sessionFamilyId, session.viewer.role, document.viewerFence]);
+    const homeFence = watchHomeViewerFence(home, isCurrent, () => this.restart());
+    cleanups.push(homeFence.dispose);
+    const authorityKey = shellArtworkAuthorityKey(session, epoch);
     const artwork = authenticatedArtwork({api, auth, identity: {serverId: session.viewer.serverId, viewerId: viewerId(session), authorityKey}, currentToken: () => session.accessToken, isCurrent});
     cleanups.push(() => artwork.dispose());
     const signOutPorticoAccount=facts.identity.signIn==='portico'?()=>{if(!isCurrent())return;signingOut=true;this.fence();this.publish({phase:'signed-out'});void signOutBrowserPorticoAccount().catch(error=>this.publish({phase:'error',error})).finally(()=>api.getRouteConnection()?.dispose());}:undefined;
@@ -187,7 +204,7 @@ export class ShellBootstrap {
     const display=browserServerDisplay();display.remember(api,facts.serverName);
     const saved=(await (this.environment.actions?.()??browserAppSessionActions()).store.read()).servers;
     const savedServers=await display.choices(saved.map(value=>({pin:value.connection.pin,origin:value.connection.logicalOrigin,signIn:value.signIn})),signal);
-    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, preferences, epoch, viewerFence: document.viewerFence, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
+    const assembly = await this.assemble({api, session: () => session, auth, events, freshness, home, inbox, artwork, facts, preferences, epoch, get viewerFence() {return homeFence.viewerFence;}, isCurrent, signOut,signOutPorticoAccount,switchProfile,switchServer:this.selectServer,savedServers});
     if (!isCurrent()) { assembly.dispose(); return; }
     cleanups.push(() => assembly.dispose());
     cleanups.push(runEventFeed(events, freshness.hub, browserFeedEnvironment(assembly.busy, assembly.onBusy)));
@@ -201,7 +218,6 @@ export class ShellBootstrap {
     cleanups.push(assembly.subscribe(publishBinding));
     cleanups.push(events.on('notification.changed', () => { void inbox.refreshUnread(); }));
     const restart = () => { if (isCurrent()) this.restart(); };
-    cleanups.push(home.subscribe(() => { const next = home.getSnapshot().document; if (next && next.viewerFence !== document.viewerFence) restart(); }));
     cleanups.push(events.on('libraries.changed', restart));
     let regionKey = JSON.stringify(regionPreferences(facts.preferences));
     cleanups.push(preferences.subscribe(() => {
@@ -222,6 +238,7 @@ export class ShellBootstrap {
     applyMotion(); motion.addEventListener('change', applyMotion);
     cleanups.push(preferences.subscribe(applyMotion));
     cleanups.push(() => motion.removeEventListener('change', applyMotion));
+    void home.load();
     publishBinding();
   }
   selectServer = async (serverId:string) => {this.fence();this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);await this.start();}catch(error){this.publish({phase:'error',error});}};
