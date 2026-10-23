@@ -2147,3 +2147,8 @@ export {TVConsentApprover, type TVConsentAuthority, type TVConsentTransport} fro
 
 export {videoPictureName, videoAudioFormatName, videoTrackName, videoTrackWords, formatVideoBytes} from './video-track-labels.ts';
 export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts';
+
+export {readLibrarySettings,saveLibrarySettings,reorderLibraries,saveLibraryFolder,removeLibraryFolder} from './server-admin/libraries.ts';
+export {readLibraryInventoryConfig} from './library-inventory.ts';
+export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
+export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';

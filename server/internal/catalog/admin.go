@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -50,6 +51,7 @@ type AdminJob struct {
 	Actions     []string `json:"actions"`
 }
 type AdminLibrary struct {
+	Position     int              `json:"position"`
 	FilesSkipped int64            `json:"filesSkipped"`
 	Summary      *LibrarySummary  `json:"summary,omitempty"`
 	Audience     *LibraryAudience `json:"audience,omitempty"`
@@ -282,12 +284,15 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 		args = append(args, r.LibraryID)
 	}
 	if r.Cursor != "" {
-		where += " AND (l.name COLLATE NOCASE>? COLLATE NOCASE OR (l.name COLLATE NOCASE=? COLLATE NOCASE AND l.id>?))"
-		args = append(args, c.Value, c.Value, c.ID)
+		if len(c.Keys) != 2 {
+			return out, ErrAdminQuery
+		}
+		where += " AND (l.position,l.name,l.id)>(CAST(? AS INTEGER),?,?)"
+		args = append(args, c.Keys[0], c.Keys[1], c.ID)
 	}
 	args = append(args, r.Limit+1)
 	ids := []string{}
-	rows, e := s.read().QueryContext(ctx, `SELECT l.id,l.name,l.kind,c.revision,l.root,j.id,j.status,j.processed,j.created_at,o.updated_at,o.finished_at,j.error FROM libraries l JOIN library_configuration c ON c.library_id=l.id LEFT JOIN jobs j ON j.id=(SELECT id FROM jobs WHERE library_id=l.id ORDER BY created_at DESC,id DESC LIMIT 1) LEFT JOIN job_observations o ON o.job_id=j.id WHERE `+where+` ORDER BY l.name COLLATE NOCASE,l.id LIMIT ?`, args...)
+	rows, e := s.read().QueryContext(ctx, `SELECT l.id,l.name,l.kind,c.revision,l.root,l.position,EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=l.id),j.id,j.status,j.processed,j.created_at,o.updated_at,o.finished_at,j.error FROM libraries l JOIN library_configuration c ON c.library_id=l.id LEFT JOIN jobs j ON j.id=(SELECT id FROM jobs WHERE library_id=l.id ORDER BY created_at DESC,id DESC LIMIT 1) LEFT JOIN job_observations o ON o.job_id=j.id WHERE `+where+` ORDER BY l.position,l.name,l.id LIMIT ?`, args...)
 	if e != nil {
 		return out, e
 	}
@@ -295,13 +300,17 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 		var l AdminLibrary
 		var id, status, created, updated, finished, message sql.NullString
 		var processed sql.NullInt64
-		if e = rows.Scan(&l.ID, &l.Name, &l.Kind, &l.Revision, &l.Source.Path, &id, &status, &processed, &created, &updated, &finished, &message); e != nil {
+		var managed bool
+		if e = rows.Scan(&l.ID, &l.Name, &l.Kind, &l.Revision, &l.Source.Path, &l.Position, &managed, &id, &status, &processed, &created, &updated, &finished, &message); e != nil {
 			rows.Close()
 			return out, e
 		}
 		l.Source.Availability = "unknown"
 		l.Source.Basis = "not_checked"
-		l.Actions = []string{"rename", "scan"}
+		l.Actions = []string{"rename", "scan", "remove"}
+		if managed {
+			l.Actions = []string{"rename"}
+		}
 		ids = append(ids, l.ID)
 		if id.Valid {
 			j := AdminJob{ID: id.String, LibraryID: l.ID, Status: status.String, Processed: int(processed.Int64), CreatedAt: created.String, Error: message.String}
@@ -324,7 +333,7 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 	if len(out.Items) > r.Limit {
 		out.Items = out.Items[:r.Limit]
 		last := out.Items[len(out.Items)-1]
-		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: last.Name, ID: last.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Keys: []string{strconv.Itoa(last.Position), last.Name}, ID: last.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return out, e
 		}
