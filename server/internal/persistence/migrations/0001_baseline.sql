@@ -8435,3 +8435,45 @@ INSERT INTO identity_managed_route(singleton) VALUES(1);
 CREATE TRIGGER identity_kind_no_delete BEFORE DELETE ON identity_state BEGIN SELECT RAISE(ABORT,'identity_state_required');END;
 CREATE TRIGGER identity_kind_insert_local_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='local' AND EXISTS(SELECT 1 FROM account_portico_links) BEGIN SELECT RAISE(ABORT,'sign_in_kind_local');END;
 CREATE TRIGGER identity_kind_insert_portico_fence BEFORE INSERT ON identity_state WHEN NEW.sign_in_kind='portico' AND EXISTS(SELECT 1 FROM accounts WHERE length(password_hash)>0) BEGIN SELECT RAISE(ABORT,'sign_in_kind_portico');END;
+
+CREATE TABLE identity_sign_in_policy(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>=1),
+ stay_signed_in_days INTEGER NOT NULL DEFAULT 90 CHECK(stay_signed_in_days IN(7,30,90,365)),
+ pin_remember_days INTEGER NOT NULL DEFAULT 30 CHECK(pin_remember_days IN(0,7,30,90)),
+ password_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(password_attempts IN('relaxed','standard','strict')),
+ pin_attempts TEXT NOT NULL DEFAULT 'standard' CHECK(pin_attempts IN('relaxed','standard','strict')),
+ password_min_length INTEGER NOT NULL DEFAULT 8 CHECK(password_min_length IN(8,10,12,16)),
+ member_reset_code_minutes INTEGER NOT NULL DEFAULT 60 CHECK(member_reset_code_minutes IN(15,60,1440)),
+ require_two_step TEXT NOT NULL DEFAULT 'nobody' CHECK(require_two_step IN('nobody','administrators','everyone')),
+ remember_accounts INTEGER NOT NULL DEFAULT 1 CHECK(remember_accounts IN(0,1)),
+ ended_sessions_days INTEGER NOT NULL DEFAULT 90 CHECK(ended_sessions_days IN(30,90,365)), updated_ms INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO identity_sign_in_policy(singleton) VALUES(1);
+
+CREATE TABLE preference_scopes(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ scope TEXT NOT NULL CHECK(scope IN('profile-server','profile-device-class','profile-device')),
+ device_key TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>=1), updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key),
+ CHECK((scope='profile-server' AND device_key='') OR (scope='profile-device-class' AND device_key IN('web','mobile','tablet','television')) OR (scope='profile-device' AND length(device_key)>0))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_values(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, kind TEXT NOT NULL, bool_value INTEGER, number_value REAL, text_value TEXT,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key) REFERENCES preference_scopes ON DELETE CASCADE,
+ CHECK((kind='boolean' AND bool_value IS NOT NULL AND bool_value IN(0,1) AND number_value IS NULL AND text_value IS NULL)
+ OR (kind IN('integer','number') AND bool_value IS NULL AND number_value IS NOT NULL AND text_value IS NULL AND (kind='number' OR number_value=CAST(number_value AS INTEGER)))
+ OR (kind IN('string','locale') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NOT NULL)
+ OR (kind IN('string-list','languageList') AND bool_value IS NULL AND number_value IS NULL AND text_value IS NULL))
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE preference_list_items(
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL, scope TEXT NOT NULL, device_key TEXT NOT NULL,
+ key TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0 AND position<64), value TEXT NOT NULL,
+ PRIMARY KEY(authority,account_id,profile_id,scope,device_key,key,position),
+ UNIQUE(authority,account_id,profile_id,scope,device_key,key,value),
+ FOREIGN KEY(authority,account_id,profile_id,scope,device_key,key) REFERENCES preference_values ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;

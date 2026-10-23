@@ -7,6 +7,7 @@ import (
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/preferenceownership"
 	"strings"
 	"time"
 )
@@ -627,6 +628,9 @@ func (s *Service) DeleteDirectProfile(ctx context.Context, bearer, id string, ex
 func EraseProfileSavedDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error {
 	if v.Authority != "local" {
 		return ErrUnauthorized
+	}
+	if e := preferenceownership.EraseProfile(ctx, tx, v.Authority, v.AccountID, v.ProfileID); e != nil {
+		return e
 	}
 	key := PersonalKey(v)
 	for _, q := range []string{
