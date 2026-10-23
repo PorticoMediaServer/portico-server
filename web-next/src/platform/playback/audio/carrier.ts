@@ -30,6 +30,7 @@ export class MediaCarrier {
   private stream: MediaStreamAudioDestinationNode | null = null;
   private ours = false;
   private disposed = false;
+  private playAttempt = 0;
   private readonly onPause: () => void;
   private readonly paused = () => {
     // The page's own pause is not news; any other while carrying is the system's or the viewer's.
@@ -70,14 +71,20 @@ export class MediaCarrier {
   get carrying(): boolean { return this.element !== null; }
 
   /** Playing: the element plays its stream. One that refuses gives the speakers the audio directly. */
-  play(): void {
+  play(onRefused?: (error: unknown) => void): void {
     const element = this.element;
     if (!element || !element.paused) return;
-    void element.play().catch(() => this.direct());
+    const attempt = ++this.playAttempt;
+    void element.play().catch(error => {
+      if (this.disposed || this.element !== element || attempt !== this.playAttempt) return;
+      this.direct();
+      onRefused?.(error);
+    });
   }
 
   /** Paused by the page: the element follows, without that being reported back as the viewer's pause. */
   pause(): void {
+    ++this.playAttempt;
     const element = this.element;
     if (!element || element.paused) return;
     this.ours = true;
@@ -100,6 +107,7 @@ export class MediaCarrier {
   }
 
   private release() {
+    ++this.playAttempt;
     const element = this.element;
     if (!element) return;
     this.element = null;

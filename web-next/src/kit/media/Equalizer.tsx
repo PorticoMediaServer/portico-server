@@ -65,7 +65,9 @@ export function Equalizer({value, onChange, onReset, reportError, layout = 'sett
   const response = useMemo(() => {
     if (!sampleRate || sampleRate <= 62) return undefined;
     const upper = Math.min(16000, sampleRate / 2 - 1), hz = Array.from({length: 241}, (_, i) => 31 * (upper / 31) ** (i / 240));
-    return equalizerResponse(display, sampleRate, hz).map((gain, i) => `${i === 0 ? 'M' : 'L'}${i / 240 * 1000},${position(gain) * 10}`).join(' ');
+    // Ruling17: the curve is the true combined band-filter response. Preamp has its own
+    // slider and is excluded here; the engine's net response still includes its gain.
+    return equalizerResponse({...display, preampDb: 0}, sampleRate, hz).map((gain, i) => `${i === 0 ? 'M' : 'L'}${i / 240 * 1000},${position(gain) * 10}`).join(' ');
   }, [display, sampleRate]);
   const band = (index: number, gain: number, label: string, horizontal = false) => <div className={[styles.band, index === 0 && styles.preamp].filter(Boolean).join(' ')} data-dragging={dragging === index || undefined} key={index}>
     <span className={styles.value}>{horizontal ? label : number(gain)}</span>

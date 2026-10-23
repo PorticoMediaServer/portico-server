@@ -103,6 +103,22 @@ test('current-song leveling facts follow the actual deck gain rather than the sa
   assert.deepEqual(t.calls.filter(call => call[0] === 'audioProcessingApplied').at(-1)!.at(-1), {eqApplied: false, levelingApplied: false});
 });
 
+test('autoplay refusal is fenced to the current renderer intent and a replacement gets its own resume attempt', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pending: ((error: unknown) => void)[] = [];
+  t.f.ctx.state = 'suspended'; t.f.ctx.resume = () => new Promise<void>((_, reject) => pending.push(reject));
+  const render = new DecodeAudioRender(t.service, (path: string) => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  render.apply(t.get()); await settle(); assert.equal(pending.length, 1);
+  render.apply(t.set({intentId: 2, session: {id: 'new-song', generation: 2, audio: t.b}})); await settle();
+  assert.equal(pending.length, 2, 'a replaced blocked song cannot suppress the new song resume attempt');
+  pending[0]!(new DOMException('controlled old refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.some(call => call[0] === 'pause' || call[0] === 'listeningNotice'), false);
+  pending[1]!(new DOMException('controlled current refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.filter(call => call[0] === 'pause').length, 1);
+  assert.deepEqual(t.calls.filter(call => call[0] === 'listeningNotice'), [['listeningNotice', 'audio_autoplay_blocked']]);
+});
+
 test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
   const t = setup();

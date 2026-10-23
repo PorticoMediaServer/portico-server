@@ -125,7 +125,6 @@ export class DecodeAudioRender {
     queueMicrotask(() => {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
-        this.carrier.play();
         this.resumeContext();
       }
     });
@@ -141,6 +140,11 @@ export class DecodeAudioRender {
       this.listening.listeningNotice?.('audio_autoplay_blocked');
     };
     void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
+    // AudioContext.resume may remain pending under autoplay policy. An actual media-element
+    // NotAllowedError supplies refusal evidence; a running direct path needs no notice.
+    this.carrier.play(error => {
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'NotAllowedError' && this.context.state !== 'running') refused();
+    });
   }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
@@ -184,6 +188,7 @@ export class DecodeAudioRender {
   private closePlaying(p?: Playing | Candidate) { if (!p) return; (p.deck as Deck | undefined)?.close(); p.reader.close(); }
   private reset() {
     ++this.revision;
+    this.askedForGesture = false;
     for (const p of [this.primary, this.candidate, this.incoming, this.retiring]) this.closePlaying(p);
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
     this.committing = undefined;
@@ -217,12 +222,11 @@ export class DecodeAudioRender {
 
   private transport(s: PlaybackSnapshot) {
     if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); void this.context.suspend(); return; }
-    this.carrier.play();
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
       this.resumeContext();
-    }
+    } else this.carrier.play();
   }
 
   private async start(plan: PlayableAudioRender, key: string, fromFrame: number, intent: number, seekRevision?: number) {
@@ -233,7 +237,7 @@ export class DecodeAudioRender {
       const speed = this.snapshot.audioEffects.rate;
       const deck = await this.openDeck(plan, reader, fromFrame, 'primary', speed);
       if (revision !== this.revision || this.disposed) { deck?.close(); reader.close(); return; }
-      if (!deck) { reader.close(); this.service.audioRenderFailed('This browser can’t decode this audio.'); return; }
+      if (!deck) { reader.close(); this.service.audioRenderFailed('audio_render_failed'); return; }
       this.primary = {deck, plan, key, fromFrame, reader, speed};
       await deck.pump(START_SECONDS);
       if (revision !== this.revision || this.disposed) return;
@@ -246,7 +250,7 @@ export class DecodeAudioRender {
       this.transport(this.service.getSnapshot());
       void deck.pump(AHEAD_SECONDS);
     } catch {
-      if (revision === this.revision && !this.disposed) this.service.audioRenderFailed('Audio decoding or delivery failed. Retry playback to reconnect.');
+      if (revision === this.revision && !this.disposed) this.service.audioRenderFailed('audio_render_failed');
     }
   }
 
@@ -289,7 +293,7 @@ export class DecodeAudioRender {
   private committed(s: PlaybackSnapshot) {
     const committed = s.audioEffects.committed, c = this.candidate, p = this.primary;
     if (!committed || !c || committed.token !== c.token || !c.ready || this.incoming || !p || p.deck.endFrame === undefined) return;
-    if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('The prepared audio changed.'); return; }
+    if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('audio_render_failed'); return; }
     // The whole next file may now be fetched; bring it into the cache before its edge.
     c.reader.unlock();
     void c.reader.prefetchAll();
@@ -345,7 +349,7 @@ export class DecodeAudioRender {
       return;
     }
     if (this.retiring && (this.retiring.deck.ended || frame >= (this.retiring.deck.endFrame ?? 0) + this.context.sampleRate)) { this.closePlaying(this.retiring); this.retiring = undefined; }
-    if (p.deck.failure) { this.service.audioRenderFailed('Audio decoding or delivery failed. Retry playback to reconnect.'); this.reset(); return; }
+    if (p.deck.failure) { this.service.audioRenderFailed('audio_render_failed'); this.reset(); return; }
     // Decode ahead (bounded), for the current deck and a linked successor.
     void p.deck.pump(AHEAD_SECONDS);
     if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);

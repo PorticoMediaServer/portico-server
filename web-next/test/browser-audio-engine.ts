@@ -12,7 +12,7 @@ const check = (ok: unknown, message: string) => { if (!ok) throw new Error(messa
 const rms = (data: Float32Array, from = 24000) => Math.sqrt(data.subarray(from).reduce((sum, value) => sum + value * value, 0) / (data.length - from));
 
 export async function runBrowserAudioChecks() {
-  const report: Record<string, unknown> = {userAgent: navigator.userAgent};
+  const report: Record<string, unknown> = {userAgent: navigator.userAgent, secureContext: isSecureContext, audioDecoderAvailable: !!(globalThis as unknown as {AudioDecoder?: unknown}).AudioDecoder};
   // Render actual Web Audio nodes. Compare the audio, not a second implementation of a biquad.
   const response: number[] = [];
   let responseErrorDb = 0;
@@ -124,6 +124,28 @@ export async function runBrowserAudioChecks() {
     const current = render.getEqualizer();
     check(JSON.stringify(await loadDeviceEqualizer())===JSON.stringify(current),'player/Settings facade differs from the actual graph');
     const actualContext = (render as unknown as {context:AudioContext}).context;
+    // An enabled preference cannot supply an applied fact. Read the actual current-song
+    // normalization node after its gain ramp, including the unchanged/unknown cases.
+    snapshot.audioEffects.settings.normalization = 'track'; render.apply(snapshot);
+    check(!render.audioFacts()!.levelingApplied, 'unknown leveling gain was inferred from its preference');
+    snapshot.session.audio.gain = {trackDb:0,trackPeak:0.5}; render.apply(snapshot);
+    check(!render.audioFacts()!.levelingApplied, 'zero dB leveling was called a signal change');
+    const advanceGainRamp = async () => {
+      await actualContext.resume();
+      const until = actualContext.currentTime + 0.04, deadline = performance.now() + 2000;
+      while (actualContext.currentTime < until && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve,10));
+      check(actualContext.currentTime >= until, 'normalization sample clock did not advance');
+    };
+    snapshot.session.audio.gain = {trackDb:-6,trackPeak:0.5}; render.apply(snapshot);
+    await advanceGainRamp();
+    check(render.audioFacts()!.levelingApplied, 'actual attenuating gain node was not reported');
+    snapshot.audioEffects.settings.normalization = 'off'; render.apply(snapshot);
+    // Paused contexts do not advance scheduled automation. Observe off after the next actual
+    // sample-clock advance, rather than treating a wall-clock sleep as a completed ramp.
+    await advanceGainRamp();
+    check(!render.audioFacts()!.levelingApplied, 'disabled leveling retained an applied fact after the ramp');
+    await actualContext.suspend();
+    report.currentSongLeveling = {unknown:false,zeroDb:false,attenuation:true,off:false};
     actualContext.dispatchEvent(new Event('sinkchange'));
     navigator.mediaDevices?.dispatchEvent(new Event('devicechange'));
     await new Promise(resolve=>setTimeout(resolve,0));
