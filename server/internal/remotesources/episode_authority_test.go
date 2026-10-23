@@ -12,15 +12,9 @@ import (
 )
 
 type episodeFactsFixture struct {
-	mode, providerState string
-	processGeneration   string
-	still               bool
-	providerResolved    bool
-	generationNeeded    bool
-	artworkRevision     string
-	leaseRevision       int64
-	leaseError          error
-	limits              ReadLimits
+	mode                                      string
+	still, providerResolved, generationNeeded bool
+	artworkRevision                           string
 }
 
 func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx, target EpisodeTarget) (EpisodeState, error) {
@@ -28,19 +22,8 @@ func (f *episodeFactsFixture) ReadEpisodeStateTx(ctx context.Context, tx *sql.Tx
 	return EpisodeState{PolicyRevision: policy.Revision, ArtworkRevision: f.artworkRevision, Mode: f.mode, ProviderResolved: f.providerResolved, GenerationNeeded: f.generationNeeded, ProviderStill: f.still}, err
 }
 
-func (f *episodeFactsFixture) ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error) {
-	return EpisodeWorkState{ProviderRevision: 1, ReadLeaseRevision: f.leaseRevision, RemoteProcessGeneration: f.processGeneration, ProviderState: f.providerState}, nil
-}
-
-func (f *episodeFactsFixture) CheckEpisodeReadLease(_ context.Context, binding EpisodeReadLeaseBinding) error {
-	if binding.Purpose != EpisodeExplicitOneEpisode || binding.Limits != f.limits || binding.RemoteProcessGeneration != "fixture-process" || binding.ReadLeaseRevision != 1 || binding.Observation.SourceID != "remote" || binding.Observation.Generation != "1" || binding.RootIncarnation == "" || binding.LibrarySourceGeneration < 1 {
-		return ErrEpisodeAuthority
-	}
-	return f.leaseError
-}
-
 func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
-	for _, changed := range []string{"profile", "generation", "object", "actor", "range", "library", "provider", "process", "lease_revision", "lease", "publication_actor", "publication_profile", "publication_object"} {
+	for _, changed := range []string{"profile", "generation", "object", "actor", "range", "unknown_mode", "publication_actor", "publication_profile", "publication_object"} {
 		t.Run(changed, func(t *testing.T) {
 			ctx := context.Background()
 			f := newObservationFixture(t)
@@ -66,8 +49,8 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
 				t.Fatal(err)
 			}
-			facts := &episodeFactsFixture{mode: "off", providerState: "ready", artworkRevision: "artwork-1", leaseRevision: 1, processGeneration: "fixture-process", limits: ReadLimits{Connections: 2, RequestsPerSecond: 2}}
-			resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts, Work: facts}
+			facts := &episodeFactsFixture{mode: "off", artworkRevision: "artwork-1"}
+			resolver := EpisodeAuthorityResolver{Sources: f.s, Identities: identities, Episodes: facts}
 			request := EpisodeAuthorityRequest{Target: EpisodeTarget{LibraryID: f.library, LibrarySourceID: f.library, ObjectID: "object", SourceRevision: catalogRevision, EpisodeID: episode}, Purpose: EpisodeExplicitOneEpisode, Owner: owner, Operation: "episode_thumbnail", CostClass: "decode"}
 			gated, err := dbwork.BeginSnapshot(ctx, f.s.db)
 			if err != nil {
@@ -99,16 +82,8 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 				mutation, args = `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, []any{family}
 			case "range":
 				mutation = `UPDATE remote_sources SET range_support='unsupported' WHERE id='remote'`
-			case "library":
-				mutation = `UPDATE library_scan_policies SET revision=revision+1`
-			case "provider":
-				facts.providerState = "throttled"
-			case "process":
-				facts.processGeneration = "replacement-process"
-			case "lease_revision":
-				facts.leaseRevision++
-			case "lease":
-				facts.leaseError = ErrEpisodeAuthority
+			case "unknown_mode":
+				facts.mode = "unknown"
 			case "publication_actor", "publication_profile", "publication_object":
 				publication, e := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
 				if e != nil {
@@ -147,8 +122,8 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			if err = authority.Authorize(ctx, "episode_thumbnail", "decode", true); err == nil {
 				t.Fatal("changed authority resumed", changed)
 			}
-			if changed == "provider" {
-				facts.providerState = "ready"
+			if changed == "unknown_mode" {
+				facts.mode = "off"
 				if err = authority.Check(ctx); err == nil {
 					t.Fatal("terminal old generation revived")
 				}
@@ -218,34 +193,21 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 	}
 }
 
-func TestEpisodeOperationalLimitsAndPurposeUseDifferentScheduleGates(t *testing.T) {
-	work := EpisodeWorkState{ProviderRevision: 3, ReadLeaseRevision: 1, ProviderState: "ready"}
-	source := ReadLimits{Connections: 8, RequestsPerSecond: 10, BytesPerSecond: 10_000_000}
-	got, err := episodeWorkLimits(EpisodeExplicitOneEpisode, work, source)
-	if err != nil || got != source {
-		t.Fatal("invented server/library ceiling or second schedule", got, err)
+func TestEpisodeAutomaticScheduleNeverGrantsExplicitAuthority(t *testing.T) {
+	if err := episodeAnalysisGate(EpisodeExplicitOneEpisode, EpisodeAnalysisFacts{}); err != nil {
+		t.Fatal("automatic schedule blocked explicit purpose", err)
 	}
-	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); err == nil {
-		t.Fatal("automatic work used absent analysis schedule authority")
+	if err := episodeAnalysisGate(EpisodeAutomatic, EpisodeAnalysisFacts{}); !errors.Is(err, ErrEpisodeAuthority) {
+		t.Fatal("missing actual analysis facts granted automatic work", err)
 	}
-	work.AnalysisRevision, work.AnalysisOpen = 4, true
-	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); err != nil {
-		t.Fatal(err)
+	if err := episodeAnalysisGate(EpisodeAutomatic, EpisodeAnalysisFacts{Revision: 1}); !errors.Is(err, storage.ErrBusy) {
+		t.Fatal("closed actual window did not remain pending", err)
 	}
-	work.AnalysisOpen = false
-	if _, err = episodeWorkLimits(EpisodeAutomatic, work, source); !errors.Is(err, storage.ErrBusy) {
-		t.Fatal("known closed window did not stay pending", err)
+	if err := episodeAnalysisGate(EpisodeAutomatic, EpisodeAnalysisFacts{Revision: 1, Open: true}); err != nil {
+		t.Fatal("supported actual analysis facts refused", err)
 	}
-	work.AnalysisOpen = true
-	for _, state := range []string{"", "throttled", "quota", "unavailable"} {
-		work.ProviderState = state
-		if _, err = episodeWorkLimits(EpisodeExplicitOneEpisode, work, source); err == nil {
-			t.Fatal("explicit command bypassed provider state", state)
-		}
-	}
-	work.ProviderState, work.ProviderRevision = "ready", 0
-	if _, err = episodeWorkLimits(EpisodeExplicitOneEpisode, work, source); err == nil {
-		t.Fatal("unknown provider observation silently treated as ready")
+	if err := episodeAnalysisGate("unregistered", EpisodeAnalysisFacts{Revision: 1, Open: true}); !errors.Is(err, ErrEpisodeAuthority) {
+		t.Fatal("unregistered purpose accepted schedule as authority", err)
 	}
 }
 

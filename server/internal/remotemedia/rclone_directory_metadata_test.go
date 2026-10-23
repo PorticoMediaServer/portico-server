@@ -58,6 +58,7 @@ func TestRcloneDirectoryMetadataRefusesPartialOrUnconfinedRows(t *testing.T) {
 		`{"list":[{"Path":"disc/../clip","Size":1}]}`,
 		`{"list":[{"Path":"disc/sub/clip","Size":1}]}`,
 		`{"list":[{"Path":"disc/clip","Size":-1}]}`,
+		`{"list":[{"Path":"disc/clip"}]}`,
 		`{"list":[{"Path":"disc/clip","Size":1,"ID":"` + strings.Repeat("x", 128<<10) + `"}]}`,
 		`{"list":[{"Path":"disc/clip","Size":1,"Hashes":{"MD5":"bad\nvalue"}}]}`,
 		`{"list":[]} trailing`,

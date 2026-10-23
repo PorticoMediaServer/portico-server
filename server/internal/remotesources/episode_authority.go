@@ -55,53 +55,35 @@ type EpisodeStateReader interface {
 	ReadEpisodeStateTx(context.Context, *sql.Tx, EpisodeTarget) (EpisodeState, error)
 }
 
-type EpisodeWorkState struct {
-	ProviderRevision, ReadLeaseRevision int64
-	RemoteProcessGeneration             string
-	AnalysisRevision                    int64
-	AnalysisOpen                        bool
-	// State is observed, normalized provider/process state. A response from
-	// rclone is not by itself proof of a provider's quota or retry time.
-	ProviderState string
+// EpisodeAnalysisFacts come only from the supported checked analysis schedule.
+// They schedule automatic work; they are not actor/source/decode permission.
+type EpisodeAnalysisFacts struct {
+	Revision int64
+	Open     bool
 }
 
-type EpisodeReadLeaseBinding struct {
-	Target                  EpisodeTarget
-	Purpose                 EpisodePurpose
-	Observation             ObservationRef
-	LibrarySourceGeneration int64
-	RootIncarnation         string
-	ProfileRevision         int64
-	ReadLeaseRevision       int64
-	RemoteProcessGeneration string
-	Limits                  ReadLimits
-}
-
-// EpisodeWorkReader must be backed by the checked scheduler and source-wide
-// enforcing resource lease. There is no permissive implementation/default.
-// CheckEpisodeReadLease performs a nonblocking local lease check; it must not
-// do remote I/O or wait for capacity while a database transaction is held.
-type EpisodeWorkReader interface {
-	ReadEpisodeWorkTx(context.Context, *sql.Tx, EpisodeTarget, EpisodePurpose) (EpisodeWorkState, error)
-	CheckEpisodeReadLease(context.Context, EpisodeReadLeaseBinding) error
+type EpisodeAnalysisReader interface {
+	ReadEpisodeAnalysisTx(context.Context, *sql.Tx, EpisodeTarget) (EpisodeAnalysisFacts, error)
 }
 
 type EpisodeAuthorityResolver struct {
-	Sources    *Service
-	Identities *identity.Service
-	Episodes   EpisodeStateReader
-	Work       EpisodeWorkReader
+	Sources      *Service
+	Identities   *identity.Service
+	Episodes     EpisodeStateReader
+	Analysis     EpisodeAnalysisReader
+	LocalStorage *storage.Client
 }
 
 type episodeAuthoritySnapshot struct {
 	Source           catalog.LibrarySource
 	File             string
+	Size, ModifiedNS int64
 	PolicyRevision   int64
 	Episode          EpisodeState
 	Profile          SourceReadProfile
 	RemoteGeneration string
 	Observation      ObservationRef
-	Work             EpisodeWorkState
+	Analysis         EpisodeAnalysisFacts
 	Limits           ReadLimits
 }
 
@@ -158,31 +140,22 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 	return nil
 }
 
-func episodeWorkLimits(purpose EpisodePurpose, state EpisodeWorkState, source ReadLimits) (ReadLimits, error) {
-	if state.ProviderRevision < 1 || state.ReadLeaseRevision < 1 || state.ProviderState != "ready" || source.Connections < 0 || source.RequestsPerSecond < 0 || source.BytesPerSecond < 0 {
-		return ReadLimits{}, ErrEpisodeAuthority
+func episodeAnalysisGate(purpose EpisodePurpose, facts EpisodeAnalysisFacts) error {
+	if purpose == EpisodeExplicitOneEpisode {
+		return nil
 	}
-	if purpose == EpisodeAutomatic {
-		if state.AnalysisRevision < 1 {
-			return ReadLimits{}, ErrEpisodeAuthority
-		}
-		if !state.AnalysisOpen {
-			return ReadLimits{}, storage.ErrBusy
-		}
+	if purpose != EpisodeAutomatic || facts.Revision < 1 {
+		return ErrEpisodeAuthority
 	}
-	if purpose != EpisodeAutomatic && purpose != EpisodeExplicitOneEpisode {
-		return ReadLimits{}, ErrEpisodeAuthority
+	if !facts.Open {
+		return storage.ErrBusy
 	}
-	// Section15: the source profile and observed provider slow-down are the
-	// complete current outbound policy. There are no server/library caps or
-	// separate analysis schedule to fabricate. The enforcing lease checks the
-	// actual source-wide limits; generic worker admission is never permission.
-	return source, nil
+	return nil
 }
 
 func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, request EpisodeAuthorityRequest) (episodeAuthoritySnapshot, error) {
 	var out episodeAuthoritySnapshot
-	if tx == nil || r.Sources == nil || r.Sources.db == nil || r.Episodes == nil || r.Work == nil || !validEpisodeRequest(request) {
+	if tx == nil || r.Sources == nil || r.Sources.db == nil || r.Episodes == nil || !validEpisodeRequest(request) {
 		return out, ErrEpisodeAuthority
 	}
 	if err := ctx.Err(); err != nil {
@@ -200,7 +173,7 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 	s := &out.Source
 	var relative string
 	var size int64
-	err := tx.QueryRowContext(ctx, `SELECT s.id,s.library_id,s.kind,s.root,s.generation,s.incarnation,s.root_identity,s.enabled,s.identity_confirmed,o.relative_path,o.size FROM library_sources s JOIN inventory_objects o ON o.source_id=s.id JOIN catalog_assets a ON a.token=o.asset_id WHERE s.id=? AND s.library_id=? AND s.enabled=1 AND o.id=? AND o.revision=? AND o.root_incarnation=s.incarnation AND o.retired=0 AND o.state='available' AND a.available=1 AND a.video_codec!='' AND EXISTS(SELECT 1 FROM catalog_asset_links al JOIN catalog_entities e ON e.id=al.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE al.asset_id=a.id AND al.available=1 AND pid(e.public_id)=? AND k.name='episode' AND e.retired=0 AND l.retired=0 AND l.library_id=s.library_id)`, t.LibrarySourceID, t.LibraryID, t.ObjectID, t.SourceRevision, t.EpisodeID).Scan(&s.ID, &s.LibraryID, &s.Kind, &s.ResolvedPath, &s.Generation, &s.Incarnation, &s.RootIdentity, &s.Enabled, &s.IdentityConfirmed, &relative, &size)
+	err := tx.QueryRowContext(ctx, `SELECT s.id,s.library_id,s.kind,s.root,s.generation,s.incarnation,s.root_identity,s.enabled,s.identity_confirmed,o.relative_path,o.size,o.modified_ns FROM library_sources s JOIN inventory_objects o ON o.source_id=s.id JOIN catalog_assets a ON a.token=o.asset_id WHERE s.id=? AND s.library_id=? AND s.enabled=1 AND o.id=? AND o.revision=? AND o.root_incarnation=s.incarnation AND o.retired=0 AND o.state='available' AND a.available=1 AND a.video_codec!='' AND EXISTS(SELECT 1 FROM catalog_asset_links al JOIN catalog_entities e ON e.id=al.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_kinds k ON k.id=e.kind WHERE al.asset_id=a.id AND al.available=1 AND pid(e.public_id)=? AND k.name='episode' AND e.retired=0 AND l.retired=0 AND l.library_id=s.library_id)`, t.LibrarySourceID, t.LibraryID, t.ObjectID, t.SourceRevision, t.EpisodeID).Scan(&s.ID, &s.LibraryID, &s.Kind, &s.ResolvedPath, &s.Generation, &s.Incarnation, &s.RootIdentity, &s.Enabled, &s.IdentityConfirmed, &relative, &size, &out.ModifiedNS)
 	if err != nil {
 		return out, err
 	}
@@ -208,6 +181,7 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 		return out, ErrEpisodeAuthority
 	}
 	out.File = filepath.Join(s.ResolvedPath, relative)
+	out.Size = size
 	if request.Purpose == EpisodeAutomatic {
 		live, e := catalog.InventoryFenceTx(ctx, tx, request.JobID)
 		if e != nil {
@@ -293,22 +267,26 @@ func (r EpisodeAuthorityResolver) resolveTx(ctx context.Context, tx *sql.Tx, req
 	if err = episodePolicy(request.Purpose, out.Episode, policy, s.Kind == "remote", out.Profile); err != nil {
 		return out, err
 	}
-	out.Work, err = r.Work.ReadEpisodeWorkTx(ctx, tx, t, request.Purpose)
-	if err != nil {
+	if request.Purpose == EpisodeAutomatic {
+		if r.Analysis == nil {
+			return out, ErrEpisodeAuthority
+		}
+		out.Analysis, err = r.Analysis.ReadEpisodeAnalysisTx(ctx, tx, t)
+		if err != nil {
+			return out, err
+		}
+	}
+	if err = episodeAnalysisGate(request.Purpose, out.Analysis); err != nil {
 		return out, err
 	}
-	if s.Kind == "remote" && out.Work.RemoteProcessGeneration == "" {
-		return out, ErrEpisodeAuthority
-	}
-	out.Limits, err = episodeWorkLimits(request.Purpose, out.Work, out.Profile.Limits)
-	if err != nil {
-		return out, err
-	}
+	// Actual source-wide resource custody is the retained SourceReadLease. Its
+	// physical epoch does not exist at this DB-only policy capture boundary.
+	out.Limits = out.Profile.Limits
 	if request.Purpose == EpisodeExplicitOneEpisode {
-		// These facts have no permission meaning for the explicit command and
-		// must not accidentally become automatic-tier/still/window fences.
-		out.Episode.ArtworkRevision, out.Episode.ProviderResolved, out.Episode.ProviderStill, out.Episode.GenerationNeeded = "", false, false, false
-		out.Work.AnalysisRevision, out.Work.AnalysisOpen = 0, false
+		// Known automatic modes, scan policy and artwork are not explicit-source
+		// permission. The Episode command separately retains its actual art CAS.
+		out.PolicyRevision = 0
+		out.Episode = EpisodeState{}
 	}
 	return out, nil
 }
@@ -325,7 +303,7 @@ func (a *EpisodeAuthority) checkTx(ctx context.Context, tx *sql.Tx) error {
 	if a.terminal != nil {
 		return a.terminal
 	}
-	if a.life == nil || a.resolver.Sources == nil || a.resolver.Work == nil {
+	if a.life == nil || a.resolver.Sources == nil {
 		a.terminal = ErrEpisodeAuthority
 		return a.terminal
 	}
@@ -337,10 +315,7 @@ func (a *EpisodeAuthority) checkTx(ctx context.Context, tx *sql.Tx) error {
 			err = storage.ErrRemoteChanged
 		}
 	}
-	if err == nil {
-		s := a.captured
-		err = a.resolver.Work.CheckEpisodeReadLease(ctx, EpisodeReadLeaseBinding{Target: a.request.Target, Purpose: a.request.Purpose, Observation: s.Observation, LibrarySourceGeneration: s.Source.Generation, RootIncarnation: s.Source.Incarnation, ProfileRevision: s.Profile.Revision, ReadLeaseRevision: s.Work.ReadLeaseRevision, RemoteProcessGeneration: s.Work.RemoteProcessGeneration, Limits: s.Limits})
-	}
+
 	if err != nil {
 		a.terminal = err
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"path"
@@ -56,6 +57,9 @@ func (m *RcloneMetadata) VisitDirectory(ctx context.Context, relative string, ch
 	}
 	response, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, ErrObservationChanged) {
+			return ErrObservationChanged
+		}
 		return boundRequestError(ctx, err)
 	}
 	defer response.Body.Close()
@@ -99,14 +103,14 @@ func visitDirectoryMetadata(ctx context.Context, input io.Reader, directory stri
 		}
 		var item struct {
 			Path, ID, ModTime string
-			Size              int64
+			Size              *int64
 			IsDir             bool
 			Hashes            map[string]string
 		}
-		if json.Unmarshal(raw, &item) != nil || !cleanDAVRelative(item.Path) || strings.Contains(item.Path, ":") || path.Dir(item.Path) != emptyDir(directory) || item.Path == directory || item.Size < 0 && !item.IsDir || len(item.ID) > 4096 || strings.ContainsAny(item.ID, "\x00\r\n") || len(item.Hashes) > 16 {
+		if json.Unmarshal(raw, &item) != nil || item.Size == nil || !cleanDAVRelative(item.Path) || strings.Contains(item.Path, ":") || path.Dir(item.Path) != emptyDir(directory) || item.Path == directory || *item.Size < 0 && !item.IsDir || len(item.ID) > 4096 || strings.ContainsAny(item.ID, "\x00\r\n") || len(item.Hashes) > 16 {
 			return ErrDAVResponse
 		}
-		value := RcloneFileMetadata{Path: item.Path, ID: item.ID, Size: max(0, item.Size), Directory: item.IsDir}
+		value := RcloneFileMetadata{Path: item.Path, ID: item.ID, Size: max(0, *item.Size), Directory: item.IsDir}
 		if item.ModTime != "" {
 			value.Modified, err = time.Parse(time.RFC3339Nano, item.ModTime)
 			if err != nil {
