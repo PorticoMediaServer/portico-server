@@ -51,7 +51,7 @@ try{
   }
   throw new Error('caption_capture_unstable');
  };
- await send('Page.enable');await send('Runtime.enable');
+ await send('Page.enable');await send('Runtime.enable');await send('Page.bringToFront');await send('Emulation.setFocusEmulationEnabled',{enabled:true});
  await send('Emulation.setDeviceMetricsOverride',{width:1520,height:1100,deviceScaleFactor:1,mobile:false});
  const cases=[['f2',0,'normal'],['f2s',0,'close-hover'],['f2s',1,'maximize-hover'],['f2s',2,'maximized']];
  const results=[],pairs=[];
@@ -66,6 +66,7 @@ try{
   const styles=await evaluate(`(()=>{const original=window.__referenceCaption.children[1],actual=document.querySelector('[data-window-no-drag] button:nth-child(2)');const differences=(x,y)=>{const a=getComputedStyle(x),b=getComputedStyle(y),changed={};for(const property of a){if(a.getPropertyValue(property)!==b.getPropertyValue(property))changed[property]=[a.getPropertyValue(property),b.getPropertyValue(property)];}return changed;};const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};const a=original.querySelector('use'),b=actual.querySelector('use');return {differences:differences(original,actual),useDifferences:differences(a,b),symbolDifferences:differences(document.getElementById(a.href.baseVal.slice(1)).firstElementChild,document.getElementById(b.href.baseVal.slice(1)).firstElementChild),referenceSvg:rect(original.querySelector('svg')),componentSvg:rect(actual.querySelector('svg'))};})()`);
   if(!geometry||Object.values(geometry).some(r=>r.width!==46||r.height!==32))throw new Error('production caption hit area mismatch');
   const actual=await capture(target.clip);
+  let keyboard;
   if(name==='normal'){
    await evaluate(`document.querySelector('[data-window-no-drag] button:nth-child(2)').focus()`);
    for(const [key,code,virtual] of [['Enter','Enter',13],[' ','Space',32]]){
@@ -73,19 +74,19 @@ try{
     await send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:virtual});
    }
    const actions=await evaluate('window.__captionFixture.actions');
-   if(JSON.stringify(actions)!==JSON.stringify(['toggleMaximize','toggleMaximize']))throw new Error('caption_keyboard_action_mismatch');
+   keyboard={actions,focused:await evaluate(`document.activeElement?.tagName`),passed:JSON.stringify(actions)===JSON.stringify(['toggleMaximize','toggleMaximize'])};
   }
   const blank=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('blank navigation timeout')),10000);events.set('Page.loadEventFired',()=>{clearTimeout(timer);resolve();});});
   await send('Page.navigate',{url:'about:blank'});await blank;
   const difference=await evaluate(`(async()=>{const load=src=>new Promise((r,j)=>{const i=new Image();i.onload=()=>r(i);i.onerror=j;i.src=src;});const [a,b]=await Promise.all([load('data:image/png;base64,${expected}'),load('data:image/png;base64,${actual}')]);document.documentElement.style.margin='0';document.body.replaceChildren();document.body.style.cssText='margin:0;display:flex;gap:0;line-height:0';document.body.append(a,b);const c=document.createElement('canvas');c.width=138;c.height=32;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(a,0,0);const x=ctx.getImageData(0,0,138,32).data;ctx.clearRect(0,0,138,32);ctx.drawImage(b,0,0);const y=ctx.getImageData(0,0,138,32).data;let pixels=0,max=0,referenceBright=0,componentBright=0;const locations=[];for(let p=0;p<x.length;p+=4){let changed=false;for(let k=0;k<4;k++){const d=Math.abs(x[p+k]-y[p+k]);max=Math.max(max,d);changed ||= d!==0;}if(changed){pixels++;if(locations.length<24)locations.push({x:p/4%138,y:Math.floor(p/4/138),reference:[...x.slice(p,p+4)],component:[...y.slice(p,p+4)]});}if(x[p]>180&&x[p+1]>180&&x[p+2]>180)referenceBright++;if(y[p]>180&&y[p+1]>180&&y[p+2]>180)componentBright++;}return {pixels,max,referenceBright,componentBright,locations};})()`);
   pairs.push([expected,actual]);
-  results.push({state:name,reference:frame,index,componentOnly:true,referenceLeft:true,dimensionsEach:[138,32],geometry,styles,difference});
+  results.push({state:name,reference:frame,index,componentOnly:true,referenceLeft:true,dimensionsEach:[138,32],geometry,styles,difference,...(keyboard?{keyboard}:{})});
  }
  const pair=await evaluate(`(async()=>{document.body.replaceChildren();const canvas=document.createElement('canvas');canvas.width=276;canvas.height=128;document.body.append(canvas);const ctx=canvas.getContext('2d');const rows=${JSON.stringify(pairs)};for(let row=0;row<rows.length;row++){for(let side=0;side<2;side++){const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src='data:image/png;base64,'+rows[row][side];});ctx.drawImage(image,side*138,row*32);}}return canvas.toDataURL('image/jpeg',1).split(',')[1];})()`);
  await writeFile(path.join(out,'caption-side-by-side.jpg'),Buffer.from(pair,'base64'));
  const report={reference,revision,scope:'COMPONENT ONLY; surrounding Home is immutable reference scaffold, not product UI. No Windows/native/Snap/full-screen acceptance.',fullScreensAccepted:0,results};
  await writeFile(path.join(out,'caption-checklist.log'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
- if(results.some(r=>r.difference.pixels!==0||r.difference.referenceBright<10||r.difference.componentBright<10))process.exitCode=1;
+ if(results.some(r=>r.difference.pixels!==0||r.difference.referenceBright<10||r.difference.componentBright<10||r.keyboard?.passed===false))process.exitCode=1;
  try{await send('Browser.close');}catch{}
 }finally{
  socket?.close();if(browser.exitCode===null){browser.kill('SIGTERM');await new Promise(resolve=>{browser.once('exit',resolve);setTimeout(()=>{if(browser.exitCode===null)browser.kill('SIGKILL');resolve();},3000);});}
