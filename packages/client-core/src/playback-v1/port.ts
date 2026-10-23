@@ -1,3 +1,5 @@
+import type {ObservedPlayback} from './observed-playback.ts';
+
 /**
  * The MediaPlayer port (Plan — Client Playback Migration §2): what a platform player must do for
  * the platform-neutral session core. Web implements it over `<video>` + hls.js, Apple over the
@@ -6,6 +8,9 @@
  * Every observation carries the presentation `generation` it came from, so events from an older
  * URL (a late `timeupdate` after a track switch) can be dropped (spec §2, §6; invariant 3).
  */
+
+import type {LocalPlayerSource, LocalPlayerLoadReceipt, LocalPlayerLoadContext} from './local-port.ts';
+export type {LocalPlayerSource, LocalPlayerLoadReceipt, LocalPlayerLoadContext} from './local-port.ts';
 
 export type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'buffering' | 'ended' | 'error';
 
@@ -35,6 +40,8 @@ export type PlayerSource = Readonly<{
 
 /** A point-in-time reading of the player, for timeline reports (spec §6). */
 export type PlayerObservation = Readonly<{
+  /** Actual renderer output from this generation, independent of source/capability facts. */
+  observedPlayback?: ObservedPlayback;
   generation: number;
   state: PlayerState;
   positionMs: number;
@@ -66,6 +73,9 @@ export type PlayerEvent =
   | Readonly<{type: 'error'; observation: PlayerObservation; code: string; detail?: string}>;
 
 export interface MediaPlayer {
+  /** Absent in browsers. A local source never enters the URL-required load path.
+   * On retirement the adapter cleans only its exact accepted private load/journal. */
+  loadLocal?(source: LocalPlayerSource, context: LocalPlayerLoadContext): Promise<LocalPlayerLoadReceipt>;
   load(source: PlayerSource): void;
   play(): void;
   pause(): void;

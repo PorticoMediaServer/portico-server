@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bindSettingsDownloads, installSettingsPlatform, settingsPlatform, type SettingsDownloadsPort, type SettingsPlatform, type SettingsViewerScope} from '../src/platform/settings-platform.ts';
+import {bindSettingsDownloads, installSettingsPlatform, settingsPlatform, type SettingsDevicePort, type SettingsDownloadsPort, type SettingsPlatform, type SettingsViewerScope} from '../src/platform/settings-platform.ts';
+import {canWriteDeviceSettings, readDeviceSettingsBinding, writeDeviceSettingsBinding} from '../src/screens/settings/device-bindings.ts';
+import {settingsBinding} from '@core/presentation/settings-bindings.ts';
 
 const scope: SettingsViewerScope = {serverId: 'server-a', authority: 'local', accountId: 'person-a', profileId: 'profile-a', sessionFamilyId: 'family-a'};
 test('native platform installation is explicit and retired cleanup cannot clear a replacement', () => {
@@ -43,4 +45,28 @@ test('disposing the shared door aborts an in-flight native open', async () => {
   port.dispose();
   await assert.rejects(opened);
   assert.equal(signal?.aborted, true);
+});
+test('native name/version facts need neither a fabricated document nor a refusing setter', async () => {
+  const port: SettingsDevicePort = {subscribe: () => () => {}, getSnapshot: () => ({facts: {name: {value: 'Actual computer', readOnly: true}, appVersion: '1.2.3'}})};
+  assert.equal(port.getSnapshot().facts.appVersion, '1.2.3');
+  assert.equal(canWriteDeviceSettings(port), false);
+  assert.equal(readDeviceSettingsBinding(settingsBinding('device.player')!, port, {}, 'device.player'), undefined);
+  await assert.rejects(writeDeviceSettingsBinding(port, {playerEngine: 'native'}, new AbortController().signal, () => true), {name: 'AbortError'});
+});
+test('an actual readable device document without apply stays read-only', async () => {
+  const port: SettingsDevicePort = {subscribe: () => () => {}, getSnapshot: () => ({facts: {}, document: {revision: 'native-revision', values: {playerEngine: 'native'}, defaults: {playerEngine: 'automatic'}}})};
+  assert.equal(canWriteDeviceSettings(port), false);
+  assert.equal(readDeviceSettingsBinding(settingsBinding('device.player')!, port, {}, 'device.player')?.current, 'native');
+  await assert.rejects(writeDeviceSettingsBinding(port, {playerEngine: 'automatic'}, new AbortController().signal, () => true), {name: 'AbortError'});
+});
+test('device writes use the captured real revision and cannot begin after scope retirement', async () => {
+  const calls: unknown[] = []; let current = true;
+  const port: SettingsDevicePort = {subscribe: () => () => {}, getSnapshot: () => ({facts: {}, document: {revision: 'native-revision', values: {playerEngine: 'native'}, defaults: {playerEngine: 'automatic'}}}),
+    apply: async (revision, patch) => {calls.push([revision, patch]);}};
+  assert.equal(canWriteDeviceSettings(port), true);
+  await writeDeviceSettingsBinding(port, {playerEngine: 'automatic'}, new AbortController().signal, () => current);
+  assert.deepEqual(calls, [['native-revision', {playerEngine: 'automatic'}]]);
+  current = false;
+  await assert.rejects(writeDeviceSettingsBinding(port, {playerEngine: 'native'}, new AbortController().signal, () => current), {name: 'AbortError'});
+  assert.equal(calls.length, 1);
 });

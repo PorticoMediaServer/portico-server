@@ -16,10 +16,29 @@ test('a nullable string keeps string and null and refuses other values',async()=
  for(const subtitles of [1,{},[],true]) assert.throws(()=>api.decode('Tracks',{subtitles}));
 });
 
+test('closed requests reject optional nulls while presentation objects retain their absent-null rule',async()=>{
+ const fields={type:'object',properties:{id:{type:'string'},note:{type:'string'}},required:['id']};
+ const api=await runtimeFor({Request:{...fields,additionalProperties:false},Presentation:fields,Nullable:{...fields,additionalProperties:false,properties:{...fields.properties,note:{anyOf:[{type:'string'},{type:'null'}]}}}});
+ assert.deepEqual({...api.decode('Request',{id:'request'})},{id:'request'});
+ assert.equal(api.decode('Request',{id:'request',note:'kept'}).note,'kept');
+ assert.throws(()=>api.decode('Request',{id:'request',note:null}));
+ assert.throws(()=>api.decode('Request',{id:'request',unknown:true}));
+ assert.deepEqual({...api.decode('Presentation',{id:'request',note:null})},{id:'request'});
+ assert.equal(api.decode('Nullable',{id:'request',note:null}).note,null);
+});
+
 test('a nullable list keeps null and string lists and refuses malformed lists',async()=>{
  const api=await runtimeFor({Policy:{type:'object',properties:{allowedLibraries:{anyOf:[{type:'array',items:{type:'string'}},{type:'null'}]}}}});
  for(const allowedLibraries of [null,[],['library']]) assert.doesNotThrow(()=>api.decode('Policy',{allowedLibraries}));
  for(const allowedLibraries of [1,{},[1],true]) assert.throws(()=>api.decode('Policy',{allowedLibraries}));
+});
+
+test('unique wire arrays reject duplicate compatibility IDs and equal objects with different key order',async()=>{
+ const api=await runtimeFor({Compatibility:{type:'array',maxItems:3,uniqueItems:true,items:{type:'integer',enum:[1,2,4]}},Records:{type:'array',uniqueItems:true,items:{type:'object',additionalProperties:{type:'integer'}}}});
+ assert.deepEqual(api.decode('Compatibility',[1,4]),[1,4]);
+ for(const value of [[1,1],[3],[1,2,4,4],null]) assert.throws(()=>api.decode('Compatibility',value));
+ assert.throws(()=>api.decode('Records',[{a:1,b:2},{b:2,a:1}]));
+ assert.equal(api.decode('Records',[{a:1},{a:2}]).length,2);
 });
 
 test('analysis control decoder preserves acknowledgements and queued jobs',async()=>{

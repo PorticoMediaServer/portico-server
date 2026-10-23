@@ -34,9 +34,10 @@ export type LibraryBindings = Readonly<{
   onPivot: (pivot: string) => void;
   libraryMenu: ReactNode;
   /** Required real selection bar and per-entry capabilities from the selected viewer. */
-  selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow: (first: number, last: number) => void}>;
+  selection: Readonly<{toolbar?: ReactNode; actions: (member: BrowseMember, index: number) => BrowseItemActions; registerWindow?: (first: number, last: number) => void}>;
   familyForEntry?: Parameters<typeof BrowseResults>[0]['familyForEntry'];
-  onSaveView: () => void;
+  shape?: 'poster' | 'square' | 'collection';
+  onSaveView?: () => void;
   canSaveView: boolean;
   showSaveView?: boolean;
   artwork: ShellArtwork;
@@ -46,6 +47,7 @@ export type LibraryBindings = Readonly<{
   reportError: (error: unknown) => void;
   empty: ReactNode;
 }>;
+export type LibraryBrowseBindings = Omit<LibraryBindings, 'libraries' | 'tabs' | 'onLibrary' | 'onLibraries' | 'onPivot' | 'libraryMenu'>;
 const t = defaultI18n.t;
 export const browseLabels: BrowseLabels = {
   field: value => {const id = browseNameId(value.id, value.labelKey, defaultI18n.has);return id && defaultI18n.has(id) ? t(id) : value.labelKey;},
@@ -63,7 +65,8 @@ export function LibraryScreen(bindings: LibraryBindings) {
     {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <GridSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={21}/>}
   </div>;
 }
-function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork}: LibraryBindings) {
+export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork}: Pick<LibraryBindings,
+  'library' | 'libraries' | 'pivot' | 'tabs' | 'onPivot' | 'onLibrary' | 'onLibraries' | 'libraryMenu' | 'appearance' | 'preferences' | 'libraryViewOverride' | 'artwork'>) {
   const appearance = browsePresentation(base, preferences, libraryViewOverride);
   const compact = useShellWidth() < 600;
   const switcher = <LibrarySwitcher libraries={libraries} value={library.id} onValueChange={onLibrary} compact={compact}/>;
@@ -72,7 +75,7 @@ function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, o
   return compact ? <StickyBrowseHeader name={library.name} switcher={switcher} menu={libraryMenu} onLibraries={onLibraries} topInset={0}>{navigation}</StickyBrowseHeader> :
     <LibraryHeader name={library.name} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;
 }
-export function LibraryBrowse(bindings: LibraryBindings) {
+export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const {controller, library, env, selection, reportError} = bindings;
   const appearance = browsePresentation(bindings.appearance, bindings.preferences, bindings.libraryViewOverride);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -89,7 +92,7 @@ export function LibraryBrowse(bindings: LibraryBindings) {
   const chips = model.applied.flatMap((node, index) => 'field' in node ? [{id: String(index), parts: appliedFilterParts(node, id => {const field = state.capabilities!.fields.find(field => field.id === id);return field ? browseLabels.field(field) : id;}, env)}] : []);
   const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes);} catch (error) {bindings.reportError(error);}};
   const resultCount = snapshot.total === undefined || snapshot.refreshing ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
-  const shape = bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster';
+  const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
   return <>
     <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} topInset={compact ? 94 : 76} sticky
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
@@ -97,7 +100,7 @@ export function LibraryBrowse(bindings: LibraryBindings) {
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
       view={views.includes('grid') && views.includes('list') ? {value: view, onValueChange: view => bindings.onAppearanceChange({view})} : undefined}
       cardSize={!compact && view === 'grid' ? {value: appearance.cardSize, options: (['small', 'medium', 'large'] as const).map(value => ({value, label: t(`next.browse.${value}`)})), onValueChange: value => {if (value === 'small' || value === 'medium' || value === 'large') bindings.onAppearanceChange({cardSize: value});}} : undefined}
-      actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
+      actions={<BrowseScopeChips controller={controller} reportError={reportError}/>} save={bindings.showSaveView === false || !bindings.onSaveView ? undefined : {canSave: bindings.canSaveView, onSave: bindings.onSaveView}} applied={chips}
       onRemoveFilter={id => setPredicates(state.predicates.filter(node => node !== model.applied[Number(id)]))} onClearFilters={() => setPredicates([])} selection={selection.toolbar}/>
     <BrowseResults controller={controller} label={library.name} view={view} cardWidth={appearance.cardWidth} shape={shape} artwork={bindings.artwork} env={env} backdrops={appearance.backdrops}
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={selection.actions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}

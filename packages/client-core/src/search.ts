@@ -14,7 +14,7 @@ export type SearchDirection='asc'|'desc';
 export type SearchGroupStatus='success'|'error';
 export type SearchGroupErrorCode=''|'search_group_timeout'|'search_group_unavailable';
 export type SearchQuery=Readonly<{q:string;group?:SearchGroup;groups?:readonly SearchGroup[];sort?:SearchSort;direction?:SearchDirection;libraryIds?:readonly string[];record?:boolean}>;
-export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string}>}>;
+export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string;sourceId?:string;channelId?:string;provenance?:'live-source'}>}>;
 export type SearchGroupResult=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;totalCountExact:boolean;hasMore:boolean;nextCursor:string}>;
 export type SearchGroupCapability=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
 export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[];sorts:readonly SearchSort[];directions:readonly SearchDirection[];maxLimit:number;groupBudgetMs:number}>;
@@ -83,7 +83,12 @@ function query(q:string,options:Omit<SearchQuery,'q'>={}):SearchQuery{
 function entityEntry(v:unknown,group:SearchGroup):SearchEntry{
  if(!object(v)||!id(v.id)||v.kind!==kinds[group]||!text(v.title??'',2048))invalid();
  if(!object(v.navigation)||v.navigation.view!==targets[group]||v.navigation.entityId!==v.id)invalid();
- return Object.freeze({id:v.id,kind:kinds[group] as 'person'|'channel',title:(v.title??'') as string,...(text(v.subtitle,4096)?{subtitle:v.subtitle}:{}),...(text(v.posterUrl,4096)&&v.posterUrl?{posterUrl:v.posterUrl}:{}),...(count(v.count)?{count:v.count}:{}),navigation:Object.freeze({view:targets[group] as 'person'|'channel',entityId:v.id})});
+ let anchor:Readonly<{sourceId:string;channelId:string;provenance:'live-source'}>|undefined;
+ if(group==='live-tv'&&(v.navigation.sourceId!==undefined||v.navigation.channelId!==undefined||v.navigation.provenance!==undefined)){
+  if(!id(v.navigation.sourceId)||v.navigation.channelId!==v.id||v.navigation.provenance!=='live-source')invalid();
+  anchor={sourceId:v.navigation.sourceId,channelId:v.id,provenance:'live-source'};
+ }
+ return Object.freeze({id:v.id,kind:kinds[group] as 'person'|'channel',title:(v.title??'') as string,...(text(v.subtitle,4096)?{subtitle:v.subtitle}:{}),...(text(v.posterUrl,4096)&&v.posterUrl?{posterUrl:v.posterUrl}:{}),...(count(v.count)?{count:v.count}:{}),navigation:Object.freeze({view:targets[group] as 'person'|'channel',entityId:v.id,...anchor})});
 }
 /** What search offers. Its limits are exact; a group, sort or direction this app does not know is left out of what it offers. */
 function capabilities(v:unknown):SearchCapabilities{

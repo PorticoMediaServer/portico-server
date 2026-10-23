@@ -14,7 +14,9 @@ import (
 type ownerCompletion struct {
 	operation, move, family, token, owner, profile, phase string
 	transaction, installation, challenge                  string
+	registration, origin                                  string
 	generation, epoch, moveRevision, expires              int64
+	routeGeneration                                       int64
 	consumed                                              int64
 	attempt                                               string
 }
@@ -84,7 +86,7 @@ func ownerCompletionTx(ctx context.Context, tx *sql.Tx, operation string) (owner
 	if tx == nil || !validFamilyID(operation) {
 		return c, ErrUnauthorized
 	}
-	err := tx.QueryRowContext(ctx, `SELECT operation_id,move_id,family_id,token_hash,token_generation,owner_id,owner_profile_id,owner_epoch,phase,transaction_id,installation_id,server_challenge_hash,move_revision,expires_ms,consumed_ms,attempt_id FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&c.operation, &c.move, &c.family, &c.token, &c.generation, &c.owner, &c.profile, &c.epoch, &c.phase, &c.transaction, &c.installation, &c.challenge, &c.moveRevision, &c.expires, &c.consumed, &c.attempt)
+	err := tx.QueryRowContext(ctx, `SELECT operation_id,move_id,family_id,token_hash,token_generation,owner_id,owner_profile_id,owner_epoch,phase,transaction_id,installation_id,server_challenge_hash,move_revision,expires_ms,consumed_ms,attempt_id,registration_id,registration_origin,route_generation FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&c.operation, &c.move, &c.family, &c.token, &c.generation, &c.owner, &c.profile, &c.epoch, &c.phase, &c.transaction, &c.installation, &c.challenge, &c.moveRevision, &c.expires, &c.consumed, &c.attempt, &c.registration, &c.origin, &c.routeGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrUnauthorized
 	}
@@ -132,6 +134,13 @@ func (s *Service) ownerCompletionAuthorityTx(ctx context.Context, tx *sql.Tx, ex
 	}
 	if err = refuseResetDescendantTx(ctx, tx, family.ID); err != nil {
 		return c, family, err
+	}
+	var sameBrowser bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_device_families b JOIN identity_devices d ON d.id=b.device_id WHERE b.family_id=? AND d.authority='local' AND d.account_id=? AND d.installation_id=? AND d.platform='web')`, family.ID, c.owner, c.installation).Scan(&sameBrowser); err != nil {
+		return c, family, err
+	}
+	if !sameBrowser {
+		return c, family, ErrUnauthorized
 	}
 	if c.phase == "prepared" {
 		if expected.Grant != "" || current.Grant != "" {
