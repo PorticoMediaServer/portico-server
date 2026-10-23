@@ -6,7 +6,7 @@ import {homeCardSubject} from '../home/model';
 import {cardText} from '@portico/client-core/kit-model';
 import type {TextEnvironment} from '@portico/client-core/kit-model';
 import {GeneratedArt} from '../../kit/artwork';
-import {CircleCard, CollectionTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
+import {CircleCard, CollectionTile, GenreTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
 import type {ShellArtwork} from '../../shell/artwork';
 
 export type BrowseItemActions = Readonly<{
@@ -32,9 +32,12 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
     onNotInterested: actions.onNotInterested, selection: actions.selection, style: {'--cards-width': `${width}px`} as CSSProperties,
     fallback: <GeneratedArt glyph={Array.from(title.trim())[0] ?? ''}/>};
   const source = artwork.foreground(entry.posterUrl, width * devicePixelRatio, shape === 'poster' ? 2 / 3 : 1, {group, order});
+  if (entry.kind === 'category' && family === 'music') return <GenreTile variant="music" context="grid" visible={visible} onNavigate={actions.onOpen} selection={actions.selection} style={props.style}
+    model={{title, caption: entry.count === undefined ? [] : [{id: 'song-count', role: 'supplement', text: defaultI18n.t(entry.countIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: entry.count, pivot: 'songs'})}]}}
+    covers={(entry.artworkPaths ?? []).slice(0, 3).flatMap((path, index) => {const cover = artwork.foreground(path, 76 * devicePixelRatio, 1, {group, order: order * 3 + index});return cover ? [cover] : [];})}/>;
   if (entry.kind === 'collection') return <CollectionTile {...props} artwork={backdrops ? artwork.foreground(entry.backdropUrl, width * devicePixelRatio, 16 / 9, {group, order}) : undefined}
     ambient={backdrops ? artwork.ambient(entry.backdropUrl, {group, order}) : undefined}
     covers={(entry.artworkPaths ?? []).slice(0, 4).flatMap((path, index) => {const cover = artwork.foreground(path, 90 * devicePixelRatio, 2 / 3, {group, order: order * 4 + index});return cover ? [cover] : [];})}/>;
-  if (entry.kind === 'artist' || shape === 'circle') return <CircleCard {...props} covers={(entry.artworkPaths ?? []).slice(0, 4).flatMap(path => {const cover = artwork.foreground(path, width * devicePixelRatio, 1, {group, order});return cover ? [cover] : [];})} initials={title.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] ?? '').join('')} variant={entry.kind === 'artist' ? 'artist' : 'person'}/>;
+  if (entry.kind === 'artist' || shape === 'circle') return <CircleCard {...props} covers={(entry.artworkPaths?.length ? entry.artworkPaths : entry.posterUrl ? [entry.posterUrl] : []).slice(0, 4).flatMap(path => {const cover = artwork.foreground(path, width * devicePixelRatio, 1, {group, order});return cover ? [cover] : [];})} initials={title.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0] ?? '').join('')} variant={entry.kind === 'artist' ? 'artist' : 'person'}/>;
   return shape === 'square' ? <SquareCard {...props} artwork={source} ambient={backdrops ? artwork.ambient(entry.posterUrl, {group, order}) : undefined} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'}/> : <PosterCard {...props} artwork={source}/>;
 }
