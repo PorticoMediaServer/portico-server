@@ -62,6 +62,13 @@ payloads under `licenses/reader`.
 | Gildas Lormeau zip.js | 2.24.0 | [BSD-3-Clause](third_party/reader/zipjs-LICENSE) |
 | Cure53 DOMPurify | 3.4.17 | [Apache-2.0](third_party/reader/dompurify-LICENSE), selected from the upstream Apache-2.0 OR MPL-2.0 choice |
 
+The official Literata variable font is pinned to
+[google/fonts 4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9](https://github.com/google/fonts/tree/4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9/ofl/literata).
+Its unchanged [SIL Open Font License 1.1](packages/reader-core/assets/OFL.txt),
+metadata and source receipt are in `packages/reader-core/assets`; the full licence
+also travels in `licenses/reader/literata-OFL.txt`. The font SHA-256 is
+`b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440`.
+
 The necessary text-layer CSS subset in `packages/reader-core/src/pdf/adapter.ts`
 is adapted from Mozilla PDF.js 6.4.299 under Apache-2.0 and retains its source
 attribution. Portico supplies its own viewer chrome.
