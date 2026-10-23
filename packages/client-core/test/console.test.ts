@@ -188,10 +188,12 @@ test('typed owner settings errors retain revision and bounded field paths',async
 test('complete owner settings retain missing-title and API policies after the merge',()=>{
  const read=parseSettings(settings()).requested;
  assert.equal(read['library.missingTitles'],'after_days');assert.equal(read['library.missingTitlesDays'],30);
- assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.blockMemberAccessTokens,false);
+ assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.conversionMode,'all');
  assert.equal(read.dlnaEnabled,false);
+ const legacy=parseSettings({...settings(),requested:{...values,blockMemberAccessTokens:true,deviceApprovalRequired:true,transcodingEnabled:false}}).requested;
+ assert.equal(legacy.conversionMode,'all');for(const field of ['blockMemberAccessTokens','deviceApprovalRequired','transcodingEnabled'])assert.equal(field in legacy,false);
  const {dlnaEnabled:_,...older}=values;assert.equal(parseSettings({...settings(),requested:older,effective:older}).requested.dlnaEnabled,false);
- for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan'])assert.equal(retired in read,false);
+ for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan','blockMemberAccessTokens','deviceApprovalRequired','transcodingEnabled'])assert.equal(retired in read,false);
  for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{conversionMode:'automatic'},{outputFormat:'vp9'},{downloadMaxQuality:'automatic'},{musicAwayQuality:'256'},{dlnaEnabled:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
 });
 
