@@ -26,7 +26,8 @@ func TestHomeSavedBookViewHydratesPublishedEndpoint(t *testing.T) {
 	c.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','profile',1)`)
 	library := c.Library("books", "Audiobooks", "audiobook", root)
 	books := []catalogtest.Item{}
-	for i, title := range []string{"First (Unabridged)", "Second (Unabridged)", "Third"} {
+	titles := []string{"Project Hail Mary (Unabridged)", "The Martian (Unabridged)", "The Hunger Games: Special Edition"}
+	for i, title := range titles {
 		book := c.Book(library, title, "Author")
 		part := c.BookFile(book, 1, filepath.Join(root, title+".flac"))
 		c.Fields(part.ID, map[string]any{"added_text": []string{"2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z", "2026-01-03T00:00:00.000Z"}[i]})
@@ -106,6 +107,15 @@ func TestHomeSavedBookViewHydratesPublishedEndpoint(t *testing.T) {
 			if next.Start != 2 || len(next.Entries) != 1 || next.Entries[0].ID != books[0].Public || next.HasMore || next.NextCursor != "" {
 				t.Fatalf("last page: %+v", next)
 			}
+			for i, entry := range append(first.Entries, next.Entries...) {
+				shown := entry.DisplayTitle
+				if shown == "" {
+					shown = entry.Title
+				}
+				if entry.Title != titles[2-i] || shown != titles[2-i] {
+					t.Fatalf("Home changed the stored title or suffix: %q / %q", entry.Title, shown)
+				}
+			}
 			if !reflect.DeepEqual([]string{first.Entries[0].ID, first.Entries[1].ID}, []string{content.Browse.Entries[0].ID, content.Browse.Entries[1].ID}) {
 				t.Fatal("Home changed the saved browse order")
 			}
@@ -127,5 +137,33 @@ func TestHomeRowPathGrammarPreservesOpaqueIDGuards(t *testing.T) {
 				t.Fatalf("malformed or unknown ID reached content: %d %s", w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestHomeDynamicGenreRowHydratesPublishedEndpoint(t *testing.T) {
+	f := newV1Fixture(t, 36)
+	for _, item := range f.records {
+		f.catalogTest.Genres(item.ID, "fixture", "Science Fiction")
+	}
+	f.catalogTest.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) VALUES(?,?,1,1)`, identity.PersonalKey(f.owner.Viewer), f.records[0].ID)
+	f.catalogTest.Drain()
+	var family catalog.HomeRow
+	f.call("GET", "/v1/home/rows/for_you", nil, nil, http.StatusOK, &family)
+	var genre *catalog.HomeRow
+	for i := range family.Children {
+		if family.Children[i].ID == "for_you:genre:science fiction" {
+			genre = &family.Children[i]
+		}
+	}
+	if genre == nil || len(genre.Entries) == 0 {
+		t.Fatal("taste did not produce its genre row")
+	}
+	// Genre labels are part of the canonical row identity; a space is encoded
+	// for transport without changing the key published by the producer.
+	path := (&url.URL{Path: genre.Endpoint}).EscapedPath()
+	var hydrated catalog.HomeRow
+	f.call("GET", path, nil, nil, http.StatusOK, &hydrated)
+	if hydrated.ID != genre.ID || hydrated.Total != genre.Total || len(hydrated.Entries) == 0 || hydrated.Entries[0].ID != genre.Entries[0].ID {
+		t.Fatalf("published genre row changed on hydration: %+v", hydrated)
 	}
 }
