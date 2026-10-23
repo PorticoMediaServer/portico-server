@@ -1,0 +1,94 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {AppSessionStore, type AppSessionRecord} from '@core/app-sessions.ts';
+import {HttpLocalApi, type LocalSession} from '@core/index.ts';
+import type {RememberedServer} from '@core/server-connections.ts';
+import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
+
+const origin = 'https://authority.example', serverId = 'srv_' + 's'.repeat(43);
+const pin = {serverId, publicKey: 'p'.repeat(43), fingerprint: 'f'.repeat(43)};
+function session(family = 'restricted-family'): LocalSession {
+  return {accessToken: 'access-' + family, refreshToken: 'refresh-credential-' + family, sessionFamilyId: family, tokenGeneration: '1',
+    installationId: 'i'.repeat(43), deviceId: 'device', expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z',
+    viewer: {serverId, authority: 'local', accountId: 'account-a', profileId: 'main', role: 'account'}};
+}
+const record = (value: LocalSession): RememberedServer => ({version: '1', logicalOrigin: origin, pin, session: value, routes: {paired: [origin]}});
+const settle = () => new Promise(resolve => setImmediate(resolve));
+async function fixture(required = true) {
+  let raw: AppSessionRecord | undefined, disconnected = 0, failRead = false;
+  let enrolGate: Promise<void> | undefined, releaseEnrol: (() => void) | undefined, enrolStarted = false;
+  const hints = new Set<() => void>(), tokens: string[] = [];
+  const hint = () => {for (const changed of hints) changed();};
+  const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);hint();}});
+  const initial = session(), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
+  const snapshot = () => ({authority: 'local', serverId, canManage: false, twoStepSetupRequired: required,
+    capabilities: {manageAccount: false, managePeople: false, manageServer: false, manageSignIn: false},
+    account: {id: 'account-a', username: 'actual-user', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: []},
+    profiles: [{id: 'main', name: 'Actual profile', primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false}]});
+  const connection = {pin, dispose() {disconnected++;}, getSnapshot: () => ({phase: 'ready'})};
+  const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => connection as never;api.setAccessToken = token => {tokens.push(token);};
+  api.request = (async path => {
+    if (path === '/v1/system') return system;
+    if (path === '/v1/direct') return snapshot();
+    if (path === '/v1/direct/two-factor/enrol') {enrolStarted = true;await enrolGate;return {secret: 'ABCDEFGHIJKLMNOP', uri: 'otpauth://totp/Actual?secret=ABCDEFGHIJKLMNOP', recoveryCodes: ['ephemeral-code']};}
+    throw new Error('Unexpected fixture route');
+  }) as HttpLocalApi['request'];
+  const save = async (value: LocalSession) => store.connectionStorage(serverId, {signIn: 'local', expectedRevision: (await store.read()).revision}).change(() => record(value));
+  await save(initial);
+  const selected = store.selected.bind(store);
+  store.selected = async () => {if (failRead) throw new Error('fixture-read-failure');return selected();};
+  const chosen = {...session('viewer-family'), viewer: {...initial.viewer, role: 'member'}};
+  const entry = new BrowserAccountEntry({store, actions: {switchProfile: async () => {await save(chosen);return chosen;}} as never,
+    environment: () => ({storage: store.connectionStorage(serverId)}), restore: async captured => ({api, session: captured!}),
+    inspect: async () => pin, connect: (async () => ({api, connection})) as never, remember: async () => {},
+    observeSelection: changed => {hints.add(changed);return () => {hints.delete(changed);};},
+  });
+  await entry.loadProfiles();await settle();
+  return {entry, store, initial, chosen, save, hint, hints, tokens, get disconnected() {return disconnected;},
+    failRead: () => {failRead = true;},
+    holdEnrol: () => {enrolGate = new Promise(resolve => {releaseEnrol = resolve;});}, releaseEnrol: () => releaseEnrol?.(), get enrolStarted() {return enrolStarted;}};
+}
+test('idle family replacement clears displayed secrets and the captured route without touching the successor', async () => {
+  const f = await fixture();let displayedSecret: string | undefined = 'displayed-key', retired = 0;
+  f.entry.subscribeAuthorityRetired(() => {displayedSecret = undefined;retired++;});
+  await f.save(session('successor'));await settle();
+  assert.equal(displayedSecret, undefined);assert.equal(retired, 1);assert.equal(f.entry.getSnapshot().phase, 'welcome');
+  assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, 'successor');assert.equal(f.disconnected, 1);assert.equal(f.hints.size, 0);f.entry.dispose();
+});
+test('same-scope token rotation updates the captured bearer without retiring an enrollment view', async () => {
+  const f = await fixture();let retired = 0;f.entry.subscribeAuthorityRetired(() => {retired++;});
+  await f.save({...f.initial, accessToken: 'rotated-access', tokenGeneration: '2'});await settle();f.hint();await settle();
+  assert.equal(retired, 0);assert.equal(f.tokens.at(-1), 'rotated-access');assert.equal(f.entry.getSnapshot().phase, 'two-step-setup');
+  assert.equal(f.entry.getSnapshot().origin, origin);assert.deepEqual(f.entry.getSnapshot().pin, pin);f.entry.dispose();assert.equal(retired, 1);assert.equal(f.hints.size, 0);
+});
+test('signout and unreadable private selection both retire an idle setup lifetime', async () => {
+  for (const failure of [false, true]) {
+    const f = await fixture();let retired = 0;f.entry.subscribeAuthorityRetired(() => {retired++;});
+    if (failure) {f.failRead();f.hint();} else await f.store.signOutServer(serverId, f.initial.sessionFamilyId);
+    await settle();assert.equal(retired, 1);assert.equal(f.entry.getSnapshot().phase, 'welcome');assert.equal(f.hints.size, 0);f.entry.dispose();
+  }
+});
+test('an idle authority change prevents a late enrollment from returning its secret', async () => {
+  const f = await fixture();f.holdEnrol();const enrolling = f.entry.beginRequiredTwoStep('fixture-input');
+  await settle();assert.equal(f.enrolStarted, true);
+  await f.save(session('successor'));await settle();f.releaseEnrol();assert.equal(await enrolling, undefined);
+  assert.equal(f.entry.getSnapshot().phase, 'welcome');assert.doesNotMatch(JSON.stringify(f.entry.getSnapshot()), /ABCDEFGHIJKLMNOP|ephemeral-code|fixture-input/);f.entry.dispose();
+});
+test('own profile admission ignores its own committed hint and starts the new viewer lifetime', async () => {
+  const f = await fixture(false);let retired = 0;f.entry.subscribeAuthorityRetired(() => {retired++;});
+  await f.entry.chooseProfile('main');await settle();
+  assert.equal(f.entry.getSnapshot().phase, 'ready');assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, f.chosen.sessionFamilyId);
+  assert.equal(retired, 1);assert.equal(f.hints.size, 1);f.entry.dispose();assert.equal(retired, 2);
+});
+test('a failing view subscriber cannot prevent other secret owners from clearing', async () => {
+  const f = await fixture();let retired = 0;f.entry.subscribeAuthorityRetired(() => {throw new Error('fixture-view-error');});
+  f.entry.subscribeAuthorityRetired(() => {retired++;});f.entry.subscribe(() => {throw new Error('fixture-render-error');});
+  await f.save(session('successor'));await settle();assert.equal(retired, 1);assert.equal(f.entry.getSnapshot().phase, 'welcome');f.entry.dispose();
+});
+test('retiring while an old selection read is delayed cannot cancel a newly captured lifetime', async () => {
+  const f = await fixture();const selected = f.store.selected.bind(f.store), old = await selected();
+  let release!: (value: typeof old) => void;
+  f.store.selected = () => new Promise(resolve => {release = resolve;});f.hint();
+  f.entry.cancel();f.store.selected = selected;await f.entry.loadProfiles();await settle();
+  release(undefined);await settle();assert.equal(f.entry.getSnapshot().phase, 'two-step-setup');assert.equal(f.hints.size, 1);f.entry.dispose();
+});
