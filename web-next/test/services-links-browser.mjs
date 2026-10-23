@@ -41,9 +41,9 @@ const timer = setInterval(() => { peakRSSKiB = Math.max(peakRSSKiB, rss(process.
 const report = {qualification: 'Real reset controller with an unsubmitted synthetic token and canonical password strength. Completed views are the same stateless views used by the controllers. No real reset, verification, mail, account session, Server or physical-device acceptance.', checks: {}, states: []};
 if (process.env.PORTICO_SERVICES_SCENARIO === 'device') report.qualification = 'Controlled actual DeviceView/DeviceDecision presentation with exact account.html2/3/5/6 values. No API interception, session, device grant, approval, Server or physical-device acceptance.';
 try {
-  const port = await freePort(), debugPort = await freePort();
+  const port = process.env.PORTICO_SERVICES_SCENARIO === 'auth' ? 19495 : await freePort(), debugPort = await freePort();
   const config = path.join(temporary, 'vite.config.mjs');
-  writeFileSync(config, `import base from ${JSON.stringify(path.join(repository, 'web-next/vite.config.ts'))};
+  writeFileSync(config, `import base from ${JSON.stringify(path.join(repository, process.env.PORTICO_SERVICES_SCENARIO === 'auth' ? 'web-next/test/services-entry.vite.config.ts' : 'web-next/vite.config.ts'))};
 export default {...base, root:${JSON.stringify(path.join(repository, 'web-next'))}, cacheDir:${JSON.stringify(path.join(temporary, 'vite-cache'))},server:{...base.server,host:'127.0.0.1',port:${port},strictPort:true}};\n`);
   const viteLog = openSync(path.join(output, 'services-vite.log'), 'w', 0o600);
   vite = spawn(process.execPath, [path.join(repository, 'node_modules/vite/bin/vite.js'), '--config', config], {cwd: repository, env: process.env, stdio: ['ignore', viteLog, viteLog]});
@@ -64,7 +64,9 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
     const shot = await driver.send('Page.captureScreenshot', {format: 'jpeg', quality: 92, captureBeyondViewport: false});
     if (process.env.PORTICO_SERVICES_DIAGNOSTIC_ONLY !== 'true') writeFileSync(path.join(output, name + '-build.jpg'), Buffer.from(shot.data, 'base64'));
   };
-  if (process.env.PORTICO_SERVICES_SCENARIO === 'device') {
+  if (process.env.PORTICO_SERVICES_SCENARIO === 'auth') {
+    await (await import('./services-auth-browser.mjs')).runServicesAuthProof({driver, port, capture, report});
+  } else if (process.env.PORTICO_SERVICES_SCENARIO === 'device') {
     for (const [name, width, height, search] of [
       ['account2', 1440, 734, ''], ['account3', 1440, 734, '?state=review'],
       ['account5b', 390, 660, '?qr=1'], ['account5c', 390, 660, '?state=review'],
@@ -121,8 +123,8 @@ export default {...base, root:${JSON.stringify(path.join(repository, 'web-next')
     assert(!value.overflow && !value.headerVisible); report.states.push({name, ...value});
   }
   }
-  assert(![...driver.requests.values()].some(url => new URL(url).pathname.startsWith('/v1/')), 'These view proofs must not submit to an account API.');
-  assert.equal(driver.events.length, 0, 'Browser diagnostics must be inspected before presentation proof.');
+  if (process.env.PORTICO_SERVICES_SCENARIO !== 'auth') assert(![...driver.requests.values()].some(url => new URL(url).pathname.startsWith('/v1/')), 'These view proofs must not submit to an account API.');
+  if (process.env.PORTICO_SERVICES_SCENARIO !== 'auth') assert.equal(driver.events.length, 0, 'Browser diagnostics must be inspected before presentation proof.');
   report.result = 'PASS';
 } catch (error) {
   report.result = 'FAIL'; report.error = String(error); process.exitCode = 1;
