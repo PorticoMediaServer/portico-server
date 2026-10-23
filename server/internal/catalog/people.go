@@ -3,8 +3,6 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
-	"net/url"
 	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/requestinput"
 	"strconv"
@@ -102,20 +100,9 @@ func (s *Service) peopleRevision(libraries []string, profile string) (ContentRev
 // portraitSubject names the item and artwork subject that serve this person's
 // portrait. Only artwork attached to an item the viewer may read is offered.
 func (s *Service) portraitSubject(person string, viewer Viewer) (string, string, string, error) {
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	var item, subject, digest string
-	args := append([]any{person, viewer.librariesJSON()}, bound...)
-	e := s.read().QueryRow(`SELECT pid(i.public_id),a.subject,a.digest FROM artwork_selections a JOIN catalog_people p ON p.token=? AND a.subject=p.identity_key JOIN catalog_credits pc ON pc.person_id=p.id AND pc.entity_id=a.entity_id JOIN catalog_entities i ON i.id=a.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE a.kind='item' AND a.role='portrait' AND `+restriction+` ORDER BY a.entity_id LIMIT 1`, args...).Scan(&item, &subject, &digest)
-	if errors.Is(e, sql.ErrNoRows) {
-		return "", "", "", nil
-	}
-	return item, subject, digest, e
-}
-func personPortraitURL(person, digest string) string {
-	if digest == "" {
-		return ""
-	}
-	return "/v1/people/" + url.PathEscape(person) + "/portrait?v=" + url.QueryEscape(digest) + "&w=400"
+	portraits, err := s.portraitSelections([]string{person}, viewer)
+	selected := portraits[person]
+	return selected.item, selected.subject, selected.digest, err
 }
 
 // PersonPortrait resolves the artwork the portrait route serves. It returns the
@@ -258,12 +245,12 @@ func (s *Service) person(id string, viewer Viewer) (Person, error) {
 	if e = json.Unmarshal([]byte(providers), &out.ProviderIDs); e != nil {
 		out.ProviderIDs = map[string]any{}
 	}
-	_, _, digest, e := s.portraitSubject(id, viewer)
+	item, subject, digest, e := s.portraitSubject(id, viewer)
 	if e != nil {
 		return out, e
 	}
 	// A provider portrait URL is evidence, never a client-reachable address.
-	out.PortraitURL = personPortraitURL(id, digest)
+	out.PortraitURL = selectedArtworkURL("item", item, "portrait", subject, digest, 400)
 	return out, nil
 }
 
@@ -555,7 +542,7 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 	for i := range out {
 		tokens = append(tokens, out[i].ID)
 	}
-	digests, e := s.portraitDigests(tokens, viewer)
+	portraits, e := s.portraitSelections(tokens, viewer)
 	if e != nil {
 		return nil, 0, false, e
 	}
@@ -564,7 +551,7 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 		return nil, 0, false, e
 	}
 	for i := range out {
-		out[i].PortraitURL = personPortraitURL(out[i].ID, digests[out[i].ID])
+		out[i].PortraitURL = portraits[out[i].ID].url()
 		if named := roles[out[i].ID]; named != nil {
 			out[i].Roles = named
 		}
@@ -675,41 +662,47 @@ func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset i
 	return first[offset:], true, nil
 }
 
-// portraitDigests resolves the portrait thumbnail digest for a page of people in
-// one statement. It is the batched form of portraitSubject: the same selection
-// — the lowest item id carrying a portrait for that person in a visible library
-// — resolved for every id at once.
-func (s *Service) portraitDigests(ids []string, viewer Viewer) (map[string]string, error) {
-	out := map[string]string{}
+type portraitSelection struct{ item, subject, digest string }
+
+func (p portraitSelection) url() string {
+	return selectedArtworkURL("item", p.item, "portrait", p.subject, p.digest, 400)
+}
+
+// portraitSelections resolves ready portraits for a page in one statement.
+// The lowest visible owning item supplies both the version and route identity;
+// a hidden, retired or non-ready selection cannot supply either.
+func (s *Service) portraitSelections(ids []string, viewer Viewer) (map[string]portraitSelection, error) {
+	out := map[string]portraitSelection{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	args := make([]any, 0, len(ids)+1+len(bound))
-	args = append(args, viewer.librariesJSON())
-	args = append(args, bound...)
+	visible, args := viewer.itemVisibilitySQL("i.id")
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, e := s.read().Query(`SELECT p.token,COALESCE((SELECT a.digest FROM artwork_selections a
- JOIN catalog_credits pc ON pc.person_id=p.id AND pc.entity_id=a.entity_id
-	 JOIN catalog_entities i ON i.id=a.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?))
- WHERE a.subject=p.identity_key AND a.kind='item' AND a.role='portrait' AND `+restriction+` ORDER BY a.entity_id LIMIT 1),'')
- FROM catalog_people p WHERE p.token IN (`+placeholders(len(ids))+`)`, args...)
-	if e != nil {
-		return nil, e
+	rows, err := s.read().Query(`SELECT p.token,pid(owner.public_id),a.subject,a.digest
+ FROM catalog_people p CROSS JOIN artwork_selections a
+ ON a.kind='item' AND a.role='portrait' AND a.subject=p.identity_key AND a.entity_id=(
+ SELECT pc.entity_id FROM catalog_credits pc INDEXED BY catalog_credits_person
+ CROSS JOIN catalog_entities i ON i.id=pc.entity_id
+ CROSS JOIN artwork_selections chosen ON chosen.kind='item' AND chosen.entity_id=i.id AND chosen.role='portrait' AND chosen.subject=p.identity_key
+ CROSS JOIN artwork_objects o ON o.digest=chosen.digest AND o.status='ready'
+ WHERE pc.person_id=p.id AND `+visible+` ORDER BY pc.entity_id LIMIT 1)
+ CROSS JOIN catalog_entities owner ON owner.id=a.entity_id
+ WHERE p.token IN (`+placeholders(len(ids))+`)`, args...)
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
-		var id, digest string
-		if e = rows.Scan(&id, &digest); e != nil {
-			rows.Close()
-			return nil, e
+		var id string
+		var selected portraitSelection
+		if err = rows.Scan(&id, &selected.item, &selected.subject, &selected.digest); err != nil {
+			return nil, err
 		}
-		out[id] = digest
+		out[id] = selected
 	}
-	e = rows.Err()
-	rows.Close()
-	return out, e
+	return out, rows.Err()
 }
 
 // peopleRoles is personRoles for a page of people: the same grouping, the same
