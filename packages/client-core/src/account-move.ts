@@ -4,13 +4,13 @@ import {currentUTCTimestamp} from './local-session.ts';
 import {parseDirectSignIn,type DirectSignIn,type ProfileAPI,type ManagementCapabilities} from './profile-management.ts';
 import type {LocalSession} from './index.ts';
 import type {SignInKind} from './app-sessions.ts';
-import {routeOrigin} from './route-identity.ts';
+import {identityCode,routeOrigin} from './route-identity.ts';
 
 export type MoveDirection='to_portico'|'to_local';
 export type AccountMove=Readonly<{id:string;from:SignInKind;to:SignInKind;startOver:boolean;stage:'preview'|'moving_to_portico'|'moving_to_local'|'complete'|'cancelled';revision:number;people:number;profiles:number;invitations:number;waiting:number;serverName:string;ownAddressRequired:boolean;devices?:number}>;
 export type MovePasswordTicket=Readonly<{ticket:string;expiresAt:string}>;
 export type MoveCodePreview=Readonly<{username:string;signIn:SignInKind;expiresAt:string}>;
-export type AccountMoveCode=Readonly<{accountId:string;username:string;code:string;expiresAt:string}>;
+export type AccountMoveCode=Readonly<{accountId:string;username:string;code:string;expiresAt:string;serverId?:string}>;
 export type AccountMoveConfirmation=Readonly<{kind:'local';signIn:DirectSignIn}|{kind:'portico';move:AccountMove}>;
 export type MoveCredential=Readonly<{ticket:string;code?:never}|{code:string;ticket?:never}>;
 export type MoveCollisionDetails=Readonly<{existingUsername:string;serverName:string}>;
@@ -59,7 +59,8 @@ export function parseAccountMoveCodes(raw:unknown,now=Date.now()):readonly Accou
  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>10000)invalid();
  const seen=new Set<string>();return Object.freeze(raw.items.map(row=>{
   if(!obj(row)||!text(row.accountId,128)||seen.has(row.accountId)||!text(row.username,64)||!secret(row.code))invalid();seen.add(row.accountId);
-  return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now)});
+  if(row.serverId!==undefined){if(typeof row.serverId!=='string')invalid();try{identityCode(row.serverId);}catch{invalid();}}
+  return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now),...(row.serverId===undefined?{}:{serverId:row.serverId as string})});
  }));
 }
 /** Codes live in memory only. Scrub even an invalid fragment before any await/analytics. */

@@ -23,6 +23,8 @@ export function parseSettingsPeoplePage(raw: unknown): SettingsPeoplePage {
   const items = page.items.map(row => {
     if (!identifier(row.accountId) || seen.has(row.accountId) || !line(row.username, 64) || !row.username || !['owner','admin','member'].includes(row.role) || !integer(row.revision, 1) || !integer(row.limitsRevision, 1)) invalid();
     if (!['active','off','waiting','left','did_not_move'].includes(row.status) || !['idle','watching','listening'].includes(row.liveState) || !integer(row.maxStreams, 0, 1000) || !integer(row.profileCount, 1, 8) || row.profileNames.length !== row.profileCount) invalid();
+    if (row.maxStreamsMode === 'limit' ? row.maxStreams < 1 : row.maxStreams !== 0) invalid();
+    if (row.serverMaxStreams !== null && !integer(row.serverMaxStreams, 1, 1000) || row.effectiveMaxStreams !== null && !integer(row.effectiveMaxStreams, 1, 1000)) invalid();
     if (row.profileNames.some(name => !line(name, 120) || !name) || row.allowedLibraries.length > 1000 || row.allowedLibraries.some(value => !identifier(value)) || row.libraryNames.length > 1000 || row.libraryNames.some(value => !line(value, 512))) invalid();
     if (row.email !== undefined && !line(row.email, 254) || row.lastActiveAt !== undefined && (!line(row.lastActiveAt, 64) || !Number.isFinite(Date.parse(row.lastActiveAt)))) invalid();
     seen.add(row.accountId); return Object.freeze({...row, allowedLibraries: Object.freeze([...row.allowedLibraries]), libraryNames: Object.freeze([...row.libraryNames]), profileNames: Object.freeze([...row.profileNames])}) as SettingsPersonRow;

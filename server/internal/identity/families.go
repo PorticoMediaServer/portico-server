@@ -112,10 +112,31 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 		return Envelope{}, ErrUnauthorized
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	horizon := now.Add(LocalSignInWindow)
+	window, err := sessionWindowTx(ctx, tx)
+	if err != nil {
+		return Envelope{}, err
+	}
+	horizon := now.Add(window)
+	if parent, ok := ctx.Value(inheritedHorizonKey{}).(time.Time); ok {
+		if !parent.After(now) {
+			return Envelope{}, ErrUnauthorized
+		}
+		if parent.Before(horizon) {
+			horizon = parent
+		}
+	}
 	p := Principal{Viewer: Viewer{AccountID: aid, ProfileID: pid, ServerID: s.serverID, Authority: authority, Role: role}, Epoch: epoch}
 	if err := s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
+	}
+	if role != "account" {
+		missing, e := missingRequiredFactorTx(ctx, tx, aid)
+		if e != nil {
+			return Envelope{}, e
+		}
+		if missing {
+			return Envelope{}, ErrFactorSetupRequired
+		}
 	}
 	// The owner's remote sign-in policy is applied here, at the one place a
 	// session is created, rather than on each route that leads here.
@@ -158,11 +179,9 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 	return Envelope{ServerIdentity: serverIdentity, AccessToken: token, RefreshToken: refresh, DeviceID: device.ID, InstallationID: device.InstallationID, ExpiresAt: expiry, Viewer: p.Viewer, SessionFamilyID: family, TokenGeneration: 1, AuthorizationHorizon: horizonText}, nil
 }
 
-// LocalSignInWindow is how long a direct sign-in lasts without being used. Every renewal
-// starts it again, so a device that is opened at all within the window stays signed in; one
-// left in a drawer for longer asks for the password once. It is not the protection against a
-// removed person or a changed password: every request re-checks the account, the profile and
-// the epoch, and those end a session at once whatever its horizon says.
+// LocalSignInWindow is the default local idle window and maximum Portico
+// proof lifetime. Local issuance/refresh use the normalized sign-in policy;
+// refresh and descendant grants never extend a Portico admission horizon.
 const LocalSignInWindow = 90 * 24 * time.Hour
 
 func (s *Service) checkFamilyPrincipalTx(ctx context.Context, tx *sql.Tx, p Principal) error {

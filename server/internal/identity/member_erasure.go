@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/preferenceownership"
 )
 
 // Deleting a member removes the person from this server: their account, their
@@ -196,6 +197,9 @@ func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string)
 		if _, e = tx.ExecContext(ctx, q, account); e != nil {
 			return e
 		}
+	}
+	if e = preferenceownership.EraseAccount(ctx, tx, "local", account); e != nil {
+		return e
 	}
 	// Everything else that names the account (membership, profiles, limits,
 	// second factor, remembered sign-ins, the Portico Account link) goes with

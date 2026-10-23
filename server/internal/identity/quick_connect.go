@@ -285,7 +285,13 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		// issued later, in PollQuick, so the approver's Portico admission travels
 		// in the sealed approval and is inherited there.
 		admitted, signer := porticoAdmissionTx(ctx, tx, approver)
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer}, "quick-approval:"+id)
+		until := ""
+		if admitted {
+			if e = tx.QueryRowContext(ctx, `SELECT authorization_horizon FROM authorization_session_families WHERE id=? AND revoked=0`, approver).Scan(&until); e != nil {
+				return e
+			}
+		}
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer, PorticoUntil: until}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -537,9 +543,10 @@ func (s *Service) RunSetupMaintenance(ctx context.Context) {
 
 // quickApproval is what an approving session leaves for the device to collect.
 type quickApproval struct {
-	AccountID string `json:"accountId"`
-	ProfileID string `json:"profileId"`
-	Epoch     int    `json:"epoch"`
+	PorticoUntil string `json:"porticoUntil,omitempty"`
+	AccountID    string `json:"accountId"`
+	ProfileID    string `json:"profileId"`
+	Epoch        int    `json:"epoch"`
 	// PorticoAdmitted: the approving session was admitted through Portico
 	// sign-in (be/member M9), so the device's family inherits that admission.
 	PorticoAdmitted bool `json:"porticoAdmitted,omitempty"`
@@ -592,6 +599,13 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 	// member, exactly as when that profile is chosen at sign-in (SelectProfile).
 	if !primary {
 		role = TierMember
+	}
+	if a.PorticoAdmitted {
+		until, e := familyTime(a.PorticoUntil)
+		if e != nil || !until.After(time.Now()) {
+			return Envelope{}, ErrUnauthorized
+		}
+		ctx = context.WithValue(ctx, inheritedHorizonKey{}, until)
 	}
 	out, e := s.IssueTx(ctx, tx, a.AccountID, a.ProfileID, "local", role, a.Epoch, time.Time{})
 	if e != nil {
