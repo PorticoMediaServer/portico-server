@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 
 	"golang.org/x/crypto/argon2"
+
+	"portico.local/server/internal/persistence"
 )
 
 const encryptedPayload = "archive.pba"
@@ -332,18 +334,28 @@ func (s *Service) decryptSource(ctx context.Context, source Source, password str
 	} else if info.Mode().IsRegular() {
 		// A portable encrypted file carries its own authenticated manifest; the
 		// public listing summary is optional when selecting a file directly.
-		f, e := os.Open(folder)
+		root, e := openCanonicalRoot(filepath.Dir(folder))
 		if e != nil {
 			return source, func() {}, ErrSourceInvalid
 		}
-		magic := make([]byte, len(envelopeMagic))
-		_, e = io.ReadFull(f, magic)
-		f.Close()
-		if e != nil || !bytes.Equal(magic, envelopeMagic) {
-			// Unsupported encrypted versions are never passed to the plaintext
-			// database staging path. Refuse before creating any restore state.
-			if bytes.HasPrefix(magic, envelopeMagic[:len(envelopeMagic)-1]) {
+		prefix, e := inspectRootFile(ctx, root, filepath.Base(folder), 100, false)
+		closeErr := root.Close()
+		if e != nil {
+			return source, func() {}, e
+		}
+		if closeErr != nil {
+			return source, func() {}, ErrSourceInvalid
+		}
+		if !bytes.HasPrefix(prefix, envelopeMagic) {
+			// A damaged/unsupported encrypted header must never enter plaintext
+			// staging and replace an already validated pending restore.
+			if bytes.HasPrefix(prefix, envelopeMagic[:len(envelopeMagic)-1]) {
 				return source, func() {}, ErrSourceInvalid
+			}
+			// Preserve raw SQLite restore and the published non-Portico refusal,
+			// but reject all other bare-file content before staging can mutate.
+			if !inspectionSQLiteHeader(prefix) {
+				return source, func() {}, persistence.ErrCandidateNotPortico
 			}
 			return source, func() {}, nil
 		}

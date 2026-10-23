@@ -3,10 +3,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"io"
+	"io/fs"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +100,58 @@ func TestBackupSettingsHTTPSecretBoundaryAndEncryptedRestore(t *testing.T) {
 	}
 	if _, e = os.Stat(filepath.Join(destination, entries[0].ID, "archive.pba")); e != nil {
 		t.Fatal(e)
+	}
+	// A new portable restore must not destroy a valid pending restore when
+	// its protected header has been damaged. Exercise the actual owner route
+	// and asynchronous failure result, with the original stage still in place.
+	if result, err := service.StageWithPassphrase(context.Background(), backup.Source{BackupID: entries[0].ID}, password); err != nil || !result.Staged {
+		t.Fatal("valid pending HTTP restore setup", err)
+	}
+	staged := filepath.Join(state, backup.RestoreStagedDir)
+	beforeStage := backupHTTPRestoreWitness(t, staged)
+	beforeLive := backupHTTPRestoreWitness(t, filepath.Join(state, "Database"), filepath.Join(state, "Keys"))
+	damaged, err := os.ReadFile(filepath.Join(destination, entries[0].ID, "archive.pba"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	damaged[0] ^= 1
+	selected := filepath.Join(t.TempDir(), "damaged.db")
+	if err = os.WriteFile(selected, damaged, 0600); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"operationId": "http-damaged-portable", "source": map[string]string{"path": selected}, "passphrase": password})
+	refused := request("POST", "/v1/admin/backups/restore", owner.AccessToken, string(body))
+	if refused.Code != 202 {
+		t.Fatal("damaged source job not accepted for validation", refused.Code)
+	}
+	assertSpecResponse(t, "POST", "/v1/admin/backups/restore", refused)
+	refusalDeadline := time.Now().Add(20 * time.Second)
+	for service.RestoreProgress().Phase != "failed" {
+		if service.RestoreProgress().Phase == "staged" || time.Now().After(refusalDeadline) {
+			t.Fatal("damaged portable source did not fail")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if progress := service.RestoreProgress(); progress.ErrorCode != "restore_not_portico" {
+		t.Fatal("non-SQLite source changed published refusal semantics", progress.ErrorCode)
+	}
+	if !reflect.DeepEqual(beforeStage, backupHTTPRestoreWitness(t, staged)) {
+		t.Fatal("HTTP refusal changed existing staged marker/candidate")
+	}
+	if !reflect.DeepEqual(beforeLive, backupHTTPRestoreWitness(t, filepath.Join(state, "Database"), filepath.Join(state, "Keys"))) {
+		t.Fatal("HTTP refusal changed live DB/Keys")
+	}
+	if _, err = os.Stat(filepath.Join(staged, ".incoming")); !os.IsNotExist(err) {
+		t.Fatal("HTTP refusal left incoming staging", err)
+	}
+	tempEntries, err := os.ReadDir(filepath.Join(state, "Temp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range tempEntries {
+		if strings.HasPrefix(entry.Name(), "backup-") {
+			t.Fatal("HTTP refusal left decrypt/snapshot scratch")
+		}
 	}
 	for i, phrase := range []string{"wrong fixture passphrase", password} {
 		body, _ := json.Marshal(map[string]any{"operationId": "http-restore-" + string(rune('a'+i)), "source": map[string]string{"backupId": entries[0].ID}, "passphrase": phrase})
@@ -233,4 +289,52 @@ func TestBackupRejectsMalformedSecretAndSourceBodiesBeforeStartingWork(t *testin
 	if _, err = os.Stat(filepath.Join(state, "Keys", "backup-passphrase.key")); !os.IsNotExist(err) {
 		t.Fatal("malformed body minted a key", err)
 	}
+}
+
+func backupHTTPRestoreWitness(t *testing.T, roots ...string) map[string]struct {
+	Mode fs.FileMode
+	Hash [32]byte
+} {
+	t.Helper()
+	out := make(map[string]struct {
+		Mode fs.FileMode
+		Hash [32]byte
+	})
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			value := struct {
+				Mode fs.FileMode
+				Hash [32]byte
+			}{Mode: info.Mode()}
+			if info.Mode().IsRegular() {
+				file, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				hash := sha256.New()
+				_, copyErr := io.Copy(hash, file)
+				closeErr := file.Close()
+				if copyErr != nil {
+					return copyErr
+				}
+				if closeErr != nil {
+					return closeErr
+				}
+				copy(value.Hash[:], hash.Sum(nil))
+			}
+			out[path] = value
+			return nil
+		})
+		if err != nil {
+			t.Fatal("HTTP fixture witness unavailable", err)
+		}
+	}
+	return out
 }
