@@ -92,9 +92,13 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   const collapse = () => { if (snapshot?.fence) runtime!.collapse(snapshot.fence); };
   const toggleFullscreen = async () => {
     const live = runtime?.getSnapshot();
-    if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
+    if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || !live.dock.local?.expanded || !localVideoSurfaceActive(live) || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
     if (document.fullscreenElement) await document.exitFullscreen();
-    else await expandedSlot.current?.closest<HTMLElement>('[data-watch-screen]')?.requestFullscreen();
+    else {
+      const target = expandedSlot.current?.closest<HTMLElement>('[data-watch-screen]');
+      if (!target?.isConnected) throw new DOMException('Playback surface retired', 'AbortError');
+      await target.requestFullscreen();
+    }
   };
   return <div className={styles.dock} data-phone={phone} data-shell-dock>
     {snapshot && dockBinding && <><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
