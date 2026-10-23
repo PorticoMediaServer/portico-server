@@ -130,7 +130,14 @@ func (s *Store) List(ctx context.Context, a livechannels.Authority, o livechanne
 				c.AfterID = out.Rules[len(out.Rules)-1].ID
 				out.NextCursor = s.cursor(c)
 			}
-			return s.ruleSummariesTx(ctx, tx, o, out.Rules, allowed)
+			if e = s.ruleSummariesTx(ctx, tx, o, out.Rules, allowed); e != nil {
+				return e
+			}
+			refs := make([]recordingChannelRef, len(out.Rules))
+			for i := range out.Rules {
+				refs[i] = recordingChannelRef{out.Rules[i].Config.SourceID, &out.Rules[i].Summary.Channel}
+			}
+			return s.recordingChannelMarksTx(ctx, tx, a, o, refs)
 		}
 		where := `state!='deleted'`
 		switch q.State {
@@ -253,7 +260,7 @@ func (s *Store) List(ctx context.Context, a livechannels.Authority, o livechanne
 				out.Recordings[i].Overlaps = overlaps
 			}
 		}
-		return nil
+		return s.recordingChannelMarksTx(ctx, tx, a, o, recordingChannelRefs(out.Recordings))
 	})
 	return out, e
 }
