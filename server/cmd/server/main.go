@@ -726,6 +726,7 @@ func run() (runErr error) {
 	}
 	doneRecording(nil)
 	storeIO.RecordingRoot = recordingsRoot
+	storeIO.RecordingLayout = recordingStore.IsRecordingLayoutPath
 	recordingCtx, stopRecordings := context.WithCancel(ctx)
 	recordingsDone := make(chan struct{})
 	supervise.Go("cmd.recordings", func() {

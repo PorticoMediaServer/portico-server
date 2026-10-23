@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -52,6 +53,45 @@ func TestLibraryGuideHonorsChannelSelectionRowsOnlyAndGroups(t *testing.T) {
 	q.ChannelIDs = make([]string, 51)
 	if _, err = s.Guide(ctx, ownerAuthority(nil), q, key); err != ErrInvalid {
 		t.Fatalf("oversized selection admitted: %v", err)
+	}
+}
+
+func TestLibraryGuideMarksUseFullAuthorizedDomainAndKeepCursorBinding(t *testing.T) {
+	f := openFixture(t)
+	seedDirectoryLibrary(t, f, 3)
+	s, _ := New(f.db)
+	live, err := livechannels.New(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer := livechannels.Owner{Authority: "local", AccountID: "owner", ProfileID: "owner"}
+	authority := func(ctx context.Context, tx *sql.Tx) (livechannels.DirectoryScope, error) {
+		rows, fence, err := s.DirectoryRowsTx(ctx, tx, ownerAuthority(nil), viewer)
+		return livechannels.DirectoryScope{Fence: fence, LibraryRows: rows, Viewer: viewer}, err
+	}
+	q := livechannels.GuideQuery{Kind: livechannels.LibraryChannel, Start: f.now.Add(-time.Minute), End: f.now.Add(time.Minute), Timezone: "UTC", Limit: 1, NoProgrammes: true}
+	q.MarkChannels = func(ctx context.Context, tx *sql.Tx, channels []livechannels.Channel) error {
+		return live.ChannelMarksTx(ctx, tx, authority, channels)
+	}
+	ctx, key := context.Background(), make([]byte, 32)
+	guide, err := s.Guide(ctx, ownerAuthority(nil), q, key)
+	if err != nil || len(guide.Channels) != 1 || guide.Channels[0].Mark == nil || guide.NextCursor == "" {
+		t.Fatal(guide, err)
+	}
+	mark := *guide.Channels[0].Mark
+	q.Search = guide.Channels[0].Name
+	filtered, err := s.Guide(ctx, ownerAuthority(nil), q, key)
+	if err != nil || len(filtered.Channels) != 1 || filtered.Channels[0].Mark == nil || *filtered.Channels[0].Mark != mark {
+		t.Fatalf("filter changed authorized mark: %+v, %v", filtered, err)
+	}
+	q.Cursor = guide.NextCursor
+	if _, err = s.Guide(ctx, ownerAuthority(nil), q, key); !errors.Is(err, livechannels.ErrCursor) {
+		t.Fatalf("callbacks removed query cursor binding: %v", err)
+	}
+	q.Cursor = ""
+	q.MarkChannels = func(context.Context, *sql.Tx, []livechannels.Channel) error { return livechannels.ErrDenied }
+	if _, err = s.Guide(ctx, ownerAuthority(nil), q, key); !errors.Is(err, livechannels.ErrDenied) {
+		t.Fatalf("guide ignored mark authority failure: %v", err)
 	}
 }
 

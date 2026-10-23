@@ -28,7 +28,7 @@ func NewAniListAt(origin string) *AniList {
 	return &AniList{http: newTransport("anilist", origin, "Portico/0.1 (https://getportico.tv)")}
 }
 
-const animeFields = `id type title { romaji english native } synonyms description(asHtml:false) format status source season seasonYear episodes isAdult startDate { year month day } genres averageScore stats { scoreDistribution { amount } } studios(isMain:true) { nodes { id name } } relations { edges { relationType node { id type title { romaji english native } } } } staff(perPage:50) { edges { role node { id name { full } } } } tags { id name rank isGeneralSpoiler isMediaSpoiler isAdult }`
+const animeFields = `id type countryOfOrigin title { romaji english native } synonyms description(asHtml:false) format status source season seasonYear episodes isAdult startDate { year month day } genres averageScore stats { scoreDistribution { amount } } studios(isMain:true) { nodes { id name } } relations { edges { relationType node { id type title { romaji english native } } } } staff(perPage:50) { edges { role node { id name { full } } } } tags { id name rank isGeneralSpoiler isMediaSpoiler isAdult }`
 
 // animeDetailFields is one work's detail read: the search fields plus the
 // community's recommendations, best rated first (ties by id, so the order is
@@ -59,20 +59,21 @@ func (t aniTitle) name(language string) string {
 }
 
 type aniMedia struct {
-	ID          int64    `json:"id"`
-	Type        string   `json:"type"`
-	Title       aniTitle `json:"title"`
-	Synonyms    []string `json:"synonyms"`
-	Description string   `json:"description"`
-	Format      string   `json:"format"`
-	Status      string   `json:"status"`
-	Source      string   `json:"source"`
-	Season      string   `json:"season"`
-	SeasonYear  int      `json:"seasonYear"`
-	Episodes    *int     `json:"episodes"`
-	Adult       *bool    `json:"isAdult"`
-	Average     *float64 `json:"averageScore"`
-	Start       struct {
+	CountryOfOrigin string   `json:"countryOfOrigin"`
+	ID              int64    `json:"id"`
+	Type            string   `json:"type"`
+	Title           aniTitle `json:"title"`
+	Synonyms        []string `json:"synonyms"`
+	Description     string   `json:"description"`
+	Format          string   `json:"format"`
+	Status          string   `json:"status"`
+	Source          string   `json:"source"`
+	Season          string   `json:"season"`
+	SeasonYear      int      `json:"seasonYear"`
+	Episodes        *int     `json:"episodes"`
+	Adult           *bool    `json:"isAdult"`
+	Average         *float64 `json:"averageScore"`
+	Start           struct {
 		Year  *int `json:"year"`
 		Month *int `json:"month"`
 		Day   *int `json:"day"`
@@ -145,6 +146,15 @@ var aniTags = regexp.MustCompile(`<[^>]*>`)
 
 func (v aniMedia) record(language string) (ScreenRecord, error) {
 	r := ScreenRecord{Identity: ScreenID{"anilist", "anime", numberID(v.ID)}, Title: v.Title.name(language), OriginalTitle: v.Title.Native, Aliases: append([]string{}, v.Synonyms...), Overview: html.UnescapeString(aniTags.ReplaceAllString(v.Description, "")), Status: v.Status, Format: v.Format, SourceMaterial: v.Source, Season: v.Season, Year: v.SeasonYear, EpisodeCount: v.Episodes, Adult: v.Adult}
+	// Country is the provider's explicit production fact, never the selected title language.
+	switch v.CountryOfOrigin {
+	case "JP":
+		r.Language = "ja"
+	case "KR":
+		r.Language = "ko"
+	case "CN", "TW":
+		r.Language = "zh"
+	}
 	if v.Type != "ANIME" {
 		return r, &Error{Provider: "anilist", Code: "entity_type_mismatch"}
 	}
