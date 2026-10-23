@@ -33,6 +33,7 @@ export type ReaderSelection = Readonly<{
 export type ReaderSearchResult = Readonly<{
   id: string; excerpt: string; location: ReaderLocation; chapter?: string;
 }>;
+export type ReaderPageImage = Readonly<{mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: Uint8Array; width: number; height: number}>;
 export type ReaderSearchOptions = Readonly<{signal: AbortSignal; limit: number}>;
 export type ReaderNavigation =
   | Readonly<{kind: 'next' | 'previous'}>
@@ -69,6 +70,8 @@ export interface ReaderDocument<Preferences extends object> {
   readonly toc: readonly ReaderTocItem[];
   mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
   search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult>;
+  /** Real fixed-page preview; width 32..2048, bytes at most 16MiB. */
+  page?(index: number, options: Readonly<{width: number; signal: AbortSignal}>): Promise<ReaderPageImage>;
   dispose(): void | Promise<void>;
 }
 export interface ReaderAdapter<Preferences extends object> {

@@ -12,6 +12,8 @@
     "check": "tsc -p tsconfig.json && npm test"
   },
   "dependencies": {
-    "pdfjs-dist": "6.4.299"
+    "pdfjs-dist": "6.4.299",
+    "foliate-js": "https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1",
+    "@zip.js/zip.js": "2.24.0"
   }
 }
