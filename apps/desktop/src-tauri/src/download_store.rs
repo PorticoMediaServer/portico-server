@@ -179,6 +179,10 @@ pub struct DownloadGroup {
     pub bytes: u64,
     pub bytes_done: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
@@ -1097,6 +1101,8 @@ impl DownloadStore {
                     revision: String::new(),
                     bytes: 0,
                     bytes_done: 0,
+                    parent_title: None,
+                    artist: None,
                     quality: None,
                     state: None,
                     held: None,
@@ -1124,6 +1130,8 @@ impl DownloadStore {
                     };
                     let members = self.group_members(viewer, &selector)?;
                     let first = members.first().ok_or(Error::DownloadsUnavailable)?;
+                    group.parent_title=(!first.title.parent_title.trim().is_empty()&&members.iter().all(|m|m.title.parent_title==first.title.parent_title)).then(||first.title.parent_title.clone());
+                    group.artist=(!first.title.artist.trim().is_empty()&&members.iter().all(|m|m.title.artist==first.title.artist)).then(||first.title.artist.clone());
                     group.bytes = members.iter().try_fold(0u64, |sum, m| {
                         sum.checked_add(m.bytes).ok_or(Error::DownloadsUnavailable)
                     })?;
@@ -1861,6 +1869,8 @@ mod tests {
             input.title.kind = "song".into();
             input.title.parent_id = "album".into();
             input.title.group_id = "disc1".into();
+            input.title.parent_title="Actual album".into();
+            input.title.artist="Actual artist".into();
             ids.push(store.enroll(input).unwrap().id);
         }
         assert_eq!(store.list(&viewer(), None, 1).unwrap().items.len(), 1);
@@ -1878,6 +1888,8 @@ mod tests {
         );
         assert_eq!((group.bytes, group.bytes_done), (20, 0));
         assert_eq!(group.quality.as_deref(), Some("original"));
+        assert_eq!(group.parent_title.as_deref(),Some("Actual album"));
+        assert_eq!(group.artist.as_deref(),Some("Actual artist"));
         assert_eq!(group.offline_access, "needsCheckIn");
         assert_eq!(
             group.revision,
@@ -1892,6 +1904,13 @@ mod tests {
                 )
                 .unwrap()
         );
+        let mut guest=enrollment(b"media");guest.preparation_id="guest".into();guest.item_id="guest".into();guest.title.kind="song".into();guest.title.parent_id="album".into();guest.title.group_id="disc1".into();guest.title.parent_title="Actual album".into();guest.title.artist="Guest artist".into();
+        store.enroll(guest).unwrap();
+        let mixed=store.groups(&viewer()).unwrap();assert_eq!(mixed[0].count,5);assert_eq!(mixed[0].parent_title.as_deref(),Some("Actual album"));assert!(mixed[0].artist.is_none());
+        let mut different=enrollment(b"media");different.preparation_id="different".into();different.item_id="different".into();different.title.kind="song".into();different.title.parent_id="album".into();different.title.group_id="disc1".into();different.title.parent_title="Different actual album title".into();different.title.artist="Actual artist".into();store.enroll(different).unwrap();
+        let mixed=store.groups(&viewer()).unwrap();assert_eq!(mixed[0].count,6);assert!(mixed[0].parent_title.is_none());assert!(mixed[0].artist.is_none());
+        assert!(!serde_json::to_string(&mixed[0]).unwrap().contains("parentTitle"));
+        assert!(!serde_json::to_string(&mixed[0]).unwrap().contains("artist"));
         assert!(store.artwork(&viewer(), &ids[0]).unwrap().is_none());
         assert_eq!(
             store

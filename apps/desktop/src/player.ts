@@ -60,6 +60,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
     const epoch = ++this.epoch; this.source = source; this.seeking = false;
     this.surfaceActive = false;this.processing=undefined;
     this.nativeGeneration = ++nextNativeGeneration;
+    this.hole?.invalidate();
     this.reading = {generation: source.generation, state: 'loading', positionMs: source.startPositionMs, rate: this.reading.rate};
     this.emit({type: 'state', observation: this.reading});
     this.enqueue({action: 'load', source: {url: this.options.resolveUrl?.(source.url) ?? source.url, generation: this.nativeGeneration, mode: source.mode, startPositionMs: source.startPositionMs, autoplay: source.autoplay}}, epoch);

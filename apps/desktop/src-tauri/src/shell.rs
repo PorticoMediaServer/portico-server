@@ -135,26 +135,34 @@ async fn desktop_window_chrome(window:WebviewWindow,state:tauri::State<'_,Arc<cr
     tauri::async_runtime::spawn_blocking(move||receive.recv().unwrap_or(Err(Error::WindowUnavailable))).await.map_err(|_|Error::WindowUnavailable)?
 }
 #[tauri::command]
-fn desktop_surface(window:WebviewWindow,state:tauri::State<EngineState>,bounds:crate::boundary::SurfaceBounds,generation:u64)->Result<()> {
+async fn desktop_surface(window:WebviewWindow,state:tauri::State<'_,EngineState>,bounds:crate::boundary::SurfaceBounds,generation:u64)->Result<()> {
     caller(&window)?;bounds.validate()?;
     let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
     if !engine.matches_generation(generation){return Err(Error::StaleGeneration);}
-    window.with_webview(move|webview|{if engine.matches_generation(generation){let ready=surface::bounds(&webview,bounds).is_ok()&&bounds.width>0.0&&bounds.height>0.0;engine.set_geometry_ready(ready);}}).map_err(|_|Error::EngineFailure)?;
-    Ok(())
+    let (send,receive)=std::sync::mpsc::sync_channel(1);
+    window.with_webview(move|webview|{
+        let result=if engine.matches_generation(generation){let result=surface::bounds(&webview,bounds);engine.set_geometry_ready(result.is_ok()&&bounds.width>0.0&&bounds.height>0.0);result}else{Err(Error::StaleGeneration)};
+        let _=send.send(result);
+    }).map_err(|_|Error::EngineFailure)?;
+    tauri::async_runtime::spawn_blocking(move||receive.recv().unwrap_or(Err(Error::EngineFailure))).await.map_err(|_|Error::EngineFailure)?
 }
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 struct UiProof{frames:u64,elapsed_ms:f64,longest_frame_ms:f64,width:u32,height:u32}
 #[tauri::command]
-fn desktop_spike_report(window:WebviewWindow,state:tauri::State<EngineState>,report:UiProof)->Result<()> {
+async fn desktop_spike_report(window:WebviewWindow,state:tauri::State<'_,EngineState>,report:UiProof)->Result<()> {
     caller(&window)?;
     if !cfg!(debug_assertions)||report.frames>10000||!report.elapsed_ms.is_finite()||!report.longest_frame_ms.is_finite(){return Err(Error::InvalidCommand);}
     #[cfg(debug_assertions)]
     if let Some(path)=std::env::var_os("PORTICO_SPIKE_REPORT"){
-        let engine=state.0.lock().map_err(|_|Error::EngineFailure)?;
-        let (observation,audio)=match engine.as_ref(){Ok(e)=>(Some(e.observation()),Some(e.audio_facts())),Err(_)=>(None,None)};
-        let value=serde_json::json!({"platform":std::env::consts::OS,"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height},"native":surface::proof(),"player":observation,"audio":audio});
+        let engine=state.0.lock().map_err(|_|Error::EngineFailure)?.as_ref().ok().cloned();
+        let (send,receive)=std::sync::mpsc::sync_channel(1);window.with_webview(move|_|{let _=send.send(surface::proof());}).map_err(|_|Error::EngineFailure)?;
+        let value=tauri::async_runtime::spawn_blocking(move||{
+            let native=receive.recv().map_err(|_|Error::EngineFailure)?;
+            let (observation,audio)=match engine.as_ref(){Some(e)=>(Some(e.observation()),Some(e.audio_facts())),None=>(None,None)};
+            Ok(serde_json::json!({"platform":std::env::consts::OS,"ui":{"frames":report.frames,"elapsedMs":report.elapsed_ms,"longestFrameMs":report.longest_frame_ms,"width":report.width,"height":report.height},"native":native,"player":observation,"audio":audio}))
+        }).await.map_err(|_|Error::EngineFailure)??;
         let path=PathBuf::from(path);let temp=path.with_extension("tmp");
         std::fs::write(&temp,serde_json::to_vec_pretty(&value).map_err(|_|Error::EngineFailure)?).map_err(|_|Error::EngineFailure)?;
         std::fs::rename(temp,path).map_err(|_|Error::EngineFailure)?;

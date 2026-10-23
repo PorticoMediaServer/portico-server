@@ -12,6 +12,7 @@ export class NativeHole {
   private disposed = false;
   private frame = 0;
   private pending = false;
+  private epoch = 0;
   private lastBounds = '';
   private lastPaint = '';
   constructor(video: HTMLVideoElement, send: (bounds: SurfaceBounds) => Promise<void>, active: () => boolean) {
@@ -37,7 +38,8 @@ export class NativeHole {
     const key = JSON.stringify(bounds);
     if (!this.pending && key !== this.lastBounds) {
       this.pending = true;
-      void this.send(bounds).then(() => { this.lastBounds = key; }).catch(() => {}).finally(() => { this.pending = false; });
+      const epoch=this.epoch;
+      void this.send(bounds).then(() => { if(epoch===this.epoch)this.lastBounds = key; }).catch(() => {}).finally(() => { this.pending = false; });
     }
     const paint = visible && this.active() && surface?.dataset.nativeVideoActive === 'true' ? key : '';
     if (paint !== this.lastPaint) {
@@ -66,5 +68,6 @@ export class NativeHole {
       this.set(element,'clip-path',`path(evenodd, "M0 0 H${r.width} V${r.height} H0 Z M${x} ${y} H${rgt} V${btm} H${x} Z")`);
     }
   }
-  dispose() { if (this.disposed) return; this.disposed=true; cancelAnimationFrame(this.frame); this.restore(); }
+  invalidate(){++this.epoch;this.lastBounds='';}
+  dispose() { if (this.disposed) return; this.disposed=true;++this.epoch; cancelAnimationFrame(this.frame); this.restore(); }
 }
