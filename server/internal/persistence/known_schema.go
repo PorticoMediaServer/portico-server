@@ -426,6 +426,7 @@ index metadata_tags_facet
 index metadata_tags_name
 index metadata_work_expiry
 index mount_operations_retention
+index music_virtual_tracks_entity
 index networking_certificates_scope
 index networking_claim_one_active
 index networking_claim_one_installed
@@ -593,6 +594,8 @@ table admin_dvr_groups
 table admin_receipts
 table admin_revision
 table analysis_artifacts
+table analysis_audio_envelope
+table analysis_audio_loudness
 table analysis_heads
 table analysis_marker_history
 table analysis_marker_receipts
@@ -1078,6 +1081,8 @@ table mount_revision
 table music_acoustid_health
 table music_artist_evidence
 table music_match_observations
+table music_technical_facts
+table music_virtual_tracks
 table networking_address_absence
 table networking_certificate_settings
 table networking_certificate_state

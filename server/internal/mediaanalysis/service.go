@@ -24,7 +24,7 @@ import (
 	"portico.local/server/internal/mediaartifact"
 )
 
-const Algorithm = "portico-analysis-2"
+const Algorithm = "portico-analysis-3"
 
 var (
 	ErrInput       = errors.New("Invalid media analysis request.")
