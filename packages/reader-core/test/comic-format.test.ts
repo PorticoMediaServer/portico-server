@@ -29,6 +29,16 @@ test('stored and deflated CBZ read actual images in natural page order, never hi
   assert.ok(input.reads.every(r=>r.endExclusive-r.start<=archiveLimits.rangeBytes));
   await assert.rejects(archive.page(2,{width:300,signal:signal()}),{code:'page_invalid'});archive.dispose();await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'closed'});
 });
+
+test('offline deflated CBZ extraction does not require a native DecompressionStream',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'DecompressionStream');
+  const bytes=zip([{name:'page.png',bytes:png,deflate:true}]);
+  Object.defineProperty(globalThis,'DecompressionStream',{configurable:true,value:undefined});
+  try {
+    const archive=await openComicArchive(source(bytes),signal());
+    try{assert.deepEqual((await archive.page(0,{width:300,signal:signal()})).bytes,png);}finally{archive.dispose();}
+  }finally{if(previous)Object.defineProperty(globalThis,'DecompressionStream',previous);else Reflect.deleteProperty(globalThis,'DecompressionStream');}
+});
 test('central directory CRC, local name, truncation and overlapping data fail closed',async()=>{
   const good=zip([{name:'p.png',bytes:png}]);
   const corrupt=Buffer.from(good);corrupt[35]^=1;let s=source(corrupt);const [entry]=await readDirectory(s,signal());await assert.rejects(readEntry(s,entry,signal()),{code:'archive_invalid'});
