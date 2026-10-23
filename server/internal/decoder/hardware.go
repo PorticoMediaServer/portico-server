@@ -78,7 +78,7 @@ const (
 	StageToneMap = "tone_map"
 	StageScale   = "scale"
 	StageEncode  = "encode"
-	// StageDeinterlace always runs on system frames; see BuildConversion.
+	// StageDeinterlace uses device frames only after its own filter probe.
 	StageDeinterlace = "deinterlace"
 
 	ExecutionHardware = "hardware"

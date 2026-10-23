@@ -39,7 +39,7 @@ func TestHardwareDeinterlaceRequiresItsOwnProbeAndPreservesFilterOrder(t *testin
 	request.SoftwareDecode = true
 	graph, err = BuildConversion(request)
 	filter = argValue(graph.Video, "-vf")
-	if err != nil || strings.Index(filter, "hwupload") > strings.Index(filter, "deinterlace_vaapi") || argValue(graph.Input, "-hwaccel") != "" {
+	if err != nil || !strings.Contains(filter, "hwupload") || !strings.Contains(filter, "deinterlace_vaapi") || strings.Index(filter, "hwupload") > strings.Index(filter, "deinterlace_vaapi") || argValue(graph.Input, "-hwaccel") != "" {
 		t.Fatal("software-decode frames did not upload before hardware deinterlace", graph, err)
 	}
 }
