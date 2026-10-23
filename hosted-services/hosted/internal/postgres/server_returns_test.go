@@ -30,6 +30,7 @@ type returnFixture struct {
 	directory    *directory.Service
 	keys         *security.Keys
 	start        serverreturn.Start
+	serverToken  string
 	accountToken string
 	completion   json.RawMessage
 }
@@ -94,7 +95,7 @@ func registeredReturnFixture(t *testing.T) returnFixture {
 		q.ServerChallenge = input.Challenge
 		q.InstallationID = input.InstallationID
 	}
-	return returnFixture{claimJourney: f, handler: handler, directory: dir, keys: keys, start: q}
+	return returnFixture{claimJourney: f, handler: handler, directory: dir, keys: keys, start: q, serverToken: result.ServerCredential}
 }
 func returnCall(t *testing.T, h http.Handler, path, token string, q any, want int) []byte {
 	t.Helper()

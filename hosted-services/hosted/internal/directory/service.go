@@ -119,8 +119,8 @@ type MemberStanding struct {
 	// the server kept when the account signed in or accepted an invitation.
 	Consent json.RawMessage `json:"consent,omitempty"`
 	// ConsentAt is when a verified consent was issued; zero if there is none.
-	// ConsentKind is its kind: IdentityKind, or CustodyKind for an account
-	// accepting custody of the server. Both are set by the directory service,
+	// ConsentKind is its signed identity/registered-return kind, or CustodyKind
+	// for an account accepting custody. These are set by the directory service,
 	// never read from the wire.
 	ConsentAt     time.Time `json:"-"`
 	ConsentKind   string    `json:"-"`

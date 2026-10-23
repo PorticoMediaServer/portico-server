@@ -223,7 +223,7 @@ func (s *Store) ExchangeServerReturn(ctx context.Context, q serverreturn.Exchang
 	if !r.expiry.After(now) || !facts.UnexpiredAt(now) {
 		return out, serverreturn.ErrInvalid
 	}
-	out.Assertion, e = sign(serverreturn.Assertion{Kind: "portico.server-return.v1", AccountID: r.a.AccountID, Username: username, DisplayName: displayName, Email: email, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
+	out.Assertion, e = sign(serverreturn.Assertion{Kind: serverreturn.AssertionKind, AccountID: r.a.AccountID, Username: username, DisplayName: displayName, Email: email, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(serverreturn.AssertionLifetime), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
 	if e != nil {
 		return serverreturn.Grant{}, e
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/security"
 	"portico.local/hosted/internal/serverreturn"
 )
@@ -67,6 +68,89 @@ func TestRegisteredReturnSignInNeedsNoMembershipAndCannotClaim(t *testing.T) {
 	in.Purpose = "sign-in"
 	if in.Valid() || serverreturn.Binding("sign-in", "", "") || serverreturn.Binding("sign-in", "strict-owner", "admin") || serverreturn.ReturnBinding("sign-in", "strict-owner", "") {
 		t.Fatal("sign-in widened owner claim authority")
+	}
+	// The real returned envelope is forwarded unchanged by the admitted server.
+	// Identity issuance itself made no index row; only this authenticated push
+	// may project Server membership into Hosted discovery.
+	sequence := int64(0)
+	push := func(consent json.RawMessage, skipped int) {
+		t.Helper()
+		sequence++
+		q := directory.MemberPush{Through: sequence, Full: true, Members: []directory.MemberStanding{{AccountID: "strict-owner", Role: "owner", Active: true}, {AccountID: "strict-other", Role: "member", Active: true, Consent: consent}}}
+		raw := returnCall(t, f.handler, "/v1/servers/"+f.input.ServerID+"/members", f.serverToken, q, 200)
+		var out directory.MemberPushResult
+		if e := json.Unmarshal(raw, &out); e != nil || len(out.Skipped) != skipped {
+			t.Fatal("return consent projection", string(raw), e)
+		}
+	}
+	for _, change := range []func(*serverreturn.Assertion){
+		func(a *serverreturn.Assertion) { a.AccountID = "strict-owner" },
+		func(a *serverreturn.Assertion) { a.ServerID = "srv_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA" },
+		func(a *serverreturn.Assertion) { a.Purpose = "custody" },
+		func(a *serverreturn.Assertion) { a.CurrentOwnerAccountID = "strict-owner" },
+		func(a *serverreturn.Assertion) { a.PreviousOwnerRole = "admin" },
+		func(a *serverreturn.Assertion) { a.ClaimGeneration = 0 },
+		func(a *serverreturn.Assertion) { a.ExpiresAt = a.IssuedAt },
+		func(a *serverreturn.Assertion) { a.ExpiresAt = a.IssuedAt.Add(2 * time.Minute) },
+		func(a *serverreturn.Assertion) {
+			a.IssuedAt = time.Now().Add(6 * time.Minute)
+			a.ExpiresAt = a.IssuedAt.Add(time.Minute)
+		},
+	} {
+		bad := assertion
+		change(&bad)
+		payload, _ := json.Marshal(bad)
+		signed, e := f.keys.Sign(payload)
+		if e != nil {
+			t.Fatal(e)
+		}
+		consent, _ := json.Marshal(signed)
+		push(consent, 1)
+	}
+	// Even genuinely signed noncanonical payloads cannot widen the wire.
+	for _, payload := range [][]byte{append([]byte(" "), canonical...), append(append([]byte(nil), canonical[:len(canonical)-1]...), []byte(`,"unknown":true}`)...)} {
+		signed, e := f.keys.Sign(payload)
+		if e != nil {
+			t.Fatal(e)
+		}
+		consent, _ := json.Marshal(signed)
+		push(consent, 1)
+	}
+	consent, _ := json.Marshal(grant.Assertion)
+	push(consent, 0)
+	listed, e := f.directory.List(context.Background(), "strict-other")
+	if e != nil || len(listed) != 1 || listed[0].ID != f.input.ServerID || listed[0].Role != "member" {
+		t.Fatal("signed return did not reach role index", listed, e)
+	}
+	// A later departure cannot be undone with old signed return bytes.
+	if e = f.directory.LeaveServer(context.Background(), "strict-other", f.input.ServerID); e != nil {
+		t.Fatal(e)
+	}
+	push(consent, 1)
+}
+
+func TestRegisteredReturnConsentRechecksCurrentSignerRevocation(t *testing.T) {
+	f := signInReturnFixture(t, registeredReturnFixture(t))
+	started := f.begin(t)
+	q := f.complete(t, started.TransactionID)
+	raw := returnCall(t, f.handler, "/v1/server-returns/exchange", "", q, 200)
+	var grant serverreturn.Grant
+	if e := json.Unmarshal(raw, &grant); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.store.DB.Exec(`INSERT INTO hosted_signing_revocations(key_id) VALUES($1)`, f.keys.KeyID); e != nil {
+		t.Fatal(e)
+	}
+	consent, _ := json.Marshal(grant.Assertion)
+	p := directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: "strict-owner", Role: "owner", Active: true}, {AccountID: "strict-other", Role: "member", Active: true, Consent: consent}}}
+	raw = returnCall(t, f.handler, "/v1/servers/"+f.input.ServerID+"/members", f.serverToken, p, 200)
+	var out directory.MemberPushResult
+	if e := json.Unmarshal(raw, &out); e != nil || len(out.Skipped) != 1 {
+		t.Fatal("revoked return consent indexed", string(raw), e)
+	}
+	listed, e := f.directory.List(context.Background(), "strict-other")
+	if e != nil || len(listed) != 0 {
+		t.Fatal("revoked signer leaked into discovery", listed, e)
 	}
 }
 

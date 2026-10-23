@@ -1,6 +1,7 @@
 package directory
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/hmac"
@@ -349,26 +350,52 @@ func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, str
 		}
 	}
 	head, e := base64.RawURLEncoding.Strict().DecodeString(envelope.Payload)
-	if e != nil {
+	if e != nil || base64.RawURLEncoding.EncodeToString(head) != envelope.Payload {
 		return time.Time{}, "", ""
 	}
-	var c IdentityClaims
-	if json.Unmarshal(head, &c) != nil || (c.Kind != IdentityKind && c.Kind != CustodyKind) || c.AccountID != m.AccountID || c.ServerID != server || c.IssuedAt.After(time.Now().Add(5*time.Minute)) {
+	var header struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal(head, &header) != nil {
+		return time.Time{}, "", ""
+	}
+	var issued time.Time
+	switch header.Kind {
+	case serverreturn.AssertionKind:
+		var c serverreturn.Assertion
+		if json.Unmarshal(head, &c) != nil || !c.Valid() || c.AccountID != m.AccountID || c.ServerID != server || !validServerID(c.ServerID) {
+			return time.Time{}, "", ""
+		}
+		canonical, e := json.Marshal(c)
+		if e != nil || !bytes.Equal(canonical, head) {
+			return time.Time{}, "", ""
+		}
+		issued = c.IssuedAt
+	case IdentityKind, CustodyKind:
+		var c IdentityClaims
+		if json.Unmarshal(head, &c) != nil || c.AccountID != m.AccountID || c.ServerID != server {
+			return time.Time{}, "", ""
+		}
+		issued = c.IssuedAt
+	default:
+		return time.Time{}, "", ""
+	}
+	if issued.After(time.Now().Add(5 * time.Minute)) {
 		return time.Time{}, "", ""
 	}
 	if len(s.keys.RootPublicKey) != ed25519.PublicKeySize || envelope.Certificate == nil {
 		return time.Time{}, "", ""
 	}
-	if _, e = envelope.Verify(s.keys.RootPublicKey, "documents", c.IssuedAt); e != nil {
+	if _, e = envelope.Verify(s.keys.RootPublicKey, "documents", issued); e != nil {
 		return time.Time{}, "", ""
 	}
-	return c.IssuedAt, c.Kind, envelope.KeyID
+	return issued, header.Kind, envelope.KeyID
 }
 
 // SignServerReturn is called only inside the registered-return consume. It
 // cannot issue ordinary identity/custody assertions or infer contact identity.
 func (s *Service) SignServerReturn(q serverreturn.Assertion) (trust.Envelope, error) {
-	if s.keys == nil || q.Kind != "portico.server-return.v1" || !serverreturn.ReturnBinding(q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole) || !validServerID(q.ServerID) || q.ClaimGeneration < 1 || q.CredentialGeneration < 1 {
+	if s.keys == nil || !q.Valid() || !validServerID(q.ServerID) {
 		return trust.Envelope{}, ErrInvalid
 	}
 	raw, e := json.Marshal(q)

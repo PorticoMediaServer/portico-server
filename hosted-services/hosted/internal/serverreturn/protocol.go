@@ -139,6 +139,17 @@ type Assertion struct {
 	CurrentOwnerAccountID string    `json:"currentOwnerAccountId"`
 	PreviousOwnerRole     string    `json:"previousOwnerRole"`
 }
+
+const AssertionKind = "portico.server-return.v1"
+const AssertionLifetime = time.Minute
+
+// Valid checks the whole signed return identity, independent of whether its
+// one-use login challenge has since been spent. Historical signed bytes also
+// serve as the account's discovery consent, never as custody consent.
+func (q Assertion) Valid() bool {
+	return q.Kind == AssertionKind && identifier.MatchString(q.AccountID) && identifier.MatchString(q.ServerID) && identifier.MatchString(q.ClaimOperationID) && identifier.MatchString(q.RegistrationID) && secret.MatchString(q.InstallationID) && secret.MatchString(q.Challenge) && secret.MatchString(q.Nonce) && ReturnBinding(q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole) && q.ClaimGeneration > 0 && q.CredentialGeneration > 0 && !q.IssuedAt.IsZero() && q.ExpiresAt.After(q.IssuedAt) && q.ExpiresAt.Sub(q.IssuedAt) <= AssertionLifetime
+}
+
 type Grant struct {
 	Assertion trust.Envelope `json:"assertion"`
 }
