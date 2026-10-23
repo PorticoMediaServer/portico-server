@@ -27,7 +27,7 @@ func notificationFixture(t *testing.T) (Dependencies, *http.ServeMux, identity.E
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO accounts VALUES('owner','owner',x'00','owner-profile',1);INSERT INTO accounts VALUES('member','member',x'00','member-profile',1)`); e != nil {
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('owner','owner',x'00','owner-profile',1);INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('member','member',x'00','member-profile',1)`); e != nil {
 		t.Fatal(e)
 	}
 	owner, e := id.Issue("owner", "owner-profile", "local", "owner", 1)

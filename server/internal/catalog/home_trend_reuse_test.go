@@ -115,7 +115,7 @@ func TestHomeWeeklyTrendingUsesOnlyGenuineEligibleLocalSignals(t *testing.T) {
 	r := engineRequest("movies")
 	r.CommunityActivity = true
 	for _, letter := range []string{"a", "b", "c", "d"} {
-		engineExec(t, f, `INSERT INTO accounts VALUES(?,?,x'00',?,1)`, letter, letter, "profile-"+letter)
+		engineExec(t, f, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, letter, letter, "profile-"+letter)
 	}
 	engineExec(t, f, `UPDATE direct_memberships SET allowed_libraries='["movies"]'`)
 	record := func(actor, item, tag string, at time.Time, completed int, position int64) {

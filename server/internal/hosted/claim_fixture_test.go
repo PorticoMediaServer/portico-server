@@ -66,6 +66,9 @@ func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimF
 	if e != nil {
 		t.Fatal(e)
 	}
+	if _, e = db.Exec(`UPDATE accounts SET password_hash=X'';UPDATE identity_state SET sign_in_kind='portico'`); e != nil {
+		t.Fatal(e)
+	}
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	service, e := New(db, id, "https://hosted.example", base64.RawURLEncoding.EncodeToString(pub), trust.KeyID(pub))
 	if e != nil {

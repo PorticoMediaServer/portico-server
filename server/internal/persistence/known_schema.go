@@ -16,6 +16,7 @@ import (
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
 const knownSchemaObjects = `index access_invitation_page
+index accounts_people_username
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
@@ -272,6 +273,7 @@ index content_rating_age_lookup
 index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
 index detail_jobs_due
+index direct_memberships_people_role
 index direct_one_owner
 index direct_primary_profile
 index direct_profile_pin_attempts_device
@@ -312,10 +314,12 @@ index identity_browser_accounts_recent
 index identity_credential_attempts_age
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_people_activity
 index identity_devices_people_first_seen
 index identity_devices_people_name
 index identity_devices_recent
 index identity_factor_challenge_expiry
+index identity_one_move
 index identity_refresh_device
 index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry
@@ -905,10 +909,16 @@ table identity_credential_state
 table identity_device_families
 table identity_devices
 table identity_factor_challenges
+table identity_managed_route
+table identity_move_codes
+table identity_move_link_tickets
+table identity_move_waiting
+table identity_moves
 table identity_recovery_codes
 table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
+table identity_service_outbox
 table identity_state
 table identity_unknown_attempts
 table inventory_analysis_queue
@@ -1329,9 +1339,6 @@ trigger api_credentials_access_tokens_list_update
 trigger api_credentials_api_keys_list_delete
 trigger api_credentials_api_keys_list_insert
 trigger api_credentials_api_keys_list_update
-trigger api_credentials_member_tokens_list_delete
-trigger api_credentials_member_tokens_list_insert
-trigger api_credentials_member_tokens_list_update
 trigger artwork_album_changed
 trigger artwork_album_insert
 trigger artwork_book_part_delete
@@ -1881,12 +1888,17 @@ trigger hosted_server_events_bound_insert
 trigger hosted_signing_revocations_bound_check
 trigger hosted_signing_revocations_bound_delete
 trigger hosted_signing_revocations_bound_insert
+trigger identity_access_tokens_disabled
+trigger identity_access_tokens_insert
 trigger identity_avatar_version
 trigger identity_devices_account_removed
 trigger identity_devices_devices_list_delete
 trigger identity_devices_devices_list_insert
 trigger identity_devices_devices_list_update
+trigger identity_kind_insert_local_fence
+trigger identity_kind_insert_portico_fence
 trigger identity_kind_local_fence
+trigger identity_kind_no_delete
 trigger identity_kind_portico_fence
 trigger identity_local_no_portico_link
 trigger identity_local_no_portico_link_update

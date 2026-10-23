@@ -215,7 +215,7 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			if purpose.Purpose == "change-owner" && purpose.PreviousOwnerRole == "" {
 				purpose.PreviousOwnerRole = "admin"
 			}
-			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil {
+			if e = h.store.db.QueryRowContext(ctx, `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, owner.AccountID).Scan(&purpose.CurrentOwnerAccountID); e != nil && !(purpose.Purpose == "switch" && errors.Is(e, sql.ErrNoRows)) {
 				return ClaimStatus{}, ErrClaimOwnerRequired
 			}
 		}

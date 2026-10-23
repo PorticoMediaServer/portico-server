@@ -58,7 +58,7 @@ func (p ClaimPurpose) Valid() bool {
 	case "setup":
 		return p.CurrentOwnerAccountID == "" && p.PreviousOwnerRole == ""
 	case "switch":
-		return validID(p.CurrentOwnerAccountID) && p.PreviousOwnerRole == ""
+		return (p.CurrentOwnerAccountID == "" || validID(p.CurrentOwnerAccountID)) && p.PreviousOwnerRole == ""
 	case "change-owner":
 		return validID(p.CurrentOwnerAccountID) && (p.PreviousOwnerRole == "admin" || p.PreviousOwnerRole == "member" || p.PreviousOwnerRole == "remove")
 	}
@@ -70,6 +70,7 @@ type Intent struct {
 	Binding
 	Revision                 int64
 	Stage                    Stage
+	ReservationUsername      string
 	ApprovalRevision         int64
 	ApprovalExpiresAt        time.Time
 	ClaimGeneration          string
