@@ -1,3 +1,5 @@
+import {throwSignalAborted as throwIfAborted} from '../abort.ts';
+import {abortScope,abortReason} from '../abort.ts';
 import type {ReaderDocument,ReaderLocation,ReaderView} from '../ports.ts';
 import {planFixedLayout} from '../layout.ts';
 
@@ -15,7 +17,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   let preferences=options.preferences,viewport=options.viewport,page=0,closed=false,version=0,mutation=0,rendering=0,scrolling=false;
   let zoom:Zoom|undefined,scale=1,fittedScale=1,verticalWidth:number|undefined,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
   const surfacesByPage=new Map<number,PageSurface>();
-  const lifetime=new AbortController(),signal=AbortSignal.any([lifetime.signal,options.signal]);
+  const lifetime=new AbortController(),scope=abortScope([lifetime.signal,options.signal]),signal=scope.signal;
   const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format==='cbz'&&value!=='file'?value:fileDirection;};
   const fit=():'auto'|'page'|'width'|'height'|'spread'=>{
     if(zoom?.kind==='fit')return zoom.value;
@@ -29,10 +31,10 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   };
   const clean=()=>{for(const fn of cleanup.splice(0))fn();};
   async function render(at:number,taskSignal:AbortSignal,anchorOffset?:number):Promise<void>{
-    if(closed)throw new Error('reader_closed');taskSignal.throwIfAborted();
+    if(closed)throw new Error('reader_closed');throwIfAborted(taskSignal);
     if(!Number.isInteger(at)||at<0||at>=pageCount)throw new Error('page_invalid');
     pending?.abort();const controller=new AbortController();pending=controller;const current=++version;
-    const operation=AbortSignal.any([signal,controller.signal,taskSignal]),layout=plan(at),next=document.createElement('div'),releases:(()=>void)[]=[],created=new Map<number,PageSurface>();
+    const task=abortScope([signal,controller.signal,taskSignal]),operation=task.signal,layout=plan(at),next=document.createElement('div'),releases:(()=>void)[]=[],created=new Map<number,PageSurface>();
     // Continuous comics retain only actual adjacent pages. There are no blank
     // estimated-height pages, fabricated content, or whole-archive downloads.
     const vertical=layout.direction==='vertical',visualPages=vertical?Array.from({length:Math.min(pageCount-1,at+2)-Math.max(0,at-1)+1},(_,i)=>Math.max(0,at-1)+i):layout.visualPages;
@@ -41,8 +43,8 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       const surfaces:PageSurface[]=[];
       for(const index of visualPages){
         let surface=surfacesByPage.get(index);
-        if(!surface){surface=await load(index,{width:Math.max(32,Math.min(2048,Math.ceil(viewport.width/layout.visualPages.length))),signal:operation});if(operation.aborted){surface.dispose();throw operation.reason;}created.set(index,surface);}
-        operation.throwIfAborted();surfaces.push(surface);
+        if(!surface){surface=await load(index,{width:Math.max(32,Math.min(2048,Math.ceil(viewport.width/layout.visualPages.length))),signal:operation});if(operation.aborted){surface.dispose();throw abortReason(operation);}created.set(index,surface);}
+        throwIfAborted(operation);surfaces.push(surface);
       }
       // A continuous column has one stable page width despite different scan
       // resolutions. Each page retains its actual aspect ratio.
@@ -55,7 +57,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       for(let i=0;i<surfaces.length;i++){
         const surface=surfaces[i],renderScale=vertical?requested*width/surface.width:requested,target=document.createElement('div');target.dataset.readerPage=String(visualPages[i]);
         Object.assign(target.style,{position:'relative',flex:'none',width:`${surface.width*renderScale}px`,height:`${surface.height*renderScale}px`,overflow:'hidden'});next.append(target);
-        releases.push(await surface.mount(target,renderScale,operation));operation.throwIfAborted();
+        releases.push(await surface.mount(target,renderScale,operation));throwIfAborted(operation);
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
       clean();cleanup=releases;host.replaceChildren(next);page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
@@ -63,7 +65,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
       host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;
       location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
-    }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;}
+    }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;task.dispose();}
   }
   const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean}|undefined;
   let pendingTap:{timer:ReturnType<typeof setTimeout>;x:number;y:number;time:number}|undefined;
@@ -117,7 +119,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       await render(at,taskSignal);
     },
     async applyPreferences(next,taskSignal){
-      taskSignal.throwIfAborted();const own=++mutation,previous=preferences,before=plan(),left=host.scrollLeft,top=host.scrollTop;preferences=next;
+      throwIfAborted(taskSignal);const own=++mutation,previous=preferences,before=plan(),left=host.scrollLeft,top=host.scrollTop;preferences=next;
       const after=plan(),samePages=before.visualPages.join(',')===after.visualPages.join(',');
       if(samePages&&before.fit===after.fit&&before.direction===after.direction)return;
       try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale'){host.scrollLeft=left;host.scrollTop=top;}}
@@ -132,8 +134,8 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     },
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
     canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
-    async pan(position,taskSignal){taskSignal.throwIfAborted();if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');host.scrollLeft=Math.max(0,position.x);host.scrollTop=Math.max(0,position.y);},
-    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
+    async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');host.scrollLeft=Math.max(0,position.x);host.scrollTop=Math.max(0,position.y);},
+    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
   };
   const onScroll=()=>{
     clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});
@@ -152,5 +154,5 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   host.addEventListener('keydown',onKey,{signal});host.addEventListener('focusin',()=>options.onSurfaceInput?.({kind:'activity'}),{signal});
   host.addEventListener('scroll',onScroll,{passive:true,signal});
   signal.addEventListener('abort',()=>{void view.dispose();},{once:true});
-  try{await render(0,signal);signal.throwIfAborted();options.container.append(host);return view;}catch(error){await view.dispose();throw error;}
+  try{await render(0,signal);throwIfAborted(signal);options.container.append(host);return view;}catch(error){await view.dispose();throw error;}
 }

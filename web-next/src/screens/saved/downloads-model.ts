@@ -1,10 +1,10 @@
 import type {DownloadPreparation, DownloadTitle} from '@core/downloads.ts';
-import type {SavedLocalDownload} from './downloads-port.ts';
+import type {SavedLocalDownload, SavedLocalDownloadGroup} from './downloads-port.ts';
 
 export type LocalDownloadGroup = Readonly<{
   id: string;
   title?: string;
-  kind: 'show' | 'movies' | 'music' | 'audiobooks' | 'server';
+  kind: 'show' | 'movies' | 'music' | 'audiobooks' | 'server' | 'other';
   items: readonly SavedLocalDownload[];
 }>;
 
@@ -15,7 +15,7 @@ export function localDownloadGroups(items: readonly SavedLocalDownload[]): reado
   for (const item of items) {
     const title = item.title;
     const kind: LocalDownloadGroup['kind'] = !item.onServer ? 'server' : title.kind === 'episode' && title.parentId && title.parentTitle ? 'show'
-      : ['song', 'album'].includes(title.kind) ? 'music' : ['book', 'book_part', 'audiobook'].includes(title.kind) ? 'audiobooks' : 'movies';
+      : ['song', 'album'].includes(title.kind) ? 'music' : ['book', 'book_part', 'audiobook', 'audiobook_file', 'chapter'].includes(title.kind) ? 'audiobooks' : title.kind === 'movie' ? 'movies' : 'other';
     const id = kind === 'show' ? `show:${title.parentId}` : kind;
     let group = groups.get(id);
     if (!group) { group = {id, kind, ...(kind === 'show' ? {title: title.parentTitle} : {}), items: []}; groups.set(id, group); }
@@ -26,11 +26,17 @@ export function localDownloadGroups(items: readonly SavedLocalDownload[]): reado
 }
 
 export function downloadShape(title: DownloadTitle): 'wide' | 'square' | 'poster' {
-  return title.kind === 'episode' ? 'wide' : ['song', 'album', 'book', 'book_part', 'audiobook'].includes(title.kind) ? 'square' : 'poster';
+  return title.kind === 'episode' ? 'wide' : ['song', 'album', 'book', 'book_part', 'audiobook', 'audiobook_file', 'chapter'].includes(title.kind) ? 'square' : 'poster';
 }
 
 export function measuredPercent(percent: number | null | undefined): number | undefined {
   return typeof percent === 'number' && Number.isFinite(percent) && percent >= 0 && percent <= 100 ? percent : undefined;
+}
+
+/** Exact complete-native aggregate bytes, never the sum of a loaded page. */
+export function localGroupPercent({bytes, bytesDone}: Pick<SavedLocalDownloadGroup, 'bytes' | 'bytesDone'>): number | undefined {
+  return Number.isSafeInteger(bytes) && bytes > 0 && Number.isSafeInteger(bytesDone) && bytesDone >= 0 && bytesDone <= bytes
+    ? measuredPercent(bytesDone / bytes * 100) : undefined;
 }
 
 export function preparationPercent(preparation: DownloadPreparation): number | undefined {

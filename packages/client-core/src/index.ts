@@ -1157,6 +1157,7 @@ export class PlaybackService {
   async playChannel(reference:ChannelReference,options:ChannelStartOptions={}):Promise<void> {
     const state=options.state??'playing';
     if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
+    if(options.signal?.aborted||options.isCurrent?.()===false)throw Object.assign(new Error('cancelled'),{name:'AbortError'});
     const oldVOD=this.snapshot.channel?undefined:this.snapshot.session?.id;
     this.leave();this.channelReference=reference;this.channelWantedState=state;
     const intentId=this.snapshot.intentId;
@@ -1168,11 +1169,11 @@ export class PlaybackService {
     if(oldVOD){try{await this.persist();await this.tryCleanup(oldVOD);}catch{
       if(this.snapshot.intentId===intentId)this.update({phase:'error',error:'The previous playback could not be stopped. Retry this channel when the server reconnects.'});return;
     }}
-    if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;
+    if(this.snapshot.intentId!==intentId||!this.snapshot.channel||options.signal?.aborted||options.isCurrent?.()===false)return;
     await this.channels.open(reference,{
       state:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.applyChannel(value);},
       error:(message,terminal)=>{if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;this.update({error:message,...(terminal?{phase:'error' as const,session:undefined,pendingSeek:undefined}:{} )});}
-    },{state});
+    },{...options,state});
   }
   /** Channels on v1 sessions (spec §18.6): the apps switch to this when the server offers them. */
   useChannelPlayback(control:ChannelPlayback){if(this.snapshot.channel)this.leave();this.channels=control;}

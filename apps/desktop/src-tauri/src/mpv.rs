@@ -26,6 +26,7 @@ type ApiVersion = unsafe extern "C" fn() -> u64;
 #[repr(C)]struct StartFile{playlist_entry_id:i64}
 #[repr(C)]struct EndFile{reason:c_int,error:c_int,playlist_entry_id:i64}
 type Wait=unsafe extern "C" fn(Handle,f64)->*const Event;
+const LEVELING_FILTER:&str="portico-leveling";
 
 pub struct Api {
     _library: Library,
@@ -90,6 +91,8 @@ pub struct Mpv {
     starting:AtomicBool,
     pending_autoplay:AtomicBool,
     configured_spdif:String,
+    leveling_gain:Mutex<f64>,
+    leveling_applied:AtomicBool,
 }
 // libmpv explicitly permits client-API calls from any thread; the render context is separately
 // owned by the GTK/main thread. The handle outlives every context through Arc<Mpv>.
@@ -102,7 +105,7 @@ impl Mpv {
     pub fn new(api: Arc<Api>, output: &AudioOutput, target: VideoTarget) -> Result<Arc<Self>> {
         let handle = unsafe { (api.create)() };
         if handle.is_null() { return Err(Error::EngineUnavailable); }
-        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,retired:AtomicBool::new(false),current_generation:AtomicU64::new(0),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(",")});
+        let engine=Arc::new(Self {api,handle,generation:Mutex::new(0),exclusive:output.exclusive,retired:AtomicBool::new(false),current_generation:AtomicU64::new(0),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:matches!(target,VideoTarget::NativeView(_)),native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:output.passthrough.join(","),leveling_gain:Mutex::new(1.0),leveling_applied:AtomicBool::new(false)});
         engine.disable_script_engines()?;
         for (key,value) in [("config","no"),
             ("input-default-bindings","no"),("input-vo-keyboard","no"),("terminal","no"),("msg-level","all=no"),
@@ -259,11 +262,45 @@ impl Mpv {
             &&!self.flag("eof-reached")&&!self.flag("idle-active")
             &&self.number("audio-out-params/samplerate").is_some_and(|rate|rate>0.0)
             &&self.property("audio-out-params/format").is_some_and(|format|!format.starts_with("spdif"))
+            &&self.property("af").is_some_and(|chain|chain.contains(&format!("@{FILTER_LABEL}:")))
+    }
+    fn clear_leveling(&self)->Result<()> {
+        self.leveling_applied.store(false,Ordering::Release);
+        let result=(||{
+            let marker=format!("@{LEVELING_FILTER}:");
+            if self.property("af").ok_or(Error::EngineFailure)?.contains(&marker){self.command(&["af","remove",&format!("@{LEVELING_FILTER}")])?;}
+            if self.property("af").ok_or(Error::EngineFailure)?.contains(&marker){return Err(Error::EngineFailure)}
+            Ok(())
+        })();
+        if result.is_err(){self.equalizer_chain_known.store(false,Ordering::Release);self.failed.store(true,Ordering::Release);let _=self.set("pause","yes");}
+        result
+    }
+    fn configure_leveling(&self,gain:f64)->Result<bool> {
+        self.clear_leveling()?;
+        if gain==1.0||!self.loaded.load(Ordering::Acquire){return Ok(true)}
+        let format=self.property("audio-out-params/format");
+        if format.as_deref().is_some_and(|format|format.starts_with("spdif")){return Ok(true)}
+        if !self.configured_spdif.is_empty()&&format.is_none()&&self.property("aid").as_deref()!=Some("no"){
+            self.equalizer_route_pending.store(true,Ordering::Release);return Ok(false)
+        }
+        // A fixed labelled graph from one finite bounded scalar, never a web filter string.
+        let filter=format!("@{LEVELING_FILTER}:lavfi=[volume=volume={gain}:precision=double]");
+        if self.command(&["af","add",&filter]).is_err(){self.clear_leveling()?;return Ok(true)}
+        self.leveling_applied.store(true,Ordering::Release);Ok(true)
+    }
+    fn actual_leveling_applied(&self)->bool {
+        self.leveling_applied.load(Ordering::Acquire)&&self.loaded.load(Ordering::Acquire)
+            &&!self.starting.load(Ordering::Acquire)&&!self.failed.load(Ordering::Acquire)
+            &&!self.flag("eof-reached")&&!self.flag("idle-active")
+            &&self.number("audio-out-params/samplerate").is_some_and(|rate|rate>0.0)
+            &&self.property("audio-out-params/format").is_some_and(|format|!format.starts_with("spdif"))
+            &&self.property("af").is_some_and(|chain|chain.contains(&format!("@{LEVELING_FILTER}:")))
     }
     fn finish_start(&self)->Result<()> {
         if !self.loaded.load(Ordering::Acquire)||!(self.starting.load(Ordering::Acquire)||self.equalizer_route_pending.load(Ordering::Acquire)){return Ok(());}
         let settings=self.equalizer.lock().map_err(|_|Error::EngineFailure)?;
-        if self.configure_equalizer(&settings)?&&self.starting.swap(false,Ordering::AcqRel){
+        let gain=*self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?;
+        if self.configure_equalizer(&settings)?&&self.configure_leveling(gain)?&&self.starting.swap(false,Ordering::AcqRel){
             self.set("pause",if self.pending_autoplay.load(Ordering::Acquire){"no"}else{"yes"})?;
         }
         Ok(())
@@ -286,12 +323,12 @@ impl Mpv {
                 self.drain();self.clear_file_facts();self.failed.store(false,Ordering::Release);
                 // Negotiate every new track without the previous track's EQ. This preserves
                 // passthrough; only an observed PCM route receives the app's EQ afterwards.
-                self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
+                self.clear_equalizer()?;self.clear_leveling()?;*self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?=1.0;self.equalizer_route_pending.store(false,Ordering::Release);
                 *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=source.url.clone();
                 self.load(&source)?;*generation=source.generation;self.current_generation.store(*generation,Ordering::Release);Ok(())
             }
             other => {
-                let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::FrameStep{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
+                let g=match &other {Command::Play{generation}|Command::Pause{generation}|Command::Seek{generation,..}|Command::Rate{generation,..}|Command::FrameStep{generation,..}|Command::Processing{generation,..}|Command::Volume{generation,..}|Command::Stop{generation}=>*generation,_=>unreachable!()};
                 if *generation==0 || *generation!=g {return Err(Error::StaleGeneration);}
                 match other {
                     Command::Play{..} if self.equalizer_chain_known.load(Ordering::Acquire)=>{
@@ -310,6 +347,18 @@ impl Mpv {
                     },
                     Command::Rate{rate,..} if rate.is_finite()&&(0.25..=4.0).contains(&rate)=>self.set("speed",&rate.to_string()),
                     Command::Volume{volume,muted,..} if volume.is_finite()&&(0.0..=1.0).contains(&volume)=>{self.set("volume",&(volume*100.0).to_string())?;self.set("mute",if muted{"yes"}else{"no"})},
+                    Command::Processing{gain,..}=>{
+                        if !gain.is_finite()||!(0.000001..=32.0).contains(&gain){return Err(Error::InvalidCommand)}
+                        let mut stored=self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?;
+                        let was_paused=self.flag("pause");let was_failed=self.failed.load(Ordering::Acquire);
+                        if self.configure_leveling(gain).is_err(){
+                            let restored=self.configure_leveling(*stored).is_ok();self.equalizer_chain_known.store(restored,Ordering::Release);
+                            if restored{self.failed.store(was_failed,Ordering::Release);let _=self.set("pause",if was_paused{"yes"}else{"no"});}
+                            else{self.failed.store(true,Ordering::Release);let _=self.set("pause","yes");}
+                            return Err(Error::EngineFailure)
+                        }
+                        *stored=gain;Ok(())
+                    },
                     Command::Stop{..}=>{self.command(&["stop"])?;*generation=0;self.current_generation.store(0,Ordering::Release);self.clear_file_facts();self.starting.store(false,Ordering::Release);self.equalizer_applied.store(false,Ordering::Release);self.equalizer_route_pending.store(false,Ordering::Release);Ok(())},
                     _=>Err(Error::InvalidCommand)
                 }
@@ -333,7 +382,7 @@ impl Mpv {
         self.loaded.store(false,Ordering::Release);
         self.newest_generation.store(next_generation,Ordering::Release);
         self.drain();self.clear_file_facts();self.failed.store(false,Ordering::Release);
-        self.clear_equalizer()?;self.equalizer_route_pending.store(false,Ordering::Release);
+        self.clear_equalizer()?;self.clear_leveling()?;*self.leveling_gain.lock().map_err(|_|Error::EngineFailure)?=1.0;self.equalizer_route_pending.store(false,Ordering::Release);
         *self.expected_url.lock().map_err(|_|Error::EngineFailure)?=path.to_str().ok_or(Error::InvalidSource)?.into();
         self.pending_autoplay.store(autoplay,Ordering::Release);self.starting.store(true,Ordering::Release);self.set("pause","yes")?;
         self.load_node(path.to_str().ok_or(Error::InvalidSource)?,&[("start",(start_ms/1000.0).to_string()),("demuxer-lavf-o","protocol_whitelist=[file],format_whitelist=[aac,ac3,aiff,ape,asf,avi,caf,dff,dsf,dts,eac3,flac,flv,matroska,webm,mov,mp3,mpeg,mpegts,ogg,wav,wv]".into()),("access-references","no".into()),("load-unsafe-playlists","no".into())])?;
@@ -365,7 +414,7 @@ impl Mpv {
             rate:self.number("speed").unwrap_or(1.0),volume:self.number("volume").unwrap_or(100.0)/100.0,
             muted:self.flag("mute"),dropped_frames:self.number("frame-drop-count").unwrap_or(0.0) as u64,
             native_surface_active:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.surface_ready.load(Ordering::Acquire)&&self.geometry_ready.load(Ordering::Acquire)&&self.frame_drawn.load(Ordering::Acquire)==generation&&self.loaded.load(Ordering::Acquire)&&self.number("width").unwrap_or(0.0)>0.0,
-            eq_applied:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.actual_equalizer_applied(),leveling_applied:false}
+            eq_applied:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.actual_equalizer_applied(),leveling_applied:!matches!(state,"idle"|"loading"|"ended"|"error")&&self.actual_leveling_applied()}
     }
     fn drain(&self){
         let _lock=self.events.lock().unwrap_or_else(|e|e.into_inner());
@@ -386,7 +435,7 @@ impl Mpv {
         self.current_generation.store(0,Ordering::Release);
         let result=self.command(&["stop"]);
         *generation=0;self.clear_file_facts();self.set_surface_ready(false);
-        self.set_geometry_ready(false);self.equalizer_applied.store(false,Ordering::Release);
+        self.set_geometry_ready(false);self.equalizer_applied.store(false,Ordering::Release);self.leveling_applied.store(false,Ordering::Release);
         result
     }
     pub fn set_surface_ready(&self,value:bool){self.surface_ready.store(value,Ordering::Release);if !value{self.frame_drawn.store(0,Ordering::Release);}}
@@ -402,7 +451,7 @@ impl Mpv {
         AudioFacts{generation:*transport,requested_exclusive:self.exclusive,source_rate:self.number("audio-params/samplerate").map(|x|x as u64),
             output_rate:self.number("audio-out-params/samplerate").map(|x|x as u64),output_channels:self.number("audio-out-params/channel-count").map(|x|x as u64),
             output_format:self.property("audio-out-params/format"),bit_exact_capture_verified:false,
-            equalizer_enabled,eq_applied,leveling_applied:false,
+            equalizer_enabled,eq_applied,leveling_applied:self.actual_leveling_applied(),
             bit_perfect_excluded_by_equalizer:equalizer_enabled||!self.equalizer_chain_known.load(Ordering::Acquire)}
     }
     /// Native proof runner only: output is an owned CLI-selected scratch file. Not registered IPC.
@@ -412,7 +461,7 @@ impl Mpv {
     pub fn capture_playlist(api:Arc<Api>,inputs:&[&Path],output:&Path,rate:u32,channels:u8)->Result<()> {
         if inputs.is_empty() || inputs.len()>32{return Err(Error::InvalidCommand);}
         let handle=unsafe{(api.create)()};if handle.is_null(){return Err(Error::EngineUnavailable);}
-        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,retired:AtomicBool::new(false),current_generation:AtomicU64::new(1),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:false,native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new()};
+        let e=Self{api,handle,generation:Mutex::new(1),exclusive:false,retired:AtomicBool::new(false),current_generation:AtomicU64::new(1),loaded:AtomicBool::new(false),surface_ready:AtomicBool::new(false),frame_drawn:AtomicU64::new(0),geometry_ready:AtomicBool::new(false),expected_url:Mutex::new(String::new()),failed:AtomicBool::new(false),events:Mutex::new(()),newest_generation:AtomicU64::new(0),expected_entry:AtomicI64::new(0),started_entry:AtomicI64::new(0),restarted_generation:AtomicU64::new(0),native_target:false,native_window:AtomicUsize::new(0),equalizer:Mutex::new(EqualizerSettings::default()),equalizer_applied:AtomicBool::new(false),equalizer_chain_known:AtomicBool::new(true),equalizer_route_pending:AtomicBool::new(false),starting:AtomicBool::new(false),pending_autoplay:AtomicBool::new(false),configured_spdif:String::new(),leveling_gain:Mutex::new(1.0),leveling_applied:AtomicBool::new(false)};
         e.disable_script_engines()?;
         for (k,v) in [("config","no"),("terminal","no"),("msg-level","all=no"),
             ("vo","null"),("ao","pcm"),("audio-format","s32"),("audio-display","no"),("gapless-audio","yes"),("replaygain","no"),("volume","100"),("pause","yes")] {e.option(k,v)?;}
@@ -451,10 +500,18 @@ mod local_source_tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(advanced,"native PCM did not advance");
+        for gain in [f64::NAN,0.0,33.0]{assert_eq!(engine.execute(Command::Processing{generation:1,gain}),Err(Error::InvalidCommand));}
+        engine.execute(Command::Processing{generation:1,gain:0.5}).unwrap();
+        assert!(engine.property("af").unwrap().contains("@portico-leveling:"));
+        assert!(engine.observation().leveling_applied,"actual PCM route did not confirm native leveling");
+        engine.execute(Command::Processing{generation:1,gain:1.0}).unwrap();
+        assert!(!engine.observation().leveling_applied);
+        assert!(!engine.property("af").unwrap().contains("@portico-leveling:"));
         let first_entry=engine.expected_entry.load(Ordering::Acquire);assert!(first_entry>0);
         assert_eq!(engine.started_entry.load(Ordering::Acquire),first_entry);
         engine.frame_drawn(1);
         engine.load_local(Path::new(&fixture),2,0.0,true).unwrap();
+        assert_eq!(engine.execute(Command::Processing{generation:1,gain:0.25}),Err(Error::StaleGeneration));
         let second_entry=engine.expected_entry.load(Ordering::Acquire);assert!(second_entry>first_entry);
         assert_eq!(engine.frame_drawn.load(Ordering::Acquire),0);
         let until=std::time::Instant::now()+std::time::Duration::from_secs(5);
@@ -544,7 +601,7 @@ mod local_source_tests {
         });
         let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
         let run=||{
-            let source=|path:&str,generation|Source{url:format!("http://127.0.0.1:{port}/v1/{path}"),generation,mode:"direct".into(),start_position_ms:0.0,autoplay:true};
+            let source=|path:&str,generation|Source{url:format!("http://127.0.0.1:{port}/v1/{path}"),generation,mode:"stream".into(),start_position_ms:0.0,autoplay:true};
             engine.execute(Command::Load{source:source("media",1)}).unwrap();
             let until=std::time::Instant::now()+std::time::Duration::from_secs(5);let mut advanced=false;
             while std::time::Instant::now()<until{let value=engine.observation();if value.position_ms>10.0{advanced=true;break}assert_ne!(value.state,"error");std::thread::sleep(std::time::Duration::from_millis(10));}

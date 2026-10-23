@@ -26,8 +26,10 @@ import {homeContractsMessages} from './home-contracts.ts';
 import {selectionMessages} from './selection.ts';
 import {selectionNativeMessages} from './selection-native.ts';
 import {homeNativeMessages} from './home-native.ts';
+import {dashboardMessages} from './dashboard.ts';
 import {settingsMessages} from './settings.ts';
 import {settingsSpecMessages} from './settings-spec.ts';
+import {readerMessages} from './reader.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -58,8 +60,10 @@ export const nextMessages = {
   ...selectionMessages,
   ...selectionNativeMessages,
   ...homeNativeMessages,
+  ...dashboardMessages,
   ...settingsMessages,
   ...settingsSpecMessages,
+  ...readerMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;
