@@ -1,4 +1,4 @@
-import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation,
+import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation, ReaderMetadata,
   ReaderSearchOptions, ReaderSearchResult, ReaderSnapshot, ReaderSource, ReaderView, ReaderViewport,
   ReaderZoom, ReaderSurfaceInput} from './ports.ts';
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
@@ -54,7 +54,7 @@ export class ReaderController<P extends object> {
   private publishPreferences() {
     this.publish({preferences: this.effective(), overriddenKeys: Object.freeze(Object.keys(this.overrides) as (keyof P)[])});
   }
-  async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport}>): Promise<void> {
+  async open(options: Readonly<{source: ReaderSource; format: ReaderFormat; container: HTMLElement; location?: ReaderLocation; viewport?: ReaderViewport; metadata?: ReaderMetadata}>): Promise<void> {
     // Invalidate before waiting for disposal, so simultaneous opens cannot adopt
     // a stale document/view. A late adapter result is disposed in its own turn.
     const previous = this.session;
@@ -103,7 +103,8 @@ export class ReaderController<P extends object> {
       const location = view.getLocation();
       if (location) validateLocation(location, options.format);
       this.refreshViewState();
-      this.publish({status: 'ready', metadata: copy(document.metadata), toc: freezeToc(document.toc),
+      this.publish({status: 'ready', metadata: copy(options.metadata === undefined ? document.metadata : {...document.metadata, ...options.metadata,
+        title: options.metadata.title, author: options.metadata.author, language: options.metadata.language}), toc: freezeToc(document.toc),
         location: location ? copy(location) : this.snapshot.location});
     } catch (error) {
       if (!this.current(session)) return;

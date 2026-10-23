@@ -119,3 +119,10 @@ test('settings updates during initial apply queue behind that apply',async()=>{
   const updating=f.controller.updatePreferences({theme:'light',textSize:3,twoPages:false});
   pending.resolve();await Promise.all([opening,updating]);assert.equal(peak,1);assert.equal(f.seen.at(-1)?.theme,'light');await f.controller.close();
 });
+test('authoritative catalogue omission never revives embedded file identity',async()=>{
+  const f=fixture();Object.defineProperty(f.document,'metadata',{value:{title:'Embedded title',author:'Embedded author',language:'en',pageCount:40,direction:'rtl'}});
+  await f.controller.open({source,format:'epub',container,metadata:{title:'Owner catalogue title'}});
+  const metadata=f.controller.getSnapshot().metadata;
+  assert.equal(metadata?.title,'Owner catalogue title');assert.equal(metadata?.author,undefined);assert.equal(metadata?.language,undefined);
+  assert.equal(metadata?.pageCount,40);assert.equal(metadata?.direction,'rtl');await f.controller.close();
+});

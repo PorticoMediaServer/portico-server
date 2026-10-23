@@ -5,7 +5,7 @@ import {ReaderError, throwIfAborted} from '../errors.ts';
 import type {ReaderAdapter, ReaderDocument, ReaderLocation, ReaderMetadata, ReaderMount,
   ReaderNavigation, ReaderSearchOptions, ReaderSearchResult, ReaderTocItem, ReaderView, ReaderViewport} from '../ports.ts';
 import {openEpubArchive, safeArchivePath, type EpubAssets} from './archive.ts';
-import {rejectXmlEntities, secureMarkup} from './security.ts';
+import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>};
@@ -95,6 +95,7 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       if(mime==='text/html'||mime==='application/xhtml+xml'||/\.x?html?$/i.test(path)||/<(?:\w+:)?html[\s>]/i.test(text))
         text=secureMarkup(text,'application/xhtml+xml');
       else if(mime==='image/svg+xml'||/\.svg$/i.test(path)) text=secureMarkup(text,'image/svg+xml');
+      else if(mime==='text/css'||/\.css$/i.test(path))text=secureCss(text);
       else rejectXmlEntities(text);
       return text;
     }
@@ -125,13 +126,14 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       });
       book.transformTarget.addEventListener('data',event=>{
         const detail=(event as CustomEvent<{data:string|Blob|Promise<string|Blob>;type:string}>).detail;
+        if(detail.type==='text/css')detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureCss(typeof data==='string'?data:await data.text(),true);});
         if(['application/xhtml+xml','text/html','image/svg+xml'].includes(detail.type)) {
           detail.data=Promise.resolve(detail.data).then(async data=>{throwIfAborted(signal);return secureMarkup(typeof data==='string'?data:await data.text(),detail.type as 'application/xhtml+xml',true);});
         }
       });
       const b=book;
       const metadata:ReaderMetadata=Object.freeze({title:metadataText(b.metadata?.title),author:metadataText(b.metadata?.author),
-        language:metadataText(b.metadata?.language),direction:b.dir==='rtl'?'rtl':'ltr'});
+        language:metadataText(b.metadata?.language),...(b.dir==='rtl'||b.dir==='ltr'?{direction:b.dir}:{})});
       const tocBySection=new Map<number,{label:string;cfi:string}[]>();
       async function mapToc(items:readonly Toc[]):Promise<readonly ReaderTocItem[]> {
         const result:ReaderTocItem[]=[];
