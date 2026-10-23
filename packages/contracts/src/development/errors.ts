@@ -511,6 +511,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "portico_services_unavailable",
+    "status": 503,
+    "message": "Portico Services is unavailable. Try again when it is reachable.",
+    "retry": "same_request"
+  },
+  {
     "code": "prepare_not_allowed",
     "status": 409,
     "message": "The next item can't be prepared now.",
