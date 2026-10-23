@@ -24,6 +24,12 @@ cleanup() {
             docker rm --force "$container" >/dev/null || cleanup_failed=1
         fi
     done <<< "${containers:-}"
+    networks=$(docker network ls -q --filter label=portico=remote-sources-r40 --filter "label=portico.job=$PORTICO_SAMBA_TEST_JOB") || cleanup_failed=1
+    while read -r network; do
+        if test -n "$network"; then
+            docker network rm "$network" >/dev/null || cleanup_failed=1
+        fi
+    done <<< "${networks:-}"
     if test -f "$fixture_scratch/samba-image"; then
         docker image rm "$(cat "$fixture_scratch/samba-image")" >/dev/null || cleanup_failed=1
     fi
@@ -84,3 +90,7 @@ docker build --network=host --label portico=remote-sources-r40 --label "portico.
 export PORTICO_SAMBA_TEST_IMAGE="$(cat "$fixture_scratch/samba-image")"
 go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
     ./internal/rcloneprogram -run '^TestLocked(DAV|SFTP|SMB)MixedOperationBudget$'
+if test "${PORTICO_NATIVE_SAVE_TEST:-}" = 1; then
+    go test -json -tags=rcloneintegration -count=1 -timeout=180s "$@" \
+        ./internal/remotesources -run '^TestNativeSMBSavedNASConnectionAndForbiddenEdits$'
+fi
