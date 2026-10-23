@@ -42,7 +42,7 @@ func newObservationFixture(t *testing.T) observationFixture {
 		args []any
 	}{
 		{`INSERT INTO remote_sources(id,kind,name,root,generation) VALUES('remote','webdav','Remote',?,1)`, []any{root}},
-		{`UPDATE library_sources SET kind='remote',root_identity='root-observed',identity_confirmed=1 WHERE id=?`, []any{lib.ID}},
+		{`UPDATE library_sources SET kind='remote',root_identity=?,identity_confirmed=1 WHERE id=?`, []any{storage.RemoteDirectoryIdentity("remote", root) + ":generation:1", lib.ID}},
 		{`INSERT INTO jobs(id,library_id,status,created_at) VALUES('scan',?,'running','2026-10-23T00:00:00Z')`, []any{lib.ID}},
 		{`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision) SELECT 'scan',id,generation,incarnation,root_identity,1 FROM library_sources WHERE id=?`, []any{lib.ID}},
 		{`INSERT INTO remote_scan_generations(job_id,source_id,generation) VALUES('scan','remote','1')`, nil},

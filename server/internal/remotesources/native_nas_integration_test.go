@@ -216,6 +216,17 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	if err != nil || fresh.Size != int64(len(payload)) {
 		t.Fatal("saved native NAS did not connect through shared rclone", fresh.Size, err)
 	}
+	file, err := f.s.Stat(ctx, filepath.Join(receipt.Mount.MountPath, "one.mkv"))
+	if err != nil || file.Size != int64(len(payload)) || file.Directory || file.ChangeToken == "" || file.ObjectIdentity == "" {
+		t.Fatal("storage Stat did not use admitted source metadata", file, err)
+	}
+	directory, err := f.s.InspectRoot(ctx, receipt.Mount.MountPath)
+	if err != nil || !directory.Directory || directory.ObjectIdentity == "" {
+		t.Fatal("storage root inspection did not use the shared source", directory, err)
+	}
+	if counts := process.OperationCounts(); counts.Active != 0 || counts.Peak > counts.Capacity || counts.Capacity != profile.Limits.Connections {
+		t.Fatal("storage metadata escaped the source budget", counts)
+	}
 	for i, host := range []string{"127.0.0.1", "169.254.169.254", "169.254.1.2"} {
 		bad := mounts.Command{OperationID: nativeSaveOperation(110 + i), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config(host)}
 		if _, err := managed.Command(ctx, "actual-owner-nas", receipt.MountID, bad, authorize); err == nil {
