@@ -3,10 +3,11 @@ import {defaultI18n} from '@i18n';
 import type {TextEnvironment} from '@core/presentation/kit-model/index.ts';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../platform/playback';
 import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeData, type DockPresentation} from '../kit/dock';
-import {Button} from '../kit/controls';
+import {WatchScreen} from '../screens/watch';
+import {createWindowChromePublisher, type WindowChromePublisher} from '../platform/window-chrome';
 import {router} from '../router';
 import type {ShellArtwork} from './artwork';
-import {fenceKey, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from './playback-model';
+import {fenceKey, localVideoSurfaceActive, playbackPresentation, PlaybackPresentations, retainedPlaybackNotice} from './playback-model';
 import {PlaybackMediaOwner} from './playback-media-owner';
 import {useShellWidth} from './viewport';
 import styles from './playback.module.css';
@@ -18,6 +19,9 @@ export type ShellPlaybackBinding = Readonly<{
 const noSubscription = () => () => {};
 const noSnapshot = () => undefined;
 const noPresentations: readonly DockPresentation[] = Object.freeze([]);
+const subscribeFullscreen = (changed: () => void) => {document.addEventListener('fullscreenchange', changed);return () => document.removeEventListener('fullscreenchange', changed);};
+const fullscreenSnapshot = () => !!document.fullscreenElement;
+const noFullscreen = () => false;
 
 /** This parent and its one video stay mounted through routes AND authority handovers. */
 export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefined}) {
@@ -32,7 +36,15 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => { void runtime.onAction(action).catch(binding.reportError); },
   } : undefined, [runtime, binding]);
   const expanded = !!snapshot?.dock.local?.expanded;
-  const activeVideo = snapshot?.presentation?.kind === 'video' && !!snapshot.dock.local && !snapshot.dock.remote;
+  const activeVideo = localVideoSurfaceActive(snapshot);
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenSnapshot, noFullscreen);
+  const [controlsVisible, setControlsVisible] = useState(true), chrome = useRef<WindowChromePublisher | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!expanded || !activeVideo) return;
+    const publisher = createWindowChromePublisher('video');chrome.current = publisher;
+    return () => {publisher.dispose();if (chrome.current === publisher) chrome.current = undefined;};
+  }, [expanded, activeVideo]);
+  useLayoutEffect(() => {chrome.current?.update({controlsVisible, fullscreen});}, [expanded, activeVideo, controlsVisible, fullscreen]);
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
   const leaving = useRef<string | undefined>(undefined);
@@ -77,15 +89,29 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
       if (current.dock.local?.expanded && current.fence && router.state.location.pathname !== '/player') runtime.collapse(current.fence);
     });
   }, [runtime]);
-  const collapse = () => { if (snapshot?.fence) runtime!.collapse(snapshot.fence); };
+  const collapse = () => {
+    const live = runtime?.getSnapshot();
+    if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || !live.dock.local?.expanded || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
+    runtime.collapse(live.fence);
+  };
+  const toggleFullscreen = async () => {
+    const live = runtime?.getSnapshot();
+    if (!runtime || !snapshot?.fence || !live?.fence || live.disposed || !live.dock.local?.expanded || !localVideoSurfaceActive(live) || live.authority !== snapshot.authority || fenceKey(live.fence) !== fenceKey(snapshot.fence)) return;
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else {
+      const target = expandedSlot.current?.closest<HTMLElement>('[data-watch-screen]');
+      if (!target?.isConnected) throw new DOMException('Playback surface retired', 'AbortError');
+      await target.requestFullscreen();
+    }
+  };
   return <div className={styles.dock} data-phone={phone} data-shell-dock>
     {snapshot && dockBinding && <><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></>}
-    <div ref={expandedSlot} className={styles.expandedSlot} hidden={!expanded || !activeVideo} data-foundation-media-host />
+    {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
+      windowPort={typeof document !== 'undefined' && document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : undefined} />}
     <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} className={styles.surface}>
-      <video ref={video} controls={expanded} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
+      <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
-    {expanded && <Button variant="glass" size="compact" icon="i-down" iconOnly className={styles.collapse} aria-label={defaultI18n.t('next.home.shell.collapsePlayer')} onClick={collapse} />}
   </div>;
 }
 function playbackIdentityLabel(presentations: readonly DockPresentation[], key: string | undefined) { return presentations.find(value => fenceKey(value.fence) === key)?.identity.title ?? defaultI18n.t('next.dock.nowPlaying'); }
