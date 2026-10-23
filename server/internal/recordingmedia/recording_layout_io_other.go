@@ -19,3 +19,5 @@ func (*layoutDirectory) parent(string, bool) (*layoutDirectory, string, error) {
 func (*layoutDirectory) open(string) (*os.File, error)               { return nil, mediaartifact.ErrPrivate }
 func (*layoutDirectory) link(*layoutDirectory, string, string) error { return mediaartifact.ErrPrivate }
 func (*layoutDirectory) remove(string) error                         { return mediaartifact.ErrPrivate }
+
+func layoutPhysicalIdentity(os.FileInfo) string { return "" }

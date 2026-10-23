@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 	"portico.local/server/internal/mediaartifact"
@@ -105,4 +107,12 @@ func (d *layoutDirectory) remove(name string) error {
 		return err
 	}
 	return d.file.Sync()
+}
+
+func layoutPhysicalIdentity(info os.FileInfo) string {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatUint(uint64(stat.Dev), 10) + ":" + strconv.FormatUint(uint64(stat.Ino), 10)
 }

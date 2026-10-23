@@ -331,3 +331,43 @@ func TestLayoutRejectsCorruptClosedBytesAndNonRegularTarget(t *testing.T) {
 		}
 	})
 }
+
+func TestLayoutMeasureCountsPhysicalPayloadOnceAcrossAllNames(t *testing.T) {
+	root, b := layoutFixture(t)
+	linked, err := linkLayout(context.Background(), root, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(root, "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	before, err := d.Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.UsedBytes != b.Object.Size {
+		t.Fatalf("aliases inflated physical use: got%d want%d", before.UsedBytes, b.Object.Size)
+	}
+	if err = removeLayout(context.Background(), root, linked); err != nil {
+		t.Fatal(err)
+	}
+	after, err := d.Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.UsedBytes != before.UsedBytes {
+		t.Fatal("reported reclaimed bytes while capture retains inode")
+	}
+	if err = os.Remove(filepath.Join(root, b.Source)); err != nil {
+		t.Fatal(err)
+	}
+	final, err := d.Measure(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.UsedBytes != 0 {
+		t.Fatal("final payload bytes not reclaimed")
+	}
+}
