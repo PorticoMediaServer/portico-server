@@ -9,8 +9,12 @@ trap cleanup EXIT
 # Root's remote wrapper holds the machine slot for this entire sequential check.
 docker build --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-linux.Dockerfile .
 docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Config.Labels}}'
-docker run --rm --network=host --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
-  --mount "type=bind,src=$PWD,dst=/source,readonly" "$image" bash -c '
+# Tauri generates permission schemas beside its manifest. Only this exact per-job
+# archive is writable, with the runner uid so its final cleanup can remove every file.
+mkdir -p "$TMPDIR/native-work/home"
+docker run --rm --network=host --user "$(id -u):$(id -g)" --label portico=desktop-r29 --cpus=2 --memory=3g --memory-swap=3g \
+  --env HOME=/work/home --env CARGO_HOME=/work/cargo --env RUSTUP_TOOLCHAIN=1.99.0 \
+  --mount "type=bind,src=$PWD,dst=/source" --mount "type=bind,src=$TMPDIR/native-work,dst=/work" "$image" bash -c '
 set -eu
 export TMPDIR=/work/tmp CARGO_TARGET_DIR=/work/cargo-target CARGO_BUILD_JOBS=1
 mkdir -p "$TMPDIR"
