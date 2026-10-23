@@ -6,6 +6,8 @@ pub mod boundary;
 pub mod download_receipt;
 #[path = "../../src/download_store.rs"]
 pub mod download_store;
+#[path = "../../src/download_folder.rs"]
+pub mod download_folder;
 #[path = "../../src/download_commands.rs"]
 pub mod download_commands;
 #[path = "../../src/equalizer.rs"]
