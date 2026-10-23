@@ -648,6 +648,7 @@ export const enUS = {
   'quality.automatic': 'Automatic',
   'quality.automaticHelp': 'Adjusts to your connection',
   'quality.original': 'Original',
+  'quality.cdQuality': 'CD quality',
   'quality.originalHelp': 'Full quality',
   'quality.height': '{height, number, ::group-off}p',
   'quality.networkLimit': '{network} · up to {height}p',

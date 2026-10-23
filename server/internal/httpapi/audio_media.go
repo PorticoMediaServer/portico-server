@@ -186,7 +186,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 		skip := int64(math.Round(float64(from) * float64(c.SourceRate) / float64(c.Rate)))
 		out := plan.DurationFrames - from
 		spec := decoder.AnalysisSpec{Kind: "audio_flac", MaxDurationUS: max(1, c.SourceFrames*1_000_000/int64(max(1, c.SourceRate))+1_000_000),
-			AudioSourceRate: c.SourceRate, AudioPriming: c.SourceStart, AudioStart: c.SourceStart + skip, AudioFrames: max(1, c.SourceFrames-skip), AudioOut: out, AudioRate: c.Rate, AudioChannels: c.Channels, AudioBitDepth: c.BitDepth}
+			AudioTruePeakLimit: c.TruePeakLimit, AudioSourceDepth: c.SourceBitDepth, AudioGainDB: c.GainDB, AudioSourceRate: c.SourceRate, AudioPriming: c.SourceStart, AudioStart: c.SourceStart + skip, AudioFrames: max(1, c.SourceFrames-skip), AudioOut: out, AudioRate: c.Rate, AudioChannels: c.Channels, AudioBitDepth: c.BitDepth}
 		start, end := int64(0), int64(0)
 		w.Header().Set("Content-Type", "audio/flac")
 		if c.Codec == "opus" {

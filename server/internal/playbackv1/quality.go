@@ -34,6 +34,7 @@ const (
 	QualityAutomatic = "automatic"
 	QualityFixed     = "fixed"
 	QualityLimit     = "limit"
+	QualityCD        = "cd-quality"
 )
 
 // Validate bounds a quality request.
@@ -41,7 +42,7 @@ func (q Quality) Validate(path string) error {
 	numbers := q.MaxVideoBitrateKbps != 0 || q.MaxHeight != 0 || q.MaxAudioBitrateKbps != 0
 	_, known := playback.LadderPreset(q.ID)
 	switch q.Mode {
-	case QualityOriginal:
+	case QualityOriginal, QualityCD:
 		if numbers || q.ID != "" || q.Step != "" {
 			return &FieldError{Path: path}
 		}
@@ -76,6 +77,7 @@ func (q Quality) Validate(path string) error {
 // apply writes the quality's ceilings into a planner choice.
 func (q Quality) apply(c *playback.V1Choice) {
 	c.Limit, c.MaxVideoBitrateBPS, c.MaxAudioBitrateBPS, c.MaxVideoHeight = false, 0, 0, 0
+	c.AudioCDQuality = q.Mode == QualityCD
 	step := func(id string) {
 		if preset, ok := playback.LadderPreset(id); ok {
 			c.Limit = true
@@ -83,6 +85,8 @@ func (q Quality) apply(c *playback.V1Choice) {
 		}
 	}
 	switch q.Mode {
+	case QualityCD:
+		c.QualityID = QualityCD
 	case QualityFixed:
 		c.QualityID = q.ID
 		step(q.ID)

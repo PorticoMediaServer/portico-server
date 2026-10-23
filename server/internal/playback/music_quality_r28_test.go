@@ -8,15 +8,19 @@ import (
 func TestMusicQualityR28NetworkAndProvenance(t *testing.T) {
 	for _, class := range []NetworkClass{NetworkLocal, NetworkRemote, NetworkUnknown} {
 		for _, transport := range []string{"wifi", "ethernet", "unknown", "satellite", "cellular", "mobile", "wwan", " CELLULAR "} {
-			values := WithPreferenceSources(stubPreferences{"music.qualityAway": "original", "music.qualityMobile": "320"}, map[string]string{"music.qualityAway": "default", "music.qualityMobile": "default"})
-			if got := SavedMusicQualityPreference(values, class, transport); got != "" {
-				t.Fatal("registry default became explicit", got)
+			values := WithPreferenceSources(stubPreferences{"music.qualityHome": "original", "music.qualityAway": "320", "music.qualityMobile": "320"}, map[string]string{"music.qualityHome": "default", "music.qualityAway": "default", "music.qualityMobile": "default"})
+			wantDefault := "320"
+			if class == NetworkLocal && NormalizeTransportClass(transport) != "cellular" {
+				wantDefault = "original"
+			}
+			if got := SavedMusicQualityPreference(values, class, transport); got != wantDefault {
+				t.Fatal(class, transport, got, wantDefault)
 			}
 			for _, p := range qualityladder.Music() {
-				values = WithPreferenceSources(stubPreferences{"music.qualityAway": p.ID, "music.qualityMobile": p.ID}, map[string]string{"music.qualityAway": "profile-device-class", "music.qualityMobile": "profile-device-class"})
+				values = WithPreferenceSources(stubPreferences{"music.qualityHome": p.ID, "music.qualityAway": p.ID, "music.qualityMobile": p.ID}, map[string]string{"music.qualityAway": "profile-device-class", "music.qualityMobile": "profile-device-class"})
 				want := p.ID
 				if class == NetworkLocal && NormalizeTransportClass(transport) != "cellular" {
-					want = ""
+					want = p.ID
 				}
 				if got := SavedMusicQualityPreference(values, class, transport); got != want {
 					t.Fatal(class, transport, got, want)

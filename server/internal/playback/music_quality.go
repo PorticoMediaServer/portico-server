@@ -12,10 +12,7 @@ func SavedMusicQualityPreference(values DeliveryPreferenceReader, class NetworkC
 	if NormalizeTransportClass(transport) == "cellular" {
 		key = "music.qualityMobile"
 	} else if class == NetworkLocal {
-		return ""
-	}
-	if source, ok := values.(interface{ PreferenceSource(string) string }); ok && source.PreferenceSource(key) == "default" {
-		return ""
+		key = "music.qualityHome"
 	}
 	if value := values.Text(key); value != "" {
 		if _, ok := qualityladder.FindMusic(value); ok {

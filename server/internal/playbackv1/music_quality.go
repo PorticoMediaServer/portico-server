@@ -10,6 +10,9 @@ func musicKind(kind string) bool { return kind == "song" || kind == "track" }
 // musicQuality uses the existing numeric audio limit contract. Music's saved
 // values are never accepted as fixed video ladder identifiers.
 func musicQuality(saved string) Quality {
+	if saved == "cd-quality" {
+		return Quality{Mode: QualityCD}
+	}
 	if preset, ok := qualityladder.FindMusic(saved); ok && preset.AudioKbps > 0 {
 		return Quality{Mode: QualityLimit, MaxAudioBitrateKbps: preset.AudioKbps}
 	}
@@ -34,6 +37,10 @@ func defaultQuality(saved, music, transport, kind string) Quality {
 func musicQualityOptions(source SourceFacts) []QualityOption {
 	out := []QualityOption{{Mode: QualityOriginal, Applicable: true}}
 	for _, preset := range qualityladder.Music() {
+		if preset.ID == "cd-quality" {
+			out = append(out, QualityOption{Mode: QualityCD, Applicable: true})
+			continue
+		}
 		if preset.AudioKbps == 0 {
 			continue
 		}

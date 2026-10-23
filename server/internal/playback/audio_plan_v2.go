@@ -12,6 +12,7 @@ import (
 
 	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/qualityladder"
 )
 
 // AudioDecodeCap is one entry of a device's audioDecode (spec §3): what the
@@ -30,25 +31,29 @@ type AudioDecodeCap struct {
 // the original file (direct) or a FLAC/Opus/AAC conversion (converted) with the
 // server's exact trim and gains. Pinned to one presentation.
 type AudioPlan struct {
-	Version        int              `json:"version"`
-	Mode           string           `json:"mode"`
-	ID             string           `json:"id"`
-	Reason         string           `json:"reason,omitempty"`
-	URL            string           `json:"url,omitempty"`
-	Container      string           `json:"container,omitempty"`
-	Codec          string           `json:"codec,omitempty"`
-	DecoderConfig  string           `json:"decoderConfig,omitempty"`
-	SampleRate     int              `json:"sampleRate,omitempty"`
-	Channels       int              `json:"channels,omitempty"`
-	BitDepth       int              `json:"bitDepth,omitempty"`
-	Bytes          int64            `json:"bytes,omitempty"`
-	PrefetchBytes  int64            `json:"prefetchBytes,omitempty"`
-	DurationFrames int64            `json:"durationFrames,omitempty"`
-	Downmixed      bool             `json:"downmixed,omitempty"`
-	Trim           *AudioTrim       `json:"trim,omitempty"`
-	Gain           *AudioGain       `json:"gain,omitempty"`
-	Generation     int              `json:"generation"`
-	Convert        *AudioConversion `json:"convert,omitempty"`
+	SourceBitrateBPS  int64                  `json:"sourceBitrateBps,omitempty"`
+	ConversionGainDB  float64                `json:"conversionGainDb,omitempty"`
+	LoudnessAppliedDB *float64               `json:"loudnessAppliedDb,omitempty"`
+	LoudnessEnvelope  *AudioLoudnessEnvelope `json:"loudnessEnvelope,omitempty"`
+	Version           int                    `json:"version"`
+	Mode              string                 `json:"mode"`
+	ID                string                 `json:"id"`
+	Reason            string                 `json:"reason,omitempty"`
+	URL               string                 `json:"url,omitempty"`
+	Container         string                 `json:"container,omitempty"`
+	Codec             string                 `json:"codec,omitempty"`
+	DecoderConfig     string                 `json:"decoderConfig,omitempty"`
+	SampleRate        int                    `json:"sampleRate,omitempty"`
+	Channels          int                    `json:"channels,omitempty"`
+	BitDepth          int                    `json:"bitDepth,omitempty"`
+	Bytes             int64                  `json:"bytes,omitempty"`
+	PrefetchBytes     int64                  `json:"prefetchBytes,omitempty"`
+	DurationFrames    int64                  `json:"durationFrames,omitempty"`
+	Downmixed         bool                   `json:"downmixed,omitempty"`
+	Trim              *AudioTrim             `json:"trim,omitempty"`
+	Gain              *AudioGain             `json:"gain,omitempty"`
+	Generation        int                    `json:"generation"`
+	Convert           *AudioConversion       `json:"convert,omitempty"`
 	// SeekIndex is where a direct plan whose container carries no index a
 	// client can seek by (MP3, ADTS, Ogg) finds the server's: byte offsets
 	// with the raw frame each starts at (audiofacts.SeekIndex). The client
@@ -69,6 +74,11 @@ type AudioTrim struct {
 }
 
 // AudioGain is in dB against the ReplayGain 2.0 reference (−18 LUFS); nil is unknown.
+type AudioLoudnessEnvelope struct {
+	IntervalMs int       `json:"intervalMs"`
+	StartLUFS  []float64 `json:"startLufs"`
+	EndLUFS    []float64 `json:"endLufs"`
+}
 type AudioGain struct {
 	TrackDB   *float64 `json:"trackDb,omitempty"`
 	AlbumDB   *float64 `json:"albumDb,omitempty"`
@@ -80,14 +90,17 @@ type AudioGain struct {
 // AudioConversion is how the converted route produces the plan's stream (never
 // on the wire): the source's trimmed frames, resampled and encoded exactly.
 type AudioConversion struct {
-	Codec        string `json:"codec"`
-	SourceRate   int    `json:"sourceRate"`
-	SourceStart  int64  `json:"sourceStart"`
-	SourceFrames int64  `json:"sourceFrames"`
-	Rate         int    `json:"rate"`
-	Channels     int    `json:"channels"`
-	BitDepth     int    `json:"bitDepth"`
-	BitrateBPS   int    `json:"bitrateBps"`
+	TruePeakLimit  bool    `json:"truePeakLimit"`
+	SourceBitDepth int     `json:"sourceBitDepth"`
+	GainDB         float64 `json:"gainDb"`
+	Codec          string  `json:"codec"`
+	SourceRate     int     `json:"sourceRate"`
+	SourceStart    int64   `json:"sourceStart"`
+	SourceFrames   int64   `json:"sourceFrames"`
+	Rate           int     `json:"rate"`
+	Channels       int     `json:"channels"`
+	BitDepth       int     `json:"bitDepth"`
+	BitrateBPS     int     `json:"bitrateBps"`
 }
 
 // OpusPreSkip is libopus's pre-skip at 48 kHz; Opus frames are 20 ms (960).
@@ -106,12 +119,13 @@ const minimumAACBitrate = 16000
 // aacRate is the AAC target's rate: the source's when it is a usual AAC rate
 // the device accepts, else 48 kHz, else 44.1 kHz; 0 when neither is accepted.
 func aacRate(c AudioDecodeCap, source int) int {
-	if (source == 44100 || source == 48000) && capAllowsRate(c, source) {
-		return source
+	rates := []int{48000, 24000, 12000, 8000}
+	if source%11025 == 0 {
+		rates = []int{44100, 22050, 11025}
 	}
-	for _, r := range []int{48000, 44100} {
-		if capAllowsRate(c, r) {
-			return r
+	for _, rate := range rates {
+		if rate <= source && capAllowsRate(c, rate) {
+			return rate
 		}
 	}
 	return 0
@@ -158,27 +172,35 @@ func isLossless(codec string) bool { return lossless[codec] || strings.HasPrefix
 // convertedRate is the source rate when the FLAC capability allows it, else the
 // highest standard rate it allows at or under the source, else its lowest.
 func convertedRate(c AudioDecodeCap, source int) int {
+	if source <= 0 {
+		return 0
+	}
 	if capAllowsRate(c, source) {
 		return source
 	}
-	standard := []int{384000, 352800, 192000, 176400, 96000, 88200, 48000, 44100, 32000, 22050}
-	for _, r := range standard {
-		if r <= source && capAllowsRate(c, r) {
-			return r
-		}
+	rates := []int{768000, 384000, 192000, 96000, 48000, 24000, 12000, 8000}
+	if source%11025 == 0 {
+		rates = []int{705600, 352800, 176400, 88200, 44100, 22050, 11025}
 	}
-	for i := len(standard) - 1; i >= 0; i-- {
-		if capAllowsRate(c, standard[i]) {
-			return standard[i]
+	for _, rate := range rates {
+		if rate <= source && capAllowsRate(c, rate) {
+			return rate
 		}
 	}
 	return 0
 }
+func cdRate(source int) int {
+	if source%11025 == 0 {
+		return min(source, 44100)
+	}
+	return min(source, 48000)
+}
+func isDSD(codec string) bool { return strings.HasPrefix(codec, "dsd_") }
 
 // pinAudioPlan builds and pins the version 2 plan for a v1 audio presentation.
 // Facts were ensured before the transaction (audiofacts.Ensure); without them
 // the plan is unavailable, never guessed.
-func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session, item, asset, grant string, v1 *V1Choice, ownerTranscoding bool) (*AudioPlan, error) {
+func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identity.Principal, session Session, item, asset, grant string, v1 *V1Choice, ownerTranscoding bool) (*AudioPlan, error) {
 	p := &AudioPlan{Version: 2, Mode: "unavailable", ID: session.ID + "." + itoa(session.Generation), Generation: session.Generation}
 	f, ok, err := audiofacts.Read(ctx, tx, asset)
 	if err != nil {
@@ -192,11 +214,46 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		p.Reason = "Portico hasn't measured this track yet, so it plays without gapless or crossfade."
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
+	measuredSourceFrames := f.DurationFrames
+	virtual := false
+	var sourceStart float64
+	var sourceEnd sql.NullFloat64
+	if err = tx.QueryRowContext(ctx, `SELECT l.start_seconds,l.end_seconds FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.token=?`, item, asset).Scan(&sourceStart, &sourceEnd); err != nil {
+		return nil, err
+	}
+	if sourceStart > 0 || sourceEnd.Valid {
+		end := f.DurationFrames
+		if sourceEnd.Valid {
+			end = min(end, int64(math.Round(sourceEnd.Float64*float64(f.SampleRate))))
+		}
+		start := int64(math.Round(sourceStart * float64(f.SampleRate)))
+		if end <= start {
+			return nil, errAudioPlan
+		}
+		f.StartFrames += start
+		f.DurationFrames = end - start
+		f.EndFrames = f.RawFrames - f.StartFrames - f.DurationFrames
+		virtual = true
+	}
 	gain, err := audioGains(ctx, tx, item, asset)
 	if err != nil {
 		return nil, err
 	}
-	seconds := float64(f.DurationFrames) / float64(f.SampleRate)
+	// Music has its own owner cap. The generic owner bitrate ceiling has
+	// already been narrowed into v1 by create; never widen it here.
+	cfg := s.DeliveryConfiguration()
+	if v1.Remote {
+		if cap, ok := qualityladder.FindMusic(cfg.MaxMusicQuality); ok {
+			if cap.ID == "cd-quality" {
+				v1.AudioCDQuality = true
+			}
+			if cap.AudioKbps > 0 {
+				v1.MaxAudioBitrateBPS = narrowCeiling(v1.MaxAudioBitrateBPS, cap.AudioKbps*1000)
+				v1.Limit = true
+			}
+		}
+	}
+	seconds := float64(measuredSourceFrames) / float64(f.SampleRate)
 	sourceBPS := 0
 	if seconds > 0 {
 		sourceBPS = int(float64(size) * 8 / seconds)
@@ -204,9 +261,21 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 	if f.BitRate > 0 {
 		sourceBPS = int(f.BitRate)
 	}
+	p.SourceBitrateBPS = int64(sourceBPS)
+	p.LoudnessEnvelope, err = audioEnvelope(ctx, tx, asset)
+	if err != nil {
+		return nil, err
+	}
+	bakedGain := 0.0
+	if v1.AudioServerRender {
+		if prefs := s.viewerPreferences(tx, principal, DeliveryContextFrom(ctx)); prefs != nil {
+			bakedGain = normalizationGain(gain, prefs.Text("music.audioNormalization"), prefs.Bool("music.neverBoost"))
+		}
+	}
 	limited := v1.Limit && v1.MaxAudioBitrateBPS > 0 && sourceBPS > v1.MaxAudioBitrateBPS
+	cdLimited := v1.AudioCDQuality && isLossless(f.Codec) && (f.BitDepth > 16 || f.SampleRate > cdRate(f.SampleRate))
 	direct := false
-	if !limited {
+	if !limited && !cdLimited && !isDSD(f.Codec) && bakedGain == 0 && !(virtual && v1.AudioServerRender) {
 		for _, c := range v1.AudioDecode {
 			if c.decodes(f) {
 				direct = true
@@ -240,25 +309,29 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 	// its bitrate limit instead of no plan at all.
 	aacCap, canAAC := findCap(v1.AudioDecode, "aac", "adts")
 	useAAC := !useOpus && canAAC && aacRate(aacCap, f.SampleRate) > 0 && (limited || !canFLAC)
-	conv := &AudioConversion{SourceRate: f.SampleRate, SourceStart: f.StartFrames, SourceFrames: f.DurationFrames}
+	conv := &AudioConversion{SourceBitDepth: f.BitDepth, SourceRate: f.SampleRate, SourceStart: f.StartFrames, SourceFrames: f.DurationFrames}
 	switch {
 	case useOpus:
-		conv.Codec, conv.Rate, conv.Channels = "opus", 48000, min(f.Channels, 2)
+		conv.Codec, conv.Rate, conv.Channels = "opus", 48000, min(8, f.Channels)
 		if opusCap.MaxChannels > 0 {
 			conv.Channels = min(conv.Channels, opusCap.MaxChannels)
 		}
-		conv.BitrateBPS = 128000 * conv.Channels / 2
+		conv.BitrateBPS = 320000
 		if v1.Limit && v1.MaxAudioBitrateBPS > 0 {
-			conv.BitrateBPS = max(24000, min(conv.BitrateBPS, v1.MaxAudioBitrateBPS))
+			conv.BitrateBPS = min(conv.BitrateBPS, v1.MaxAudioBitrateBPS)
+			if conv.BitrateBPS < 6000 {
+				conv = nil
+				break
+			}
 		}
 		p.Container, p.Codec = "ogg", "opus"
 		p.Reason = "Portico converts this track to Opus for this device."
 	case useAAC:
-		conv.Codec, conv.Rate, conv.Channels = "aac", aacRate(aacCap, f.SampleRate), min(f.Channels, 2)
+		conv.Codec, conv.Rate, conv.Channels = "aac", aacRate(aacCap, f.SampleRate), min(8, f.Channels)
 		if aacCap.MaxChannels > 0 {
 			conv.Channels = min(conv.Channels, aacCap.MaxChannels)
 		}
-		conv.BitrateBPS = 192000 * conv.Channels / 2
+		conv.BitrateBPS = 320000
 		if v1.Limit && v1.MaxAudioBitrateBPS > 0 {
 			conv.BitrateBPS = min(conv.BitrateBPS, v1.MaxAudioBitrateBPS)
 		}
@@ -268,15 +341,26 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		p.Container, p.Codec = "adts", "aac"
 		p.Reason = "Portico converts this track to AAC for this device."
 	case canFLAC && !limited:
-		conv.Codec, conv.Rate, conv.Channels = "flac", convertedRate(flacCap, f.SampleRate), f.Channels
+		conv.Codec, conv.Rate, conv.Channels = "flac", convertedRate(flacCap, f.SampleRate), min(8, f.Channels)
 		if flacCap.MaxChannels > 0 {
 			conv.Channels = min(conv.Channels, flacCap.MaxChannels)
 		}
 		conv.BitDepth = 16
-		if isLossless(f.Codec) && f.BitDepth > 16 {
-			conv.BitDepth = 24
+		if (isLossless(f.Codec) && f.BitDepth > 16) || isDSD(f.Codec) {
+			conv.BitDepth = min(32, max(24, f.BitDepth))
 		}
 		if flacCap.MaxBitDepth > 0 && flacCap.MaxBitDepth < conv.BitDepth {
+			conv.BitDepth = 16
+		}
+		if isDSD(f.Codec) {
+			conv.Rate = convertedRate(flacCap, min(f.SampleRate, 176400))
+			conv.BitDepth = 24
+		}
+		if v1.AudioCDQuality {
+			conv.Rate = convertedRate(flacCap, cdRate(f.SampleRate))
+			conv.BitDepth = 16
+		}
+		if flacCap.MaxBitDepth > 0 && conv.BitDepth > flacCap.MaxBitDepth {
 			conv.BitDepth = 16
 		}
 		if conv.Rate == 0 {
@@ -292,6 +376,22 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		p.Reason = "The available audio formats cannot meet this device's capabilities and bitrate choice. This track plays without gapless or crossfade."
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
+	if (conv.Codec == "opus" || conv.Codec == "aac") && !isLossless(f.Codec) && !isDSD(f.Codec) && sourceBPS > 0 {
+		conv.BitrateBPS = min(conv.BitrateBPS, sourceBPS)
+	}
+	if isDSD(f.Codec) {
+		conv.GainDB = -6
+		if prefs := s.viewerPreferences(tx, principal, DeliveryContextFrom(ctx)); prefs != nil {
+			conv.GainDB = float64(prefs.Int("music.dsdGainDb"))
+		}
+	}
+	if bakedGain != 0 {
+		conv.GainDB += bakedGain
+		conv.TruePeakLimit = true
+		p.LoudnessAppliedDB = &bakedGain
+		p.Gain = nil
+	}
+	p.ConversionGainDB = conv.GainDB - bakedGain
 	frames := int64(math.Round(float64(f.DurationFrames) * float64(conv.Rate) / float64(f.SampleRate)))
 	p.Mode, p.URL, p.Convert = "converted", "/v1/media/"+grant+"/audio-converted", conv
 	p.SampleRate, p.Channels, p.BitDepth, p.DurationFrames = conv.Rate, conv.Channels, conv.BitDepth, frames
@@ -307,7 +407,9 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		total := (AACPriming + frames + aacFrame - 1) / aacFrame * aacFrame
 		p.Trim = &AudioTrim{StartFrames: AACPriming, EndFrames: total - AACPriming - frames, Source: "aac-priming"}
 	}
-	p.Gain = gain
+	if p.LoudnessAppliedDB == nil {
+		p.Gain = gain
+	}
 	p.PrefetchBytes = 4 << 20
 	if conv.Codec == "flac" {
 		// About 30 s of FLAC at this rate, depth and channel count (~60% of PCM).
@@ -567,4 +669,49 @@ func (s *Service) PrefetchRefund(session string, n int64) {
 		return
 	}
 	s.prefetched[session] -= n
+}
+
+func normalizationGain(g *AudioGain, mode string, neverBoost bool) float64 {
+	if g == nil || mode == "off" || mode == "" {
+		return 0
+	}
+	db, peak := g.TrackDB, g.TrackPeak
+	if mode == "album" && g.AlbumDB != nil {
+		db, peak = g.AlbumDB, g.AlbumPeak
+	}
+	if db == nil {
+		return 0
+	}
+	v := *db
+	if neverBoost || peak == nil {
+		v = min(v, 0)
+	}
+	if peak != nil && *peak > 0 {
+		v = min(v, -20*math.Log10(*peak))
+	}
+	return max(-60, min(30, v))
+}
+func audioEnvelope(ctx context.Context, tx *sql.Tx, asset string) (*AudioLoudnessEnvelope, error) {
+	rows, e := tx.QueryContext(ctx, `SELECT e.edge,e.lufs FROM analysis_audio_envelope e JOIN analysis_results r ON r.id=e.result_id WHERE r.id=(SELECT id FROM analysis_results WHERE asset_id=? AND stage='loudness' AND retired_ms=0 ORDER BY created_ms DESC LIMIT 1) ORDER BY e.edge,e.ordinal`, asset)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := &AudioLoudnessEnvelope{IntervalMs: 100, StartLUFS: []float64{}, EndLUFS: []float64{}}
+	for rows.Next() {
+		var edge string
+		var v float64
+		if e = rows.Scan(&edge, &v); e != nil {
+			return nil, e
+		}
+		if edge == "start" {
+			out.StartLUFS = append(out.StartLUFS, v)
+		} else {
+			out.EndLUFS = append(out.EndLUFS, v)
+		}
+	}
+	if len(out.StartLUFS) == 0 && len(out.EndLUFS) == 0 {
+		return nil, rows.Err()
+	}
+	return out, rows.Err()
 }

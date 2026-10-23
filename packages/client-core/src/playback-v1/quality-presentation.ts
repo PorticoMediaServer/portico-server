@@ -27,7 +27,7 @@ export function qualityLimit(id:SavedQuality){const q=canonicalQualityLadder.fin
 /** Music's saved ladder, with exact budgets and localized display rounding. */
 export function musicQualityPresentation(id:SavedMusicQuality,sameAsOriginal=false,i18n=serviceI18n()) {
  const step=canonicalMusicQualityLadder.find(q=>q.id===id)!;
- const label=step.audioKbps?i18n.t('pref.unit.kbps',{value:step.audioKbps}):i18n.t('quality.original');
+ const label=id==='cd-quality'?i18n.t('quality.cdQuality'):step.audioKbps?i18n.t('pref.unit.kbps',{value:step.audioKbps}):i18n.t('quality.original');
  const hint=sameAsOriginal?i18n.t('quality.sameAsOriginal'):step.audioKbps?i18n.t('quality.musicDataPerHour',{amount:new Intl.NumberFormat(i18n.locale,{maximumFractionDigits:0}).format(step.dataMBPerHour)}):'';
  return Object.freeze({...step,label,hint,sameAsOriginal});
 }

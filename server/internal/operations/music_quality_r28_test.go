@@ -8,7 +8,7 @@ import (
 )
 
 func TestMusicQualityR28RegistryStoredOriginalAndReplay(t *testing.T) {
-	for key, want := range map[string]string{"music.qualityAway": "original", "music.qualityMobile": "320"} {
+	for key, want := range map[string]string{"music.qualityHome": "original", "music.qualityDownloads": "320", "music.qualityAway": "320", "music.qualityMobile": "320"} {
 		f, ok := PreferenceFieldFor(key)
 		if !ok || f.Default != want || len(f.AllowedValues) != len(qualityladder.MusicIDs()) || !reflect.DeepEqual(f.Scopes, []string{ScopeDeviceClass}) {
 			t.Fatal(key, f)
@@ -21,7 +21,7 @@ func TestMusicQualityR28RegistryStoredOriginalAndReplay(t *testing.T) {
 	}
 	s, p, a := consoleFixture(t)
 	ctx := context.Background()
-	change := PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "mobile", ExpectedRevision: 1, IdempotencyKey: "music-stored-original", Values: PreferencePatch{"music.qualityMobile": "original", "music.qualityAway": "192"}}
+	change := PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "mobile", ExpectedRevision: 1, IdempotencyKey: "music-stored-original", Values: PreferencePatch{"music.qualityMobile": "original", "music.qualityAway": "96"}}
 	out, err := s.ApplyPreferences(ctx, p, a, change)
 	if err != nil || out.Effective.Text("music.qualityMobile") != "original" {
 		t.Fatal(out, err)
@@ -35,7 +35,7 @@ func TestMusicQualityR28RegistryStoredOriginalAndReplay(t *testing.T) {
 		t.Fatal(values, sources, err)
 	}
 	other, err := s.Preferences(ctx, p, "web", a)
-	if err != nil || other.Effective.Text("music.qualityMobile") != "320" || other.Effective.Text("music.qualityAway") != "original" {
+	if err != nil || other.Effective.Text("music.qualityMobile") != "320" || other.Effective.Text("music.qualityAway") != "320" {
 		t.Fatal(other, err)
 	}
 	change.ExpectedRevision = 2

@@ -47,11 +47,17 @@ func TestMusicQualityR28DefaultsAndOptions(t *testing.T) {
 	}
 	for _, bps := range []int{0, 96000, 192000, 320000, 500000} {
 		menu := musicQualityOptions(SourceFacts{BitrateKbps: bps / 1000})
-		if len(menu) != 6 || menu[0].Mode != QualityOriginal {
+		if len(menu) != 4 || menu[0].Mode != QualityOriginal {
 			t.Fatal(menu)
 		}
 		for i, p := range qualityladder.Music()[1:] {
 			q := menu[i+1]
+			if p.ID == "cd-quality" {
+				if q.Mode != QualityCD {
+					t.Fatal(q)
+				}
+				continue
+			}
 			if q.Mode != QualityLimit || q.ID != "" || q.MaxAudioBitrateKbps != p.AudioKbps || q.SameAsOriginal != (bps > 0 && bps <= p.AudioKbps*1000) {
 				t.Fatal(bps, q, p)
 			}
@@ -100,10 +106,10 @@ func TestMusicQualityR28StartReplayAndOverrides(t *testing.T) {
 	// The options producer uses the same quality resolution as starts.
 	for _, savedMusic := range []string{"", "original", "128"} {
 		view, err := f.service.Options(context.Background(), f.caller.Principal, f.items[0].Public, Preview{}, nil, Reach{TransportClass: "cellular", SavedMusicQuality: savedMusic})
-		if err != nil || view.Preferred == nil || view.Preferred.Quality != defaultQuality("", savedMusic, "cellular", "song") || len(view.Qualities) != 6 {
+		if err != nil || view.Preferred == nil || view.Preferred.Quality != defaultQuality("", savedMusic, "cellular", "song") || len(view.Qualities) != 4 {
 			t.Fatal(view, err)
 		}
-		if view.Qualities[1].ID != "" || view.Qualities[1].MaxAudioBitrateKbps != 320 {
+		if view.Qualities[2].ID != "" || view.Qualities[2].MaxAudioBitrateKbps != 320 {
 			t.Fatal(view.Qualities)
 		}
 	}
@@ -157,15 +163,15 @@ func TestMusicQualityR28SourceEquivalenceDoesNotRoundDown(t *testing.T) {
 	f.service.Playback = nil
 	f.catalog.Exec(`UPDATE catalog_assets SET size=24000001,duration=600`)
 	view, err := f.service.Options(context.Background(), f.caller.Principal, f.items[0].Public, Preview{}, nil, Reach{})
-	if err != nil || len(view.Qualities) != 6 {
+	if err != nil || len(view.Qualities) != 4 {
 		t.Fatal(view, err)
 	}
-	if view.Qualities[1].SameAsOriginal {
+	if view.Qualities[2].SameAsOriginal {
 		t.Fatal("source just above 320kbps rounded down", view.Qualities)
 	}
 	f.catalog.Exec(`UPDATE catalog_assets SET size=24000000`)
 	view, err = f.service.Options(context.Background(), f.caller.Principal, f.items[0].Public, Preview{}, nil, Reach{})
-	if err != nil || !view.Qualities[1].SameAsOriginal {
+	if err != nil || !view.Qualities[2].SameAsOriginal {
 		t.Fatal("source at ceiling was not equivalent", view, err)
 	}
 }

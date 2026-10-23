@@ -25,7 +25,7 @@ var errSharedStagePanicked = errors.New("shared audio analysis stopped unexpecte
 
 // sharedAudioStages are the stages one audio decode serves, in the order a
 // scan runs them.
-var sharedAudioStages = []string{"waveform", "loudness", "fingerprint"}
+var sharedAudioStages = []string{"waveform", "fingerprint"}
 
 func isSharedAudioStage(stage string) bool {
 	for _, s := range sharedAudioStages {

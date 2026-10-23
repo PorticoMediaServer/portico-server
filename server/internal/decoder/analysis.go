@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"portico.local/server/internal/storage"
 )
@@ -19,12 +21,15 @@ type PreviewVideoFacts struct {
 // AnalysisSpec is a closed recipe. No user filter, filename, protocol or encoder
 // argument enters the decoder. All output is streamed through supervised stdout.
 type AnalysisSpec struct {
-	PhysicalLock  *os.File
-	Kind          string
-	StartUS       int64
-	IntervalUS    int64
-	MaxFrames     int
-	MaxDurationUS int64
+	AudioTruePeakLimit bool
+	AudioSourceDepth   int
+	AudioGainDB        float64
+	PhysicalLock       *os.File
+	Kind               string
+	StartUS            int64
+	IntervalUS         int64
+	MaxFrames          int
+	MaxDurationUS      int64
 	// RegionUS is the length read from StartUS by the segment detection
 	// recipes, which measure one stretch of a file rather than all of it.
 	RegionUS int64
@@ -98,6 +103,9 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		}
 		filter := "fps=1:start_time=0,scale=256:144:force_original_aspect_ratio=decrease:reset_sar=1,pad=256:144:(ow-iw)/2:(oh-ih)/2,setsar=1" + tone + ",format=gray"
 		args = append(args, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", filter, "-frames:v", fmt.Sprint(s.MaxFrames), "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1")
+	case "loudness_full":
+		// Native rate/layout, double precision; no stereo quantization before measurement.
+		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "ebur128=metadata=1:peak=true,ametadata=print:file='pipe\\:1'", "-f", "null", "-")
 	case "pcm_shared":
 		// One decode for every audio analysis (waveform, fingerprint, loudness): the
 		// first audio track as 48 kHz stereo, the rate loudness is measured at.
@@ -110,20 +118,43 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		// frames whatever timestamps the container gave the priming; again after
 		// resampling, whose first output timestamp needn't be 0, so the final cut is
 		// exact.
-		filter := fmt.Sprintf("asetpts=N/SR/TB,atrim=start_sample=%d:end_sample=%d,asetpts=N/SR/TB,aresample=%d,asetpts=N/SR/TB,apad=whole_len=%d,atrim=end_sample=%d", s.AudioStart-seekFrames, s.AudioStart-seekFrames+s.AudioFrames, s.AudioRate, s.AudioOut, s.AudioOut)
+		if math.IsNaN(s.AudioGainDB) || math.IsInf(s.AudioGainDB, 0) || s.AudioGainDB < -60 || s.AudioGainDB > 30 {
+			return nil, ErrInvalidConfiguration
+		}
+		filters := []string{fmt.Sprintf("asetpts=N/SR/TB,atrim=start_sample=%d:end_sample=%d,asetpts=N/SR/TB", s.AudioStart-seekFrames, s.AudioStart-seekFrames+s.AudioFrames)}
+		if s.AudioGainDB != 0 {
+			filters = append(filters, fmt.Sprintf("volume=%gdB:precision=double", s.AudioGainDB))
+		}
+		// Untouched same-rate/depth samples never enter a resampler or dither stage.
+		if s.AudioTruePeakLimit || s.AudioSourceRate != s.AudioRate || s.AudioSourceDepth > s.AudioBitDepth && s.AudioBitDepth > 0 {
+			resample := fmt.Sprintf("aresample=%d:resampler=soxr:precision=28", s.AudioRate)
+			if s.AudioBitDepth > 0 {
+				format := "s32"
+				if s.AudioBitDepth == 16 {
+					format = "s16"
+				}
+				resample += ":osf=" + format
+				if s.AudioTruePeakLimit || s.AudioSourceDepth > s.AudioBitDepth {
+					resample += ":dither_method=triangular"
+				}
+			}
+			filters = append(filters, resample)
+		}
+		filters = append(filters, fmt.Sprintf("asetpts=N/SR/TB,apad=whole_len=%d,atrim=end_sample=%d", s.AudioOut, s.AudioOut))
+		filter := strings.Join(filters, ",")
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", filter, "-ac", fmt.Sprint(s.AudioChannels), "-ar", fmt.Sprint(s.AudioRate))
 		if s.Kind == "audio_flac" {
 			format, depth := "s16", "16"
-			if s.AudioBitDepth == 24 {
-				format, depth = "s32", "24"
+			if s.AudioBitDepth == 24 || s.AudioBitDepth == 32 {
+				format, depth = "s32", fmt.Sprint(s.AudioBitDepth)
 			} else if s.AudioBitDepth != 16 {
 				return nil, ErrInvalidConfiguration
 			}
-			args = append(args, "-c:a", "flac", "-sample_fmt", format, "-bits_per_raw_sample", depth, "-f", "flac", "pipe:1")
+			args = append(args, "-c:a", "flac", "-sample_fmt", format, "-bits_per_raw_sample", depth, "-strict", "-2", "-f", "flac", "pipe:1")
 		} else if s.Kind == "audio_aac" {
 			// FFmpeg's own AAC-LC encoder, in ADTS so the stream is readable as it
 			// arrives; its 1024-frame delay is the plan's trim (playback.AACPriming).
-			if s.AudioRate != 44100 && s.AudioRate != 48000 || s.AudioChannels > 2 || s.AudioBitrate < 16000 || s.AudioBitrate > 512000 {
+			if !aacTargetRate(s.AudioRate) || s.AudioChannels > 8 || s.AudioBitrate < 16000 || s.AudioBitrate > 512000 {
 				return nil, ErrInvalidConfiguration
 			}
 			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-b:a", fmt.Sprint(s.AudioBitrate), "-f", "adts", "pipe:1")

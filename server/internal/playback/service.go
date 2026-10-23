@@ -547,7 +547,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			audioChoice := *v1
 			audioChoice.MaxAudioBitrateBPS = inputs.input.Target.MaxAudioBitrateBPS
 			audioChoice.Limit = audioChoice.Limit || audioChoice.MaxAudioBitrateBPS > 0
-			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, result, item, aid, grant, &audioChoice, ownerTranscoding); e != nil {
+			if result.AudioPlan, e = s.pinAudioPlan(ctx, tx, p, result, item, aid, grant, &audioChoice, ownerTranscoding); e != nil {
 				return Session{}, e
 			}
 		}

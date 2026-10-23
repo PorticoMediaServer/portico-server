@@ -27,6 +27,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	MusicCueTracks      []Chapter            `json:"-"`
 	VideoName           naming.Embedded      `json:"-"`
 	VideoNameSkipped    bool                 `json:"-"`
 	ArtworkObserved     bool                 `json:"-"`

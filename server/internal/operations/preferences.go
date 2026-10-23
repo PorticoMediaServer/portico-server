@@ -15,7 +15,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p40.Q2.B5.QL1.MQ1"
+const PreferenceRegistryRevision = "p40.Q2.B5.QL1.MQ2"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -170,7 +170,13 @@ var preferenceRegistry = func() []PreferenceField {
 	}
 	out = append(out, qualityFields()...)
 	out = append(out,
-		prefEnum("music.qualityAway", "original", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.qualityHome", "original", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.qualityDownloads", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
+		prefEnum("music.sampleRateMatching", "smart", []string{"smart", "strict", "off"}, ScopeDeviceClass),
+		prefBool("music.neverBoost", false, ScopeProfileServer),
+		prefBool("music.smoothTransitions", false, ScopeProfileServer),
+		prefInt("music.dsdGainDb", -6, -24, 0, ScopeProfileServer),
+		prefEnum("music.qualityAway", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
 		prefEnum("music.qualityMobile", "320", qualityladder.MusicIDs(), ScopeDeviceClass),
 		prefEnum("music.audioNormalization", "off", []string{"off", "track", "album"}, ScopeProfileServer),
 		prefInt("music.crossfadeMs", 0, 0, 12000, ScopeProfileServer),
@@ -425,6 +431,15 @@ func decodePreferenceDocument(raw string, scope string) (PreferenceValues, error
 			continue
 		}
 		canonical, _, e := canonicalPreference(f, value)
+		// Preserve explicit older music limits on read only. New writes use the
+		// current four-choice domain and never rewrite an existing choice.
+		if e != nil && (key == "music.qualityAway" || key == "music.qualityMobile") {
+			if text, ok := value.(string); ok {
+				if _, legacy := qualityladder.LegacyMusic(text); legacy {
+					out[key] = text
+				}
+			}
+		}
 		if e != nil {
 			continue
 		}

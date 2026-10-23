@@ -674,7 +674,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	video := kind != "song" && kind != "track" && kind != "audiobook_file"
 	request := t.request.normalized()
-	if !video && request.Quality.Mode == QualityFixed {
+	if !video && request.Quality.Mode == QualityFixed || video && request.Quality.Mode == QualityCD {
 		return playback.Session{}, Presentation{}, &FieldError{Path: "quality"}
 	}
 	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation}
@@ -753,6 +753,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	// §18.1: an audio presentation's render plan, pinned to this presentation.
 	view.AudioRender = audioRenderOf(media.AudioPlan)
+	if choice.AudioServerRender && view.AudioRender.playable() {
+		view.URL = view.AudioRender.URL
+		view.Mode = "direct"
+	}
 	plan, err := s.Playback.SessionPlan(ctx, media.ID)
 	if err != nil {
 		return media, Presentation{}, err

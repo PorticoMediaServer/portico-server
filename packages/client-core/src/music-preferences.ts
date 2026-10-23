@@ -16,7 +16,10 @@ export function musicAudioEffects(snapshot:PreferenceSnapshot):AudioEffectsSetti
  const gapless=read('music.gapless',defaultAudioEffects.gapless,v=>typeof v==='boolean');
  const crossfadeMs=read('music.crossfadeMs',defaultAudioEffects.crossfadeSeconds*1000,v=>typeof v==='number'&&Number.isFinite(v));
  const normalization=read<AudioEffectsSettings['normalization']>('music.audioNormalization',defaultAudioEffects.normalization,v=>v==='off'||v==='track'||v==='album');
- return Object.freeze({gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfadeMs/1000))),normalization});
+ const neverBoost=read("music.neverBoost",false,v=>typeof v==='boolean');
+ const smoothTransitions=read("music.smoothTransitions",false,v=>typeof v==='boolean');
+ const sampleRateMatching=read<'smart'|'strict'|'off'>("music.sampleRateMatching","smart",v=>v==='smart'||v==='strict'||v==='off');
+ return Object.freeze({neverBoost,smoothTransitions,sampleRateMatching,gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfadeMs/1000))),normalization});
 }
 
 /** Whether this device can render effects for what's playing now: undefined when nothing tells

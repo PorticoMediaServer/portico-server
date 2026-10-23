@@ -1,6 +1,9 @@
 package playback
 
-import "portico.local/server/internal/decoder"
+import (
+	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/qualityladder"
+)
 
 // DeliveryConfiguration is the owner-administered half of delivery planning.
 // Playback never reads the administration package: the owner settings registry
@@ -25,10 +28,11 @@ type DeliveryConfiguration struct {
 	RemuxEnabled           bool `json:"remuxEnabled"`
 
 	// Server clamps narrow every viewer preference. Zero means "no clamp".
-	MaxVideoBitrateBPS int  `json:"maxVideoBitrateBps"`
-	MaxAudioBitrateBPS int  `json:"maxAudioBitrateBps"`
-	MaxVideoHeight     int  `json:"maxVideoHeight"`
-	AllowHDR           bool `json:"allowHDR"`
+	MaxVideoBitrateBPS int    `json:"maxVideoBitrateBps"`
+	MaxAudioBitrateBPS int    `json:"maxAudioBitrateBps"`
+	MaxVideoHeight     int    `json:"maxVideoHeight"`
+	MaxMusicQuality    string `json:"maxMusicQuality"`
+	AllowHDR           bool   `json:"allowHDR"`
 
 	// Owner ceilings on simultaneous conversions. Zero means unlimited; the
 	// host-capacity bound on running converters still applies underneath. A
@@ -66,6 +70,7 @@ func validPlanningPolicy(p string) bool {
 func DefaultDeliveryConfiguration() DeliveryConfiguration {
 	return DeliveryConfiguration{
 		HardwareBackend:        "auto",
+		MaxMusicQuality:        "original",
 		SessionStorageMiB:      4096,
 		ToneMapping:            true,
 		ToneMapAlgorithm:       decoder.DefaultToneMapAlgorithm,
@@ -83,6 +88,9 @@ func DefaultDeliveryConfiguration() DeliveryConfiguration {
 // default for that field alone.
 func (c DeliveryConfiguration) Normalized() DeliveryConfiguration {
 	d := DefaultDeliveryConfiguration()
+	if _, ok := qualityladder.FindMusic(c.MaxMusicQuality); !ok {
+		c.MaxMusicQuality = "original"
+	}
 	if c.SessionStorageMiB < 64 || c.SessionStorageMiB > 1048576 {
 		c.SessionStorageMiB = d.SessionStorageMiB
 	}

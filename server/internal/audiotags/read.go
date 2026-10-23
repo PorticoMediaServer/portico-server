@@ -32,11 +32,13 @@ type Chapter struct {
 	Start, End float64
 }
 type Tags struct {
-	Values   map[string][]string
-	Pictures []Picture
-	Lyrics   []Lyric
-	Chapters []Chapter
-	Warnings []string
+	Lossless  *bool
+	Values    map[string][]string
+	Pictures  []Picture
+	Lyrics    []Lyric
+	CueTracks []Chapter
+	Chapters  []Chapter
+	Warnings  []string
 }
 type reader struct {
 	r          io.ReaderAt
@@ -47,7 +49,22 @@ type reader struct {
 
 func Read(r io.ReaderAt, size int64) Tags {
 	p := &reader{r: r, size: size, out: Tags{Values: map[string][]string{}}}
-	h := p.at(0, 12)
+	h := p.at(0, 16)
+	if len(h) >= 4 && string(h[:4]) == "wvpk" {
+		if raw := p.at(24, 4); len(raw) == 4 {
+			v := binary.LittleEndian.Uint32(raw)&8 == 0
+			p.out.Lossless = &v
+		}
+	}
+	if len(h) >= 16 && string(h[:4]) == "FRM8" && string(h[12:16]) == "DSD " {
+		p.dff()
+	}
+	if len(h) >= 4 && string(h[:4]) == "\x1a\x45\xdf\xa3" {
+		p.ebml(0, size, 0)
+	}
+	if len(h) >= 16 && string(h[:16]) == "\x30\x26\xb2\x75\x8e\x66\xcf\x11\xa6\xd9\x00\xaa\x00\x62\xce\x6c" {
+		p.asf()
+	}
 	if len(h) >= 4 && string(h[:4]) == "DSD " {
 		v := p.at(20, 8)
 		if len(v) == 8 {
@@ -528,6 +545,7 @@ func (p *reader) comments(b []byte) {
 	}
 }
 func (p *reader) flac() {
+	rate := 0
 	off := int64(4)
 	for i := 0; i < 256; i++ {
 		h := p.at(off, 4)
@@ -535,6 +553,15 @@ func (p *reader) flac() {
 			return
 		}
 		n := int64(h[1])<<16 | int64(h[2])<<8 | int64(h[3])
+		if h[0]&127 == 0 {
+			b := p.at(off+4, n)
+			if len(b) >= 18 {
+				rate = int(binary.BigEndian.Uint64(b[10:18]) >> 44)
+			}
+		}
+		if h[0]&127 == 5 {
+			p.flacCue(p.at(off+4, n), rate)
+		}
 		if h[0]&127 == 4 {
 			p.comments(p.at(off+4, n))
 		}

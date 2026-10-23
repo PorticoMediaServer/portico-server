@@ -615,6 +615,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -652,6 +655,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -678,6 +711,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -1504,6 +1542,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -1541,6 +1582,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -1567,6 +1638,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -2593,6 +2669,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -2630,6 +2709,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -2656,6 +2765,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -8082,6 +8196,9 @@
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -8119,6 +8236,36 @@
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -8145,6 +8292,11 @@
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -8919,6 +9071,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -8956,6 +9111,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -8982,6 +9167,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -13082,6 +13272,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -13119,6 +13312,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -13145,6 +13368,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -28665,6 +28893,35 @@
                     }
                   ]
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "available": {
                   "type": "boolean"
                 },
@@ -29326,6 +29583,35 @@
                       "type": "null"
                     }
                   ]
+                },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
                 },
                 "available": {
                   "type": "boolean"
@@ -30114,14 +30400,32 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "dsdGainDb": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "gapless": {
+                    "type": "boolean"
+                  },
+                  "neverBoost": {
                     "type": "boolean"
                   },
                   "normalization": {
                     "type": "string"
+                  },
+                  "sampleRateMatching": {
+                    "type": "string"
+                  },
+                  "smoothTransitions": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
+                  "neverBoost",
+                  "smoothTransitions",
+                  "sampleRateMatching",
+                  "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
                   "normalization"
@@ -31216,6 +31520,35 @@
                       "type": "null"
                     }
                   ]
+                },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
                 },
                 "available": {
                   "type": "boolean"
@@ -66473,6 +66806,35 @@
                   }
                 ]
               },
+              "audioFacts": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "lossless": {
+                    "type": "boolean"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
               "available": {
                 "type": "boolean"
               },
@@ -92313,6 +92675,35 @@
               }
             ]
           },
+          "audioFacts": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "lossless": {
+                "type": "boolean"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "codec"
+            ],
+            "type": "object"
+          },
           "available": {
             "type": "boolean"
           },
@@ -94240,6 +94631,35 @@
                     }
                   ]
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "available": {
                   "type": "boolean"
                 },
@@ -96103,6 +96523,35 @@
                       "type": "null"
                     }
                   ]
+                },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
                 },
                 "available": {
                   "type": "boolean"
@@ -115086,6 +115535,9 @@
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -115123,6 +115575,36 @@
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -115149,6 +115631,11 @@
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -119010,14 +119497,32 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "dsdGainDb": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "gapless": {
+                    "type": "boolean"
+                  },
+                  "neverBoost": {
                     "type": "boolean"
                   },
                   "normalization": {
                     "type": "string"
+                  },
+                  "sampleRateMatching": {
+                    "type": "string"
+                  },
+                  "smoothTransitions": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
+                  "neverBoost",
+                  "smoothTransitions",
+                  "sampleRateMatching",
+                  "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
                   "normalization"
@@ -127975,6 +128480,35 @@
                     }
                   ]
                 },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
+                },
                 "available": {
                   "type": "boolean"
                 },
@@ -128609,6 +129143,35 @@
                       "type": "null"
                     }
                   ]
+                },
+                "audioFacts": {
+                  "properties": {
+                    "bitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "lossless": {
+                      "type": "boolean"
+                    },
+                    "sampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "codec"
+                  ],
+                  "type": "object"
                 },
                 "available": {
                   "type": "boolean"
@@ -158681,6 +159244,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -158718,6 +159284,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -158744,6 +159340,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -161383,14 +161984,32 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "dsdGainDb": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "gapless": {
+                    "type": "boolean"
+                  },
+                  "neverBoost": {
                     "type": "boolean"
                   },
                   "normalization": {
                     "type": "string"
+                  },
+                  "sampleRateMatching": {
+                    "type": "string"
+                  },
+                  "smoothTransitions": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
+                  "neverBoost",
+                  "smoothTransitions",
+                  "sampleRateMatching",
+                  "dsdGainDb",
                   "gapless",
                   "crossfadeMs",
                   "normalization"
@@ -185548,6 +186167,9 @@
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -185585,6 +186207,36 @@
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -185611,6 +186263,11 @@
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -195645,6 +196302,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -195682,6 +196342,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -195708,6 +196398,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -208010,6 +208705,9 @@
                   "container": {
                     "type": "string"
                   },
+                  "conversionGainDb": {
+                    "type": "number"
+                  },
                   "decoderConfig": {
                     "type": "string"
                   },
@@ -208047,6 +208745,36 @@
                   "id": {
                     "type": "string"
                   },
+                  "loudnessAppliedDb": {
+                    "type": "number"
+                  },
+                  "loudnessEnvelope": {
+                    "properties": {
+                      "endLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "intervalMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "startLufs": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "intervalMs",
+                      "startLufs",
+                      "endLufs"
+                    ],
+                    "type": "object"
+                  },
                   "mode": {
                     "type": "string"
                   },
@@ -208073,6 +208801,11 @@
                       "url"
                     ],
                     "type": "object"
+                  },
+                  "sourceBitrateBps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "trim": {
                     "properties": {
@@ -209046,6 +209779,9 @@
                       "container": {
                         "type": "string"
                       },
+                      "conversionGainDb": {
+                        "type": "number"
+                      },
                       "decoderConfig": {
                         "type": "string"
                       },
@@ -209083,6 +209819,36 @@
                       "id": {
                         "type": "string"
                       },
+                      "loudnessAppliedDb": {
+                        "type": "number"
+                      },
+                      "loudnessEnvelope": {
+                        "properties": {
+                          "endLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          },
+                          "intervalMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startLufs": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "intervalMs",
+                          "startLufs",
+                          "endLufs"
+                        ],
+                        "type": "object"
+                      },
                       "mode": {
                         "type": "string"
                       },
@@ -209109,6 +209875,11 @@
                           "url"
                         ],
                         "type": "object"
+                      },
+                      "sourceBitrateBps": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "trim": {
                         "properties": {
@@ -254580,6 +255351,35 @@
                               }
                             ]
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "available": {
                             "type": "boolean"
                           },
@@ -257509,6 +258309,35 @@
                               }
                             ]
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "available": {
                             "type": "boolean"
                           },
@@ -258444,14 +259273,32 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "dsdGainDb": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "gapless": {
+                              "type": "boolean"
+                            },
+                            "neverBoost": {
                               "type": "boolean"
                             },
                             "normalization": {
                               "type": "string"
+                            },
+                            "sampleRateMatching": {
+                              "type": "string"
+                            },
+                            "smoothTransitions": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
+                            "neverBoost",
+                            "smoothTransitions",
+                            "sampleRateMatching",
+                            "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
                             "normalization"
@@ -263065,6 +263912,35 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
                           },
                           "available": {
                             "type": "boolean"
@@ -326630,6 +327506,35 @@
                               }
                             ]
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "available": {
                             "type": "boolean"
                           },
@@ -327370,6 +328275,35 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "audioFacts": {
+                      "properties": {
+                        "bitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "lossless": {
+                          "type": "boolean"
+                        },
+                        "sampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "codec"
+                      ],
+                      "type": "object"
                     },
                     "available": {
                       "type": "boolean"
@@ -331544,6 +332478,35 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "audioFacts": {
+                          "properties": {
+                            "bitDepth": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "channels": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "codec": {
+                              "type": "string"
+                            },
+                            "lossless": {
+                              "type": "boolean"
+                            },
+                            "sampleRate": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "codec"
+                          ],
+                          "type": "object"
                         },
                         "available": {
                           "type": "boolean"
@@ -369155,6 +370118,35 @@
                               }
                             ]
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "available": {
                             "type": "boolean"
                           },
@@ -405169,6 +406161,9 @@
                             "container": {
                               "type": "string"
                             },
+                            "conversionGainDb": {
+                              "type": "number"
+                            },
                             "decoderConfig": {
                               "type": "string"
                             },
@@ -405206,6 +406201,36 @@
                             "id": {
                               "type": "string"
                             },
+                            "loudnessAppliedDb": {
+                              "type": "number"
+                            },
+                            "loudnessEnvelope": {
+                              "properties": {
+                                "endLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                },
+                                "intervalMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "intervalMs",
+                                "startLufs",
+                                "endLufs"
+                              ],
+                              "type": "object"
+                            },
                             "mode": {
                               "type": "string"
                             },
@@ -405232,6 +406257,11 @@
                                 "url"
                               ],
                               "type": "object"
+                            },
+                            "sourceBitrateBps": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "trim": {
                               "properties": {
@@ -405925,6 +406955,9 @@
                             "container": {
                               "type": "string"
                             },
+                            "conversionGainDb": {
+                              "type": "number"
+                            },
                             "decoderConfig": {
                               "type": "string"
                             },
@@ -405962,6 +406995,36 @@
                             "id": {
                               "type": "string"
                             },
+                            "loudnessAppliedDb": {
+                              "type": "number"
+                            },
+                            "loudnessEnvelope": {
+                              "properties": {
+                                "endLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                },
+                                "intervalMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "intervalMs",
+                                "startLufs",
+                                "endLufs"
+                              ],
+                              "type": "object"
+                            },
                             "mode": {
                               "type": "string"
                             },
@@ -405988,6 +407051,11 @@
                                 "url"
                               ],
                               "type": "object"
+                            },
+                            "sourceBitrateBps": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "trim": {
                               "properties": {
@@ -406726,6 +407794,9 @@
                             "container": {
                               "type": "string"
                             },
+                            "conversionGainDb": {
+                              "type": "number"
+                            },
                             "decoderConfig": {
                               "type": "string"
                             },
@@ -406763,6 +407834,36 @@
                             "id": {
                               "type": "string"
                             },
+                            "loudnessAppliedDb": {
+                              "type": "number"
+                            },
+                            "loudnessEnvelope": {
+                              "properties": {
+                                "endLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                },
+                                "intervalMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "intervalMs",
+                                "startLufs",
+                                "endLufs"
+                              ],
+                              "type": "object"
+                            },
                             "mode": {
                               "type": "string"
                             },
@@ -406789,6 +407890,11 @@
                                 "url"
                               ],
                               "type": "object"
+                            },
+                            "sourceBitrateBps": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "trim": {
                               "properties": {
@@ -412630,14 +413736,32 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "dsdGainDb": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "gapless": {
+                              "type": "boolean"
+                            },
+                            "neverBoost": {
                               "type": "boolean"
                             },
                             "normalization": {
                               "type": "string"
+                            },
+                            "sampleRateMatching": {
+                              "type": "string"
+                            },
+                            "smoothTransitions": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
+                            "neverBoost",
+                            "smoothTransitions",
+                            "sampleRateMatching",
+                            "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
                             "normalization"
@@ -412923,14 +414047,32 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "dsdGainDb": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "gapless": {
+                              "type": "boolean"
+                            },
+                            "neverBoost": {
                               "type": "boolean"
                             },
                             "normalization": {
                               "type": "string"
+                            },
+                            "sampleRateMatching": {
+                              "type": "string"
+                            },
+                            "smoothTransitions": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
+                            "neverBoost",
+                            "smoothTransitions",
+                            "sampleRateMatching",
+                            "dsdGainDb",
                             "gapless",
                             "crossfadeMs",
                             "normalization"
@@ -414054,6 +415196,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -414091,6 +415236,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -414117,6 +415292,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -415322,6 +416502,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -415359,6 +416542,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -415385,6 +416598,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -416413,6 +417631,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -416450,6 +417671,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -416476,6 +417727,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -417598,6 +418854,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -417635,6 +418894,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -417661,6 +418950,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -418570,6 +419864,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -418607,6 +419904,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -418633,6 +419960,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -419858,6 +421190,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -419895,6 +421230,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -419921,6 +421286,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -421056,6 +422426,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -421093,6 +422466,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -421119,6 +422522,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -422025,6 +423433,9 @@
                                 "container": {
                                   "type": "string"
                                 },
+                                "conversionGainDb": {
+                                  "type": "number"
+                                },
                                 "decoderConfig": {
                                   "type": "string"
                                 },
@@ -422062,6 +423473,36 @@
                                 "id": {
                                   "type": "string"
                                 },
+                                "loudnessAppliedDb": {
+                                  "type": "number"
+                                },
+                                "loudnessEnvelope": {
+                                  "properties": {
+                                    "endLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "intervalMs": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "startLufs": {
+                                      "items": {
+                                        "type": "number"
+                                      },
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "intervalMs",
+                                    "startLufs",
+                                    "endLufs"
+                                  ],
+                                  "type": "object"
+                                },
                                 "mode": {
                                   "type": "string"
                                 },
@@ -422088,6 +423529,11 @@
                                     "url"
                                   ],
                                   "type": "object"
+                                },
+                                "sourceBitrateBps": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "trim": {
                                   "properties": {
@@ -422797,6 +424243,9 @@
                             "container": {
                               "type": "string"
                             },
+                            "conversionGainDb": {
+                              "type": "number"
+                            },
                             "decoderConfig": {
                               "type": "string"
                             },
@@ -422834,6 +424283,36 @@
                             "id": {
                               "type": "string"
                             },
+                            "loudnessAppliedDb": {
+                              "type": "number"
+                            },
+                            "loudnessEnvelope": {
+                              "properties": {
+                                "endLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                },
+                                "intervalMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "startLufs": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "intervalMs",
+                                "startLufs",
+                                "endLufs"
+                              ],
+                              "type": "object"
+                            },
                             "mode": {
                               "type": "string"
                             },
@@ -422860,6 +424339,11 @@
                                 "url"
                               ],
                               "type": "object"
+                            },
+                            "sourceBitrateBps": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "trim": {
                               "properties": {
@@ -436120,6 +437604,35 @@
                               }
                             ]
                           },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
+                          },
                           "available": {
                             "type": "boolean"
                           },
@@ -437913,6 +439426,35 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "audioFacts": {
+                            "properties": {
+                              "bitDepth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "codec": {
+                                "type": "string"
+                              },
+                              "lossless": {
+                                "type": "boolean"
+                              },
+                              "sampleRate": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "codec"
+                            ],
+                            "type": "object"
                           },
                           "available": {
                             "type": "boolean"

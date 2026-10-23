@@ -80,24 +80,14 @@ export const canonicalMusicQualityLadder = [
     "dataMBPerHour": 0
   },
   {
+    "id": "cd-quality",
+    "audioKbps": 0,
+    "dataMBPerHour": 0
+  },
+  {
     "id": "320",
     "audioKbps": 320,
     "dataMBPerHour": 144
-  },
-  {
-    "id": "256",
-    "audioKbps": 256,
-    "dataMBPerHour": 115.2
-  },
-  {
-    "id": "192",
-    "audioKbps": 192,
-    "dataMBPerHour": 86.4
-  },
-  {
-    "id": "128",
-    "audioKbps": 128,
-    "dataMBPerHour": 57.6
   },
   {
     "id": "96",
