@@ -41,8 +41,9 @@ def pes(data, pts, dts):
 
 
 class Writer:
-    def __init__(self):
+    def __init__(self, private_mode=None, hevc_descriptor=b""):
         self.continuity, self.packets = {}, []
+        self.private_mode, self.hevc_descriptor = private_mode, hevc_descriptor
 
     def packetize(self, pid, data, pcr=None):
         first = True
@@ -73,12 +74,13 @@ class Writer:
         self.packetize(0, b"\0" + section(0, header + b"\0\1" + (0xe000 | PMT).to_bytes(2, "big")))
         entries = bytearray()
         for pid in (BL, EL):
-            descriptors = b""
+            descriptors = self.hevc_descriptor if self.private_mode != "no-hevc" else b""
             if pid == EL and dependency is not None:
-                descriptors = (b"\x05\x04DOVI\xb0\x07\x01\0" +
+                descriptors += ((b"\x05\x04DOVI" if self.private_mode != "no-registration" else b"") + b"\xb0\x07\x01\0" +
                                ((7 << 9) | (1 << 3) | 6).to_bytes(2, "big") +
                                (dependency << 3).to_bytes(2, "big") + b"\x60")
-            entries += bytes([0x24]) + (0xe000 | pid).to_bytes(2, "big") + (0xf000 | len(descriptors)).to_bytes(2, "big") + descriptors
+            stream_type = 0x06 if pid == EL and self.private_mode else 0x24
+            entries += bytes([stream_type]) + (0xe000 | pid).to_bytes(2, "big") + (0xf000 | len(descriptors)).to_bytes(2, "big") + descriptors
         self.packetize(PMT, b"\0" + section(2, header + (0xe000 | BL).to_bytes(2, "big") + b"\xf0\0" + entries))
 
     def bytes(self):
@@ -105,6 +107,21 @@ def access_units(probe, path):
     return units
 
 
+def hevc_descriptor(path):
+    """Copy the fixture's actual VPS general PTL into its video descriptor."""
+    raw = path.read_bytes()
+    starts = list(re.finditer(b"\x00\x00\x00\x01|\x00\x00\x01", raw))
+    for i, match in enumerate(starts):
+        nal = raw[match.end():starts[i + 1].start() if i + 1 < len(starts) else len(raw)]
+        if (nal[0] >> 1) & 63 != 32:
+            continue
+        rbsp = re.sub(b"\x00\x00\x03", b"\x00\x00", nal[2:])
+        if len(rbsp) < 16 or rbsp[2:4] != b"\xff\xff" or not rbsp[15]:
+            raise ValueError("fixture VPS general profile/tier/level unavailable")
+        return b"\x38\x0d" + rbsp[4:16] + b"\x0f"
+    raise ValueError("fixture has no VPS")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ffprobe", type=Path, required=True)
@@ -124,7 +141,9 @@ def main():
                 ("corrupt-rpu", "FEL", "crc"), ("wrong-rpu-profile", "MEL", "profile"),
                 ("missing-clock", "FEL", "clock"), ("removed-descriptor", "MEL", "remove"),
                 ("pmt-version-only", "FEL", "version"), ("queue-bound", "MEL", "queue"),
-                ("m2ts-fel", "FEL", "m2ts")]
+                ("m2ts-fel", "FEL", "m2ts"), ("generic-private", "FEL", "private"),
+                ("private-missing-hevc", "FEL", "no-hevc"),
+                ("private-missing-registration", "MEL", "no-registration")]
     replacement_data = (args.fixtures / "dv-8.1.hevc").read_bytes()
     replacement_starts = list(re.finditer(b"\x00\x00\x00\x01|\x00\x00\x01", replacement_data))
     replacements = [replacement_data[m.end():replacement_starts[i + 1].start() if i + 1 < len(replacement_starts) else len(replacement_data)]
@@ -135,7 +154,8 @@ def main():
         enhancement = access_units(args.ffprobe, args.fixtures / f"enhancement-{layer}.hevc")
         if [p for _, p in base] != [p for _, p in enhancement]:
             raise ValueError("actual BL/EL coded picture order differs")
-        writer = Writer()
+        private = mode if mode in ("private", "no-hevc", "no-registration") else None
+        writer = Writer(private, hevc_descriptor(args.fixtures / f"enhancement-{layer}.hevc") if private else b"")
         dependency = None if mode == "no-descriptor" else BL + 1 if mode == "dependency" else BL
         writer.tables(dependency)
         clocks = []
@@ -195,7 +215,7 @@ def main():
         path = args.output / (name + (".m2ts" if mode == "m2ts" else ".ts"))
         path.write_bytes(data)
         results.append({"path": path.name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
-                        "expected": "joined24" if mode in ("normal", "el-first", "split", "version", "m2ts") else
+                        "expected": "joined24" if mode in ("normal", "el-first", "split", "version", "m2ts", "private") else
                                     "unjoined" if mode == "no-descriptor" else "refused",
                         "layer": layer, "sourcePacketClocks": clocks})
     version = subprocess.check_output([str(args.ffprobe), "-version"], timeout=10, text=True).splitlines()[0]

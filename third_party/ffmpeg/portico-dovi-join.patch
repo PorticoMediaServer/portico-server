@@ -103,7 +103,45 @@
  
      av_log(ts->stream, AV_LOG_TRACE, "sid=0x%x sec_num=%d/%d version=%d tid=%d\n",
              h->id, h->sec_num, h->last_sec_num, h->version, h->tid);
-@@ -2760,6 +2807,16 @@
+@@ -2740,6 +2787,37 @@
+         desc_list_end  = p + desc_list_len;
+         if (desc_list_end > p_end)
+             goto out;
++#if CONFIG_LIBDOVI
++        /* Generic Dolby dual-PID transport carries EL/RPU as private PES.
++         * Both declarations are required before using the HEVC parser. The
++         * DOVI descriptor below still supplies profile/flags/dependency, and
++         * the join separately validates every RPU, picture and source clock. */
++        if (ts->merge_dovi && stream_type == STREAM_TYPE_PRIVATE_DATA) {
++            const uint8_t *desc = p;
++            int dovi_registered = 0, hevc_declared = 0, valid = 1;
++            while (desc_list_end - desc >= 2) {
++                int tag = desc[0], length = desc[1];
++                desc += 2;
++                if (length > desc_list_end - desc) {
++                    valid = 0;
++                    break;
++                }
++                if (tag == REGISTRATION_DESCRIPTOR && length >= 4 &&
++                    !memcmp(desc, "DOVI", 4))
++                    dovi_registered = 1;
++                if (tag == 0x38 && length >= 13) // HEVC video descriptor
++                    hevc_declared = 1;
++                desc += length;
++            }
++            if (valid && desc == desc_list_end && dovi_registered && hevc_declared) {
++                st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
++                st->codecpar->codec_id = AV_CODEC_ID_HEVC;
++                ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL;
++                ffstream(st)->request_probe = 0;
++                ffstream(st)->need_context_update = 1;
++            }
++        }
++#endif
+         for (;;) {
+             if (ff_parse_mpeg2_descriptor(ts->stream, st, stream_type, h->id, &p,
+                                           desc_list_end, mp4_descr,
+@@ -2760,6 +2836,16 @@
          mpegts_open_pcr_filter(ts, pcr_pid);
  
  out:
@@ -120,7 +158,7 @@
      for (i = 0; i < mp4_descr_count; i++)
          av_free(mp4_descr[i].dec_config_descr);
  }
-@@ -3223,6 +3280,13 @@
+@@ -3223,6 +3309,13 @@
      if (avio_tell(s->pb) != ts->last_pos) {
          int i;
          av_log(ts->stream, AV_LOG_TRACE, "Skipping after seek\n");
@@ -134,7 +172,7 @@
          /* seek detected, flush pes buffer */
          for (i = 0; i < NB_PID_MAX; i++) {
              if (ts->pids[i]) {
-@@ -3491,7 +3555,7 @@
+@@ -3491,7 +3584,7 @@
      return 0;
  }
  
@@ -143,7 +181,7 @@
  {
      MpegTSContext *ts = s->priv_data;
      int ret, i;
-@@ -3521,10 +3585,104 @@
+@@ -3521,10 +3614,104 @@
      return ret;
  }
  
@@ -406,7 +444,7 @@
 +{
 +    if (*out || bl == el || bl->codecpar->codec_id != AV_CODEC_ID_HEVC || el->codecpar->codec_id != AV_CODEC_ID_HEVC ||
 +        av_cmp_q(bl->time_base, el->time_base))
-+        return AVERROR(EINVAL);
++        return AVERROR_INVALIDDATA;
 +    FFDoviJoin *join = av_mallocz(sizeof(*join));
 +    if (!join)
 +        return AVERROR(ENOMEM);

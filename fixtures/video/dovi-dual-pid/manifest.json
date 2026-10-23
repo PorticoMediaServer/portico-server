@@ -4,10 +4,10 @@
   "source": "procedural HDR fixtures; authored test TS/PMT/PES clocks, no real licensed media",
   "scope": "structural dual-PID transport torture inputs; no mastered FEL residual or target claim",
   "sourceManifestSha256": "3a750950d94101e0b8460314da28f3b5babb372b55a3ecbe33ab02304aaeb6ee",
-  "generatorSha256": "d678c53387eef7b35fe20b7c96e4cd99abebbc4f1aa89a642d5095e258a2c2d0",
+  "generatorSha256": "96d99ebb7a2e26d2ae25f8d7a53511f4f3ed70a3fbff01dacf4947b3c1bde7d3",
   "ffprobe": {
     "version": "ffprobe version 8.1.3 Copyright (c) 2007-2026 the FFmpeg developers",
-    "sha256": "dd595dffdc45e900c0df29d7b688af0a6d36b905da953b38d32943fccfda54ee"
+    "sha256": "9b44cbed44462254b448f801c422ae89b174dcdd24e746fd956bfd91b277175b"
   },
   "basePid": 4113,
   "enhancementPid": 4117,
@@ -1962,6 +1962,393 @@
       "bytes": 49536,
       "expected": "joined24",
       "layer": "FEL",
+      "sourcePacketClocks": [
+        {
+          "pts": 180000,
+          "dts": 168750,
+          "displayIndex": 0
+        },
+        {
+          "pts": 191250,
+          "dts": 172500,
+          "displayIndex": 3
+        },
+        {
+          "pts": 187500,
+          "dts": 176250,
+          "displayIndex": 2
+        },
+        {
+          "pts": 183750,
+          "dts": 180000,
+          "displayIndex": 1
+        },
+        {
+          "pts": 202500,
+          "dts": 183750,
+          "displayIndex": 6
+        },
+        {
+          "pts": 198750,
+          "dts": 187500,
+          "displayIndex": 5
+        },
+        {
+          "pts": 195000,
+          "dts": 191250,
+          "displayIndex": 4
+        },
+        {
+          "pts": 213750,
+          "dts": 195000,
+          "displayIndex": 9
+        },
+        {
+          "pts": 210000,
+          "dts": 198750,
+          "displayIndex": 8
+        },
+        {
+          "pts": 206250,
+          "dts": 202500,
+          "displayIndex": 7
+        },
+        {
+          "pts": 225750,
+          "dts": 206250,
+          "displayIndex": 12
+        },
+        {
+          "pts": 221250,
+          "dts": 210000,
+          "displayIndex": 11
+        },
+        {
+          "pts": 217500,
+          "dts": 214500,
+          "displayIndex": 10
+        },
+        {
+          "pts": 237000,
+          "dts": 218250,
+          "displayIndex": 15
+        },
+        {
+          "pts": 233250,
+          "dts": 222000,
+          "displayIndex": 14
+        },
+        {
+          "pts": 229500,
+          "dts": 225750,
+          "displayIndex": 13
+        },
+        {
+          "pts": 248250,
+          "dts": 229500,
+          "displayIndex": 18
+        },
+        {
+          "pts": 244500,
+          "dts": 233250,
+          "displayIndex": 17
+        },
+        {
+          "pts": 240750,
+          "dts": 237000,
+          "displayIndex": 16
+        },
+        {
+          "pts": 259500,
+          "dts": 240750,
+          "displayIndex": 21
+        },
+        {
+          "pts": 255750,
+          "dts": 244500,
+          "displayIndex": 20
+        },
+        {
+          "pts": 252000,
+          "dts": 248250,
+          "displayIndex": 19
+        },
+        {
+          "pts": 267000,
+          "dts": 252000,
+          "displayIndex": 23
+        },
+        {
+          "pts": 263250,
+          "dts": 255750,
+          "displayIndex": 22
+        }
+      ]
+    },
+    {
+      "path": "generic-private.ts",
+      "sha256": "9c0d87bd757433c6c21809918e61629bb6255cb3d28889688bd4680ef5cbdf4b",
+      "bytes": 48504,
+      "expected": "joined24",
+      "layer": "FEL",
+      "sourcePacketClocks": [
+        {
+          "pts": 180000,
+          "dts": 168750,
+          "displayIndex": 0
+        },
+        {
+          "pts": 191250,
+          "dts": 172500,
+          "displayIndex": 3
+        },
+        {
+          "pts": 187500,
+          "dts": 176250,
+          "displayIndex": 2
+        },
+        {
+          "pts": 183750,
+          "dts": 180000,
+          "displayIndex": 1
+        },
+        {
+          "pts": 202500,
+          "dts": 183750,
+          "displayIndex": 6
+        },
+        {
+          "pts": 198750,
+          "dts": 187500,
+          "displayIndex": 5
+        },
+        {
+          "pts": 195000,
+          "dts": 191250,
+          "displayIndex": 4
+        },
+        {
+          "pts": 213750,
+          "dts": 195000,
+          "displayIndex": 9
+        },
+        {
+          "pts": 210000,
+          "dts": 198750,
+          "displayIndex": 8
+        },
+        {
+          "pts": 206250,
+          "dts": 202500,
+          "displayIndex": 7
+        },
+        {
+          "pts": 225750,
+          "dts": 206250,
+          "displayIndex": 12
+        },
+        {
+          "pts": 221250,
+          "dts": 210000,
+          "displayIndex": 11
+        },
+        {
+          "pts": 217500,
+          "dts": 214500,
+          "displayIndex": 10
+        },
+        {
+          "pts": 237000,
+          "dts": 218250,
+          "displayIndex": 15
+        },
+        {
+          "pts": 233250,
+          "dts": 222000,
+          "displayIndex": 14
+        },
+        {
+          "pts": 229500,
+          "dts": 225750,
+          "displayIndex": 13
+        },
+        {
+          "pts": 248250,
+          "dts": 229500,
+          "displayIndex": 18
+        },
+        {
+          "pts": 244500,
+          "dts": 233250,
+          "displayIndex": 17
+        },
+        {
+          "pts": 240750,
+          "dts": 237000,
+          "displayIndex": 16
+        },
+        {
+          "pts": 259500,
+          "dts": 240750,
+          "displayIndex": 21
+        },
+        {
+          "pts": 255750,
+          "dts": 244500,
+          "displayIndex": 20
+        },
+        {
+          "pts": 252000,
+          "dts": 248250,
+          "displayIndex": 19
+        },
+        {
+          "pts": 267000,
+          "dts": 252000,
+          "displayIndex": 23
+        },
+        {
+          "pts": 263250,
+          "dts": 255750,
+          "displayIndex": 22
+        }
+      ]
+    },
+    {
+      "path": "private-missing-hevc.ts",
+      "sha256": "572db55e2b92ecd3418addaa72e97ef4b4e3dfab20cee1e1ed2058d749ebb497",
+      "bytes": 48504,
+      "expected": "refused",
+      "layer": "FEL",
+      "sourcePacketClocks": [
+        {
+          "pts": 180000,
+          "dts": 168750,
+          "displayIndex": 0
+        },
+        {
+          "pts": 191250,
+          "dts": 172500,
+          "displayIndex": 3
+        },
+        {
+          "pts": 187500,
+          "dts": 176250,
+          "displayIndex": 2
+        },
+        {
+          "pts": 183750,
+          "dts": 180000,
+          "displayIndex": 1
+        },
+        {
+          "pts": 202500,
+          "dts": 183750,
+          "displayIndex": 6
+        },
+        {
+          "pts": 198750,
+          "dts": 187500,
+          "displayIndex": 5
+        },
+        {
+          "pts": 195000,
+          "dts": 191250,
+          "displayIndex": 4
+        },
+        {
+          "pts": 213750,
+          "dts": 195000,
+          "displayIndex": 9
+        },
+        {
+          "pts": 210000,
+          "dts": 198750,
+          "displayIndex": 8
+        },
+        {
+          "pts": 206250,
+          "dts": 202500,
+          "displayIndex": 7
+        },
+        {
+          "pts": 225750,
+          "dts": 206250,
+          "displayIndex": 12
+        },
+        {
+          "pts": 221250,
+          "dts": 210000,
+          "displayIndex": 11
+        },
+        {
+          "pts": 217500,
+          "dts": 214500,
+          "displayIndex": 10
+        },
+        {
+          "pts": 237000,
+          "dts": 218250,
+          "displayIndex": 15
+        },
+        {
+          "pts": 233250,
+          "dts": 222000,
+          "displayIndex": 14
+        },
+        {
+          "pts": 229500,
+          "dts": 225750,
+          "displayIndex": 13
+        },
+        {
+          "pts": 248250,
+          "dts": 229500,
+          "displayIndex": 18
+        },
+        {
+          "pts": 244500,
+          "dts": 233250,
+          "displayIndex": 17
+        },
+        {
+          "pts": 240750,
+          "dts": 237000,
+          "displayIndex": 16
+        },
+        {
+          "pts": 259500,
+          "dts": 240750,
+          "displayIndex": 21
+        },
+        {
+          "pts": 255750,
+          "dts": 244500,
+          "displayIndex": 20
+        },
+        {
+          "pts": 252000,
+          "dts": 248250,
+          "displayIndex": 19
+        },
+        {
+          "pts": 267000,
+          "dts": 252000,
+          "displayIndex": 23
+        },
+        {
+          "pts": 263250,
+          "dts": 255750,
+          "displayIndex": 22
+        }
+      ]
+    },
+    {
+      "path": "private-missing-registration.ts",
+      "sha256": "da81ab2a4c9f55886f330d801094c219e2a9e3932a28f55108c154b59319cf31",
+      "bytes": 48504,
+      "expected": "refused",
+      "layer": "MEL",
       "sourcePacketClocks": [
         {
           "pts": 180000,
