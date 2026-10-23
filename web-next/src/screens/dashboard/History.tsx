@@ -1,0 +1,55 @@
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {defaultI18n} from '@i18n';
+import type {PlayHistoryEntry, PlayHistoryFilters, PlayHistoryPeriod} from '@core/play-history.ts';
+import {SettingsTable, type TableQuery} from '../../kit/settings';
+import type {DashboardBindings} from './bindings';
+import {useDashboardAccounts, useDashboardRead} from './use-read';
+import {clock, mediaKinds} from './model';
+import {mediaLabel, ReadFeedback, t} from './shared';
+import styles from './dashboard.module.css';
+export function HistoryScreen({bindings: b, embedded = false}: {bindings: DashboardBindings; embedded?: boolean}) {
+  if (!b.isCurrent() || !b.isMainProfile() || b.role !== 'owner') return <p role="status">{t('next.dashboard.ownerOnly')}</p>;
+  return <div className={styles.dashboard}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.history')}</h2>}<HistoryTable bindings={b} /></div>;
+}
+function HistoryTable({bindings: b}: {bindings: DashboardBindings}) {
+  const [query, setQuery] = useState<TableQuery>({search: '', filters: {media: 'all', person: 'all', range: 'all'}, sort: {by: 'played', direction: 'desc'}});
+  const [settledQuery, settle] = useState(query), [cursor, setCursor] = useState(''), [rows, setRows] = useState<readonly PlayHistoryEntry[]>([]), [total, setTotal] = useState<number | undefined>();
+  const seen = useRef<unknown>(undefined);
+  useEffect(() => {const timer = setTimeout(() => {settle(query); setCursor(''); setRows([]); setTotal(undefined);}, query.search === settledQuery.search ? 0 : 250); return () => clearTimeout(timer);}, [query, settledQuery.search]);
+  const filters: PlayHistoryFilters = useMemo(() => ({period: settledQuery.filters.range as PlayHistoryPeriod, ...(settledQuery.filters.media === 'all' ? {} : {media: settledQuery.filters.media}), ...(settledQuery.filters.person === 'all' ? {} : {accountId: settledQuery.filters.person}), search: settledQuery.search, sort: ({played: 'started', for: 'watched', where: 'location'} as Record<string,string>)[settledQuery.sort.by] ?? settledQuery.sort.by, direction: settledQuery.sort.direction}), [settledQuery]);
+  const load = useCallback((signal: AbortSignal) => b.read.plays(filters, cursor, signal), [b, filters, cursor]);
+  const state = useDashboardRead(b, load, true, cursor ? 0 : 30000);
+  useEffect(() => {
+    const page = state.value; if (!page || page === seen.current) return; seen.current = page;
+    setRows(old => cursor ? [...old, ...page.entries.filter(entry => !old.some(previous => previous.id === entry.id))] : page.entries);
+    if (page.total !== undefined) setTotal(page.total);
+  }, [state.value, cursor]);
+  const people = useDashboardAccounts(b);
+  useEffect(() => {const reset = () => setCursor(''); const offs = ['session.updated', 'playback.history'].map(type => b.events?.on(type, reset)); return () => offs.forEach(off => off?.());}, [b]);
+  const tableRows = useMemo(() => rows.map(entry => {
+    const artwork = entry.itemId ? b.artwork(entry.itemId, entry.kind === 'song' || entry.kind === 'audiobook_file' ? 'square' : 'poster') : undefined;
+    return {id: entry.id, label: entry.title, cells: {
+      title: {title: entry.title, meta: [entry.parentTitle, entry.episode !== undefined && t('title.episodeCode', {season: entry.season ?? 0, episode: entry.episode})].filter(Boolean).join(' / '), image: artwork},
+      person: {title: entry.user || t('next.dashboard.removedPerson'), avatar: entry.user.slice(0, 1), meta: entry.profile},
+      player: {title: entry.platform ?? '', meta: entry.device},
+      played: {title: defaultI18n.date(Date.parse(entry.startedAt), 'medium'), meta: defaultI18n.time(Date.parse(entry.startedAt))},
+      for: {title: entry.watchedMs !== undefined ? clock(entry.watchedMs) : '—', ...(entry.durationSeconds > 0 ? {meta: t('next.dashboard.ofDuration', {duration: clock(entry.durationSeconds * 1000)})} : {})},
+      where: {title: entry.location === 'local' ? t('next.dashboard.home') : entry.location === 'remote' ? t('next.dashboard.away') : t('next.dashboard.unknownLocation'), tone: 'quiet' as const},
+    }};
+  }), [rows, b]);
+  return <><ReadFeedback state={state} /><SettingsTable label={t('next.dashboard.history')} searchLabel={t('next.dashboard.search')} rows={tableRows}
+    columns={[
+      {id: 'title', label: t('next.dashboard.titleColumn'), kind: 'main', sortable: true, width: '27%'},
+      {id: 'person', label: t('next.dashboard.person'), kind: 'main', sortable: true, width: '15%'},
+      {id: 'player', label: t('next.dashboard.player'), kind: 'text', sortable: true, width: '18%'},
+      {id: 'played', label: t('next.dashboard.played'), kind: 'text', sortable: true, width: '17%'},
+      {id: 'for', label: t('next.dashboard.playedFor'), kind: 'text', sortable: true, width: '12%'},
+      {id: 'where', label: t('next.dashboard.where'), kind: 'badge', sortable: true, width: '11%'},
+    ]} query={query} onQueryChange={next => {if (next.filters.person === '__more') people.loadMore(); else setQuery(next);}} filters={[
+      {id: 'media', label: t('next.dashboard.media'), options: ['all', ...mediaKinds].map(kind => ({value: kind, label: mediaLabel(kind)}))},
+      {id: 'person', label: t('next.dashboard.person'), options: [{value: 'all', label: t('next.dashboard.everyone')}, ...people.items.map(p => ({value: p.accountId, label: p.username})), ...(people.nextCursor ? [{value: '__more', label: t('next.dashboard.more')}] : [])]},
+      {id: 'range', label: t('next.dashboard.range'), options: ['today', '7d', '30d', 'all'].map(value => ({value: value === 'today' ? '24h' : value, label: t(`next.dashboard.${value}` as 'next.dashboard.all')}))},
+    ]} height={640} countLabel={t('next.dashboard.plays', {count: total ?? rows.length})} matchedCount={total ?? rows.length}
+    emptyLabel={t('next.dashboard.noMatch')} loading={state.loading} hasMore={!!state.value?.nextCursor} onLoadMore={() => setCursor(state.value!.nextCursor)} />
+  </>;
+}

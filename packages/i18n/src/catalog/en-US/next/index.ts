@@ -1,3 +1,4 @@
+import {dashboardMessages} from './dashboard.ts';
 import {platformMessages} from './platform.ts';
 import {controlsMessages} from './controls.ts';
 import {overlaysMessages} from './overlays.ts';
@@ -27,6 +28,7 @@ import {settingsMessages} from './settings.ts';
 import {settingsSpecMessages} from './settings-spec.ts';
 
 export const nextMessages = {
+  ...dashboardMessages,
   ...platformMessages,
   ...controlsMessages,
   ...overlaysMessages,
