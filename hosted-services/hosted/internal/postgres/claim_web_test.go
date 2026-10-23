@@ -40,7 +40,7 @@ func TestWebClaimApprovalPushAndAccountIsolation(t *testing.T) {
 		}
 		done <- e
 	}()
-	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "claim_profile", "", true, f.service); e != nil {
+	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "", true, f.service); e != nil {
 		t.Fatal(e)
 	}
 	select {
@@ -51,7 +51,7 @@ func TestWebClaimApprovalPushAndAccountIsolation(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("no approval push")
 	}
-	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "claim_profile", "", false, f.service); e == nil {
+	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "", false, f.service); e == nil {
 		t.Fatal("approved claim changed to denial")
 	}
 }
@@ -82,12 +82,12 @@ func TestUnboundWebClaimBindsTheApprover(t *testing.T) {
 	// The web page sends no owner profile when the account has only one; the
 	// approval then uses the account's own profile (it was refused as
 	// invalid_request, so no web claim could finish; demo, 24 Sep).
-	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "", "", true, f.service); e != nil {
+	if e = f.store.DecideWebClaim(ctx, f.expected, p.Code, "", true, f.service); e != nil {
 		t.Fatal(e)
 	}
-	var ownerProfile string
-	if e = f.store.DB.QueryRowContext(ctx, `SELECT owner_profile_id FROM claim_operations WHERE id=$1`, q.OperationID).Scan(&ownerProfile); e != nil || ownerProfile != "claim_profile" {
-		t.Fatalf("owner profile %q %v", ownerProfile, e)
+	var ownerAccount string
+	if e = f.store.DB.QueryRowContext(ctx, `SELECT account_id FROM claim_operations WHERE id=$1`, q.OperationID).Scan(&ownerAccount); e != nil || ownerAccount != f.expected.AccountID {
+		t.Fatalf("owner profile %q %v", ownerAccount, e)
 	}
 	var envelope struct {
 		Payload string `json:"payload"`
@@ -159,7 +159,7 @@ func TestWebClaimNewerRequestReplacesAnUndecidedOne(t *testing.T) {
 	if again.Code != first.Code || !again.ExpiresAt.Equal(newer.ExpiresAt) {
 		t.Fatalf("replacement kept the code and took the newer expiry: %+v", again)
 	}
-	if e = f.store.DecideWebClaim(ctx, f.expected, again.Code, "", "", true, f.service); e != nil {
+	if e = f.store.DecideWebClaim(ctx, f.expected, again.Code, "", true, f.service); e != nil {
 		t.Fatal(e)
 	}
 	latest := newer

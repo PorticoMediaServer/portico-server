@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -17,26 +16,13 @@ import (
 	"portico.local/hosted/internal/sessions"
 )
 
-func TestActiveSessionProfilesContract(t *testing.T) {
+func TestHostedSessionsContainIdentityOnly(t *testing.T) {
 	store := database(t)
 	ctx := context.Background()
 	keys := &security.Keys{SealKey: bytes.Repeat([]byte{17}, 32)}
 	ids := identity.New(store)
 	account, err := ids.Register(ctx, "profilecontract", "Profiles", "StrongPass9")
 	if err != nil {
-		t.Fatal(err)
-	}
-	// Seed erased history before filling the active-profile capacity.
-	if _, err = store.DB.Exec(`INSERT INTO profiles(id,account_id,name,deleted_at) SELECT 'deleted-'||n,$1,'Deleted profile',clock_timestamp() FROM generate_series(1,93) n`, account.Account.ID); err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 7; i++ {
-		if _, err = store.DB.Exec(`INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)`, fmt.Sprintf("active-%d", i), account.Account.ID, fmt.Sprintf("Profile %d", i)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// The insert trigger chooses positions; exercise a subsequently reordered list.
-	if _, err = store.DB.Exec(`UPDATE profiles SET position=CASE WHEN id LIKE 'active-%' THEN substring(id from 8)::int ELSE 7 END WHERE account_id=$1 AND deleted_at IS NULL`, account.Account.ID); err != nil {
 		t.Fatal(err)
 	}
 	sec := &postgres.AccountSecurity{Store: store, Keys: keys, Identity: ids, Lifetime: 15 * time.Minute}
@@ -75,13 +61,15 @@ func TestActiveSessionProfilesContract(t *testing.T) {
 		if err := json.Unmarshal(raw, &result); err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Profiles) != 8 {
-			t.Fatalf("%s returned %d profiles", id, len(result.Profiles))
+		var envelope map[string]json.RawMessage
+		if e := json.Unmarshal(raw, &envelope); e != nil {
+			t.Fatal(e)
 		}
-		for i, p := range result.Profiles {
-			if i < 7 && p.ID != fmt.Sprintf("active-%d", i) || i == 7 && p.ID != account.Profiles[0].ID {
-				t.Fatalf("%s wrong profile/order: %+v", id, result.Profiles)
-			}
+		if _, exists := envelope["profiles"]; exists {
+			t.Fatalf("%s exposed Hosted profiles: %s", id, raw)
+		}
+		if result.Account.ID != account.Account.ID {
+			t.Fatalf("%s wrong account", id)
 		}
 		return result
 	}

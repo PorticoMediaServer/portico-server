@@ -61,6 +61,7 @@ func (h *Handler) Routes() http.Handler {
 	h.RegisterDirectRoutes(mux, h.DirectRoutes)
 	h.certificateRoutes(mux)
 	if h.Claims != nil {
+		mux.Handle("POST /v1/servers/leave", h.Claims)
 		mux.Handle("/v1/server-claims/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !h.allowAuth(r) {
 				w.Header().Set("Retry-After", "60")
@@ -208,7 +209,7 @@ func (h *Handler) Routes() http.Handler {
 		if r.URL.Path == "/v1/server-claims/events" {
 			slots = claimStreamSlots
 		}
-		if r.URL.Path == "/v1/server-claims/cleanup" || r.URL.Path == "/v1/server-claims/cancel" || r.URL.Path == "/v1/server-claims/ack" || strings.HasPrefix(r.URL.Path, "/v1/account/deletion") || strings.Contains(r.URL.Path, "/erasures/") || strings.HasSuffix(r.URL.Path, "/sessions/logout-all") || strings.HasSuffix(r.URL.Path, "/sessions/revoke") || strings.HasSuffix(r.URL.Path, "/device-authorizations/cancel") || r.Method == http.MethodDelete {
+		if r.URL.Path == "/v1/servers/leave" || r.URL.Path == "/v1/server-claims/cancel" || r.URL.Path == "/v1/server-claims/ack" || strings.HasPrefix(r.URL.Path, "/v1/account/deletion") || strings.HasSuffix(r.URL.Path, "/sessions/logout-all") || strings.HasSuffix(r.URL.Path, "/sessions/revoke") || strings.HasSuffix(r.URL.Path, "/device-authorizations/cancel") || r.Method == http.MethodDelete {
 			slots = securitySlots
 		}
 		if r.Method == http.MethodPost && passwordPath(r.URL.Path) {
@@ -369,7 +370,7 @@ func failure(w http.ResponseWriter, e error) {
 		return
 	}
 	if errors.Is(e, identity.ErrOwnedServers) {
-		fail(w, 409, "owned_servers", "Transfer, unclaim, or explicitly delete every owned server before deleting the Portico Account. Ownership management is required.", false)
+		fail(w, 409, "owned_servers", "Change owner, switch to local sign-in, or start over on every owned server before deleting your Portico Account.", false)
 		return
 	}
 	if errors.Is(e, identity.ErrDeletionConflict) {

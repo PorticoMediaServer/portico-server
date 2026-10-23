@@ -30,7 +30,7 @@ func TestI01FreshAndRepeatedSchemaIncludesBothGroups(t *testing.T) {
 			t.Fatal(version, e)
 		}
 		// The deletion worker relies on P03's exact installed-claim tuple columns.
-		if _, e := store.DB.Exec(`SELECT claim_operation_id,claim_generation,credential_generation FROM account_erasure_jobs LIMIT 0`); e != nil {
+		if _, e := store.DB.Exec(`SELECT notice_digest FROM server_leave_receipts LIMIT 0`); e != nil {
 			t.Fatal(e)
 		}
 	}

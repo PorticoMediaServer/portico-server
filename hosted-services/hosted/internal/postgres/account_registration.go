@@ -217,9 +217,6 @@ func (s *AccountSecurity) VerifyRegistration(ctx context.Context, id, binding, c
 	if e != nil {
 		return out, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)`, security.RandomID("prof_"), a.ID, a.DisplayName); e != nil {
-		return out, e
-	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO account_contact_emails(id,account_id,address,verified_at,source,is_primary) VALUES($1,$2,$3,clock_timestamp(),'challenge',true)`, security.RandomID("contact_"), a.ID, r.Address); e != nil {
 		return out, e
 	}

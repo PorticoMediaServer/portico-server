@@ -94,7 +94,6 @@ func (s *Service) RefreshExpected(ctx context.Context, token, id, mode, expected
 		return identity.Session{}, e
 	}
 	pair.Account = rotated.Viewer.Account
-	pair.Profiles = rotated.Viewer.Profiles
 	pair.ExpiresAt = pair.ExpiresAt.UTC()
 	refreshExpiresAt := rotated.RefreshExpiresAt.UTC()
 	pair.RefreshExpiresAt = &refreshExpiresAt

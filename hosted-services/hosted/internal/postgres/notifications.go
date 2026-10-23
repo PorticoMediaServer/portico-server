@@ -5,55 +5,32 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/identity"
 	"time"
 )
 
-const notificationSchema = `CREATE TABLE account_notification_preferences(account_id text PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,server_offline boolean NOT NULL DEFAULT true,storage_nearly_full boolean NOT NULL DEFAULT true,invitation_accepted boolean NOT NULL DEFAULT true);
-CREATE TABLE account_notification_events(id text PRIMARY KEY,account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,server_id text REFERENCES servers(id),kind text NOT NULL CHECK(kind IN('server_offline','storage_nearly_full','invitation_accepted','new_device')),created_at timestamptz NOT NULL DEFAULT clock_timestamp(),processed_at timestamptz);
-CREATE INDEX notification_pending ON account_notification_events(created_at) WHERE processed_at IS NULL;`
-
-// In-app notifications (Justin, 23 Sep: no push notifications, and email only
-// for account setup, invitations and password reset). Owner alerts, security
-// events, new sign-ins, export completion and the operator's key-expiry
-// warning are rows in account_notification_events, which the account reads as
-// a feed in the web Account page and the apps' Notifications screen.
-//
-// Kinds (clients own the words; detail carries only codes and identifiers):
-//   server_offline        server{id,name}
-//   storage_nearly_full   server{id,name}
-//   invitation_accepted   server{id,name}
-//   new_device            detail{deviceId,name,platform,app}
-//   security_event        detail{event}: password_changed, password_reset,
-//                         recovery_codes_replaced, sign_in_method_removed,
-//                         provider_linked, two_step_enabled, two_step_disabled,
-//                         contact_email_changed, contact_email_verified
-//   account_export_ready  detail{exportId}
-//   signing_key_expiring  detail{keyId,expiresAt} (operator account only)
-
+// Central notifications cover account security and server reachability only.
+// Media, storage and invitations are private to each server.
 type NotificationPreferences struct {
-	ServerOffline      bool `json:"serverOffline"`
-	StorageNearlyFull  bool `json:"storageNearlyFull"`
-	InvitationAccepted bool `json:"invitationAccepted"`
+	ServerOffline bool `json:"serverOffline"`
 }
 
 // NotificationPreferences hides owner-alert kinds the account turned off.
 // Security events and sign-ins are always shown.
 func (s *AccountSecurity) NotificationPreferences(ctx context.Context, token string, update *NotificationPreferences) (NotificationPreferences, error) {
-	out := NotificationPreferences{ServerOffline: true, StorageNearlyFull: true, InvitationAccepted: true}
+	out := NotificationPreferences{ServerOffline: true}
 	tx, a, e := s.authorize(ctx, token)
 	if e != nil {
 		return out, e
 	}
 	defer tx.Rollback()
 	if update != nil {
-		_, e = tx.ExecContext(ctx, `INSERT INTO account_notification_preferences(account_id,server_offline,storage_nearly_full,invitation_accepted) VALUES($1,$2,$3,$4) ON CONFLICT(account_id) DO UPDATE SET server_offline=$2,storage_nearly_full=$3,invitation_accepted=$4`, a.AccountID, update.ServerOffline, update.StorageNearlyFull, update.InvitationAccepted)
+		_, e = tx.ExecContext(ctx, `INSERT INTO account_notification_preferences(account_id,server_offline) VALUES($1,$2) ON CONFLICT(account_id) DO UPDATE SET server_offline=$2`, a.AccountID, update.ServerOffline)
 		if e != nil {
 			return out, e
 		}
 	}
-	e = tx.QueryRowContext(ctx, `SELECT server_offline,storage_nearly_full,invitation_accepted FROM account_notification_preferences WHERE account_id=$1`, a.AccountID).Scan(&out.ServerOffline, &out.StorageNearlyFull, &out.InvitationAccepted)
+	e = tx.QueryRowContext(ctx, `SELECT server_offline FROM account_notification_preferences WHERE account_id=$1`, a.AccountID).Scan(&out.ServerOffline)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
@@ -82,7 +59,7 @@ const notificationPage = 50
 
 // visibleNotifications is the account's feed filter: its own rows, minus the
 // owner-alert kinds it turned off.
-const visibleNotifications = `n.account_id=$1 AND NOT EXISTS(SELECT 1 FROM account_notification_preferences p WHERE p.account_id=n.account_id AND (n.kind='server_offline' AND NOT p.server_offline OR n.kind='storage_nearly_full' AND NOT p.storage_nearly_full OR n.kind='invitation_accepted' AND NOT p.invitation_accepted))`
+const visibleNotifications = `n.account_id=$1 AND NOT EXISTS(SELECT 1 FROM account_notification_preferences p WHERE p.account_id=n.account_id AND (n.kind='server_offline' AND NOT p.server_offline))`
 
 func scanNotification(rows interface{ Scan(...any) error }) (Notification, error) {
 	var n Notification
@@ -179,19 +156,6 @@ func notifyAccountTx(ctx context.Context, tx *sql.Tx, id, account, server, kind 
 	}
 	_, e = tx.ExecContext(ctx, `INSERT INTO account_notification_events(id,account_id,server_id,kind,detail) VALUES($1,$2,NULLIF($3,''),$4,$5) ON CONFLICT DO NOTHING`, id, account, server, kind, raw)
 	return e
-}
-
-func (s *Store) ReportStorageWarning(ctx context.Context, a directory.ServerAuthority) error {
-	tx, e := s.beginServerOperation(ctx, a)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	_, e = tx.ExecContext(ctx, `INSERT INTO account_notification_events(id,account_id,server_id,kind) VALUES('storage_'||md5($1||current_date::text),$2,$1,'storage_nearly_full') ON CONFLICT DO NOTHING`, a.ServerID, a.AccountID)
-	if e != nil {
-		return e
-	}
-	return tx.Commit()
 }
 
 // NextOfflineDue is when the next unreported server crosses the 24-hour

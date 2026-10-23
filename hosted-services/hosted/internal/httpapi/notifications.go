@@ -80,16 +80,6 @@ func (h *Handler) notificationRoutes(mux *http.ServeMux) {
 			write(w, 200, out)
 		}))
 	}
-	mux.HandleFunc("POST /v1/servers/{id}/notifications/storage-nearly-full", h.server(func(w http.ResponseWriter, r *http.Request, a directory.ServerAuthority) {
-		if !h.securityReady(w) {
-			return
-		}
-		if e := h.Security.Store.ReportStorageWarning(r.Context(), a); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 202, CodeResponse{Code: "storage_warning_accepted"})
-	}))
 }
 
 // notificationQueryAllowed admits only ?cursor=<item id> on the feed.

@@ -28,16 +28,6 @@ func (r *checkInRepo) ServerHeartbeat(context.Context, ServerAuthority, CheckInR
 func (*checkInRepo) PushMembers(context.Context, ServerAuthority, MemberPush) (MemberPushResult, error) {
 	return MemberPushResult{}, ErrDenied
 }
-func (*checkInRepo) ServerErasures(context.Context, ServerAuthority) ([]ErasureJob, error) {
-	return nil, ErrDenied
-}
-func (*checkInRepo) ServerAcknowledgeErasure(context.Context, ServerAuthority, string, int64) error {
-	return ErrDenied
-}
-
-// A check-in is not a signed document. A Hosted whose signing certificate has
-// expired or been revoked must still record that the server is there; it only
-// stops handing out its certificate.
 func TestCheckInSurvivesAnUnusableSigner(t *testing.T) {
 	rootPub, root, _ := ed25519.GenerateKey(rand.Reader)
 	pub, private, _ := ed25519.GenerateKey(rand.Reader)

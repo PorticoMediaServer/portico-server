@@ -14,12 +14,6 @@ import (
 	"portico.local/hosted/trust"
 )
 
-const signingRolloutSchema = `
-CREATE TABLE hosted_signing_state(singleton boolean PRIMARY KEY CHECK(singleton),revision numeric(20,0) NOT NULL DEFAULT 0,certificate_hash bytea NOT NULL DEFAULT '\x',pending boolean NOT NULL DEFAULT false,after_server text NOT NULL DEFAULT '',certificate bytea NOT NULL DEFAULT '\x');
-INSERT INTO hosted_signing_state(singleton) VALUES(true);
-CREATE TABLE hosted_signing_revocations(key_id text PRIMARY KEY);
-`
-
 // RecordSigningCertificate rejects rollback and forgotten terminal revocations.
 // A new root-certified revision starts one durable, checkpointed wake sweep.
 // The ordinary steady state creates no new wake or periodic traffic.

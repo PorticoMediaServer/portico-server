@@ -280,7 +280,6 @@ class Run:
                          {'accountId': self.account['account']['id'], 'expected': state['identity']}, token=self.direct)
         raw_approval = state['approvalRequest']
         self.approval = {k: raw_approval[k] for k in ['operationId', 'serverId', 'publicKey', 'localGeneration', 'name']}
-        self.approval['ownerProfileId'] = self.account['profiles'][0]['id']
         self.approval['expectedRevision'] = raw_approval['expectedRevision']
         signed, _, _ = self.api.request('POST', '/v1/server-claims/approve', self.approval, token=self.account_token)
         state, _, _ = self.server.request('POST', '/v1/networking/claim/approve',

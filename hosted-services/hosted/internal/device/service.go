@@ -93,7 +93,7 @@ type Grant struct {
 type Repository interface {
 	DeviceLimit(context.Context, []byte, string, int, time.Duration) error
 	StartDevice(context.Context, Creation) (Created, error)
-	ReviewDevice(context.Context, []byte) (Preview, error)
+	ReviewDevice(context.Context, string, []byte) (Preview, error)
 	CaptureClaimAuthority(context.Context, []byte) (identity.CurrentFamilyExpectation, error)
 	DecideDevice(context.Context, identity.CurrentFamilyExpectation, string, []byte, string) error
 	PollDevice(context.Context, []byte, Issue) (Grant, error)
@@ -243,7 +243,7 @@ func (s *Service) Review(ctx context.Context, account, ip, code string) (Preview
 	if e != nil {
 		return Preview{}, &ProtocolError{Code: "invalid_grant"}
 	}
-	p, e := s.repo.ReviewDevice(ctx, s.hash("user", normalized))
+	p, e := s.repo.ReviewDevice(ctx, account, s.hash("user", normalized))
 	p.UserCode = normalized[:4] + "-" + normalized[4:]
 	return p, e
 }
@@ -298,7 +298,6 @@ func (s *Service) PollMode(ctx context.Context, secret, mode string) (identity.S
 	}
 	pair.ExpiresAt = grant.ExpiresAt
 	pair.Account = grant.Viewer.Account
-	pair.Profiles = grant.Viewer.Profiles
 	pair.Mode = mode
 	return pair, nil
 }

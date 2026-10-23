@@ -13,31 +13,6 @@ import (
 	"portico.local/hosted/internal/security"
 )
 
-const appAuthorizationSchema = `
-CREATE TABLE app_authorizations(
- id text PRIMARY KEY,
- account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- family_id text NOT NULL REFERENCES session_families(id) ON DELETE CASCADE,
- account_epoch bigint NOT NULL,
- server_id text NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
- server_name text NOT NULL,
- challenge text NOT NULL,
- redirect_uri text NOT NULL,
- state text NOT NULL,
- app_name text NOT NULL,
- code_challenge text NOT NULL,
- code_hash bytea UNIQUE CHECK(code_hash IS NULL OR octet_length(code_hash)=32),
- code_expires_at timestamptz,
- expires_at timestamptz NOT NULL,
- created_at timestamptz NOT NULL DEFAULT clock_timestamp()
-);
-CREATE INDEX app_authorizations_account ON app_authorizations(account_id,created_at);
-CREATE INDEX app_authorizations_expiry ON app_authorizations(expires_at);
-`
-
-// The cookie is looked up through refresh_tokens, whose primary key is the
-// token hash. session_families has no index on its current hash, and this runs
-// for whatever cookie an unauthenticated caller sends.
 const appBrowserFamilySQL = `SELECT f.account_id,f.id FROM refresh_tokens t JOIN session_families f ON f.id=t.family_id WHERE t.token_hash=$1 AND f.mode='browser' AND f.current_refresh_hash=$1`
 
 type appFamily struct {

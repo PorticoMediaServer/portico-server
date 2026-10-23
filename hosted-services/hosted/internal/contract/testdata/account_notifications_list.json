@@ -1,17 +1,6 @@
 {
   "items": [
     {
-      "detail": {},
-      "id": "<id>",
-      "kind": "storage_nearly_full",
-      "occurredAt": "<time>",
-      "read": false,
-      "server": {
-        "id": "<id>",
-        "name": "Local"
-      }
-    },
-    {
       "detail": {
         "app": "",
         "deviceId": "<deviceId>",
@@ -24,5 +13,5 @@
       "read": false
     }
   ],
-  "unread": 2
+  "unread": 1
 }

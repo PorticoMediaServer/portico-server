@@ -48,31 +48,6 @@ func notifyTx(ctx context.Context, tx *sql.Tx, channel string) error {
 	return e
 }
 
-// InstallNotifySchemaTx adds the wake queue's notification triggers. They live in the database
-// rather than in Go because wake_state has two writers: enqueueWake, and the account-epoch
-// trigger that does the same two inserts without passing through this process at all.
-//
-// The conditions are what keep the signal meaningful. A row is announced when it is created
-// deliverable, and when an update makes it newly due — not when the worker leases it (which
-// changes neither the revision nor the deadline) and not when the worker finishes and pushes
-// the deadline into the future.
-func InstallNotifySchemaTx(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `
- CREATE OR REPLACE FUNCTION portico_notify_wake() RETURNS trigger LANGUAGE plpgsql AS $$
- BEGIN PERFORM pg_notify('`+WakeChannel+`_' || current_schema(), ''); RETURN NULL; END $$;
- DROP TRIGGER IF EXISTS portico_wake_notify_insert ON wake_state;
- CREATE TRIGGER portico_wake_notify_insert AFTER INSERT ON wake_state
-  FOR EACH ROW WHEN (NEW.desired_revision > NEW.acked_revision)
-  EXECUTE FUNCTION portico_notify_wake();
- DROP TRIGGER IF EXISTS portico_wake_notify_update ON wake_state;
- CREATE TRIGGER portico_wake_notify_update AFTER UPDATE ON wake_state
-  FOR EACH ROW WHEN (NEW.desired_revision > NEW.acked_revision AND NEW.next_attempt_at <= now()
-   AND (NEW.desired_revision IS DISTINCT FROM OLD.desired_revision OR NEW.next_attempt_at IS DISTINCT FROM OLD.next_attempt_at))
-  EXECUTE FUNCTION portico_notify_wake();
- `)
-	return err
-}
-
 // Listener holds one PostgreSQL connection of its own, outside the request pool, and turns
 // notifications into signals on buffered channels. A signal means "look now"; it carries
 // nothing, so a worker that coalesces two of them into one pass has lost nothing either.

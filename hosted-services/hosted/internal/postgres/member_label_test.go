@@ -22,7 +22,7 @@ func TestMemberRemovalRotatesMemberLabel(t *testing.T) {
 	if _, e := db.Exec(`INSERT INTO direct_addresses(namespace,server_id,ipv4,sequence) VALUES($1,$2,'8.8.8.8',nextval('direct_address_sequence'))`, ns, f.server); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := db.Exec(`INSERT INTO memberships(server_id,account_id,profile_id,role) VALUES($1,$2,$3,'member') ON CONFLICT DO NOTHING`, f.server, f.member.Account.ID, f.member.Profiles[0].ID); e != nil {
+	if _, e := db.Exec(`INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'member') ON CONFLICT DO NOTHING`, f.server, f.member.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	state := func() (string, int64) {
@@ -41,7 +41,7 @@ func TestMemberRemovalRotatesMemberLabel(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if _, e := db.Exec(`UPDATE memberships SET revoked=true WHERE server_id=$1 AND account_id=$2`, f.server, f.member.Account.ID); e != nil {
+	if _, e := db.Exec(`DELETE FROM server_members WHERE server_id=$1 AND account_id=$2`, f.server, f.member.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	// A87: the removal only queues the rotation; the feed lock is taken later,
@@ -54,8 +54,8 @@ func TestMemberRemovalRotatesMemberLabel(t *testing.T) {
 	if next == label || len(next) != 32 || nextSeq <= seq {
 		t.Fatalf("membership revoke: label %s -> %s, sequence %d -> %d", label, next, seq, nextSeq)
 	}
-	restrict := `INSERT INTO restrictions(server_id,account_id,profile_id,local_revision,allowed_libraries,revoked) VALUES($1,$2,$3,1,'{}',true) ON CONFLICT(server_id,account_id,profile_id) DO UPDATE SET revoked=EXCLUDED.revoked,local_revision=EXCLUDED.local_revision`
-	if _, e := db.Exec(restrict, f.server, f.owner.Account.ID, f.owner.Profiles[0].ID); e != nil {
+	restrict := `DELETE FROM server_members WHERE server_id=$1 AND account_id=$2`
+	if _, e := db.Exec(restrict, f.server, f.owner.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	// The previous label is still in its 24-hour grace: the second rotation
@@ -72,7 +72,7 @@ func TestMemberRemovalRotatesMemberLabel(t *testing.T) {
 	if third == next {
 		t.Fatal("restriction did not rotate the label")
 	}
-	if _, e := db.Exec(restrict, f.server, f.owner.Account.ID, f.owner.Profiles[0].ID); e != nil {
+	if _, e := db.Exec(restrict, f.server, f.owner.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	rotate()
@@ -96,8 +96,6 @@ func TestMemberLabelRotationKeepsRemainingMembersResolving(t *testing.T) {
 	}{
 		{`INSERT INTO certificate_namespaces(operation_id,namespace,member_label,server_identity) VALUES('fixture_installed_claim',$1,$2,$3)`, []any{ns, oldLabel, f.server}},
 		{`INSERT INTO direct_addresses(namespace,server_id,ipv4,sequence) VALUES($1,$2,'8.8.8.8',nextval('direct_address_sequence'))`, []any{ns, f.server}},
-		{`INSERT INTO server_members(server_id,account_id,role) VALUES($1,$2,'member'),($1,$3,'admin')`, []any{f.server, f.member.Account.ID, f.owner.Account.ID}},
-		{`DELETE FROM memberships WHERE account_id=$1`, []any{f.member.Account.ID}},
 		{`INSERT INTO networking_route_state(server_id,operation_id,claim_generation,credential_generation,generation,observation_digest,remote_enabled) VALUES($1,'fixture_installed_claim',1,1,1,$2,true)`, []any{f.server, make([]byte, 32)}},
 		{`INSERT INTO networking_route_candidates(server_id,operation_id,generation,origin,class,state) VALUES($1,'fixture_installed_claim',1,$2,'public','reported')`, []any{f.server, "https://c-" + oldLabel + "." + ns + ".direct.getportico.tv:32500"}},
 	} {

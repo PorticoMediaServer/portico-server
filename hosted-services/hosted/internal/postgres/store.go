@@ -119,42 +119,7 @@ func (s *Store) MigrateDryRun(ctx context.Context) (before, after int, err error
 	return before, after, nil
 }
 
-const schema = `
-CREATE TABLE IF NOT EXISTS accounts(id text PRIMARY KEY,username text UNIQUE NOT NULL,display_name text NOT NULL,password_hash bytea CHECK(password_hash IS NULL OR octet_length(password_hash)>0),auth_epoch bigint NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS session_families(id text PRIMARY KEY,account_id text NOT NULL REFERENCES accounts(id),mode text NOT NULL CHECK(mode IN ('native','browser')),current_refresh_hash bytea NOT NULL,generation bigint NOT NULL DEFAULT 0,account_epoch bigint NOT NULL,absolute_expires_at timestamptz NOT NULL,idle_expires_at timestamptz NOT NULL,revoked_at timestamptz,revoke_reason text,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(id,account_id));
-CREATE TABLE IF NOT EXISTS profiles(id text PRIMARY KEY,account_id text NOT NULL REFERENCES accounts(id),name text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
-CREATE INDEX IF NOT EXISTS profiles_account ON profiles(account_id,id);
-CREATE TABLE IF NOT EXISTS account_sessions(token_hash bytea PRIMARY KEY,account_id text NOT NULL REFERENCES accounts(id),expires_at timestamptz NOT NULL,family_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(family_id,account_id) REFERENCES session_families(id,account_id) ON DELETE CASCADE);
-CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);
-` + CurrentClaimServerDeclaration + `
-CREATE TABLE IF NOT EXISTS memberships(server_id text NOT NULL REFERENCES servers(id),account_id text NOT NULL REFERENCES accounts(id),profile_id text NOT NULL REFERENCES profiles(id),role text NOT NULL CHECK(role IN ('owner','member')),allowed_libraries text[] NOT NULL DEFAULT '{}',revoked boolean NOT NULL DEFAULT false,PRIMARY KEY(server_id,account_id,profile_id));
-CREATE INDEX IF NOT EXISTS memberships_account ON memberships(account_id,server_id) WHERE NOT revoked;
-CREATE UNIQUE INDEX IF NOT EXISTS membership_one_owner ON memberships(server_id) WHERE role='owner';
-CREATE TABLE IF NOT EXISTS restrictions(server_id text NOT NULL REFERENCES servers(id),account_id text NOT NULL,profile_id text NOT NULL,local_revision bigint NOT NULL,allowed_libraries text[] NOT NULL,revoked boolean NOT NULL,PRIMARY KEY(server_id,account_id,profile_id),FOREIGN KEY(server_id,account_id,profile_id) REFERENCES memberships(server_id,account_id,profile_id));
-CREATE TABLE IF NOT EXISTS attachment_tickets(token_hash bytea PRIMARY KEY,server_id text NOT NULL REFERENCES servers(id),account_id text NOT NULL REFERENCES accounts(id),profile_id text NOT NULL REFERENCES profiles(id),expires_at timestamptz NOT NULL,consumed_at timestamptz);
-CREATE INDEX IF NOT EXISTS attachment_expiry ON attachment_tickets(expires_at);
-CREATE TABLE IF NOT EXISTS mutation_receipts(server_id text NOT NULL REFERENCES servers(id),operation_id text NOT NULL,kind text NOT NULL,request_hash bytea NOT NULL,local_revision bigint NOT NULL,policy_revision bigint NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(server_id,operation_id));
-CREATE TABLE IF NOT EXISTS wake_state(server_id text NOT NULL REFERENCES servers(id),kind text NOT NULL,desired_revision bigint NOT NULL DEFAULT 0,acked_revision bigint NOT NULL DEFAULT 0,lease_token text,lease_until timestamptz,next_attempt_at timestamptz NOT NULL DEFAULT now(),attempts integer NOT NULL DEFAULT 0,last_status integer,first_attempt_at timestamptz,wake_unreachable boolean NOT NULL DEFAULT false,PRIMARY KEY(server_id,kind));
-CREATE INDEX IF NOT EXISTS wake_due ON wake_state(next_attempt_at) WHERE desired_revision>acked_revision;
-CREATE TABLE IF NOT EXISTS security_audit(id bigserial PRIMARY KEY,actor_id text NOT NULL,action text NOT NULL,target_id text NOT NULL,revision bigint,created_at timestamptz NOT NULL DEFAULT now());
-CREATE TABLE IF NOT EXISTS invitations(id text PRIMARY KEY,server_id text NOT NULL REFERENCES servers(id),owner_id text NOT NULL REFERENCES accounts(id),recipient_id text NOT NULL REFERENCES accounts(id),operation_id text NOT NULL,request_hash bytea NOT NULL,allowed_libraries text[] NOT NULL,expected_policy_revision bigint NOT NULL,expected_local_revision bigint NOT NULL,expires_at timestamptz NOT NULL,status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','cancelled')),accepted_profile_id text REFERENCES profiles(id),accepted_policy_revision bigint,accepted_local_revision bigint,UNIQUE(server_id,operation_id));
-CREATE INDEX IF NOT EXISTS invitations_recipient ON invitations(recipient_id,expires_at) WHERE status='pending';
-CREATE UNIQUE INDEX IF NOT EXISTS verified_server_endpoint ON servers(base_url) WHERE endpoint_verified;
-CREATE TABLE IF NOT EXISTS device_rate_limits(subject_hash bytea NOT NULL,kind text NOT NULL,window_start timestamptz NOT NULL,attempts integer NOT NULL,PRIMARY KEY(subject_hash,kind));
-CREATE INDEX IF NOT EXISTS device_rate_expiry ON device_rate_limits(window_start);
-CREATE TABLE IF NOT EXISTS device_authorizations(id text PRIMARY KEY,creation_hash bytea NOT NULL UNIQUE,request_hash bytea NOT NULL,creation_cipher bytea NOT NULL,device_hash bytea NOT NULL UNIQUE,user_hash bytea NOT NULL UNIQUE,device_name text NOT NULL,platform text NOT NULL,app_version text NOT NULL,expires_at timestamptz NOT NULL,next_poll_at timestamptz NOT NULL,interval_seconds integer NOT NULL DEFAULT 5,status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','denied','cancelled','consumed')),approved_account_id text REFERENCES accounts(id),approved_epoch bigint,decided_at timestamptz,session_hash bytea,session_cipher bytea,session_expires_at timestamptz,recovery_until timestamptz,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now());
-CREATE INDEX IF NOT EXISTS device_authorization_expiry ON device_authorizations(expires_at);
-CREATE TABLE IF NOT EXISTS hosted_devices(id text PRIMARY KEY,account_id text NOT NULL REFERENCES accounts(id),name text NOT NULL,platform text NOT NULL,app_version text NOT NULL,session_hash bytea NOT NULL,family_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),revoked_at timestamptz,FOREIGN KEY(family_id,account_id) REFERENCES session_families(id,account_id) ON DELETE CASCADE);
-CREATE INDEX IF NOT EXISTS hosted_devices_account ON hosted_devices(account_id);
-CREATE INDEX IF NOT EXISTS session_families_account ON session_families(account_id);
-CREATE INDEX IF NOT EXISTS session_families_expiry ON session_families(absolute_expires_at);
-CREATE TABLE IF NOT EXISTS refresh_tokens(token_hash bytea PRIMARY KEY,family_id text NOT NULL REFERENCES session_families(id) ON DELETE CASCADE,generation bigint NOT NULL,consumed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(family_id,generation));
-CREATE TABLE IF NOT EXISTS refresh_receipts(family_id text NOT NULL REFERENCES session_families(id) ON DELETE CASCADE,request_id text NOT NULL,input_hash bytea NOT NULL,output_hash bytea NOT NULL,access_hash bytea NOT NULL,ciphertext bytea,expires_at timestamptz NOT NULL,PRIMARY KEY(family_id,request_id));
-CREATE INDEX IF NOT EXISTS refresh_receipts_expiry ON refresh_receipts(expires_at) WHERE ciphertext IS NOT NULL;
-CREATE INDEX IF NOT EXISTS account_sessions_family ON account_sessions(family_id);
-`
-
-func (s *Store) Register(ctx context.Context, a identity.Account, p identity.Profile, password, token []byte, expiry time.Time, family identity.FamilySeed) error {
+func (s *Store) Register(ctx context.Context, a identity.Account, password, token []byte, expiry time.Time, family identity.FamilySeed) error {
 	if !identity.PasswordInstalled(password) {
 		return identity.ErrInvalid
 	}
@@ -168,9 +133,6 @@ func (s *Store) Register(ctx context.Context, a identity.Account, p identity.Pro
 		if errors.As(e, &pg) && pg.Code == "23505" {
 			return identity.ErrConflict
 		}
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES($1,$2,$3)`, p.ID, a.ID, p.Name); e != nil {
 		return e
 	}
 	if e = insertFamily(ctx, tx, a.ID, token, expiry, family); e != nil {
@@ -220,24 +182,7 @@ func (s *Store) Authenticate(ctx context.Context, hash []byte) (identity.Viewer,
 	if e != nil {
 		return v, e
 	}
-	v.Profiles, e = s.Profiles(ctx, v.Account.ID)
 	return v, e
-}
-func (s *Store) Profiles(ctx context.Context, id string) ([]identity.Profile, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT id,name FROM profiles WHERE account_id=$1 AND deleted_at IS NULL ORDER BY position,created_at,id`, id)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	result := []identity.Profile{}
-	for rows.Next() {
-		var p identity.Profile
-		if e = rows.Scan(&p.ID, &p.Name); e != nil {
-			return nil, e
-		}
-		result = append(result, p)
-	}
-	return result, rows.Err()
 }
 func (s *Store) Revoke(ctx context.Context, hash []byte) error {
 	tx, e := s.DB.BeginTx(ctx, nil)

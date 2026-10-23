@@ -8,6 +8,7 @@ import (
 	"errors"
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/identity"
+	"strconv"
 	"time"
 )
 
@@ -49,7 +50,14 @@ func lockClaim(ctx context.Context, tx *sql.Tx, v claims.Verified) (lockedClaim,
 	if server != v.Wire.ServerID || account != v.Wire.AccountID || base64.RawURLEncoding.EncodeToString(key) != v.Wire.PublicKey || generation != v.Wire.LocalGeneration {
 		return empty, claims.ErrStale
 	}
-	if purpose == "change-owner" && state == "approved" {
+	if (purpose == "change-owner" || purpose == "switch") && v.Wire.Purpose == claims.Finalize {
+		if v.Wire.ReservationAccountID != account || v.Wire.ReservationUsername != targetUsername || v.Wire.ReservationGeneration != strconv.FormatInt(generation, 10) || v.Wire.ReservationOperationID != v.Wire.OperationID {
+			return empty, claims.ErrStale
+		}
+	} else if v.Wire.ReservationAccountID != "" || v.Wire.ReservationUsername != "" || v.Wire.ReservationGeneration != "" || v.Wire.ReservationOperationID != "" {
+		return empty, claims.ErrStale
+	}
+	if (purpose == "change-owner" || purpose == "switch") && state == "approved" {
 		var live string
 		if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, account).Scan(&live); e != nil {
 			return empty, e
@@ -156,7 +164,7 @@ func (s *Store) ClaimNonce(ctx context.Context, v claims.Verified, id string, no
 	if !expiry.After(now) {
 		return empty, claims.ErrStale
 	}
-	if e = tx.QueryRowContext(ctx, `INSERT INTO claim_nonces(id,operation_id,approval_revision,purpose,request_id,request_digest,nonce,issued_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING issued_at,expires_at`, id, v.Wire.OperationID, v.Wire.ApprovalRevision, v.Wire.Purpose, v.Wire.RequestID, v.Digest[:], nonce, now, expiry).Scan(&now, &expiry); e != nil {
+	if e = tx.QueryRowContext(ctx, `INSERT INTO claim_nonces(id,operation_id,approval_revision,purpose,request_id,request_digest,nonce,issued_at,expires_at,reservation_account_id,reservation_username,reservation_generation,reservation_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING issued_at,expires_at`, id, v.Wire.OperationID, v.Wire.ApprovalRevision, v.Wire.Purpose, v.Wire.RequestID, v.Digest[:], nonce, now, expiry, v.Wire.ReservationAccountID, v.Wire.ReservationUsername, v.Wire.ReservationGeneration, v.Wire.ReservationOperationID).Scan(&now, &expiry); e != nil {
 		return empty, e
 	}
 	if _, e = claimDecisionTime(ctx, tx, c, expiry); e != nil {

@@ -7,13 +7,9 @@ import (
 
 	"portico.local/hosted/internal/appstore"
 	"portico.local/hosted/internal/identity"
-	"portico.local/hosted/internal/postgres"
 )
 
-// accountIdentityRoutes adds the workstream-H hosted account surface: the device
-// list, account-level region and privacy preferences, the combined account
-// document (security state, preferences and invitation status/expiry), and the
-// Apple App Store Server Notifications v2 intake endpoint.
+// accountIdentityRoutes serves central account security and signed-in devices.
 func (h *Handler) accountIdentityRoutes(mux *http.ServeMux) {
 	// The notification intake is registered independently of h.Security: it is
 	// gated by its own key set, and a deployment may verify notifications before
@@ -32,26 +28,6 @@ func (h *Handler) accountIdentityRoutes(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("GET /v1/account/devices", h.account(func(w http.ResponseWriter, r *http.Request, _ identity.Viewer) {
 		out, e := h.Security.Devices(r.Context(), bearer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
-	}))
-	mux.HandleFunc("GET /v1/account/preferences", h.account(func(w http.ResponseWriter, r *http.Request, _ identity.Viewer) {
-		out, e := h.Security.Preferences(r.Context(), bearer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
-	}))
-	mux.HandleFunc("PUT /v1/account/preferences", h.account(func(w http.ResponseWriter, r *http.Request, _ identity.Viewer) {
-		var body postgres.AccountPreferenceEdit
-		if !decode(w, r, &body) {
-			return
-		}
-		out, e := h.Security.SetPreferences(r.Context(), bearer(r), body)
 		if e != nil {
 			failure(w, e)
 			return

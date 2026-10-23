@@ -54,7 +54,7 @@ func TestAccountExportProofIsolationExpiryAndRetention(t *testing.T) {
 	if _, _, e = s.Export(ctx, a.AccessToken, job.ID, true); e == nil {
 		t.Fatal("expired export")
 	}
-	if _, e = s.Store.DB.Exec(`INSERT INTO security_audit(actor_id,action,target_id,created_at) VALUES($1,'old',$1,now()-interval '401 days'),($1,'keep',$1,now()-interval '399 days')`, a.Account.ID); e != nil {
+	if _, e = s.Store.DB.Exec(`INSERT INTO security_audit(actor_id,action,target_id,created_at) VALUES($1,'old',$1,now()-interval '8 days'),($1,'keep',$1,now()-interval '6 days')`, a.Account.ID); e != nil {
 		t.Fatal(e)
 	}
 	if e = s.Store.PruneExpired(ctx, 10000); e != nil {
@@ -89,7 +89,7 @@ func TestPasswordSessionCreatesRevocableDeviceAndNotificationPreferences(t *test
 		t.Fatal(feed, e)
 	}
 	prefs, e := s.NotificationPreferences(ctx, a.AccessToken, nil)
-	if e != nil || !prefs.ServerOffline || !prefs.StorageNearlyFull || !prefs.InvitationAccepted {
+	if e != nil || !prefs.ServerOffline {
 		t.Fatal(prefs, e)
 	}
 	prefs.ServerOffline = false
@@ -246,7 +246,7 @@ func securityActionLastChallenge(t *testing.T, s *postgres.AccountSecurity, a id
 func TestHostedRejectsEarlierPreReleaseSchema(t *testing.T) {
 	store := database(t)
 	ctx := context.Background()
-	if _, e := store.DB.Exec(`DELETE FROM hosted_schema_migrations WHERE version>2;UPDATE hosted_schema_contract SET version=2 WHERE singleton`); e != nil {
+	if _, e := store.DB.Exec(`UPDATE hosted_schema_contract SET version=2 WHERE singleton`); e != nil {
 		t.Fatal(e)
 	}
 	before := catalogue(t, store)

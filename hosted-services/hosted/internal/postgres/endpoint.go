@@ -2,25 +2,10 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/egress"
 )
 
-// InstallEndpointSchemaTx is additive within the already recognized current
-// Hosted format. It never adapts historical enrollment data into verified rows.
-func InstallEndpointSchemaTx(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS current_server_endpoints(
- server_id text PRIMARY KEY REFERENCES servers(id),
- operation_id text NOT NULL REFERENCES claim_operations(id),
- account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- claim_generation bigint NOT NULL CHECK(claim_generation>0),
- credential_generation bigint NOT NULL CHECK(credential_generation>0),
- origin text NOT NULL CHECK(origin LIKE 'https://%'),
- proof_digest bytea NOT NULL CHECK(octet_length(proof_digest)=32),
- verified_at timestamptz NOT NULL DEFAULT clock_timestamp());`)
-	return err
-}
 func (s *Store) RegisterEndpoint(ctx context.Context, a directory.ServerAuthority, v directory.EndpointEvidence) (directory.EndpointReceipt, error) {
 	var out directory.EndpointReceipt
 	origin, _, safe := egress.ServerOrigin(v.BaseURL, false)

@@ -19,11 +19,9 @@ type AccountExportDocument struct {
 	CreatedAt       time.Time       `json:"createdAt"`
 	Devices         json.RawMessage `json:"devices"`
 	Format          string          `json:"format"`
-	Invitations     json.RawMessage `json:"invitations"`
 	LinkedProviders json.RawMessage `json:"linkedProviders"`
 	MediaData       string          `json:"mediaData"`
 	Memberships     json.RawMessage `json:"memberships"`
-	Profiles        json.RawMessage `json:"profiles"`
 	SecurityAudit   json.RawMessage `json:"securityAudit"`
 	Sessions        json.RawMessage `json:"sessions"`
 }
@@ -69,9 +67,7 @@ func (s *AccountSecurity) ProcessExport(ctx context.Context) error {
 		&doc.Account:         `SELECT id,username,display_name,created_at FROM accounts WHERE id=$1`,
 		&doc.Contacts:        `SELECT CASE WHEN private_relay THEN '[private relay]' ELSE address END AS address,is_primary,verified_at FROM account_contact_emails WHERE account_id=$1`,
 		&doc.LinkedProviders: `SELECT issuer,created_at,revoked_at FROM account_external_identities WHERE account_id=$1`,
-		&doc.Profiles:        `SELECT id,name,created_at,deleted_at FROM profiles WHERE account_id=$1`,
 		&doc.Memberships:     `SELECT server_id,role,updated_at FROM server_members WHERE account_id=$1`,
-		&doc.Invitations:     `SELECT id,server_id,status,expires_at FROM invitations WHERE owner_id=$1 OR recipient_id=$1`,
 		&doc.Devices:         `SELECT id,name,platform,app,app_version,created_at,last_seen_at,revoked_at FROM hosted_devices WHERE account_id=$1`,
 		&doc.Sessions:        `SELECT created_at,absolute_expires_at,idle_expires_at,revoked_at FROM session_families WHERE account_id=$1`,
 		&doc.SecurityAudit:   `SELECT action,target_id,created_at FROM security_audit WHERE actor_id=$1 OR target_id=$1`,

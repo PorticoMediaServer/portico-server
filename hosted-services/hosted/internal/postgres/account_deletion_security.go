@@ -8,7 +8,7 @@ import (
 )
 
 func (s *AccountSecurity) prepareDeletionCurrentTx(ctx context.Context, tx *sql.Tx, expected identity.CurrentFamilyExpectation) (identity.DeletionPreview, error) {
-	p, _, snapshot, e := deletionSnapshot(ctx, tx, expected.AccountID)
+	p, snapshot, e := deletionSnapshot(ctx, tx, expected.AccountID)
 	if e != nil {
 		return p, e
 	}
@@ -27,7 +27,7 @@ func (s *AccountSecurity) AcceptDeletion(ctx context.Context, access, token, dis
 	if len(access) < 32 || len(access) > 128 || len(token) < 32 || len(token) > 128 {
 		return identity.DeletionReceipt{}, identity.ErrCredentials
 	}
-	if disposition != "" && disposition != identity.DeletePersonalResources || len(confirmation) > 320 {
+	if disposition != "" || len(confirmation) > 320 {
 		return identity.DeletionReceipt{}, identity.ErrInvalid
 	}
 	return s.Store.acceptDeletion(ctx, security.Hash(token), disposition, security.Hash(access), s, confirmation)

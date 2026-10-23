@@ -97,16 +97,7 @@ func (s *Store) CancelClaim(ctx context.Context, w claims.CancelWire, digest [32
 			if e = withdrawClaimAddressesTx(ctx, tx, server, w.OperationID); e != nil {
 				return empty, e
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE memberships SET revoked=true,role='member' WHERE server_id=$1`, server); e != nil {
-				return empty, e
-			}
 			if e = dropServerIndexTx(ctx, tx, server, account); e != nil {
-				return empty, e
-			}
-			if _, e = tx.ExecContext(ctx, `DELETE FROM attachment_tickets WHERE server_id=$1`, server); e != nil {
-				return empty, e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE invitations SET status='cancelled' WHERE server_id=$1 AND status='pending'`, server); e != nil {
 				return empty, e
 			}
 		}

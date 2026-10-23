@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/url"
+	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
 	"portico.local/hosted/internal/serverreturn"
@@ -17,6 +18,34 @@ type returnTuple struct {
 	claim, credential, route                      int64
 }
 
+// ServerReturnRegistration resolves existing verified location evidence. It
+// cannot register an origin, admit an account or authorize an ownership claim.
+func (s *Store) ServerReturnRegistration(ctx context.Context, a directory.ServerAuthority, q serverreturn.RegistrationRequest) (serverreturn.Registration, error) {
+	var out serverreturn.Registration
+	if !serverreturn.Origin(q.Origin) {
+		return out, serverreturn.ErrInvalid
+	}
+	tx, e := s.beginServerOperation(ctx, a)
+	if e != nil {
+		return out, e
+	}
+	defer tx.Rollback()
+	var generation int64
+	if e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, a.ServerID, a.OperationID, a.ClaimGeneration, a.CredentialGeneration).Scan(&generation); e != nil {
+		return out, serverreturn.ErrInvalid
+	}
+	id := serverreturn.RegistrationID(a.ServerID, a.OperationID, a.ClaimGeneration, a.CredentialGeneration, generation, q.Origin)
+	t, e := returnTupleTx(ctx, tx, a.AccountID, a.ServerID, a.OperationID, "sign-in", id)
+	if e != nil || t.origin != q.Origin {
+		return out, serverreturn.ErrInvalid
+	}
+	if e = checkServerAuthorityTx(ctx, tx, a); e != nil {
+		return out, e
+	}
+	out = serverreturn.Registration{ID: id, Origin: t.origin}
+	return out, tx.Commit()
+}
+
 // Caller holds the account/family locks first. The same server lock used by
 // withdrawal, check-in and retirement serializes the entire positive consume.
 func returnTupleTx(ctx context.Context, tx *sql.Tx, account, server, operation, purpose, registration string) (returnTuple, error) {
@@ -26,23 +55,29 @@ func returnTupleTx(ctx context.Context, tx *sql.Tx, account, server, operation, 
 	if e != nil {
 		return t, serverreturn.ErrInvalid
 	}
-	e = tx.QueryRowContext(ctx, `SELECT id,purpose,current_owner_account_id,previous_owner_role FROM claim_operations WHERE ($1='' OR id=$1) AND server_id=$2 AND account_id=$3 AND claim_generation=$4 AND credential_generation=$5 AND state='installed' AND committed_token_hash=(SELECT token_hash FROM servers WHERE id=$2) FOR SHARE`, operation, server, owner, t.claim, t.credential).Scan(&t.operation, &t.purpose, &t.current, &t.previous)
-	if e != nil || t.purpose != purpose {
-		return t, serverreturn.ErrInvalid
-	}
-	if account != owner {
-		return t, serverreturn.ErrInvalid
-	}
-	var role string
-	if e = tx.QueryRowContext(ctx, `SELECT role FROM server_members WHERE server_id=$1 AND account_id=$2 FOR SHARE`, server, account).Scan(&role); e != nil || role != "owner" {
-		return t, serverreturn.ErrInvalid
-	}
-
-	e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, server, operation, t.claim, t.credential).Scan(&t.route)
+	e = tx.QueryRowContext(ctx, `SELECT o.id,o.purpose,o.current_owner_account_id,o.previous_owner_role FROM claim_operations o JOIN servers s ON s.id=o.server_id WHERE ($1='' OR o.id=$1) AND o.server_id=$2 AND o.account_id=$3 AND o.claim_generation=$4 AND o.credential_generation=$5 AND o.state='installed' AND o.committed_token_hash=s.token_hash AND s.public_key=translate(rtrim(encode(o.public_key,'base64'),'='),'+/','-_') FOR SHARE OF o`, operation, server, owner, t.claim, t.credential).Scan(&t.operation, &t.purpose, &t.current, &t.previous)
 	if e != nil {
 		return t, serverreturn.ErrInvalid
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT c.origin FROM networking_route_candidates c JOIN networking_route_state n USING(server_id) WHERE c.server_id=$1 AND c.operation_id=$2 AND c.generation=$3 AND c.state='verified' AND (n.remote_enabled OR c.class='lan') ORDER BY c.origin LIMIT 65 FOR SHARE OF c`, server, operation, t.route)
+	if purpose == "sign-in" {
+		// Identity is not admission. Waiting accounts have no discovery row yet;
+		// the server alone admits them or redeems its separate local move intent.
+		t.purpose, t.current, t.previous = purpose, "", ""
+	} else {
+		if t.purpose != purpose || account != owner {
+			return t, serverreturn.ErrInvalid
+		}
+		var role string
+		if e = tx.QueryRowContext(ctx, `SELECT role FROM server_members WHERE server_id=$1 AND account_id=$2 FOR SHARE`, server, account).Scan(&role); e != nil || role != "owner" {
+			return t, serverreturn.ErrInvalid
+		}
+	}
+
+	e = tx.QueryRowContext(ctx, `SELECT generation FROM networking_route_state WHERE server_id=$1 AND operation_id=$2 AND claim_generation=$3 AND credential_generation=$4 FOR SHARE`, server, t.operation, t.claim, t.credential).Scan(&t.route)
+	if e != nil {
+		return t, serverreturn.ErrInvalid
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT c.origin FROM networking_route_candidates c JOIN networking_route_state n USING(server_id) WHERE c.server_id=$1 AND c.operation_id=$2 AND c.generation=$3 AND c.state='verified' AND (n.remote_enabled OR c.class='lan') ORDER BY c.origin LIMIT 65 FOR SHARE OF c`, server, t.operation, t.route)
 	if e != nil {
 		return t, e
 	}
@@ -57,7 +92,7 @@ func returnTupleTx(ctx context.Context, tx *sql.Tx, account, server, operation, 
 		if count > 64 {
 			return t, serverreturn.ErrInvalid
 		}
-		if serverreturn.Origin(origin) && serverreturn.RegistrationID(server, operation, t.claim, t.credential, t.route, origin) == registration {
+		if serverreturn.Origin(origin) && serverreturn.RegistrationID(server, t.operation, t.claim, t.credential, t.route, origin) == registration {
 			t.origin = origin
 		}
 	}
@@ -206,8 +241,8 @@ func (s *Store) ExchangeServerReturn(ctx context.Context, q serverreturn.Exchang
 	if e != nil || r.consumed.Valid || subtle.ConstantTimeCompare(r.code, security.Hash(q.Code)) != 1 || subtle.ConstantTimeCompare([]byte(r.q.CodeChallenge), []byte(serverreturn.Challenge(q.Verifier))) != 1 || q.RegistrationID != r.q.RegistrationID || q.ServerChallenge != r.q.ServerChallenge || q.InstallationID != r.q.InstallationID || q.Purpose != r.q.Purpose {
 		return out, serverreturn.ErrInvalid
 	}
-	var username string
-	if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, r.a.AccountID).Scan(&username); e != nil {
+	var username, displayName, email string
+	if e = tx.QueryRowContext(ctx, `SELECT username,display_name,COALESCE((SELECT address FROM account_contact_emails WHERE account_id=$1 AND is_primary AND verified_at IS NOT NULL),'') FROM accounts WHERE id=$1`, r.a.AccountID).Scan(&username, &displayName, &email); e != nil {
 		return out, e
 	}
 	var now time.Time
@@ -217,7 +252,7 @@ func (s *Store) ExchangeServerReturn(ctx context.Context, q serverreturn.Exchang
 	if !r.expiry.After(now) || !facts.UnexpiredAt(now) {
 		return out, serverreturn.ErrInvalid
 	}
-	out.Assertion, e = sign(serverreturn.Assertion{Kind: "portico.server-return.v1", AccountID: r.a.AccountID, Username: username, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
+	out.Assertion, e = sign(serverreturn.Assertion{Kind: serverreturn.AssertionKind, AccountID: r.a.AccountID, Username: username, DisplayName: displayName, Email: email, ServerID: r.q.ServerID, Challenge: r.q.ServerChallenge, Nonce: security.RandomID(""), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(serverreturn.AssertionLifetime), Purpose: r.q.Purpose, InstallationID: r.q.InstallationID, RegistrationID: r.q.RegistrationID, ClaimOperationID: r.q.ClaimOperationID, ClaimGeneration: t.claim, CredentialGeneration: t.credential, CurrentOwnerAccountID: t.current, PreviousOwnerRole: t.previous})
 	if e != nil {
 		return serverreturn.Grant{}, e
 	}

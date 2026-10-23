@@ -81,9 +81,6 @@ func TestNativeSSOInitiatorCannotTakeVictimSession(t *testing.T) {
 	}
 	// The victim already has a Portico account. Successful exploitation would
 	// issue credentials for that existing account, not merely create a signup.
-	if _, err := f.store.DB.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES('victim-profile','strict-owner','Victim')`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := f.store.DB.ExecContext(ctx, `INSERT INTO account_external_identities(id,account_id,provider,issuer,subject,verified_at) VALUES('victim-identity','strict-owner','google','https://accounts.google.com','victim-subject',clock_timestamp())`); err != nil {
 		t.Fatal(err)
 	}
@@ -177,9 +174,6 @@ func TestNativeSignInRequiresTheCompletionCode(t *testing.T) {
 	keys := &security.Keys{SealKey: bytes.Repeat([]byte{3}, 32)}
 	o := &postgres.OIDCLogin{Store: f.store, Keys: keys, Security: &postgres.AccountSecurity{Store: f.store, Keys: keys, Identity: identity.New(f.store), Lifetime: 15 * time.Minute, MailEnabled: true}, Lifetime: 15 * time.Minute, Providers: map[string]*oidclogin.Provider{"google": {ID: "google", Issuer: "https://accounts.google.com", Audience: "fixture-client", Callback: "https://web.getportico.tv/auth/sso/google/callback"}}}
 	if err := o.Configure(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.store.DB.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES('owner-profile-2','strict-owner','Owner')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.store.DB.ExecContext(ctx, `INSERT INTO account_external_identities(id,account_id,provider,issuer,subject,verified_at) VALUES('owner-identity','strict-owner','google','https://accounts.google.com','owner-subject',clock_timestamp())`); err != nil {

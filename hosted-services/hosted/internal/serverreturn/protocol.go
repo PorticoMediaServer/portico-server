@@ -20,13 +20,19 @@ var ErrInvalid = errors.New("invalid server return")
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var secret = regexp.MustCompile(`^[A-Za-z0-9_-]{32,128}$`)
 
-func Purpose(v string) bool { return v == "setup" || v == "switch" || v == "change-owner" }
+func Purpose(v string) bool      { return v == "sign-in" || claimPurpose(v) }
+func claimPurpose(v string) bool { return v == "setup" || v == "switch" || v == "change-owner" }
+
+// Binding is the owner-claim binding. Ordinary sign-in never authorizes a claim.
 func Binding(purpose, current, previous string) bool {
-	if !Purpose(purpose) {
+	if !claimPurpose(purpose) {
 		return false
 	}
 	if purpose == "setup" {
 		return current == "" && previous == ""
+	}
+	if purpose == "switch" && current == "" {
+		return previous == ""
 	}
 	if !identifier.MatchString(current) {
 		return false
@@ -35,6 +41,13 @@ func Binding(purpose, current, previous string) bool {
 		return previous == ""
 	}
 	return previous == "admin" || previous == "member" || previous == "remove"
+}
+
+func ReturnBinding(purpose, current, previous string) bool {
+	if purpose == "sign-in" {
+		return current == "" && previous == ""
+	}
+	return Binding(purpose, current, previous)
 }
 
 // Origin accepts an exact HTTPS origin, including its registered port. ASCII
@@ -60,6 +73,9 @@ func Challenge(v string) string {
 
 type Registration struct {
 	ID     string `json:"id"`
+	Origin string `json:"origin"`
+}
+type RegistrationRequest struct {
 	Origin string `json:"origin"`
 }
 type Start struct {
@@ -110,6 +126,8 @@ type Assertion struct {
 	Kind                  string    `json:"kind"`
 	AccountID             string    `json:"accountId"`
 	Username              string    `json:"username"`
+	DisplayName           string    `json:"displayName"`
+	Email                 string    `json:"email"`
 	ServerID              string    `json:"serverId"`
 	Challenge             string    `json:"challenge"`
 	Nonce                 string    `json:"nonce"`
@@ -124,6 +142,17 @@ type Assertion struct {
 	CurrentOwnerAccountID string    `json:"currentOwnerAccountId"`
 	PreviousOwnerRole     string    `json:"previousOwnerRole"`
 }
+
+const AssertionKind = "portico.server-return.v1"
+const AssertionLifetime = time.Minute
+
+// Valid checks the whole signed return identity, independent of whether its
+// one-use login challenge has since been spent. Historical signed bytes also
+// serve as the account's discovery consent, never as custody consent.
+func (q Assertion) Valid() bool {
+	return q.Kind == AssertionKind && identifier.MatchString(q.AccountID) && identifier.MatchString(q.ServerID) && identifier.MatchString(q.ClaimOperationID) && identifier.MatchString(q.RegistrationID) && secret.MatchString(q.InstallationID) && secret.MatchString(q.Challenge) && secret.MatchString(q.Nonce) && ReturnBinding(q.Purpose, q.CurrentOwnerAccountID, q.PreviousOwnerRole) && q.ClaimGeneration > 0 && q.CredentialGeneration > 0 && !q.IssuedAt.IsZero() && q.ExpiresAt.After(q.IssuedAt) && q.ExpiresAt.Sub(q.IssuedAt) <= AssertionLifetime
+}
+
 type Grant struct {
 	Assertion trust.Envelope `json:"assertion"`
 }
@@ -144,7 +173,7 @@ func (Start) JSONSchema() map[string]any {
 	}
 	props["codeChallenge"] = map[string]any{"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]+$"}
 	variants := []any{}
-	for _, purpose := range []string{"setup", "switch", "change-owner"} {
+	for _, purpose := range []string{"setup", "switch", "change-owner", "sign-in"} {
 		variant := map[string]any{}
 		for k, v := range shape {
 			variant[k] = v
@@ -165,7 +194,7 @@ func (Exchange) JSONSchema() map[string]any {
 		panic(e)
 	}
 	props := shape["properties"].(map[string]any)
-	props["purpose"] = map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner"}}
+	props["purpose"] = map[string]any{"type": "string", "enum": []string{"setup", "switch", "change-owner", "sign-in"}}
 	for _, field := range []string{"code", "verifier", "serverChallenge", "installationId"} {
 		props[field] = map[string]any{"type": "string", "minLength": 32, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"}
 	}

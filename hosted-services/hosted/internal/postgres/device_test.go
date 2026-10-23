@@ -100,7 +100,7 @@ func TestDeviceApprovalRequiresExplicitAccountAndZeroServers(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if session.Account.ID != a.Account.ID || len(session.Profiles) != 1 {
+	if session.Account.ID != a.Account.ID || session.Account.Username != a.Account.Username {
 		t.Fatal("wrong account scope")
 	}
 	if _, e = ids.Authenticate(ctx, session.AccessToken); e != nil {

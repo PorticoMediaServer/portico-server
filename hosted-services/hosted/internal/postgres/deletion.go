@@ -12,61 +12,36 @@ import (
 	"time"
 )
 
-func deletionSnapshot(ctx context.Context, tx *sql.Tx, account string) (identity.DeletionPreview, []string, []byte, error) {
+func deletionSnapshot(ctx context.Context, tx *sql.Tx, account string) (identity.DeletionPreview, []byte, error) {
 	p := identity.DeletionPreview{OwnedServers: []identity.DeletionServer{}, AffectedServers: []identity.DeletionServer{}}
-	profiles := []string{}
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM profiles WHERE account_id=$1 ORDER BY id`, account)
+	rows, e := tx.QueryContext(ctx, `SELECT id,name,COALESCE(owner_account_id=$1,false) FROM servers WHERE owner_account_id=$1 OR id IN(SELECT server_id FROM server_members WHERE account_id=$1) ORDER BY id LIMIT 1001`, account)
 	if e != nil {
-		return p, nil, nil, e
+		return p, nil, e
 	}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return p, nil, nil, e
-		}
-		profiles = append(profiles, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return p, nil, nil, e
-	}
-	rows, e = tx.QueryContext(ctx, `SELECT id,name,COALESCE(owner_account_id=$1,false) FROM servers WHERE owner_account_id=$1 OR id IN(SELECT server_id FROM memberships WHERE account_id=$1 UNION SELECT server_id FROM server_members WHERE account_id=$1) ORDER BY id LIMIT 1001`, account)
-	if e != nil {
-		return p, nil, nil, e
-	}
+	defer rows.Close()
 	for rows.Next() {
 		var v identity.DeletionServer
 		var owned bool
 		if e = rows.Scan(&v.ID, &v.Name, &owned); e != nil {
-			rows.Close()
-			return p, nil, nil, e
+			return p, nil, e
 		}
 		p.AffectedServers = append(p.AffectedServers, v)
 		if owned {
 			p.OwnedServers = append(p.OwnedServers, v)
 		}
 	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return p, nil, nil, e
+	if e = rows.Err(); e != nil {
+		return p, nil, e
+	}
+	if len(p.OwnedServers) > 0 {
+		return p, nil, identity.ErrOwnedServers
 	}
 	if len(p.AffectedServers) > 1000 {
-		return p, nil, nil, identity.ErrDeletionConflict
+		return p, nil, identity.ErrDeletionConflict
 	}
-	p.ProfileCount = len(profiles)
 	p.CanDelete = true
-	if len(p.AffectedServers) > 0 {
-		p.RequiredDisposition = identity.DeletePersonalResources
-	}
-	raw, _ := json.Marshal(struct {
-		Profiles []string
-		Servers  []identity.DeletionServer
-		Owned    []identity.DeletionServer
-	}{profiles, p.AffectedServers, p.OwnedServers})
-	return p, profiles, security.Hash(string(raw)), nil
+	raw, _ := json.Marshal(p.AffectedServers)
+	return p, security.Hash(string(raw)), nil
 }
 func (s *Store) PrepareDeletion(ctx context.Context, account string, password, token []byte, expiry time.Time) (identity.DeletionPreview, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
@@ -81,7 +56,7 @@ func (s *Store) PrepareDeletion(ctx context.Context, account string, password, t
 	if !identity.PasswordInstalled(stored) || !identity.PasswordInstalled(password) || !bytes.Equal(stored, password) {
 		return identity.DeletionPreview{}, identity.ErrDeletionConflict
 	}
-	p, _, snapshot, e := deletionSnapshot(ctx, tx, account)
+	p, snapshot, e := deletionSnapshot(ctx, tx, account)
 	if e != nil {
 		return p, e
 	}
@@ -177,20 +152,20 @@ func (s *Store) acceptDeletion(ctx context.Context, token []byte, disposition st
 	} else if !identity.PasswordInstalled(password) || !identity.PasswordInstalled(expected) || !bytes.Equal(password, expected) {
 		return identity.DeletionReceipt{}, identity.ErrDeletionConflict
 	}
-	p, profiles, current, e := deletionSnapshot(ctx, tx, account)
+	p, current, e := deletionSnapshot(ctx, tx, account)
 	if e != nil {
 		return identity.DeletionReceipt{}, e
 	}
-	if !bytes.Equal(snapshot, current) || disposition != p.RequiredDisposition {
+	if !bytes.Equal(snapshot, current) || disposition != "" {
 		return identity.DeletionReceipt{}, identity.ErrDeletionConflict
 	}
 	for _, server := range p.AffectedServers {
-		if e = prepareServerErasureTx(ctx, tx, id, account, profiles, disposition, server.ID); e != nil {
+		if e = prepareServerDepartureTx(ctx, tx, account, server.ID); e != nil {
 			return identity.DeletionReceipt{}, e
 		}
 	}
 	// Approval family FKs and operation constraints must be released before
-	// account/profile deletion. Keep only original-key cleanup authority and
+	// account deletion. Keep only generation-fenced claim state and
 	// opaque predecessor identifiers, never bearer credentials or display data.
 	if _, e = tx.ExecContext(ctx, `DELETE FROM claim_approvals WHERE account_id=$1`, account); e != nil {
 		return identity.DeletionReceipt{}, e
@@ -219,18 +194,13 @@ func (s *Store) acceptDeletion(ctx context.Context, token []byte, disposition st
 		`DELETE FROM account_registrations WHERE account_id=$1`,
 		`DELETE FROM account_security_receipts WHERE account_id=$1`,
 		`DELETE FROM identity_transactions WHERE expected_account_id=$1 OR id IN(SELECT transaction_id FROM identity_completion_receipts WHERE account_id=$1) OR id IN(SELECT identity_transaction_id FROM account_mfa_challenges WHERE account_id=$1)`,
-		`DELETE FROM restrictions WHERE account_id=$1`,
-		`DELETE FROM attachment_tickets WHERE account_id=$1`,
-		`DELETE FROM invitations WHERE owner_id=$1 OR recipient_id=$1`,
-		`DELETE FROM memberships WHERE account_id=$1`,
 		`DELETE FROM device_authorizations WHERE approved_account_id=$1`,
 		`DELETE FROM hosted_devices WHERE account_id=$1`,
 		`DELETE FROM account_sessions WHERE account_id=$1`,
 		`DELETE FROM refresh_receipts WHERE family_id IN(SELECT id FROM session_families WHERE account_id=$1)`,
 		`DELETE FROM refresh_tokens WHERE family_id IN(SELECT id FROM session_families WHERE account_id=$1)`,
 		`DELETE FROM session_families WHERE account_id=$1`,
-		`DELETE FROM security_audit WHERE actor_id=$1 OR target_id=$1 OR target_id IN(SELECT id FROM profiles WHERE account_id=$1)`,
-		`DELETE FROM profiles WHERE account_id=$1`,
+		`DELETE FROM security_audit WHERE actor_id=$1 OR target_id=$1`,
 		`DELETE FROM accounts WHERE id=$1`,
 	}
 	for _, q := range statements {
@@ -238,10 +208,10 @@ func (s *Store) acceptDeletion(ctx context.Context, token []byte, disposition st
 			return identity.DeletionReceipt{}, e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE account_deletions SET accepted_at=now(),password_hash=NULL,snapshot_hash=NULL,disposition=$2,receipt_expires_at=now()+interval '90 days',completed_at=CASE WHEN $3=0 THEN now() END WHERE id=$1`, id, disposition, len(p.AffectedServers)); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE account_deletions SET accepted_at=now(),password_hash=NULL,snapshot_hash=NULL,disposition=$2,receipt_expires_at=now()+interval '90 days',completed_at=now() WHERE id=$1`, id, disposition); e != nil {
 		return identity.DeletionReceipt{}, e
 	}
-	if e = audit(ctx, tx, id, "account.erasure.accepted", id, 1); e != nil {
+	if e = audit(ctx, tx, id, "account.deletion.accepted", id, 1); e != nil {
 		return identity.DeletionReceipt{}, e
 	}
 	r, e := deletionReceipt(ctx, tx, id)
@@ -263,19 +233,7 @@ func deletionReceipt(ctx context.Context, tx *sql.Tx, id string) (identity.Delet
 	if complete.Valid {
 		r.Status = "complete"
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT server_id FROM account_erasure_jobs WHERE deletion_id=$1 AND acknowledged_at IS NULL ORDER BY server_id`, id)
-	if e != nil {
-		return r, e
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var server string
-		if e = rows.Scan(&server); e != nil {
-			return r, e
-		}
-		r.PendingServers = append(r.PendingServers, server)
-	}
-	return r, rows.Err()
+	return r, nil
 }
 func (s *Store) DeletionStatus(ctx context.Context, token []byte) (identity.DeletionReceipt, error) {
 	tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})

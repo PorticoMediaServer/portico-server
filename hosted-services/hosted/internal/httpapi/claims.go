@@ -76,7 +76,7 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		result, e := h.Service.Acknowledge(ctx, token, in)
 		claimRespond(w, result, e)
-	case "/v1/server-claims/nonce", "/v1/server-claims/finalize", "/v1/server-claims/result", "/v1/server-claims/cancel", "/v1/server-claims/cleanup":
+	case "/v1/servers/leave", "/v1/server-claims/nonce", "/v1/server-claims/finalize", "/v1/server-claims/result", "/v1/server-claims/cancel":
 		// Positive and deny-only server proof paths never accept account bearers.
 		if len(r.Header.Values("Authorization")) != 0 {
 			claimFailure(w, claims.ErrInvalid)
@@ -97,6 +97,12 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		switch r.URL.Path {
+		case "/v1/servers/leave":
+			if e := h.Service.Leave(ctx, payload, signature); e != nil {
+				claimFailure(w, e)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "/v1/server-claims/nonce":
 			v, e := h.Service.Nonce(ctx, payload, signature)
 			claimRespond(w, v, e)
@@ -105,9 +111,6 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			claimRespond(w, v, e)
 		case "/v1/server-claims/result":
 			v, e := h.Service.Result(ctx, payload, signature)
-			claimRespond(w, v, e)
-		case "/v1/server-claims/cleanup":
-			v, e := h.Service.Cleanup(ctx, payload, signature)
 			claimRespond(w, v, e)
 		case "/v1/server-claims/cancel":
 			v, e := h.Service.Cancel(ctx, payload, signature)

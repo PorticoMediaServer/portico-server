@@ -82,7 +82,7 @@ func (h *Handler) devE2ESession(w http.ResponseWriter, r *http.Request) {
 	stamp := func(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }
 	record, e := json.Marshal(map[string]any{"version": 1, "revocations": []any{}, "active": map[string]any{
 		"session": map[string]any{"accessToken": "", "expiresAt": stamp(time.Now()), "refreshExpiresAt": stamp(expiry), "familyId": family.ID,
-			"account": map[string]string{"id": account, "username": username, "displayName": displayName}, "profiles": []any{}},
+			"account": map[string]string{"id": account, "username": username, "displayName": displayName}},
 		"authority": map[string]string{"familyId": family.ID}, "context": map[string]any{}}})
 	if e != nil {
 		failure(w, e)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,9 +33,6 @@ func currentClaimJourney(t *testing.T) claimJourney {
 	t.Helper()
 	f := currentFamilySetup(t)
 	ctx := context.Background()
-	if _, e := f.store.DB.ExecContext(ctx, `INSERT INTO profiles(id,account_id,name) VALUES('claim_profile','strict-owner','Owner'),('other_profile','strict-other','Other')`); e != nil {
-		t.Fatal(e)
-	}
 	token := "claim-owner-access-token-fixture"
 	f.expected.TokenHash = security.Hash(token)
 	if _, e := f.store.DB.ExecContext(ctx, `INSERT INTO account_sessions(token_hash,account_id,family_id,expires_at) VALUES($1,'strict-owner','strict-owner-family',clock_timestamp()+interval '15 minutes')`, f.expected.TokenHash); e != nil {
@@ -63,7 +61,7 @@ func currentClaimJourney(t *testing.T) claimJourney {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return claimJourney{f, service, &httpapi.ClaimHandler{Service: service, CaptureAuthority: f.store.CaptureClaimAuthority}, key, claims.ApprovalInput{Purpose: "setup", OperationID: "operation_a", ServerID: server, PublicKey: base64.RawURLEncoding.EncodeToString(key.Public().(ed25519.PublicKey)), Name: "Server", OwnerProfileID: "claim_profile"}}
+	return claimJourney{f, service, &httpapi.ClaimHandler{Service: service, CaptureAuthority: f.store.CaptureClaimAuthority}, key, claims.ApprovalInput{Purpose: "setup", OperationID: "operation_a", ServerID: server, PublicKey: base64.RawURLEncoding.EncodeToString(key.Public().(ed25519.PublicKey)), Name: "Server"}}
 }
 func claimHTTP(t *testing.T, h http.Handler, path, token string, input, output any, want int) {
 	t.Helper()
@@ -114,6 +112,12 @@ func journeyProof(t *testing.T, f claimJourney, a claims.Approval, purpose strin
 	t.Helper()
 	now := time.Now().UTC()
 	w := claims.Wire{Kind: claims.NonceRequest, Version: "1", Audience: a.Audience, Purpose: purpose, OperationID: a.OperationID, ServerID: a.ServerID, AccountID: a.AccountID, PublicKey: a.PublicKey, LocalGeneration: a.LocalGeneration, ApprovalRevision: a.ApprovalRevision, RequestID: security.RandomID("req_"), IssuedAt: now.Format(time.RFC3339Nano), ExpiresAt: now.Add(25 * time.Second).Format(time.RFC3339Nano)}
+	if purpose == claims.Finalize && (a.Purpose == "switch" || a.Purpose == "change-owner") {
+		w.ReservationAccountID = a.AccountID
+		w.ReservationUsername = a.TargetUsername
+		w.ReservationGeneration = strconv.FormatInt(a.LocalGeneration, 10)
+		w.ReservationOperationID = a.OperationID
+	}
 	raw, e := json.Marshal(w)
 	if e != nil {
 		t.Fatal(e)

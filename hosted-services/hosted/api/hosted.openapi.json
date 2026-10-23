@@ -195,14 +195,6 @@
               "type": "object"
             },
             "type": "array"
-          },
-          "profileCount": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "requiredDisposition": {
-            "type": "string"
           }
         },
         "required": [
@@ -210,7 +202,6 @@
           "expiresAt",
           "ownedServers",
           "affectedServers",
-          "profileCount",
           "canDelete"
         ],
         "type": "object"
@@ -358,13 +349,11 @@
           "format": {
             "type": "string"
           },
-          "invitations": {},
           "linkedProviders": {},
           "mediaData": {
             "type": "string"
           },
           "memberships": {},
-          "profiles": {},
           "securityAudit": {},
           "sessions": {}
         },
@@ -374,11 +363,9 @@
           "createdAt",
           "devices",
           "format",
-          "invitations",
           "linkedProviders",
           "mediaData",
           "memberships",
-          "profiles",
           "securityAudit",
           "sessions"
         ],
@@ -447,78 +434,6 @@
       },
       "AccountGetResponse": {
         "properties": {
-          "invitations": {
-            "properties": {
-              "conflicting": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "expired": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "latestReceivedAt": {
-                "type": "string"
-              },
-              "nextExpiresAt": {
-                "type": "string"
-              },
-              "pending": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "pending",
-              "expired",
-              "conflicting"
-            ],
-            "type": "object"
-          },
-          "preferences": {
-            "properties": {
-              "hourCycle": {
-                "type": "string"
-              },
-              "includeInWatchTogether": {
-                "type": "boolean"
-              },
-              "locale": {
-                "type": "string"
-              },
-              "marketingEmail": {
-                "type": "boolean"
-              },
-              "pauseWatchHistory": {
-                "type": "boolean"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "showActivityToMembers": {
-                "type": "boolean"
-              },
-              "timeZone": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "locale",
-              "timeZone",
-              "hourCycle",
-              "pauseWatchHistory",
-              "showActivityToMembers",
-              "includeInWatchTogether",
-              "marketingEmail",
-              "revision"
-            ],
-            "type": "object"
-          },
           "security": {
             "properties": {
               "accountId": {
@@ -577,9 +492,7 @@
           }
         },
         "required": [
-          "security",
-          "preferences",
-          "invitations"
+          "security"
         ],
         "type": "object"
       },
@@ -652,58 +565,34 @@
       },
       "AccountNotificationPreferencesGetResponse": {
         "properties": {
-          "invitationAccepted": {
-            "type": "boolean"
-          },
           "serverOffline": {
-            "type": "boolean"
-          },
-          "storageNearlyFull": {
             "type": "boolean"
           }
         },
         "required": [
-          "serverOffline",
-          "storageNearlyFull",
-          "invitationAccepted"
+          "serverOffline"
         ],
         "type": "object"
       },
       "AccountNotificationPreferencesSetRequest": {
         "properties": {
-          "invitationAccepted": {
-            "type": "boolean"
-          },
           "serverOffline": {
-            "type": "boolean"
-          },
-          "storageNearlyFull": {
             "type": "boolean"
           }
         },
         "required": [
-          "serverOffline",
-          "storageNearlyFull",
-          "invitationAccepted"
+          "serverOffline"
         ],
         "type": "object"
       },
       "AccountNotificationPreferencesSetResponse": {
         "properties": {
-          "invitationAccepted": {
-            "type": "boolean"
-          },
           "serverOffline": {
-            "type": "boolean"
-          },
-          "storageNearlyFull": {
             "type": "boolean"
           }
         },
         "required": [
-          "serverOffline",
-          "storageNearlyFull",
-          "invitationAccepted"
+          "serverOffline"
         ],
         "type": "object"
       },
@@ -882,14 +771,6 @@
                   "type": "object"
                 },
                 "type": "array"
-              },
-              "profileCount": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "requiredDisposition": {
-                "type": "string"
               }
             },
             "required": [
@@ -897,7 +778,6 @@
               "expiresAt",
               "ownedServers",
               "affectedServers",
-              "profileCount",
               "canDelete"
             ],
             "type": "object"
@@ -932,140 +812,6 @@
           "accountId",
           "familyId",
           "status"
-        ],
-        "type": "object"
-      },
-      "AccountPreferencesGetRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "AccountPreferencesGetResponse": {
-        "properties": {
-          "hourCycle": {
-            "type": "string"
-          },
-          "includeInWatchTogether": {
-            "type": "boolean"
-          },
-          "locale": {
-            "type": "string"
-          },
-          "marketingEmail": {
-            "type": "boolean"
-          },
-          "pauseWatchHistory": {
-            "type": "boolean"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "showActivityToMembers": {
-            "type": "boolean"
-          },
-          "timeZone": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "locale",
-          "timeZone",
-          "hourCycle",
-          "pauseWatchHistory",
-          "showActivityToMembers",
-          "includeInWatchTogether",
-          "marketingEmail",
-          "revision"
-        ],
-        "type": "object"
-      },
-      "AccountPreferencesSetRequest": {
-        "properties": {
-          "expectedRevision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "hourCycle": {
-            "type": "string"
-          },
-          "includeInWatchTogether": {
-            "type": "boolean"
-          },
-          "locale": {
-            "type": "string"
-          },
-          "marketingEmail": {
-            "type": "boolean"
-          },
-          "pauseWatchHistory": {
-            "type": "boolean"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "showActivityToMembers": {
-            "type": "boolean"
-          },
-          "timeZone": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "expectedRevision",
-          "locale",
-          "timeZone",
-          "hourCycle",
-          "pauseWatchHistory",
-          "showActivityToMembers",
-          "includeInWatchTogether",
-          "marketingEmail",
-          "revision"
-        ],
-        "type": "object"
-      },
-      "AccountPreferencesSetResponse": {
-        "properties": {
-          "hourCycle": {
-            "type": "string"
-          },
-          "includeInWatchTogether": {
-            "type": "boolean"
-          },
-          "locale": {
-            "type": "string"
-          },
-          "marketingEmail": {
-            "type": "boolean"
-          },
-          "pauseWatchHistory": {
-            "type": "boolean"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "showActivityToMembers": {
-            "type": "boolean"
-          },
-          "timeZone": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "locale",
-          "timeZone",
-          "hourCycle",
-          "pauseWatchHistory",
-          "showActivityToMembers",
-          "includeInWatchTogether",
-          "marketingEmail",
-          "revision"
         ],
         "type": "object"
       },
@@ -1213,14 +959,6 @@
                   "type": "object"
                 },
                 "type": "array"
-              },
-              "profileCount": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "requiredDisposition": {
-                "type": "string"
               }
             },
             "required": [
@@ -1228,7 +966,6 @@
               "expiresAt",
               "ownedServers",
               "affectedServers",
-              "profileCount",
               "canDelete"
             ],
             "type": "object"
@@ -1340,14 +1077,6 @@
                   "type": "object"
                 },
                 "type": "array"
-              },
-              "profileCount": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "requiredDisposition": {
-                "type": "string"
               }
             },
             "required": [
@@ -1355,7 +1084,6 @@
               "expiresAt",
               "ownedServers",
               "affectedServers",
-              "profileCount",
               "canDelete"
             ],
             "type": "object"
@@ -1528,14 +1256,6 @@
                   "type": "object"
                 },
                 "type": "array"
-              },
-              "profileCount": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "requiredDisposition": {
-                "type": "string"
               }
             },
             "required": [
@@ -1543,7 +1263,6 @@
               "expiresAt",
               "ownedServers",
               "affectedServers",
-              "profileCount",
               "canDelete"
             ],
             "type": "object"
@@ -2154,24 +1873,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -2183,8 +1884,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -2399,24 +2099,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -2428,8 +2110,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -2631,24 +2312,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -2660,8 +2323,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -2969,29 +2631,10 @@
               "displayName"
             ],
             "type": "object"
-          },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
           }
         },
         "required": [
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -3251,24 +2894,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -3280,8 +2905,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -3612,9 +3236,6 @@
           "code": {
             "type": "string"
           },
-          "ownerProfileId": {
-            "type": "string"
-          },
           "replacesServerId": {
             "type": "string"
           }
@@ -3656,9 +3277,6 @@
           "operationId": {
             "type": "string"
           },
-          "ownerProfileId": {
-            "type": "string"
-          },
           "previousOwnerRole": {
             "type": "string"
           },
@@ -3684,7 +3302,6 @@
           "publicKey",
           "localGeneration",
           "name",
-          "ownerProfileId",
           "expectedRevision",
           "purpose",
           "currentOwnerAccountId",
@@ -3788,92 +3405,9 @@
         ],
         "type": "object"
       },
-      "ServerClaimCleanupRequest": {
-        "properties": {
-          "payload": {
-            "type": "string"
-          },
-          "signature": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "payload",
-          "signature"
-        ],
-        "type": "object"
-      },
-      "ServerClaimCleanupResponse": {
-        "properties": {
-          "certificate": {
-            "properties": {
-              "keyId": {
-                "type": "string"
-              },
-              "notAfter": {
-                "format": "date-time",
-                "type": "string"
-              },
-              "notBefore": {
-                "format": "date-time",
-                "type": "string"
-              },
-              "publicKey": {
-                "type": "string"
-              },
-              "purpose": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "revoked": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "signature": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "keyId",
-              "publicKey",
-              "purpose",
-              "notBefore",
-              "notAfter",
-              "revision",
-              "revoked",
-              "signature"
-            ],
-            "type": "object"
-          },
-          "keyId": {
-            "type": "string"
-          },
-          "payload": {
-            "type": "string"
-          },
-          "signature": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "payload",
-          "signature",
-          "keyId"
-        ],
-        "type": "object"
-      },
       "ServerClaimDenyRequest": {
         "properties": {
           "code": {
-            "type": "string"
-          },
-          "ownerProfileId": {
             "type": "string"
           },
           "replacesServerId": {
@@ -3969,9 +3503,6 @@
       "ServerClaimLookupRequest": {
         "properties": {
           "code": {
-            "type": "string"
-          },
-          "ownerProfileId": {
             "type": "string"
           },
           "replacesServerId": {
@@ -4313,105 +3844,6 @@
         ],
         "type": "object"
       },
-      "ServerErasureAckRequest": {
-        "properties": {
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "revision"
-        ],
-        "type": "object"
-      },
-      "ServerErasureAckResponse": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "ServerErasuresListRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "ServerErasuresListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "properties": {
-                "certificate": {
-                  "properties": {
-                    "keyId": {
-                      "type": "string"
-                    },
-                    "notAfter": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "notBefore": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "publicKey": {
-                      "type": "string"
-                    },
-                    "purpose": {
-                      "type": "string"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "revoked": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "signature": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "keyId",
-                    "publicKey",
-                    "purpose",
-                    "notBefore",
-                    "notAfter",
-                    "revision",
-                    "revoked",
-                    "signature"
-                  ],
-                  "type": "object"
-                },
-                "keyId": {
-                  "type": "string"
-                },
-                "payload": {
-                  "type": "string"
-                },
-                "signature": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "payload",
-                "signature",
-                "keyId"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "type": "object"
-      },
       "ServerEventRequest": {
         "properties": {
           "kind": {
@@ -4462,9 +3894,6 @@
       },
       "ServerHeartbeatResponse": {
         "properties": {
-          "cleanupPending": {
-            "type": "boolean"
-          },
           "departures": {
             "items": {
               "properties": {
@@ -4564,7 +3993,6 @@
           "presenceExpiresAt",
           "memberSequence",
           "memberDigestMatches",
-          "cleanupPending",
           "departures"
         ],
         "type": "object"
@@ -4762,6 +4190,26 @@
         ],
         "type": "object"
       },
+      "ServerRegistrationLeaveRequest": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "ServerRegistrationLeaveResponse": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
       "ServerRemoveRequest": {
         "properties": {
           "claimGeneration": {
@@ -4833,7 +4281,8 @@
             "enum": [
               "setup",
               "switch",
-              "change-owner"
+              "change-owner",
+              "sign-in"
             ],
             "type": "string"
           },
@@ -4937,6 +4386,32 @@
         },
         "required": [
           "assertion"
+        ],
+        "type": "object"
+      },
+      "ServerReturnRegistrationRequest": {
+        "properties": {
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "type": "object"
+      },
+      "ServerReturnRegistrationResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "origin"
         ],
         "type": "object"
       },
@@ -5063,6 +4538,57 @@
               },
               "purpose": {
                 "const": "change-owner",
+                "type": "string"
+              },
+              "registrationId": {
+                "type": "string"
+              },
+              "serverChallenge": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "purpose",
+              "registrationId",
+              "state",
+              "codeChallenge",
+              "serverChallenge",
+              "installationId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "claimOperationId": {
+                "type": "string"
+              },
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "purpose": {
+                "const": "sign-in",
                 "type": "string"
               },
               "registrationId": {
@@ -5273,22 +4799,6 @@
         "required": [
           "baseUrl",
           "verifiedAt"
-        ],
-        "type": "object"
-      },
-      "ServerStorageWarningRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "ServerStorageWarningResponse": {
-        "properties": {
-          "code": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code"
         ],
         "type": "object"
       },
@@ -5513,24 +5023,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -5542,8 +5034,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -5617,24 +5108,6 @@
           "familyId": {
             "type": "string"
           },
-          "profiles": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "refreshExpiresAt": {
             "format": "date-time",
             "type": "string"
@@ -5646,8 +5119,7 @@
         "required": [
           "accessToken",
           "expiresAt",
-          "account",
-          "profiles"
+          "account"
         ],
         "type": "object"
       },
@@ -5776,78 +5248,6 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "invitations": {
-                      "properties": {
-                        "conflicting": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "expired": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "latestReceivedAt": {
-                          "type": "string"
-                        },
-                        "nextExpiresAt": {
-                          "type": "string"
-                        },
-                        "pending": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "pending",
-                        "expired",
-                        "conflicting"
-                      ],
-                      "type": "object"
-                    },
-                    "preferences": {
-                      "properties": {
-                        "hourCycle": {
-                          "type": "string"
-                        },
-                        "includeInWatchTogether": {
-                          "type": "boolean"
-                        },
-                        "locale": {
-                          "type": "string"
-                        },
-                        "marketingEmail": {
-                          "type": "boolean"
-                        },
-                        "pauseWatchHistory": {
-                          "type": "boolean"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "showActivityToMembers": {
-                          "type": "boolean"
-                        },
-                        "timeZone": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "locale",
-                        "timeZone",
-                        "hourCycle",
-                        "pauseWatchHistory",
-                        "showActivityToMembers",
-                        "includeInWatchTogether",
-                        "marketingEmail",
-                        "revision"
-                      ],
-                      "type": "object"
-                    },
                     "security": {
                       "properties": {
                         "accountId": {
@@ -5906,9 +5306,7 @@
                     }
                   },
                   "required": [
-                    "security",
-                    "preferences",
-                    "invitations"
+                    "security"
                   ],
                   "type": "object"
                 }
@@ -6156,14 +5554,6 @@
                         "type": "object"
                       },
                       "type": "array"
-                    },
-                    "profileCount": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "requiredDisposition": {
-                      "type": "string"
                     }
                   },
                   "required": [
@@ -6171,7 +5561,6 @@
                     "expiresAt",
                     "ownedServers",
                     "affectedServers",
-                    "profileCount",
                     "canDelete"
                   ],
                   "type": "object"
@@ -6652,13 +6041,11 @@
                     "format": {
                       "type": "string"
                     },
-                    "invitations": {},
                     "linkedProviders": {},
                     "mediaData": {
                       "type": "string"
                     },
                     "memberships": {},
-                    "profiles": {},
                     "securityAudit": {},
                     "sessions": {}
                   },
@@ -6668,11 +6055,9 @@
                     "createdAt",
                     "devices",
                     "format",
-                    "invitations",
                     "linkedProviders",
                     "mediaData",
                     "memberships",
-                    "profiles",
                     "securityAudit",
                     "sessions"
                   ],
@@ -6797,20 +6182,12 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "invitationAccepted": {
-                      "type": "boolean"
-                    },
                     "serverOffline": {
-                      "type": "boolean"
-                    },
-                    "storageNearlyFull": {
                       "type": "boolean"
                     }
                   },
                   "required": [
-                    "serverOffline",
-                    "storageNearlyFull",
-                    "invitationAccepted"
+                    "serverOffline"
                   ],
                   "type": "object"
                 }
@@ -6864,20 +6241,12 @@
             "application/json": {
               "schema": {
                 "properties": {
-                  "invitationAccepted": {
-                    "type": "boolean"
-                  },
                   "serverOffline": {
-                    "type": "boolean"
-                  },
-                  "storageNearlyFull": {
                     "type": "boolean"
                   }
                 },
                 "required": [
-                  "serverOffline",
-                  "storageNearlyFull",
-                  "invitationAccepted"
+                  "serverOffline"
                 ],
                 "type": "object"
               }
@@ -6891,20 +6260,12 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "invitationAccepted": {
-                      "type": "boolean"
-                    },
                     "serverOffline": {
-                      "type": "boolean"
-                    },
-                    "storageNearlyFull": {
                       "type": "boolean"
                     }
                   },
                   "required": [
-                    "serverOffline",
-                    "storageNearlyFull",
-                    "invitationAccepted"
+                    "serverOffline"
                   ],
                   "type": "object"
                 }
@@ -7359,14 +6720,6 @@
                             "type": "object"
                           },
                           "type": "array"
-                        },
-                        "profileCount": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "requiredDisposition": {
-                          "type": "string"
                         }
                       },
                       "required": [
@@ -7374,7 +6727,6 @@
                         "expiresAt",
                         "ownedServers",
                         "affectedServers",
-                        "profileCount",
                         "canDelete"
                       ],
                       "type": "object"
@@ -7453,243 +6805,6 @@
         "x-cost": "constant",
         "x-error-codes": [],
         "x-lane": "security",
-        "x-max-body-bytes": 65536,
-        "x-scope": "session"
-      }
-    },
-    "/v1/account/preferences": {
-      "get": {
-        "operationId": "account_preferences_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "hourCycle": {
-                      "type": "string"
-                    },
-                    "includeInWatchTogether": {
-                      "type": "boolean"
-                    },
-                    "locale": {
-                      "type": "string"
-                    },
-                    "marketingEmail": {
-                      "type": "boolean"
-                    },
-                    "pauseWatchHistory": {
-                      "type": "boolean"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showActivityToMembers": {
-                      "type": "boolean"
-                    },
-                    "timeZone": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "locale",
-                    "timeZone",
-                    "hourCycle",
-                    "pauseWatchHistory",
-                    "showActivityToMembers",
-                    "includeInWatchTogether",
-                    "marketingEmail",
-                    "revision"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Read the account's preferences.",
-        "x-access": "account_session",
-        "x-admission": "",
-        "x-cost": "constant",
-        "x-error-codes": [],
-        "x-lane": "default",
-        "x-scope": "session"
-      },
-      "put": {
-        "operationId": "account_preferences_set",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "expectedRevision": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "hourCycle": {
-                    "type": "string"
-                  },
-                  "includeInWatchTogether": {
-                    "type": "boolean"
-                  },
-                  "locale": {
-                    "type": "string"
-                  },
-                  "marketingEmail": {
-                    "type": "boolean"
-                  },
-                  "pauseWatchHistory": {
-                    "type": "boolean"
-                  },
-                  "revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "showActivityToMembers": {
-                    "type": "boolean"
-                  },
-                  "timeZone": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "expectedRevision",
-                  "locale",
-                  "timeZone",
-                  "hourCycle",
-                  "pauseWatchHistory",
-                  "showActivityToMembers",
-                  "includeInWatchTogether",
-                  "marketingEmail",
-                  "revision"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "hourCycle": {
-                      "type": "string"
-                    },
-                    "includeInWatchTogether": {
-                      "type": "boolean"
-                    },
-                    "locale": {
-                      "type": "string"
-                    },
-                    "marketingEmail": {
-                      "type": "boolean"
-                    },
-                    "pauseWatchHistory": {
-                      "type": "boolean"
-                    },
-                    "revision": {
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
-                    },
-                    "showActivityToMembers": {
-                      "type": "boolean"
-                    },
-                    "timeZone": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "locale",
-                    "timeZone",
-                    "hourCycle",
-                    "pauseWatchHistory",
-                    "showActivityToMembers",
-                    "includeInWatchTogether",
-                    "marketingEmail",
-                    "revision"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Change the account's preferences.",
-        "x-access": "account_session",
-        "x-admission": "",
-        "x-cost": "constant",
-        "x-error-codes": [],
-        "x-lane": "default",
         "x-max-body-bytes": 65536,
         "x-scope": "session"
       }
@@ -8077,14 +7192,6 @@
                             "type": "object"
                           },
                           "type": "array"
-                        },
-                        "profileCount": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "requiredDisposition": {
-                          "type": "string"
                         }
                       },
                       "required": [
@@ -8092,7 +7199,6 @@
                         "expiresAt",
                         "ownedServers",
                         "affectedServers",
-                        "profileCount",
                         "canDelete"
                       ],
                       "type": "object"
@@ -8263,14 +7369,6 @@
                             "type": "object"
                           },
                           "type": "array"
-                        },
-                        "profileCount": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "requiredDisposition": {
-                          "type": "string"
                         }
                       },
                       "required": [
@@ -8278,7 +7376,6 @@
                         "expiresAt",
                         "ownedServers",
                         "affectedServers",
-                        "profileCount",
                         "canDelete"
                       ],
                       "type": "object"
@@ -8449,14 +7546,6 @@
                             "type": "object"
                           },
                           "type": "array"
-                        },
-                        "profileCount": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "requiredDisposition": {
-                          "type": "string"
                         }
                       },
                       "required": [
@@ -8464,7 +7553,6 @@
                         "expiresAt",
                         "ownedServers",
                         "affectedServers",
-                        "profileCount",
                         "canDelete"
                       ],
                       "type": "object"
@@ -9895,24 +8983,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -9924,8 +8994,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -10464,24 +9533,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -10493,8 +9544,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -10842,24 +9892,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -10871,8 +9903,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -11574,29 +10605,10 @@
                         "displayName"
                       ],
                       "type": "object"
-                    },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
                     }
                   },
                   "required": [
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -11635,7 +10647,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Read the signed-in account and its profiles.",
+        "summary": "Read the signed-in account.",
         "x-access": "account_session",
         "x-admission": "",
         "x-cost": "constant",
@@ -12191,24 +11203,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -12220,8 +11214,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -12398,9 +11391,6 @@
                   "operationId": {
                     "type": "string"
                   },
-                  "ownerProfileId": {
-                    "type": "string"
-                  },
                   "previousOwnerRole": {
                     "type": "string"
                   },
@@ -12426,7 +11416,6 @@
                   "publicKey",
                   "localGeneration",
                   "name",
-                  "ownerProfileId",
                   "expectedRevision",
                   "purpose",
                   "currentOwnerAccountId",
@@ -12562,9 +11551,6 @@
               "schema": {
                 "properties": {
                   "code": {
-                    "type": "string"
-                  },
-                  "ownerProfileId": {
                     "type": "string"
                   },
                   "replacesServerId": {
@@ -12733,145 +11719,6 @@
         "x-scope": "session"
       }
     },
-    "/v1/server-claims/cleanup": {
-      "post": {
-        "operationId": "server_claim_cleanup",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "payload": {
-                    "type": "string"
-                  },
-                  "signature": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "payload",
-                  "signature"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "certificate": {
-                      "properties": {
-                        "keyId": {
-                          "type": "string"
-                        },
-                        "notAfter": {
-                          "format": "date-time",
-                          "type": "string"
-                        },
-                        "notBefore": {
-                          "format": "date-time",
-                          "type": "string"
-                        },
-                        "publicKey": {
-                          "type": "string"
-                        },
-                        "purpose": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        },
-                        "revoked": {
-                          "items": {
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "signature": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "keyId",
-                        "publicKey",
-                        "purpose",
-                        "notBefore",
-                        "notAfter",
-                        "revision",
-                        "revoked",
-                        "signature"
-                      ],
-                      "type": "object"
-                    },
-                    "keyId": {
-                      "type": "string"
-                    },
-                    "payload": {
-                      "type": "string"
-                    },
-                    "signature": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "payload",
-                    "signature",
-                    "keyId"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Clean up an abandoned server claim.",
-        "x-access": "signed_request",
-        "x-admission": "",
-        "x-cost": "constant",
-        "x-error-codes": [],
-        "x-lane": "security",
-        "x-max-body-bytes": 16384,
-        "x-scope": "session"
-      }
-    },
     "/v1/server-claims/deny": {
       "post": {
         "operationId": "server_claim_deny",
@@ -12881,9 +11728,6 @@
               "schema": {
                 "properties": {
                   "code": {
-                    "type": "string"
-                  },
-                  "ownerProfileId": {
                     "type": "string"
                   },
                   "replacesServerId": {
@@ -13156,9 +12000,6 @@
               "schema": {
                 "properties": {
                   "code": {
-                    "type": "string"
-                  },
-                  "ownerProfileId": {
                     "type": "string"
                   },
                   "replacesServerId": {
@@ -13729,7 +12570,8 @@
                     "enum": [
                       "setup",
                       "switch",
-                      "change-owner"
+                      "change-owner",
+                      "sign-in"
                     ],
                     "type": "string"
                   },
@@ -14018,6 +12860,57 @@
                       },
                       "purpose": {
                         "const": "change-owner",
+                        "type": "string"
+                      },
+                      "registrationId": {
+                        "type": "string"
+                      },
+                      "serverChallenge": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "serverId": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "serverId",
+                      "purpose",
+                      "registrationId",
+                      "state",
+                      "codeChallenge",
+                      "serverChallenge",
+                      "installationId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "claimOperationId": {
+                        "type": "string"
+                      },
+                      "codeChallenge": {
+                        "maxLength": 43,
+                        "minLength": 43,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "installationId": {
+                        "maxLength": 128,
+                        "minLength": 32,
+                        "pattern": "^[A-Za-z0-9_-]+$",
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "const": "sign-in",
                         "type": "string"
                       },
                       "registrationId": {
@@ -14421,6 +13314,76 @@
         "x-cost": "constant",
         "x-error-codes": [],
         "x-lane": "default",
+        "x-scope": "session"
+      }
+    },
+    "/v1/servers/leave": {
+      "post": {
+        "operationId": "server_registration_leave",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "payload": {
+                    "type": "string"
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "payload",
+                  "signature"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Withdraw an exact server registration after an offline local move.",
+        "x-access": "signed_request",
+        "x-admission": "",
+        "x-cost": "constant",
+        "x-error-codes": [],
+        "x-lane": "security",
+        "x-max-body-bytes": 16384,
         "x-scope": "session"
       }
     },
@@ -15398,229 +14361,6 @@
         "x-scope": "admin"
       }
     },
-    "/v1/servers/{id}/erasures": {
-      "get": {
-        "operationId": "server_erasures_list",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "items": {
-                      "items": {
-                        "properties": {
-                          "certificate": {
-                            "properties": {
-                              "keyId": {
-                                "type": "string"
-                              },
-                              "notAfter": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "notBefore": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "publicKey": {
-                                "type": "string"
-                              },
-                              "purpose": {
-                                "type": "string"
-                              },
-                              "revision": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "revoked": {
-                                "items": {
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              },
-                              "signature": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "keyId",
-                              "publicKey",
-                              "purpose",
-                              "notBefore",
-                              "notAfter",
-                              "revision",
-                              "revoked",
-                              "signature"
-                            ],
-                            "type": "object"
-                          },
-                          "keyId": {
-                            "type": "string"
-                          },
-                          "payload": {
-                            "type": "string"
-                          },
-                          "signature": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "payload",
-                          "signature",
-                          "keyId"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "items"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "List signed erasure jobs for the server.",
-        "x-access": "server_credential",
-        "x-admission": "",
-        "x-cost": "constant",
-        "x-error-codes": [],
-        "x-lane": "security",
-        "x-scope": "admin"
-      }
-    },
-    "/v1/servers/{id}/erasures/{erasure}/ack": {
-      "post": {
-        "operationId": "server_erasure_ack",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "erasure",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "revision": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "revision"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Acknowledge an applied erasure.",
-        "x-access": "server_credential",
-        "x-admission": "",
-        "x-cost": "constant",
-        "x-error-codes": [],
-        "x-lane": "security",
-        "x-max-body-bytes": 65536,
-        "x-scope": "admin"
-      }
-    },
     "/v1/servers/{id}/events": {
       "post": {
         "operationId": "server_event",
@@ -15764,9 +14504,6 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "cleanupPending": {
-                      "type": "boolean"
-                    },
                     "departures": {
                       "items": {
                         "properties": {
@@ -15866,7 +14603,6 @@
                     "presenceExpiresAt",
                     "memberSequence",
                     "memberDigestMatches",
-                    "cleanupPending",
                     "departures"
                   ],
                   "type": "object"
@@ -16287,9 +15023,9 @@
         "x-scope": "admin"
       }
     },
-    "/v1/servers/{id}/notifications/storage-nearly-full": {
+    "/v1/servers/{id}/return-registration": {
       "post": {
-        "operationId": "server_storage_warning",
+        "operationId": "server_return_registration",
         "parameters": [
           {
             "in": "path",
@@ -16300,18 +15036,40 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "origin": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "origin"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "202": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "properties": {
-                    "code": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "origin": {
                       "type": "string"
                     }
                   },
                   "required": [
-                    "code"
+                    "id",
+                    "origin"
                   ],
                   "type": "object"
                 }
@@ -16350,12 +15108,13 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Report the server's storage is nearly full.",
+        "summary": "Resolve an installed server's exact verified return origin.",
         "x-access": "server_credential",
         "x-admission": "",
         "x-cost": "constant",
         "x-error-codes": [],
-        "x-lane": "default",
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
         "x-scope": "admin"
       }
     },
@@ -16893,24 +15652,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -16922,8 +15663,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }
@@ -17130,24 +15870,6 @@
                     "familyId": {
                       "type": "string"
                     },
-                    "profiles": {
-                      "items": {
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "name"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
                     "refreshExpiresAt": {
                       "format": "date-time",
                       "type": "string"
@@ -17159,8 +15881,7 @@
                   "required": [
                     "accessToken",
                     "expiresAt",
-                    "account",
-                    "profiles"
+                    "account"
                   ],
                   "type": "object"
                 }

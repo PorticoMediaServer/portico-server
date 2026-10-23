@@ -41,9 +41,9 @@ func TestRecoveryBurstIsShedFastNotQueuedToTimeout(t *testing.T) {
  rtrim(translate(encode(pub,'base64'),'+/','-_'),'='),token,decode(repeat('00',28),'hex'),1,1 FROM fleet`, f.owner.Account.ID, fleet); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := f.store.DB.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at)
- SELECT 'fleet_'||substring(id FROM 5),id,owner_account_id,decode(translate(public_key,'-_','+/')||'=','base64'),0,name,$1,token_hash,'installed',1,1,token_hash,clock_timestamp()
- FROM servers WHERE name='Fleet fixture'`, f.owner.Profiles[0].ID); e != nil {
+	if _, e := f.store.DB.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,intent_digest,state,claim_generation,credential_generation,committed_token_hash,installed_at)
+ SELECT 'fleet_'||substring(id FROM 5),id,owner_account_id,decode(translate(public_key,'-_','+/')||'=','base64'),0,name,token_hash,'installed',1,1,token_hash,clock_timestamp()
+ FROM servers WHERE name='Fleet fixture'`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := f.store.DB.ExecContext(ctx, `INSERT INTO wake_state(server_id,kind,desired_revision,acked_revision) SELECT id,'policy',1,1 FROM servers WHERE name='Fleet fixture'; ANALYZE servers; ANALYZE wake_state; ANALYZE claim_operations`); e != nil {

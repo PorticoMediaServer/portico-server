@@ -26,11 +26,13 @@ import (
 
 type returnFixture struct {
 	claimJourney
-	handler    http.Handler
-	directory  *directory.Service
-	keys       *security.Keys
-	start      serverreturn.Start
-	completion json.RawMessage
+	handler      http.Handler
+	directory    *directory.Service
+	keys         *security.Keys
+	start        serverreturn.Start
+	serverToken  string
+	accountToken string
+	completion   json.RawMessage
 }
 
 func registeredReturnFixture(t *testing.T) returnFixture {
@@ -83,7 +85,12 @@ func registeredReturnFixture(t *testing.T) returnFixture {
 	}
 	dir := directory.New(f.store, keys)
 	handler := (&httpapi.Handler{Directory: dir, ServerReturns: &httpapi.ServerReturns{Store: f.store, Directory: dir}}).Routes()
-	q := serverreturn.Start{ServerID: f.input.ServerID, Purpose: "setup", ClaimOperationID: f.input.OperationID, RegistrationID: serverreturn.RegistrationID(f.input.ServerID, f.input.OperationID, 1, 1, 1, origin), State: strings.Repeat("s", 43), CodeChallenge: serverreturn.Challenge(strings.Repeat("v", 43)), ServerChallenge: strings.Repeat("c", 32), InstallationID: strings.Repeat("i", 43)}
+	var registration serverreturn.Registration
+	registrationRaw := returnCall(t, handler, "/v1/servers/"+f.input.ServerID+"/return-registration", result.ServerCredential, serverreturn.RegistrationRequest{Origin: origin}, 200)
+	if e = json.Unmarshal(registrationRaw, &registration); e != nil || registration.Origin != origin {
+		t.Fatal("actual registration", string(registrationRaw), e)
+	}
+	q := serverreturn.Start{ServerID: f.input.ServerID, Purpose: "setup", ClaimOperationID: f.input.OperationID, RegistrationID: registration.ID, State: strings.Repeat("s", 43), CodeChallenge: serverreturn.Challenge(strings.Repeat("v", 43)), ServerChallenge: strings.Repeat("c", 32), InstallationID: strings.Repeat("i", 43)}
 	if path := os.Getenv("PORTICO_RETURN_CONSUMER_INPUT"); path != "" {
 		raw, _ := os.ReadFile(path)
 		var input struct{ Challenge, InstallationID string }
@@ -93,7 +100,7 @@ func registeredReturnFixture(t *testing.T) returnFixture {
 		q.ServerChallenge = input.Challenge
 		q.InstallationID = input.InstallationID
 	}
-	return returnFixture{claimJourney: f, handler: handler, directory: dir, keys: keys, start: q}
+	return returnFixture{claimJourney: f, handler: handler, directory: dir, keys: keys, start: q, serverToken: result.ServerCredential}
 }
 func returnCall(t *testing.T, h http.Handler, path, token string, q any, want int) []byte {
 	t.Helper()
@@ -113,10 +120,16 @@ func returnCall(t *testing.T, h http.Handler, path, token string, q any, want in
 	}
 	return w.Body.Bytes()
 }
+func (f returnFixture) returnAccountToken() string {
+	if f.accountToken != "" {
+		return f.accountToken
+	}
+	return "claim-owner-access-token-fixture"
+}
 func (f returnFixture) begin(t *testing.T) serverreturn.Started {
 	t.Helper()
 	var out serverreturn.Started
-	raw := returnCall(t, f.handler, "/v1/server-returns/start", "claim-owner-access-token-fixture", f.start, 201)
+	raw := returnCall(t, f.handler, "/v1/server-returns/start", f.returnAccountToken(), f.start, 201)
 	if json.Unmarshal(raw, &out) != nil || bytes.Contains(raw, []byte("code")) {
 		t.Fatal("start disclosed code")
 	}
@@ -125,7 +138,7 @@ func (f returnFixture) begin(t *testing.T) serverreturn.Started {
 func (f *returnFixture) complete(t *testing.T, id string) serverreturn.Exchange {
 	t.Helper()
 	var out serverreturn.Return
-	raw := returnCall(t, f.handler, "/v1/server-returns/"+id+"/complete", "claim-owner-access-token-fixture", struct{}{}, 200)
+	raw := returnCall(t, f.handler, "/v1/server-returns/"+id+"/complete", f.returnAccountToken(), struct{}{}, 200)
 	f.completion = append(json.RawMessage(nil), raw...)
 	if json.Unmarshal(raw, &out) != nil {
 		t.Fatal("bad return")
@@ -156,7 +169,7 @@ func TestRegisteredReturnActualHTTPPrivacyPKCERaceReplay(t *testing.T) {
 				successes.Add(1)
 				raw, _ := base64.RawURLEncoding.DecodeString(out.Assertion.Payload)
 				var a serverreturn.Assertion
-				if json.Unmarshal(raw, &a) != nil || a.Username == "" || a.AccountID != f.expected.AccountID || a.Purpose != "setup" || a.RegistrationID != f.start.RegistrationID || bytes.Contains(raw, []byte("email")) || bytes.Contains(raw, []byte("displayName")) {
+				if json.Unmarshal(raw, &a) != nil || a.Username == "" || a.AccountID != f.expected.AccountID || a.Purpose != "setup" || a.RegistrationID != f.start.RegistrationID || a.DisplayName != "Fixture" || a.Email != "" || !bytes.Contains(raw, []byte(`"email":""`)) || bytes.Contains(raw, []byte(`"profiles"`)) {
 					t.Error("identity privacy/binding")
 				}
 				if _, e = out.Assertion.Verify(f.keys.RootPublicKey, "documents", time.Now()); e != nil {
@@ -237,6 +250,9 @@ func TestRegisteredReturnRawProducerArtifact(t *testing.T) {
 		t.Skip("artifact requested by consumer contract driver")
 	}
 	f := registeredReturnFixture(t)
+	if os.Getenv("PORTICO_RETURN_PRODUCER_PURPOSE") == "sign-in" {
+		f = signInReturnFixture(t, f)
+	}
 	started := f.begin(t)
 	q := f.complete(t, started.TransactionID)
 	raw := returnCall(t, f.handler, "/v1/server-returns/exchange", "", q, 200)
@@ -293,7 +309,6 @@ func TestClaimV2OwnershipOutcomesAndOldReturnRevocation(t *testing.T) {
 			in.Purpose = "change-owner"
 			in.CurrentOwnerAccountID = f.expected.AccountID
 			in.PreviousOwnerRole = role
-			in.OwnerProfileID = "other_profile"
 			signed, e := f.service.Approve(ctx, target, in)
 			if e != nil {
 				t.Fatal("approval", e)
@@ -332,7 +347,7 @@ func TestClaimV2OwnershipOutcomesAndOldReturnRevocation(t *testing.T) {
 				t.Fatal("previous tier", previous, e)
 			}
 			var legacyOwnerCount int
-			if e = f.store.DB.QueryRow(`SELECT count(*) FROM memberships WHERE server_id=$1 AND role='owner' AND NOT revoked`, in.ServerID).Scan(&legacyOwnerCount); e != nil || legacyOwnerCount != 1 {
+			if e = f.store.DB.QueryRow(`SELECT count(*) FROM server_members WHERE server_id=$1 AND role='owner'`, in.ServerID).Scan(&legacyOwnerCount); e != nil || legacyOwnerCount != 1 {
 				t.Fatal("duplicate owner", e)
 			}
 			returnCall(t, f.handler, "/v1/server-returns/exchange", "", oldCode, 401)

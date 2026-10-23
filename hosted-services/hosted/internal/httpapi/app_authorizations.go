@@ -188,7 +188,11 @@ func (h *Handler) appAuthorizationRoutes(mux *http.ServeMux) {
 			return
 		}
 		out, e := h.AppAuthorizations.Store.ExchangeAppAuthorization(r.Context(), q, func(a identity.Account, server, challenge string) (directory.SignedPolicy, error) {
-			return h.AppAuthorizations.Directory.IssueIdentity(a.ID, a.Username, a.DisplayName, server, challenge, "")
+			email, e := h.AppAuthorizations.Store.IdentityEmail(r.Context(), a.ID)
+			if e != nil {
+				return directory.SignedPolicy{}, e
+			}
+			return h.AppAuthorizations.Directory.IssueIdentity(a.ID, a.Username, a.DisplayName, email, server, challenge, "")
 		})
 		if e != nil {
 			failure(w, e)

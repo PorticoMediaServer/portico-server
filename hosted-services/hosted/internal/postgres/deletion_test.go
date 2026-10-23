@@ -2,8 +2,6 @@ package postgres_test
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
@@ -12,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/httpapi"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/postgres"
@@ -61,13 +58,13 @@ func TestDeletionNoHistoryRevokesCredentialsAndConcurrentIdempotence(t *testing.
 	if _, e = f.ids.Login(ctx, "erase-me", "StrongPass9"); !errors.Is(e, identity.ErrCredentials) {
 		t.Fatal("sign-in survives", e)
 	}
-	for _, table := range []string{"profiles", "session_families", "account_sessions", "hosted_devices"} {
+	for _, table := range []string{"session_families", "account_sessions", "hosted_devices"} {
 		var n int
 		if e = f.store.DB.QueryRow(`SELECT count(*) FROM `+table+` WHERE account_id=$1`, a.Account.ID).Scan(&n); e != nil || n != 0 {
 			t.Fatal(table, n, e)
 		}
 	}
-	if _, e = f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources); !errors.Is(e, identity.ErrDeletionConflict) {
+	if _, e = f.ids.AcceptDeletion(ctx, p.Token, "retired_remote_erasure"); !errors.Is(e, identity.ErrInvalid) {
 		t.Fatal(e)
 	}
 	if _, e = f.ids.DeletionStatus(ctx, "del_invalid-unpredictable-token-value"); !errors.Is(e, identity.ErrCredentials) {
@@ -91,10 +88,10 @@ func TestDeletionChangedPreviewAndPasswordBlock(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.store.DB.Exec(`INSERT INTO profiles(id,account_id,name) VALUES('prof_new',$1,'New profile')`, f.member.Account.ID); e != nil {
+	if _, e = f.store.DB.Exec(`UPDATE servers SET name='Changed server' WHERE id=$1`, f.server); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources); !errors.Is(e, identity.ErrDeletionConflict) {
+	if _, e = f.ids.AcceptDeletion(ctx, p.Token, ""); !errors.Is(e, identity.ErrDeletionConflict) {
 		t.Fatal(e)
 	}
 	p, e = f.ids.PrepareDeletion(ctx, f.member.Account, "StrongPass9")
@@ -104,84 +101,10 @@ func TestDeletionChangedPreviewAndPasswordBlock(t *testing.T) {
 	if e = f.ids.ChangePassword(ctx, f.member.Account, "StrongPass9", "ChangedPass8"); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources); !errors.Is(e, identity.ErrDeletionConflict) {
-		t.Fatal(e)
-	}
-}
-func TestDeletionSignedErasureRequiresExactServerAck(t *testing.T) {
-	f := setup(t)
-	f.installErasureClaimFixture(t)
-	ctx := context.Background()
-	p, e := f.ids.PrepareDeletion(ctx, f.member.Account, "StrongPass9")
-	if e != nil || len(p.AffectedServers) != 1 || p.RequiredDisposition != identity.DeletePersonalResources {
-		t.Fatal(p, e)
-	}
 	if _, e = f.ids.AcceptDeletion(ctx, p.Token, ""); !errors.Is(e, identity.ErrDeletionConflict) {
-		t.Fatal("implicit disposition accepted", e)
-	}
-	r, e := f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources)
-	if e != nil || r.Status != "pending-offline-servers" || len(r.PendingServers) != 1 {
-		t.Fatal(r, e)
-	}
-	// The server learns of the erasure at its next check-in (woken for it).
-	authority, e := f.dir.CaptureServerAuthority(ctx, f.token)
-	if e != nil {
 		t.Fatal(e)
-	}
-	checkIn, e := f.dir.ServerHeartbeat(ctx, authority, directory.CheckInReport{})
-	if e != nil || !checkIn.CleanupPending {
-		t.Fatal("check-in did not report the erasure", checkIn, e)
-	}
-	jobs, e := f.dir.Erasures(ctx, f.server)
-	if e != nil || len(jobs) != 1 {
-		t.Fatal(jobs, e)
-	}
-	raw, _ := base64.RawURLEncoding.DecodeString(jobs[0].Payload)
-	sig, _ := base64.RawURLEncoding.DecodeString(jobs[0].Signature)
-	if !ed25519.Verify(f.keys.PrivateKey.Public().(ed25519.PublicKey), raw, sig) {
-		t.Fatal("signature")
-	}
-	var j directory.ErasureJob
-	if e = json.Unmarshal(raw, &j); e != nil || j.Kind != "portico.account-erasure.v1" || j.ServerID != f.server || j.AccountID != f.member.Account.ID || len(j.ProfileIDs) != 1 || j.ProfileIDs[0] != f.member.Profiles[0].ID || j.Disposition != identity.DeletePersonalResources {
-		t.Fatal(j, e)
-	}
-	if e = f.dir.AcknowledgeErasure(ctx, "different", j.ID, j.Revision); !errors.Is(e, directory.ErrDenied) {
-		t.Fatal(e)
-	}
-	var wake int64
-	f.store.DB.QueryRow(`SELECT desired_revision FROM wake_state WHERE server_id=$1`, f.server).Scan(&wake)
-	if _, e = f.dir.ServerHeartbeat(ctx, authority, directory.CheckInReport{WakeRevision: wake}); e != nil {
-		t.Fatal(e)
-	}
-	r, e = f.ids.DeletionStatus(ctx, p.Token)
-	if e != nil || r.Status == "complete" {
-		t.Fatal("a check-in falsely erased", r, e)
-	}
-	if e = f.dir.AcknowledgeErasure(ctx, f.server, j.ID, j.Revision); e != nil {
-		t.Fatal(e)
-	}
-	if e = f.dir.AcknowledgeErasure(ctx, f.server, j.ID, j.Revision); e != nil {
-		t.Fatal(e)
-	}
-	r, e = f.ids.DeletionStatus(ctx, p.Token)
-	if e != nil || r.Status != "complete" || len(r.PendingServers) != 0 {
-		t.Fatal(r, e)
-	}
-	if checkIn, e = f.dir.ServerHeartbeat(ctx, authority, directory.CheckInReport{}); e != nil || checkIn.CleanupPending {
-		t.Fatal("acknowledged erasure still pending", checkIn, e)
-	}
-	// Minimal pending erasure obligations cannot expire into false completion.
-	f.store.DB.Exec(`UPDATE account_erasure_jobs SET acknowledged_at=NULL WHERE id=$1`, j.ID)
-	f.store.DB.Exec(`UPDATE account_deletions SET completed_at=NULL,receipt_expires_at=now()-interval '1 day' WHERE id=$1`, r.ID)
-	if e = f.store.PruneExpired(ctx, 100); e != nil {
-		t.Fatal(e)
-	}
-	jobs, e = f.dir.Erasures(ctx, f.server)
-	if e != nil || len(jobs) != 1 {
-		t.Fatal("offline obligation expired", jobs, e)
 	}
 }
-
 func TestDeletionHTTPPreviewReplayAndServerRouteAuthorization(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
@@ -241,8 +164,8 @@ func TestDeletionHTTPPreviewReplayAndServerRouteAuthorization(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal("ambiguous committed retry failed", w.Code)
 	}
-	if w = request("/v1/servers/other/erasures/unknown/ack", f.token, `{"revision":1}`); w.Code != 403 {
-		t.Fatal("server-bound route", w.Code)
+	if w = request("/v1/servers/other/erasures/unknown/ack", f.token, `{"revision":1}`); w.Code != 404 {
+		t.Fatal("retired erasure route", w.Code)
 	}
 }
 
@@ -257,24 +180,24 @@ func TestDeletionTransactionFailureRestoresAuthorityAndPolicy(t *testing.T) {
 	if _, e = f.store.DB.Exec(`CREATE FUNCTION reject_erasure_test() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''injected rollback''; END'; CREATE TRIGGER reject_erasure_test BEFORE DELETE ON accounts FOR EACH ROW EXECUTE FUNCTION reject_erasure_test()`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources); e == nil {
+	if _, e = f.ids.AcceptDeletion(ctx, p.Token, ""); e == nil {
 		t.Fatal("expected transaction failure")
 	}
 	if _, e = f.ids.Authenticate(ctx, f.member.AccessToken); e != nil {
 		t.Fatal("failed deletion revoked session", e)
 	}
 	var revision, members int
-	if e = f.store.DB.QueryRow(`SELECT policy_revision,(SELECT count(*) FROM memberships WHERE server_id=$1) FROM servers WHERE id=$1`, f.server).Scan(&revision, &members); e != nil || revision != 2 || members != 2 {
+	if e = f.store.DB.QueryRow(`SELECT policy_revision,(SELECT count(*) FROM server_members WHERE server_id=$1) FROM servers WHERE id=$1`, f.server).Scan(&revision, &members); e != nil || revision != 2 || members != 2 {
 		t.Fatal(revision, members, e)
 	}
 	var n int
-	if e = f.store.DB.QueryRow(`SELECT count(*) FROM account_erasure_jobs`).Scan(&n); e != nil || n != 0 {
+	if e = f.store.DB.QueryRow(`SELECT count(*) FROM server_member_departures`).Scan(&n); e != nil || n != 0 {
 		t.Fatal(n, e)
 	}
 	if _, e = f.store.DB.Exec(`DROP TRIGGER reject_erasure_test ON accounts; DROP FUNCTION reject_erasure_test()`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.ids.AcceptDeletion(ctx, p.Token, identity.DeletePersonalResources); e != nil {
+	if _, e = f.ids.AcceptDeletion(ctx, p.Token, ""); e != nil {
 		t.Fatal("safe retry failed", e)
 	}
 }

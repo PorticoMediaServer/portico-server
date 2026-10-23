@@ -70,7 +70,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 		return empty, e
 	}
 	var targetUsername string
-	if in.Purpose == "change-owner" {
+	if in.Purpose == "change-owner" || in.Purpose == "switch" {
 		if e = tx.QueryRowContext(ctx, `SELECT username FROM accounts WHERE id=$1`, expected.AccountID).Scan(&targetUsername); e != nil {
 			return empty, e
 		}
@@ -103,10 +103,6 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 		if in.ExpectedRevision != 0 {
 			return empty, claims.ErrStale
 		}
-		var profile string
-		if e = tx.QueryRowContext(ctx, `SELECT id FROM profiles WHERE id=$1 AND account_id=$2 FOR SHARE`, in.OwnerProfileID, expected.AccountID).Scan(&profile); e != nil {
-			return empty, currentFamilyError(ctx, e)
-		}
 		var active, recent int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FILTER(WHERE o.state='approved' AND a.expires_at>clock_timestamp()),count(*) FILTER(WHERE o.created_at>clock_timestamp()-interval '1 hour') FROM claim_operations o LEFT JOIN claim_approvals a ON a.operation_id=o.id WHERE o.account_id=$1`, expected.AccountID).Scan(&active, &recent); e != nil {
 			return empty, e
@@ -115,7 +111,7 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 			return empty, claims.ErrCapacity
 		}
 		key, _ := base64.RawURLEncoding.DecodeString(in.PublicKey)
-		if _, e = tx.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,owner_profile_id,intent_digest,state,purpose,current_owner_account_id,previous_owner_role,return_registration_id,target_username) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'approved',$9,$10,$11,$12,$13)`, in.OperationID, in.ServerID, expected.AccountID, key, in.LocalGeneration, in.Name, in.OwnerProfileID, digest[:], in.Purpose, in.CurrentOwnerAccountID, in.PreviousOwnerRole, in.ReturnRegistrationID, targetUsername); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO claim_operations(id,server_id,account_id,public_key,local_generation,server_name,intent_digest,state,purpose,current_owner_account_id,previous_owner_role,return_registration_id,target_username) VALUES($1,$2,$3,$4,$5,$6,$7,'approved',$8,$9,$10,$11,$12)`, in.OperationID, in.ServerID, expected.AccountID, key, in.LocalGeneration, in.Name, digest[:], in.Purpose, in.CurrentOwnerAccountID, in.PreviousOwnerRole, in.ReturnRegistrationID, targetUsername); e != nil {
 			return empty, e
 		}
 	}
@@ -140,13 +136,13 @@ func (s *Store) approveClaimTx(ctx context.Context, tx *sql.Tx, expected identit
 	if in.Purpose == "setup" && e == nil && existingOwner.Valid {
 		return empty, claims.ErrStale
 	}
-	if in.Purpose != "setup" && (e != nil || !existingOwner.Valid || existingOwner.String != in.CurrentOwnerAccountID) {
+	if in.Purpose != "setup" && !(in.Purpose == "switch" && in.CurrentOwnerAccountID == "" && (e != nil || !existingOwner.Valid)) && (e != nil || !existingOwner.Valid || existingOwner.String != in.CurrentOwnerAccountID) {
 		return empty, claims.ErrStale
 	}
 	if in.Purpose == "change-owner" && expected.AccountID == in.CurrentOwnerAccountID {
 		return empty, claims.ErrStale
 	}
-	if in.Purpose == "switch" && expected.AccountID != in.CurrentOwnerAccountID {
+	if in.Purpose == "switch" && in.CurrentOwnerAccountID != "" && expected.AccountID != in.CurrentOwnerAccountID {
 		return empty, claims.ErrStale
 	}
 

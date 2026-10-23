@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-const observabilitySchema = `CREATE TABLE hosted_readiness(singleton boolean PRIMARY KEY CHECK(singleton),checked_at timestamptz NOT NULL);CREATE TABLE ct_observations(fingerprint text PRIMARY KEY,namespace text NOT NULL,known boolean NOT NULL,observed_at timestamptz NOT NULL DEFAULT clock_timestamp());CREATE INDEX ct_unknown ON ct_observations(observed_at) WHERE NOT known;`
-
 func (s *Store) Ready(ctx context.Context) error {
 	if !s.Notifications().Connected() {
 		return errors.New("notification listener unavailable")

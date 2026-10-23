@@ -71,11 +71,14 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 	for _, kind := range []string{"", "custody"} {
 		t.Run(kind, func(t *testing.T) {
 			f := setup(t)
+			if _, e := f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, f.member.Account.ID); e != nil {
+				t.Fatal(e)
+			}
 			ctx := context.Background()
 			_, root, _ := ed25519.GenerateKey(rand.Reader)
 			first := rolloutKey(t, root, 1, nil)
 			old := directory.New(f.store, first)
-			consent, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, kind)
+			consent, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, kind)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +119,7 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 				t.Fatal("revoked custody accepted", out.Custodian)
 			}
 			current := directory.New(f.store, second)
-			consent, err = current.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, kind)
+			consent, err = current.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, kind)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +139,7 @@ func TestOlderReplicaRefusesRevokedConsentForDiscoveryAndCustody(t *testing.T) {
 
 func TestHostedRejectsThePreviousSigningDeliverySchema(t *testing.T) {
 	f := setup(t)
-	if _, err := f.store.DB.Exec(`DELETE FROM hosted_schema_migrations WHERE version=21;UPDATE hosted_schema_contract SET version=20 WHERE singleton`); err != nil {
+	if _, err := f.store.DB.Exec(`UPDATE hosted_schema_contract SET version=20 WHERE singleton`); err != nil {
 		t.Fatal(err)
 	}
 	before := catalogue(t, f.store)
@@ -152,6 +155,9 @@ func TestHostedRejectsThePreviousSigningDeliverySchema(t *testing.T) {
 // still meet the terminal revocation set that commits ahead of its mutation.
 func TestMemberConsentRechecksRevocationAfterWaitingForRollout(t *testing.T) {
 	f := setup(t)
+	if _, e := f.store.DB.Exec(`DELETE FROM server_members WHERE account_id=$1`, f.member.Account.ID); e != nil {
+		t.Fatal(e)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, root, _ := ed25519.GenerateKey(rand.Reader)
@@ -160,7 +166,7 @@ func TestMemberConsentRechecksRevocationAfterWaitingForRollout(t *testing.T) {
 	if err := f.store.RecordSigningCertificate(ctx, first); err != nil {
 		t.Fatal(err)
 	}
-	consent, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "")
+	consent, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,11 +240,11 @@ func TestRevocationFilteringDoesNotSelectAnUnlockedCustodian(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consentA, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "custody")
+	consentA, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", "", f.server, testChallenge, "custody")
 	if err != nil {
 		t.Fatal(err)
 	}
-	consentB, err := current.IssueIdentity(third.Account.ID, "otherowner", "Other owner", f.server, testChallenge, "custody")
+	consentB, err := current.IssueIdentity(third.Account.ID, "otherowner", "Other owner", "", f.server, testChallenge, "custody")
 	if err != nil {
 		t.Fatal(err)
 	}

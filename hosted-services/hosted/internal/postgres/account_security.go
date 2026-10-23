@@ -555,38 +555,14 @@ func (s *AccountSecurity) State(ctx context.Context, token string) (identity.Sec
 	return out, tx.Commit()
 }
 
-// Session responses omit erased profiles and stay within the client wire bound.
-// Profile management currently permits only eight active profiles per account.
-const sessionProfilesQuery = `SELECT id,name FROM profiles WHERE account_id=$1 AND deleted_at IS NULL ORDER BY position,created_at,id LIMIT 100`
-
-func profilesTx(ctx context.Context, tx *sql.Tx, account string) ([]identity.Profile, error) {
-	profiles := []identity.Profile{}
-	rows, e := tx.QueryContext(ctx, sessionProfilesQuery, account)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var p identity.Profile
-		if e = rows.Scan(&p.ID, &p.Name); e != nil {
-			return nil, e
-		}
-		profiles = append(profiles, p)
-	}
-	return profiles, rows.Err()
-}
 func (s *AccountSecurity) sessionTx(ctx context.Context, tx *sql.Tx, account identity.Account, mode string) (identity.Session, error) {
-	profiles, e := profilesTx(ctx, tx, account.ID)
-	if e != nil {
-		return identity.Session{}, e
-	}
 	family, refresh := identity.NewFamily(mode)
 	token := security.RandomID("hat_")
 	expires := time.Now().UTC().Add(s.Lifetime)
-	if e = insertFamily(ctx, tx, account.ID, security.Hash(token), expires, family); e != nil {
+	if e := insertFamily(ctx, tx, account.ID, security.Hash(token), expires, family); e != nil {
 		return identity.Session{}, e
 	}
-	return identity.Session{Account: account, Profiles: profiles, AccessToken: token, ExpiresAt: expires, RefreshToken: refresh, RefreshExpiresAt: &family.RefreshExpiresAt, FamilyID: family.ID, Mode: mode}, nil
+	return identity.Session{Account: account, AccessToken: token, ExpiresAt: expires, RefreshToken: refresh, RefreshExpiresAt: &family.RefreshExpiresAt, FamilyID: family.ID, Mode: mode}, nil
 }
 func (s *AccountSecurity) sessionReceipt(ctx context.Context, tx *sql.Tx, cipher []byte, aad, account, family string, epoch, generation int64, mode string) (identity.Session, error) {
 	var out identity.Session
