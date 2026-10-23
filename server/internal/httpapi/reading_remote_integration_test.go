@@ -255,7 +255,7 @@ func TestReadingRemoteRegistered(t *testing.T) {
 }
 
 func TestReadingRemoteSequentialPDF(t *testing.T) {
-	program := readingRemoteProgram(t)
+	_ = readingRemoteProgram(t)
 	f := newV1Fixture(t, 0)
 	managed, err := mounts.New(f.db, f.root, "", f.deps.Storage.Binary, f.deps.Storage)
 	if err != nil {
@@ -322,7 +322,7 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := remote.AddDAV(context.Background(), "", remotesources.DAVInput{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000001", time.Now().UnixMilli()), Name: "Actual sequential origin", Root: origin.URL + "/publications/", Username: "reading-fixture", Password: password, InsecureLocal: true}, func(tx *sql.Tx) error {
+	source, err := remote.ConfigureDAV(context.Background(), principal.Hash, "", remotesources.DAVInput{OperationID: fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000001", time.Now().UnixMilli()), Name: "Actual sequential origin", Root: origin.URL + "/publications/", Username: "reading-fixture", Password: password, InsecureLocal: true}, func(tx *sql.Tx) error {
 		_, err := f.id.PrincipalByDigestTx(context.Background(), tx, principal.Hash)
 		return err
 	})

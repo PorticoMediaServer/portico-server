@@ -240,7 +240,11 @@ func (d Dependencies) serveReadingSequential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer stream.Close()
-	first := make([]byte, min(f.Size, 64<<10))
+	firstSize := 64 << 10
+	if f.Size < int64(firstSize) {
+		firstSize = int(f.Size)
+	}
+	first := make([]byte, firstSize)
 	if _, err = io.ReadFull(stream, first); err != nil {
 		readingFailure(w, err)
 		return
