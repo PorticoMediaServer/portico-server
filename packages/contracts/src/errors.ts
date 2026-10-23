@@ -7,6 +7,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "account_move_waiting",
+    "status": 403,
+    "message": "This account is waiting to move. Use its move link or code.",
+    "retry": "never"
+  },
+  {
     "code": "administration_unavailable",
     "status": 503,
     "message": "Administration is temporarily unavailable.",
@@ -149,18 +155,6 @@ export const errors = [
     "status": 409,
     "message": "Refresh the list to continue.",
     "retry": "after_refresh"
-  },
-  {
-    "code": "device_approval_pending",
-    "status": 403,
-    "message": "This device is waiting for approval.",
-    "retry": "never"
-  },
-  {
-    "code": "device_denied",
-    "status": 403,
-    "message": "This device is not approved.",
-    "retry": "never"
   },
   {
     "code": "device_not_found",
@@ -430,6 +424,24 @@ export const errors = [
     "code": "method_not_allowed",
     "status": 405,
     "message": "This action is not supported.",
+    "retry": "never"
+  },
+  {
+    "code": "move_code_invalid",
+    "status": 410,
+    "message": "This move code is no longer usable. Ask the server owner for another.",
+    "retry": "never"
+  },
+  {
+    "code": "move_collision",
+    "status": 409,
+    "message": "That Portico Account is already on this server as another account.",
+    "retry": "never"
+  },
+  {
+    "code": "move_confirmation",
+    "status": 409,
+    "message": "Type the server's name exactly to confirm.",
     "retry": "never"
   },
   {

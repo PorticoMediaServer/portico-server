@@ -54,7 +54,7 @@ func TestAuthenticatedDeviceMetadataIsVerifiedWithoutExtraStatements(t *testing.
 	if _, err = s.ReauthorizeTx(context.Background(), tx, forged); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("device metadata substituted for token authority", err)
 	}
-	if _, err = tx.Exec(`UPDATE identity_devices SET approval_state='denied' WHERE id=?`, first.DeviceID); err != nil {
+	if err = RevokeFamilyTx(context.Background(), tx, first.SessionFamilyID, RevokedAdminRevoke); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.ReauthorizeTx(context.Background(), tx, p); !errors.Is(err, ErrUnauthorized) {

@@ -17,11 +17,13 @@ import (
 // list and the revision of its limits envelope, so a console can render the
 // people page from one list.
 type Member struct {
-	AccountID string `json:"accountId"`
-	Username  string `json:"username"`
-	ProfileID string `json:"profileId"`
-	Role      string `json:"role"`
-	Disabled  bool   `json:"disabled"`
+	AccountID   string `json:"accountId"`
+	Username    string `json:"username"`
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"displayName"`
+	ProfileID   string `json:"profileId"`
+	Role        string `json:"role"`
+	Disabled    bool   `json:"disabled"`
 	// DisabledAt and DisabledReason say when and why an account that is off
 	// was turned off: "owner" (an owner or administrator did it) or "left"
 	// (the person removed this server from their Portico Account).
@@ -58,12 +60,12 @@ type MemberQuery struct {
 	Limit                                 string
 }
 
-const memberColumns = `a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
+const memberColumns = `a.id,a.username,a.email,a.display_name,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
  COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,''),m.notes,m.joined_via,m.joined_ms,
  (SELECT json_group_array(name) FROM (SELECT name FROM direct_profiles WHERE account_id=a.id AND deleted=0 ORDER BY position,id)),
  COALESCE((SELECT max(last_seen) FROM identity_devices WHERE account_id=a.id AND authority='local'),''),
  CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.account_id=a.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
- WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.account_id=a.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.account_id=a.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END,m.access_tokens,m.max_profiles`
 const memberTables = `accounts a JOIN direct_memberships m ON m.account_id=a.id
  LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id`
 
@@ -71,7 +73,9 @@ func scanMember(row interface{ Scan(...any) error }) (Member, error) {
 	var m Member
 	var libraries, body, profiles string
 	var disabledMs, joinedMs int64
-	if e := row.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID, &m.Notes, &m.JoinedVia, &joinedMs, &profiles, &m.LastActiveAt, &m.LiveState); e != nil {
+	var accessTokens bool
+	var maxProfiles int
+	if e := row.Scan(&m.AccountID, &m.Username, &m.Email, &m.DisplayName, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID, &m.Notes, &m.JoinedVia, &joinedMs, &profiles, &m.LastActiveAt, &m.LiveState, &accessTokens, &maxProfiles); e != nil {
 		return m, e
 	}
 	m.DisabledAt = disabledAt(disabledMs)
@@ -94,6 +98,8 @@ func scanMember(row interface{ Scan(...any) error }) (Member, error) {
 			return m, e
 		}
 	}
+	m.Limits.AccessTokens = accessTokens
+	m.Limits.MaxProfiles = maxProfiles
 	m.Limits.MaximumAge = m.Limits.Ceiling()
 	return m, nil
 }
@@ -269,25 +275,21 @@ type PeopleDevice struct {
 	LiveState   string `json:"liveState"`
 }
 type PeopleDevicePage struct {
-	Limit            int            `json:"limit"`
-	NextCursor       string         `json:"nextCursor,omitempty"`
-	ApprovalRequired bool           `json:"approvalRequired"`
-	Items            []PeopleDevice `json:"items"`
+	Limit      int            `json:"limit"`
+	NextCursor string         `json:"nextCursor,omitempty"`
+	Items      []PeopleDevice `json:"items"`
 }
-type PeopleDeviceQuery struct{ Cursor, Limit, Trust, Account, Sort string }
+type PeopleDeviceQuery struct{ Cursor, Limit, Account, Sort string }
 
-const peopleDeviceColumns = `d.id,d.account_id,a.username,d.last_profile_id,d.name,d.platform,d.app,d.app_version,d.approval_state,d.first_seen,d.last_seen,d.revision,COALESCE(p.name,''),d.ip,
+const peopleDeviceColumns = `d.id,d.account_id,a.username,d.last_profile_id,d.name,d.platform,d.app,d.app_version,d.first_seen,d.last_seen,d.revision,COALESCE(p.name,''),d.ip,
  CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
- WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END,m.access_tokens,m.max_profiles`
 const peopleDeviceTables = `identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN direct_profiles p ON p.id=d.last_profile_id AND p.account_id=d.account_id AND p.deleted=0`
 
 func scanPeopleDevice(row interface{ Scan(...any) error }, networks []netip.Prefix) (PeopleDevice, error) {
 	var v PeopleDevice
 	var ip string
-	e := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.ProfileID, &v.Name, &v.Platform, &v.App, &v.AppVersion, &v.Trust, &v.FirstSeen, &v.LastSeen, &v.Revision, &v.ProfileName, &ip, &v.LiveState)
-	if v.Trust == "denied" {
-		v.Trust = "blocked"
-	}
+	e := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.ProfileID, &v.Name, &v.Platform, &v.App, &v.AppVersion, &v.FirstSeen, &v.LastSeen, &v.Revision, &v.ProfileName, &ip, &v.LiveState)
 	v.LastNetwork = "away"
 	addr, _ := netip.ParseAddr(ip)
 	if networkpolicy.Contains(networks, addr) {
@@ -309,13 +311,6 @@ func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identit
 	if column == "" {
 		return out, invalid("sort")
 	}
-	trust := q.Trust
-	if trust == "blocked" {
-		trust = "denied"
-	}
-	if trust != "" && trust != "pending" && trust != "approved" && trust != "denied" {
-		return out, invalid("trust")
-	}
 	if q.Account != "" && !validID(q.Account) {
 		return out, invalid("account")
 	}
@@ -323,10 +318,10 @@ func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identit
 	if q.Cursor != "" {
 		raw, e := base64.RawURLEncoding.DecodeString(q.Cursor)
 		var c []string
-		if e != nil || len(raw) > 1024 || json.Unmarshal(raw, &c) != nil || len(c) != 6 || c[0] != q.Sort || c[1] != q.Trust || c[2] != q.Account || c[3] != actor.AccountID || !validID(c[5]) {
+		if e != nil || len(raw) > 1024 || json.Unmarshal(raw, &c) != nil || len(c) != 5 || c[0] != q.Sort || c[1] != q.Account || c[2] != actor.AccountID || !validID(c[4]) {
 			return out, invalid("cursor")
 		}
-		key, id = c[4], c[5]
+		key, id = c[3], c[4]
 	}
 	direction, comparison := "DESC", "<"
 	if q.Sort == "name" {
@@ -341,8 +336,8 @@ func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identit
 		if !identity.Administrative(live) || !identity.Administrative(actor.Role) {
 			return identity.ErrForbidden
 		}
-		query := `SELECT ` + peopleDeviceColumns + ` FROM ` + peopleDeviceTables + ` WHERE d.authority='local' AND (?='' OR d.approval_state=?) AND (?='' OR d.account_id=?) AND (? OR (m.role='member' AND d.account_id<>?)) AND (?='' OR (` + column + `,d.id)` + comparison + `(?,?)) ORDER BY ` + column + ` ` + direction + `,d.id ` + direction + ` LIMIT ?`
-		rows, e := tx.QueryContext(ctx, query, trust, trust, q.Account, q.Account, owner, actor.AccountID, id, key, id, limit+1)
+		query := `SELECT ` + peopleDeviceColumns + ` FROM ` + peopleDeviceTables + ` WHERE d.authority='local' AND (?='' OR d.account_id=?) AND (? OR (m.role='member' AND d.account_id<>?)) AND (?='' OR (` + column + `,d.id)` + comparison + `(?,?)) ORDER BY ` + column + ` ` + direction + `,d.id ` + direction + ` LIMIT ?`
+		rows, e := tx.QueryContext(ctx, query, q.Account, q.Account, owner, actor.AccountID, id, key, id, limit+1)
 		if e != nil {
 			return e
 		}
@@ -369,7 +364,7 @@ func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identit
 		if q.Sort == "name" {
 			key = v.Name
 		}
-		raw, _ := json.Marshal([]string{q.Sort, q.Trust, q.Account, actor.AccountID, key, v.ID})
+		raw, _ := json.Marshal([]string{q.Sort, q.Account, actor.AccountID, key, v.ID})
 		out.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return
