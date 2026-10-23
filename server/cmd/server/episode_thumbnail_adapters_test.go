@@ -108,3 +108,21 @@ func TestEpisodeSourceAnalysisUsesSupportedWindowAndPause(t *testing.T) {
 		t.Fatal("nil transaction supplied scheduling facts")
 	}
 }
+
+func TestEpisodeRuntimeDoesNotInventMissingArtworkPolicy(t *testing.T) {
+	c := catalogtest.Open(t)
+	meta := metadata.New(c.DB, "")
+	meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, nil, nil, nil, nil)
+	if meta.EpisodeThumbnails.ArtworkContext != nil || meta.EpisodeThumbnails.Sources == nil || meta.EpisodeThumbnails.Decoder == nil {
+		t.Fatal("source composition fabricated a size policy or lost its real adapters")
+	}
+	// The command's actual availability producer remains closed before it
+	// consults any catalogue or source facts, until the size policy is supplied.
+	available, err := meta.CanMakeEpisodeThumbnailTx(context.Background(), nil, metadata.RepairTarget{Kind: "item", ID: "episode"})
+	if err != nil || available {
+		t.Fatalf("partial runtime advertised generation: %v %v", available, err)
+	}
+	if _, err := (episodeSourceAdapter{}).ResolveEpisodeThumbnailTx(context.Background(), nil, metadata.EpisodeThumbnailInvocation{Purpose: "made-up"}); err == nil {
+		t.Fatal("unknown invocation purpose admitted")
+	}
+}
