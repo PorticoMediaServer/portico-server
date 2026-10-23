@@ -22,3 +22,6 @@ export {loadReadPagePreview} from './preview';
 export type {ReadPagePreview, ReadPagePreviewOptions} from './preview';
 export {bindReadPreferences} from './preferences';
 export type {ReadPreferenceSource, ReadPreferenceBinding} from './preferences';
+export {ReadingDisplay} from './ReadingDisplay';
+export {readingDisplayControls} from './display';
+export type {ReadingDisplayCopy, ReadingDisplayScale} from './display';
