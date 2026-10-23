@@ -81,9 +81,9 @@ func (s *Service) stageAlgorithm(b binding, stage string) string {
 		return Algorithm
 	}
 	model := "unavailable"
-	if s.options.Sonic != nil {
-		id := s.options.Sonic.Identity()
-		model = token(id.ID, id.Version, id.SHA256, s.options.Sonic.HelperDigest())
+	if runtime := s.sonicRuntime(); runtime != nil {
+		id := runtime.Identity()
+		model = token(id.ID, id.Version, id.SHA256, runtime.HelperDigest())
 	}
 	return Algorithm + ":sonic:" + token(model, b.SonicBinding)
 }
@@ -94,7 +94,7 @@ func (s *Service) stageWorkAlgorithm(b binding, stage string) string {
 	return b.WorkAlgorithm + ":" + token(s.stageAlgorithm(b, stage))
 }
 
-func (s *Service) SonicCanAttempt() bool { return s != nil && s.options.Sonic.CanAttempt() }
+func (s *Service) SonicCanAttempt() bool { return s != nil && s.sonicRuntime().CanAttempt() }
 
 // SonicCurrentTx is used by the existing bounded inventory-enqueue page. It
 // detects a model/helper/range change without invalidating unrelated analysis.
@@ -117,7 +117,8 @@ func (s *Service) produceSonic(ctx context.Context, b binding, decode Decode, ke
 		out.Summary = map[string]any{"status": "not_applicable", "reason": "no_music_track"}
 		return out, nil
 	}
-	if s.options.Sonic == nil {
+	runtime := s.sonicRuntime()
+	if runtime == nil {
 		return out, sonic.ErrUnavailable
 	}
 	if int64(len(b.SonicTracks))*(sonic.Dimensions+sonic.TagCount)*4 > s.stageLimit(ctx) {
@@ -136,7 +137,7 @@ func (s *Service) produceSonic(ctx context.Context, b binding, decode Decode, ke
 			// covers the source's microsecond rounding and the resampler's flush.
 			maxSamples := int64(math.Ceil(float64(spec.RegionUS)*sonic.SampleRate/1e6)) + sonic.SampleRate/10
 			var err error
-			analysis, err = s.options.Sonic.Run(ctx, key+":"+strconv.FormatInt(track.EntityID, 10), physical, func(yield func([]float32) error) error {
+			analysis, err = runtime.Run(ctx, key+":"+strconv.FormatInt(track.EntityID, 10), physical, func(yield func([]float32) error) error {
 				return decode(ctx, key+":pcm:"+strconv.FormatInt(track.EntityID, 10), spec, func(input io.Reader) error {
 					_, err := sonic.LogMel(input, maxSamples, yield)
 					return err
@@ -149,7 +150,7 @@ func (s *Service) produceSonic(ctx context.Context, b binding, decode Decode, ke
 		}
 		out.Sonic = append(out.Sonic, sonicItemAnalysis{Binding: track, Analysis: analysis})
 	}
-	model := s.options.Sonic.Identity()
+	model := runtime.Identity()
 	out.Summary = map[string]any{"status": "complete", "tracks": len(out.Sonic), "modelId": model.ID, "modelVersion": model.Version, "modelSHA256": model.SHA256, "serverLocal": true}
 	return out, nil
 }

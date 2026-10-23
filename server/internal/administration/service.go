@@ -64,8 +64,10 @@ type Authorize func(context.Context, *sql.Tx) error
 // checks and tuner discovery are testable and so neither touches the network
 // unless the owner configured it.
 type Service struct {
-	db  *sql.DB
-	DVR *dvr.Store
+	// ConfigurationCommitted drains the shared DB-to-file outbox after a committed domain edit.
+	ConfigurationCommitted func(context.Context) error
+	db                     *sql.DB
+	DVR                    *dvr.Store
 	// PickerRoots overrides the optional PORTICO_MEDIA_ROOTS picker limit.
 	PickerRoots           []string
 	ManagedMountDirectory string

@@ -554,8 +554,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		case !cfg.RemuxEnabled:
 			rejections = append(rejections, RouteRejection{RejectOwnerRemuxDisabled, ""})
 		}
-		transport, r := bestCopyTransport(transports, client, video, audio, in.Target.AllowHDR, true)
-		r = append(r, baseCopyRejections(video, client, in.Server)...)
+		transport, r := bestSourceCopyTransport(transports, client, video, audio, in.Target.AllowHDR, in.Server)
 		rejections = append(rejections, r...)
 		// remuxable describes the source and the device, not the preferences:
 		// it is what decides which refusal a closed policy is reported as.
@@ -571,8 +570,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 3: video copied, audio converted.
 	if !audioOnly {
 		rejections := excluded(DeliveryAudioConversion)
-		transport, r := bestAudioConversionTransport(transports, client, video, audio, in.Target, outputs)
-		r = append(r, baseCopyRejections(video, client, in.Server)...)
+		transport, r := bestSourceAudioConversionTransport(transports, client, video, audio, in.Target, outputs, in.Server)
 		converted := audioOutputFor(audio, client, in.Target, transportNamed(transports, transport), outputs)
 		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, "", converted.Codec, false)...)
 		if audio != nil && converted.NoRate {

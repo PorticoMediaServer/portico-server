@@ -163,7 +163,7 @@ test('Portico Account: Hosted no longer listing the account (routes 403) is a re
 test('INT M7: a server that can’t prove its identity is named as such, and nothing is kept', async () => {
   const f = await fixture([], {portico: true, notProven: true});
   assert.equal(await f.render().portico.connect(server), 'failed'); await tick();
-  assert.equal(f.render().error, 'web.portico.notProven');
+  assert.equal(f.render().error, 'portico.failure.identity.body');
   assert.equal(f.viewer.getSnapshot().session, undefined);
 });
 

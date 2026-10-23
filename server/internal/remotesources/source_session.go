@@ -455,7 +455,17 @@ func (r *SourceRange) ReadAt(ctx context.Context, p []byte, offset int64) (int, 
 	}
 	call, release := r.lease.bound(ctx)
 	defer release()
-	n, err := r.session.ReadAt(call, p, offset)
+	n, err := r.lease.service.readSharedSourceRange(call, r, p, offset)
+	if errors.Is(err, storage.ErrBusy) {
+		return n, err
+	}
+	if err == errSharedSourceRangeInterrupted {
+		r.Close()
+		if current := r.lease.Check(call); current != nil {
+			return 0, current
+		}
+		return 0, err
+	}
 	if err != nil && !errors.Is(err, io.EOF) {
 		closed := r.closed.Load()
 		r.Close()
