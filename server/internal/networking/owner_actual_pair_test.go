@@ -159,6 +159,21 @@ func (b *ownerPairBridge) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testing.T) {
 	b := newOwnerPairBridge(t)
+	initial := b.call(map[string]string{"Action": "snapshot"})
+	var empty struct {
+		Server      any            `json:"server"`
+		OwnerStarts []any          `json:"ownerStarts"`
+		Operations  []any          `json:"operations"`
+		Counts      map[string]int `json:"counts"`
+	}
+	if initial.Status != 200 || json.Unmarshal(initial.Body, &empty) != nil || empty.Server != nil || len(empty.OwnerStarts) != 0 || len(empty.Operations) != 0 || len(empty.Counts) != 6 {
+		t.Fatal("pair did not start with an empty claim/registration namespace")
+	}
+	for _, count := range empty.Counts {
+		if count != 0 {
+			t.Fatal("pair started with invented claim/member/route state")
+		}
+	}
 	ctx := context.Background()
 	state := t.TempDir()
 	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
@@ -192,7 +207,7 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup, err := id.SetupWithOptions(issuing, identity.SetupOptions{SetupToken: setupToken, AuthMode: "local", Username: "owner", Password: "Pair-local-password1!", Name: "Genuine paired server"}, true)
+	setup, err := id.SetupWithOptions(issuing, identity.SetupOptions{SetupToken: setupToken, AuthMode: "local", Username: "owner", Password: "Pair-" + identity.Token() + "9!", Name: "Genuine paired server"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
