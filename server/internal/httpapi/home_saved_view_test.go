@@ -71,6 +71,15 @@ func TestHomeSavedBookViewHydratesPublishedEndpoint(t *testing.T) {
 	if content.Resource.Status != "ready" || content.Browse == nil || len(content.Browse.Entries) != 2 {
 		t.Fatalf("stored browse: %+v", content)
 	}
+	for i, entry := range content.Browse.Entries {
+		shown := entry.DisplayTitle
+		if shown == "" {
+			shown = entry.Title
+		}
+		if entry.Title != titles[2-i] || shown != titles[2-i] {
+			t.Fatalf("saved content changed the stored title or suffix: %q / %q", entry.Title, shown)
+		}
+	}
 	read("PUT", "/v1/home/layout", map[string]any{"expectedRevision": 1, "idempotencyKey": "home-book-view-layout", "rowOrder": []string{rowID}, "hiddenRowIds": []string{}}, nil)
 	var manifest catalog.HomeDocument
 	read("GET", "/v1/home", nil, &manifest)
