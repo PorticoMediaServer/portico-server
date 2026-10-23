@@ -48,6 +48,12 @@ func assertNoScratch(t *testing.T, state, dest string) {
 func TestEncryptedBackupRelocatesAndRestoresWithKeysAndHistory(t *testing.T) {
 	s, p, state := policyFixture(t)
 	ctx := context.Background()
+	c := catalogtest.New(t, s.db)
+	lib := c.Library("films", "Films", "movie", "/fixture")
+	historyTitle := "Private encrypted restore history fixture"
+	item := c.Movie(lib, "/fixture/history.mkv", historyTitle, 2020)
+	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,position_ms,duration_ms,completed)
+ SELECT 'portable-history','local','history-account','history-profile','Fixture viewer',id,'films',kind,title,1700000000000,1700000321000,321000,5400000,0 FROM catalog_entities WHERE id=?`, item.ID)
 	dest := t.TempDir()
 	password := "Fixture backup phrase 2026!"
 	if e := writeTestFile(filepath.Join(state, "Keys", "fixture.key"), []byte("fixture secret bytes"), 0600); e != nil {
@@ -74,7 +80,7 @@ func TestEncryptedBackupRelocatesAndRestoresWithKeysAndHistory(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if bytes.Contains(b, []byte(password)) || bytes.Contains(b, []byte("fixture secret bytes")) || bytes.Contains(b, []byte("SQLite format 3")) {
+		if bytes.Contains(b, []byte(password)) || bytes.Contains(b, []byte("fixture secret bytes")) || bytes.Contains(b, []byte("SQLite format 3")) || bytes.Contains(b, []byte(historyTitle)) {
 			t.Fatal("plaintext escaped encrypted archive")
 		}
 	}
@@ -106,6 +112,11 @@ func TestEncryptedBackupRelocatesAndRestoresWithKeysAndHistory(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer restored.Close()
+	var title string
+	var position, duration, completed, started, updated int64
+	if e = restored.QueryRow(`SELECT title,position_ms,duration_ms,completed,started_ms,updated_ms FROM play_history WHERE playback_id='portable-history' AND item_id=?`, item.ID).Scan(&title, &position, &duration, &completed, &started, &updated); e != nil || title != historyTitle || position != 321000 || duration != 5400000 || completed != 0 || started != 1700000000000 || updated != 1700000321000 {
+		t.Fatal("portable restore lost or changed actual play history", e)
+	}
 	after := NewPolicyStore(restored, targetState)
 	snapshot, e := after.Snapshot(ctx)
 	if e != nil || snapshot.Passphrase != password {
