@@ -1,3 +1,5 @@
+import type {AccessMember,MemberLimits} from '../server-administration.ts';
+import type {SettingsBulkAccess} from '../settings-people.ts';
 import type {InventorySource,SourceSettings} from '../library-inventory.ts';
 import type {SettingsConfiguration, ConfigurationValue} from '../settings-configuration.ts';
 import {canonicalQualityLadder} from '../../../contracts/src/types.ts';
@@ -368,3 +370,35 @@ export function patchLibrarySourceSettingsBinding(rowId:string,value:unknown,dra
  else if(typeof value!=='string'||/[\u0000-\u001f]/.test(value))throw new Error('Invalid folder value.');
  return {...draft,[key]:raw};
 }
+
+function readPersonStreamChoice(mode: unknown, count: unknown): string {
+ if (mode === 'inherit' && count === 0) return 'default';
+ if (mode === 'unlimited' && count === 0) return 'unlimited';
+ if (mode === 'limit' && typeof count === 'number' && Number.isSafeInteger(count) && count >= 1 && count <= 1000) return String(count);
+ throw new Error('invalid_settings_stream_limit');
+}
+function personStreamPatch(choice: unknown): Pick<MemberLimits,'maxStreamsMode'|'maxStreams'> {
+ if (choice === 'default') return {maxStreamsMode:'inherit',maxStreams:0};
+ if (choice === 'unlimited') return {maxStreamsMode:'unlimited',maxStreams:0};
+ if (typeof choice === 'string' && /^[1-9][0-9]{0,3}$/.test(choice) && Number(choice) <= 1000) return {maxStreamsMode:'limit',maxStreams:Number(choice)};
+ throw new Error('invalid_settings_stream_limit');
+}
+/** Presentation only. Current server facts and the existing member/bulk CAS
+ * writers retain authority; zero never identifies inheritance or unlimited. */
+export const peopleStreamLimits = Object.freeze({
+ read(person: Pick<AccessMember,'limits'>): string {
+  return readPersonStreamChoice(person.limits.maxStreamsMode,person.limits.maxStreams);
+ },
+ patch(person: Pick<AccessMember,'limits'>,choice: unknown): MemberLimits {
+  return {...person.limits,...personStreamPatch(choice)};
+ },
+ readBulk(access: SettingsBulkAccess | undefined): string {
+  if (access?.maxStreamsMode === undefined && access?.maxStreams === undefined) return 'keep';
+  return readPersonStreamChoice(access?.maxStreamsMode,access?.maxStreams);
+ },
+ patchBulk(access: SettingsBulkAccess | undefined,choice: unknown): SettingsBulkAccess {
+  const next = {...access};
+  if (choice === 'keep') {delete next.maxStreamsMode;delete next.maxStreams;return next;}
+  return {...next,...personStreamPatch(choice)};
+ }
+});
