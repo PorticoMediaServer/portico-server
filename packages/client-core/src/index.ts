@@ -19,10 +19,11 @@ export * from './portico-servers.ts';
 import type {PreparedChoice} from './prepared-media.ts';
 import type {PlaybackChoices} from './playback-v1/choices.ts';
 import {ListeningDeadlineClock,noListeningDeadlines,type NativeListeningStatus,type NativeListeningV1Control,type NativeListeningV1Event,type ListeningDeadlines,type ListeningPolicy} from './playback/native-listening.ts';
-import {audioEffectsEnabled,defaultAudioEffects,parseAudioEffects,type AudioEffectsSnapshot,type AudioEffectsSettings,type PreparedAudio} from './audio-effects.ts';
+import {audioEffectsEnabled,defaultAudioEffects,parseAudioEffects,type AudioEffectsSnapshot,type AudioEffectsSettings,type PreparedAudio,type ListeningNoticeCode,type AudioProcessingBinding,type AudioProcessingApplied} from './audio-effects.ts';
 import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
 export * from './audio-effects.ts';
 export * from './music-preferences.ts';
+export * from './music-signal.ts';
 import {sessionEndMessage} from './session-end.ts';
 import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';
 import {readCertificateResponse, type CertificateAction} from './certificates.ts';
@@ -101,8 +102,6 @@ export type MediaItem = {
 /** Whether a session's audio can go through the effects engine: a version 2 plan
  * the device decodes (`direct`/`converted`). */
 export const renderable=(s?:{audio?:AudioRenderV2}):boolean=>playableAudio(s?.audio);
-/** X-02: why effects are off for this session, said quietly (a version 2 `unavailable` plan, §18.1). */
-export const renderNotice=(s:{audio?:AudioRenderV2}):string=>s.audio?.mode==='unavailable'?s.audio.reason??'':'';
 export type PlaybackSession = {
   preparedVersionId?: string;
   /** §18.1 version 2: the client decodes the original file (Plexamp's model); `mode` says how. */
@@ -616,6 +615,8 @@ export interface PlaybackJournal {
   save(entries: PlaybackJournalEntry[]): Promise<void>;
 }
 export type PlaybackOptions = {
+  /** Diagnostic codes and bounded server reasons never enter a UI snapshot. */
+  audioDiagnostic?: (code:string,detail?:string)=>void;
   /** Live TV and Library Channels on v1 sessions (spec §18.6): V1ChannelControl. */
   channels?: ChannelPlayback;
   /** A new playback (`playbackRun`) is about to start: put back to the Settings whatever the
@@ -658,6 +659,7 @@ export type PlaybackSnapshot = {
   nativeListening?: NativeListeningStatus;
   listeningDeadlines?: ListeningDeadlines;
   audioEffects: AudioEffectsSnapshot;
+  listeningNotice?: ListeningNoticeCode;
   channel?: ChannelReference;
   linear?: ChannelProjection;
   /** The channel's start can't proceed (occurrence status "recoverable"); `linear.media.errorCode` says why. */
@@ -715,12 +717,14 @@ export class PlaybackService {
   private nativeV1?: NativeListeningV1Control;
   private listeningPolicy?:ListeningPolicy;
   private nativePolicyRevision=0;private nativePolicyKey="";
+  private nativeResumeRevision=0;
+  private nativePolicyPending?:{key:string;native:NativeListeningV1Control;revision:number;promise:Promise<boolean>};
   private listeningClock=new ListeningDeadlineClock(()=>{this.pause();this.update({listeningDeadlines:this.listeningClock.getSnapshot(),error:'Listening timer paused playback.'});});
   private options: PlaybackOptions;
   /** `beforeFreshPlayback` for the playback being started, awaited before its first request. */
   private freshReady?: Promise<void>;
   private snapshot: PlaybackSnapshot = {
-    audioEffects: {settings:defaultAudioEffects,rendering:false,rate:1,notice:""},
+    audioEffects: {settings:defaultAudioEffects,rendering:false,rate:1,eqApplied:false,levelingApplied:false},
     audio: emptyAudio(),
     revision: 0,
     intentId: 0,
@@ -831,6 +835,12 @@ export class PlaybackService {
     };
   }
   private update(patch: Partial<PlaybackSnapshot>) {
+    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined};
+    const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
+    if(changed||patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'){
+      const actual=patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'?undefined:patch.nativeListening;
+      patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true}};
+    }
     // `ended` belongs to one session: a new start or another session clears it.
     if (!("ended" in patch) && this.snapshot.ended && (patch.phase === "starting" || ("session" in patch && patch.session?.id !== this.snapshot.session?.id)))
       patch = { ...patch, ended: undefined };
@@ -874,7 +884,8 @@ export class PlaybackService {
     this.clearStartup();this.bookmarkProtected=true;this.hasObserved=false;
     const intentId=before.intentId;
     this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,selected:before.audioTracks.pending??before.audioTracks.selected,pending:undefined}):undefined,error:undefined,recovering:undefined,
-      audioEffects:{...before.audioEffects,rendering:renderable(next)&&(audioEffectsEnabled(before.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined,notice:renderNotice(next)}});
+      audioEffects:{...before.audioEffects,rendering:renderable(next)&&(audioEffectsEnabled(before.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined}});
+    this.audioPlanDiagnostic(next);
     this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'Playback did not become ready. Check the server and try again.');});
     return true;
   }
@@ -891,18 +902,24 @@ export class PlaybackService {
    * same snapshot before crossing the native boundary. Identical observations
    * never reset native deadlines or native-only remote-control activity. */
   setListeningPolicy(value:ListeningPolicy){this.listeningPolicy=value;this.syncListeningPolicy();}
-  private syncListeningPolicy(){
-    if(!this.listeningPolicy)return;
+  private syncListeningPolicy():Promise<boolean>{
+    const native=this.nativeV1;
+    if(!this.listeningPolicy||!native?.configure)return Promise.resolve(true);
     const value={...this.listeningPolicy,effects:this.snapshot.audioEffects.settings},key=JSON.stringify(value);
-    if(key===this.nativePolicyKey)return;this.nativePolicyKey=key;
-    const revision=++this.nativePolicyRevision,owner=this.snapshot.nativeListening?.owner;
-    const configured=this.nativeV1?.configure?.({...value,revision});
-    void configured?.catch(()=>{
+    if(key===this.nativePolicyKey)return Promise.resolve(true);
+    if(this.nativePolicyPending?.key===key&&this.nativePolicyPending.native===native)return this.nativePolicyPending.promise;
+    this.nativePolicyKey='';
+    const revision=++this.nativePolicyRevision;
+    const promise=Promise.resolve().then(()=>native.configure!({...value,revision})).then(()=>{
+      if(revision!==this.nativePolicyRevision||this.nativeV1!==native)return false;
+      this.nativePolicyKey=key;return true;
+    }).catch(()=>{
       // A failed bridge policy must not leave audible playback behind a timer
       // the UI assumes is armed. A late error cannot pause a different owner.
-      if(revision!==this.nativePolicyRevision||this.snapshot.nativeListening?.owner!==owner)return;
-      this.pause();this.audioEffectsNotice('Listening policy could not be applied. Playback paused; reopen it before relying on background timers.');
-    });
+      if(revision!==this.nativePolicyRevision||this.nativeV1!==native)return false;
+      this.nativePolicyKey='';this.pause();this.listeningNotice('listening_policy_failed');return false;
+    }).finally(()=>{if(this.nativePolicyPending?.revision===revision)this.nativePolicyPending=undefined;});
+    this.nativePolicyPending={key,native,revision,promise};return promise;
   }
   isNativeListening(){return !!this.snapshot.nativeListening||!!this.nativeV1;}
   async setListeningDeadline(kind:'sleep'|'passout',minutes:number|null){
@@ -1001,17 +1018,27 @@ export class PlaybackService {
   adoptAudioEffectsPreference(settings:AudioEffectsSettings){
     settings=parseAudioEffects(settings);this.effectsFromServer=true;
     const current=this.snapshot.audioEffects.settings;
-    if(current.gapless===settings.gapless&&current.crossfadeSeconds===settings.crossfadeSeconds&&current.normalization===settings.normalization)return;
+    // This setting belongs to one app/device, never the profile registry.
+    settings={...settings,...(current.sampleRateMatching?{sampleRateMatching:current.sampleRateMatching}:{})};
+    if(current.gapless===settings.gapless&&current.crossfadeSeconds===settings.crossfadeSeconds&&current.normalization===settings.normalization&&current.neverBoost===settings.neverBoost&&current.smoothTransitions===settings.smoothTransitions)return;
     this.setAudioEffects(settings);
+  }
+  /** Local settings owner supplies the same device value on every output. No persistence here. */
+  setDeviceSampleRateMatching(value:'smart'|'strict'|'off'){
+    if(!['smart','strict','off'].includes(value))throw new Error('Invalid sample-rate matching setting.');
+    const effects=this.snapshot.audioEffects;
+    if(effects.settings.sampleRateMatching===value)return;
+    this.update({audioEffects:{...effects,settings:{...effects.settings,sampleRateMatching:value}}});
+    this.syncListeningPolicy();
   }
   setAudioEffects(settings:AudioEffectsSettings){
     settings=parseAudioEffects(settings);if(!this.nativeV1){this.queue?.seekRetiringAudio?.(this.snapshot.positionSeconds);this.queue?.invalidateAudioPreparation?.();}
     const current=this.snapshot,effects=current.audioEffects;
     const enable=renderable(current.session)&&(audioEffectsEnabled(settings)||this.deviceAudioProcessing);
-    this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,notice:''}});
+    this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,levelingApplied:effects.settings.normalization===settings.normalization&&effects.levelingApplied}});
     this.syncListeningPolicy();
     if(enable&&!effects.rendering&&current.session&&!this.nativeV1)this.requestSeek(current.positionSeconds);
-    void this.queue?.saveAudioEffects(settings).catch(()=>this.audioEffectsNotice('These audio settings could not be saved on this device.'));
+    void this.queue?.saveAudioEffects(settings);
   }
   /** The platform engine selects local processing without rewriting the viewer's music settings. */
   setDeviceAudioProcessing(enabled:boolean){
@@ -1031,20 +1058,37 @@ export class PlaybackService {
     if(!effects.rendering||effects.effectiveRate===effectiveRate&&effects.waiting===waiting)return;
     this.update({audioEffects:{...effects,effectiveRate,waiting}});
   }
-  audioEffectsNotice(notice:string){if(this.snapshot.audioEffects.notice!==notice)this.update({audioEffects:{...this.snapshot.audioEffects,notice}});}
-  prepareAudio(prepared:PreparedAudio){this.update({audioEffects:{...this.snapshot.audioEffects,prepared,notice:''}});}
+  listeningNotice(code:ListeningNoticeCode){
+    if(code!=='audio_autoplay_blocked'&&code!=='listening_policy_failed')return;
+    if(this.snapshot.intent==='paused'&&this.snapshot.phase!=='error'&&this.snapshot.phase!=='idle'&&this.snapshot.listeningNotice!==code)this.update({listeningNotice:code});
+  }
+  /** Called only after filters/gain have actually been installed or removed for this song. */
+  audioProcessingApplied(binding:AudioProcessingBinding,facts:AudioProcessingApplied):boolean{
+    const s=this.snapshot;
+    if(!s.session||this.nativeV1||s.phase==='idle'||s.phase==='error'||s.phase==='ended'||s.intentId!==binding.intentId||s.session.id!==binding.sessionId||s.session.generation!==binding.generation||typeof facts.eqApplied!=='boolean'||typeof facts.levelingApplied!=='boolean')return false;
+    if(s.audioEffects.eqApplied!==facts.eqApplied||s.audioEffects.levelingApplied!==facts.levelingApplied)this.update({audioEffects:{...s.audioEffects,...facts}});
+    return true;
+  }
+  audioDiagnostic(code:string,detail?:string){
+    if(!/^[a-z][a-z0-9_]{0,95}$/.test(code))return;
+    const safe=detail?.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,1024);
+    this.options.audioDiagnostic?.(code,safe);
+    if(this.options.diagnostics)console.debug('[audio]',code,safe??'');
+  }
+  private audioPlanDiagnostic(session:PlaybackSession){if(session.audio?.reason)this.audioDiagnostic('audio_plan',session.audio.reason);}
+  prepareAudio(prepared:PreparedAudio){this.update({audioEffects:{...this.snapshot.audioEffects,prepared}});}
   clearPreparedAudio(){const e=this.snapshot.audioEffects;if(e.prepared||e.committed)this.update({audioEffects:{...e,prepared:undefined,committed:undefined}});}
   audioPrepared(token:string){this.queue?.audioPrepared(token);}
   audioCommit(token:string){void this.queue?.commitAudio(token);}
   audioBoundary(token:string,position:number){void this.queue?.audioBoundary(token,position);}
-  audioPreparationFailed(message:string){this.queue?.discardAudio(message);}
+  audioPreparationFailed(){this.queue?.discardAudio();}
   audioRenderFailed(message:string){this.queue?.audioRenderFailed(message);}
   /** A failed optional decoder hands the same session to the platform player. */
   fallbackAudioRender():boolean {
     const current=this.snapshot;
     if(!current.session||!current.audioEffects.rendering||!current.session.streamUrl||this.nativeV1)return false;
     this.queue?.invalidateAudioPreparation?.();this.bookmarkProtected=true;
-    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,prepared:undefined,committed:undefined,notice:''}});
+    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,prepared:undefined,committed:undefined}});
     return true;
   }
   async commitAudioAuthority(token:string,itemId:string,session:PlaybackSession,expectedIntent:number):Promise<boolean>{
@@ -1194,7 +1238,8 @@ export class PlaybackService {
     this.leave(false,true);this.sequence=0;this.lastProgress=0;
     const intentId=this.snapshot.intentId;
     this.update({phase:'starting',itemId,intent,error:undefined});
-    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&(audioEffectsEnabled(this.snapshot.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined,notice:renderNotice(session)}});
+    this.requestSeek(session.resumeSeconds,{session,duration:session.duration,audioEffects:{...this.snapshot.audioEffects,rendering:renderable(session)&&(audioEffectsEnabled(this.snapshot.audioEffects.settings)||this.deviceAudioProcessing),prepared:undefined,committed:undefined}});
+    this.audioPlanDiagnostic(session);
     if(this.snapshot.intentId===intentId&&this.snapshot.phase!=='ready'){
       this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'The selected queue item did not become ready. Retry playback or choose another item.');});
     }
@@ -1236,7 +1281,7 @@ export class PlaybackService {
       phase:event.terminal?'error':event.ended?'ended':event.ready?'ready':'starting',
       ...(changed?{audio:this.audioSelection.reset()}:{}),
       ...(event.observed&&!event.seeking?{pendingSeek:undefined,failedSeek:undefined,seekError:undefined}:{}),
-      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??this.snapshot.audioEffects.rendering,rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined,notice:event.notice??this.snapshot.audioEffects.notice},
+      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??false,eqApplied:event.eqApplied===true,levelingApplied:event.levelingApplied===true,rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined},
       error:event.error??undefined,listeningDeadlines:event.deadlines});
     // The server ended it (an administrator, a transfer, the lease): its reason, never an advance.
     if(event.terminal&&event.end)this.serverEnded(session.id,event.end);
@@ -1258,6 +1303,7 @@ export class PlaybackService {
    * offer. The server may change the delivery mode to reach it (an original whose
    * second track the engine cannot select is repackaged instead). */
   play(itemId: string, startPosition?: number, prepared?: PreparedChoice, quality?: string, audioStream?: number, choices?: PlaybackChoices): Promise<void> {
+    if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     if (this.lastPlay?.itemId !== itemId) this.escalations = 0;
     this.lastPlay = { itemId, prepared, quality, audioStream, choices };
     if(this.queue)return this.queue.playItem(itemId,startPosition,prepared,quality,audioStream,choices);
@@ -1273,6 +1319,7 @@ export class PlaybackService {
    * keeps them on the device (see the Apple app's offline playback).
    */
   playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number): Promise<void> {
+    if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     this.escalations = 0;
     this.lastPlay = { itemId, local: session };
     this.update({ playbackRun: this.snapshot.playbackRun + 1 });
@@ -1460,6 +1507,7 @@ export class PlaybackService {
     }
   }
   pause() {
+    this.nativeResumeRevision++;
     this.queue?.invalidateAudioPreparation?.();
     if(this.nativeV1){void this.nativeV1.action('pause').catch(()=>{});if(this.snapshot.phase!=='idle')this.update({intent:'paused'});return;}
     if(this.snapshot.channel){this.channelWantedState="paused";this.update({intent:"paused"});this.channels?.pause();return;}
@@ -1471,8 +1519,14 @@ export class PlaybackService {
     }
   }
   resume() {
+    this.update({listeningNotice:undefined});
     this.checkListeningDeadlines();
-    if(this.nativeV1){void this.nativeV1.action('resume').catch(()=>{});return;}
+    if(this.nativeV1){
+      const native=this.nativeV1,revision=++this.nativeResumeRevision;
+      void (this.nativePolicyKey?Promise.resolve(true):this.syncListeningPolicy()).then(ok=>{
+        if(ok&&this.nativeV1===native&&revision===this.nativeResumeRevision)return native.action('resume');
+      }).catch(()=>{});return;
+    }
     if(this.snapshot.channel){
       if(this.snapshot.seekError||this.snapshot.failedSeek){this.update({error:'Choose Go Live or a position in the retained window before resuming.'});return;}
       this.channelWantedState="playing";this.channels?.resume();return;
@@ -1665,6 +1719,7 @@ export class PlaybackService {
     }
   }
   leave(notifyQueue=true,preserveListeningDeadlines=false) {
+    this.nativeResumeRevision++;this.nativePolicyRevision++;this.nativePolicyKey='';this.nativePolicyPending=undefined;
     if(!preserveListeningDeadlines)this.listeningClock.clear();
     if(notifyQueue)this.queue?.leave();
     const wasChannel=!!this.snapshot.channel;
@@ -1680,7 +1735,7 @@ export class PlaybackService {
     this.bookmarkProtected = true;
     const old = this.snapshot.session;
     this.update({
-      audioEffects:{...this.snapshot.audioEffects,rendering:false,effectiveRate:0,waiting:false,prepared:undefined,committed:undefined,notice:""},
+      audioEffects:{...this.snapshot.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,effectiveRate:0,waiting:false,prepared:undefined,committed:undefined},
       audio: this.audioSelection.reset(),
       audioTracks: undefined,
       intentId: this.snapshot.intentId + 1,
@@ -2063,6 +2118,7 @@ export {highestRatingChoices} from './profile-limits.ts';
 
 export * from './account-reset.ts';
 export * from './same-tab-return.ts';
+export {buildHostedSignInStartURL, parseHostedSignInStartURL} from './hosted-sign-in-start.ts';
 
 export * from './report-context.ts';
 export {AppSessionStore, parseAppSessionRecord, type AppSessionRecord, type AppSessionStorage, type AppServerSession, type NewServerConnection, type PorticoAccountScope, type SignInKind} from './app-sessions.ts';

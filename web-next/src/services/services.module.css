@@ -1,0 +1,7 @@
+.form { display: flex; flex-direction: column; gap: 16px; }
+.phoneOnly { display: none; }
+@media (max-width: 640px) {
+  .form { gap: 12px; }
+  .phoneOnly { display: contents; }
+  .desktopOnly { display: none; }
+}

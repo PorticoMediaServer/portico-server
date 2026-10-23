@@ -71,12 +71,13 @@ type DownloadStorage struct {
 // source, every rung with its estimate, the policy and the storage headroom. A
 // client needs no second request to render the sheet.
 type DownloadOptionsView struct {
-	ItemID  string            `json:"itemId"`
-	Kind    string            `json:"kind"`
-	Source  SourceDescription `json:"source"`
-	Options []QualityOption   `json:"options"`
-	Policy  DownloadPolicy    `json:"policy"`
-	Storage DownloadStorage   `json:"storage"`
+	DefaultQuality string            `json:"defaultQuality"`
+	ItemID         string            `json:"itemId"`
+	Kind           string            `json:"kind"`
+	Source         SourceDescription `json:"source"`
+	Options        []QualityOption   `json:"options"`
+	Policy         DownloadPolicy    `json:"policy"`
+	Storage        DownloadStorage   `json:"storage"`
 }
 
 // Options publishes the complete canonical menu for one item. Source-equivalent
@@ -147,6 +148,11 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	if e = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&transcoding); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
+	if audioKind(found.Kind) {
+		transcoding = s.deliveryConfig().AudioConversionAllowed(transcoding)
+	} else {
+		transcoding = s.deliveryConfig().VideoConversionAllowed(transcoding)
+	}
 	versions, e := preparedmedia.VersionsTx(ctx, tx, item)
 	if e != nil {
 		return out, e
@@ -179,16 +185,31 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	} else if !allowed {
 		original.Reason = ReasonNotAllowed
 	}
+	out.DefaultQuality, e = requestedDownloadQuality(ctx, tx, p, "", found)
+	if e != nil {
+		return out, e
+	}
+	if !s.withinCeiling(QualityOriginal, found) {
+		original.Available, original.Reason = false, ReasonDownloadCeiling
+	}
 	original.EffectiveQuality = "original"
+	if found.Kind == "song" {
+		out.Options = s.musicOptions(ctx, tx, p, found, original, versions, live, owner, transcoding)
+		return out, nil
+	}
 	out.Options = append(out.Options, decorate(original, live))
 	automatic := original
+	automatic.Available = out.Source.Available && allowed
+	if automatic.Available {
+		automatic.Reason = ""
+	}
 	automatic.Quality = "automatic"
 	automatic.Label = "Automatic"
-	effective := resolvedQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), "automatic", found)
+	effective := s.resolveQuality(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), "automatic", found)
 	automatic.EffectiveQuality = effective
 	if effective != "original" {
 		automatic.Kind = "optimized"
-		automatic.PreparedProfileID = chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), effective, found)
+		automatic.PreparedProfileID = chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), effective, found, s.deliveryConfig())
 		automatic.Bytes, automatic.Estimated = estimateBytes(effective, automatic.PreparedProfileID, found)
 		if recipe, err := preparedmedia.ProfileByID(automatic.PreparedProfileID); err == nil {
 			automatic.MaxAudioBitrateBPS = recipe.AudioKbps * 1000
@@ -229,6 +250,10 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	}
 	presets := playback.QualityLadder
 	for _, preset := range presets {
+		if !audioKind(found.Kind) && !s.deliveryConfig().DownloadQualityAllowed(preset.ID) {
+			out.Options = append(out.Options, QualityOption{Quality: preset.ID, Label: preset.Label, Kind: "optimized", TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, Reason: ReasonDownloadCeiling})
+			continue
+		}
 		if audioKind(found.Kind) {
 			out.Options = append(out.Options, QualityOption{Quality: preset.ID, Label: preset.Label, Kind: "optimized", TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, DataGBPerHour: preset.DataGBPerHour, Reason: "not_video"})
 			continue
@@ -247,7 +272,7 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		option := QualityOption{
 			Quality: preset.ID, Label: preset.Label, Kind: "optimized", EffectiveQuality: preset.ID, DataGBPerHour: preset.DataGBPerHour,
 			TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS,
-			PreparedProfileID: chooseRecipe(ctx, tx, device, preset.ID, found),
+			PreparedProfileID: chooseRecipe(ctx, tx, device, preset.ID, found, s.deliveryConfig()),
 		}
 		option.Bytes, option.Estimated = estimateBytes(preset.ID, option.PreparedProfileID, found)
 		version := selectableVersionForSource(versions, option.PreparedProfileID, found.Asset)

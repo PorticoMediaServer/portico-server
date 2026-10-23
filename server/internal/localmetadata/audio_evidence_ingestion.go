@@ -87,6 +87,9 @@ func (s *Service) prepareAudioEvidence(ctx context.Context, library, kind, root,
 			f = withEvidence(f, k, v, source)
 		}
 	}
+	if kind == "music" {
+		f = s.musicCue(ctx, library, path, f)
+	}
 	if kind == "audiobook" {
 		f = s.audiobookChapters(ctx, library, path, f, bookChapters)
 		f = audiobookFolderEvidence(root, path, f)

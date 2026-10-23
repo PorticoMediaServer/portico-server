@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {ApiError} from '@core/index.ts';
+import {MFARequiredError} from '@core/hosted-security.ts';
+import {ServicesAuthFlow} from '../src/services/auth-flow.ts';
+import type {ServicesAccount} from '../src/services/session.ts';
+
+const options = {password: true, recovery: true, registration: true, providers: [], verifiedContactRequired: true, accountSecurity: true};
+function port() {
+  let authenticated = 0, completed = 0;
+  const calls: unknown[][] = [];
+  const value = {
+    client: {
+      options: async () => options,
+      transaction: async () => null,
+      registration: async () => null,
+      login: async (...input: unknown[]) => { calls.push(input); return {}; },
+      mfa: async (...input: unknown[]) => { calls.push(input); return {}; },
+      request: async (...input: unknown[]) => { calls.push(input); return {message: 'raw response must not become UI copy'}; },
+    },
+    service: {authenticateIfSignedOut: async (work: (signal: AbortSignal) => Promise<unknown>) => { authenticated++; return work(new AbortController().signal); }},
+  } as unknown as ServicesAccount;
+  return {value, calls, authenticated: () => authenticated, completed: () => completed, done: () => { completed++; }};
+}
+
+test('an explicit recovery page does not resume an unrelated registration or provider transaction', async () => {
+  const p = port(); let privateReads = 0;
+  p.value.client.registration = async () => { privateReads++; throw new Error('unexpected registration'); };
+  p.value.client.transaction = async () => { privateReads++; throw new Error('unexpected transaction'); };
+  const flow = new ServicesAuthFlow(p.value, p.done, 'forgot');
+  await flow.initialize();
+  assert.equal(privateReads, 0); assert.equal(flow.getSnapshot().mode, 'forgot');
+  await flow.recover(' person@example.test ');
+  assert.equal(flow.getSnapshot().mode, 'sent'); assert.equal(p.authenticated(), 0);
+  assert.deepEqual(p.calls[0].slice(0, 2), ['/v1/account/recovery/request', 'POST']);
+  assert.equal((p.calls[0][2] as {contactAddress: string}).contactAddress, 'person@example.test');
+  assert.equal(Object.hasOwn(flow.getSnapshot(), 'message'), false);
+  flow.dispose();
+});
+
+test('MFA requires a separate factor submission through the same canonical coordinator', async () => {
+  const p = port();
+  p.value.client.login = async () => { throw new MFARequiredError({mfaRequired: true, challengeId: 'challenge', challengeToken: 'private', expiresAt: '2030-01-01T00:00:00Z'}); };
+  const flow = new ServicesAuthFlow(p.value, p.done);
+  await flow.signIn('account', 'password', '');
+  assert.equal(flow.getSnapshot().mode, 'factor'); assert.equal(p.completed(), 0);
+  assert.equal(JSON.stringify(flow.getSnapshot()).includes('private'), false);
+  flow.recovery(); assert.equal(flow.getSnapshot().mode, 'recovery');
+  await flow.signIn('account', '', 'one-use-recovery');
+  assert.equal(p.authenticated(), 2); assert.equal(p.completed(), 1);
+  assert.equal(p.calls[0][1], 'one-use-recovery');
+  flow.dispose();
+});
+
+test('server retry guidance prevents another credential attempt until its actual deadline', async () => {
+  const p = port(); let attempts = 0;
+  p.value.client.login = async () => { attempts++; throw new ApiError(429, 'rate_limited', 'untrusted service text', true, 30); };
+  const flow = new ServicesAuthFlow(p.value, p.done);
+  await flow.signIn('account', 'password', '');
+  assert.ok(flow.getSnapshot().retryAt > Date.now() + 29000);
+  await flow.signIn('account', 'password', '');
+  assert.equal(attempts, 1); flow.dispose();
+});
+
+test('disposing a pending bootstrap prevents late state publication or automatic sign-in', async () => {
+  const p = port(); let resolveOptions!: (value: typeof options) => void;
+  p.value.client.options = () => new Promise(resolve => { resolveOptions = resolve; });
+  const flow = new ServicesAuthFlow(p.value, p.done); const pending = flow.initialize();
+  const snapshot = flow.getSnapshot(); flow.dispose(); resolveOptions(options); await pending;
+  assert.equal(flow.getSnapshot(), snapshot); assert.equal(p.authenticated(), 0); assert.equal(p.completed(), 0);
+});
+
+test('canceling provider onboarding cancels the actual browser-bound transaction without adopting a session', async () => {
+  const p = port();
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false, suggestedName: 'Actual callback name'});
+  const flow = new ServicesAuthFlow(p.value, p.done);
+  await flow.initialize(); assert.equal(flow.getSnapshot().mode, 'provider');
+  await flow.cancelProvider();
+  assert.deepEqual(p.calls[0].slice(0, 3), ['/v1/identity/cancel', 'POST', undefined]);
+  assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal(flow.getSnapshot().suggestedName, undefined);
+  assert.equal(p.authenticated(), 0); assert.equal(p.completed(), 0); flow.dispose();
+});
+
+test('provider creation keeps the drawn ready step and refuses Continue after a family change', async () => {
+  const p = port();
+  let session = {account: {id: 'account', username: 'harbourview', displayName: 'Alex'}, familyId: 'created-family', accessToken: 'test-access', expiresAt: '2030-01-01T00:00:00Z'};
+  p.value.client.transaction = async () => ({transactionId: 'current', provider: 'apple', mode: 'login', status: 'onboarding', expiresAt: new Date(Date.now() + 60000).toISOString(), contactVerified: true, needsUsername: true, mfaRequired: false});
+  p.value.client.complete = async () => session;
+  p.value.service.synchronize = async () => {};
+  p.value.service.accessSession = async () => session;
+  p.value.service.getSnapshot = () => ({phase: 'ready', session, pendingRevocations: 0});
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  await flow.finishProvider('harbourview', 'Alex');
+  assert.equal(flow.getSnapshot().mode, 'ready'); assert.equal(p.completed(), 0);
+  session = {...session, familyId: 'another-family'};
+  await flow.continue();
+  assert.equal(p.completed(), 0); assert.equal((flow.getSnapshot().error as ApiError).code, 'account_changed');
+  flow.dispose();
+});

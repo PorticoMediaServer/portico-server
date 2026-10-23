@@ -102,6 +102,7 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-commit', required=True)
+    parser.add_argument('--phase', choices=('working', 'full'), default='working')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if (root.name != 'source' or root.parent.parent.parent.name != 'jobs' or
@@ -137,8 +138,9 @@ def main():
         stop_owned_job(signal.SIGTERM, None)
     os.environ['PORTICO_RUNNER_SOURCE_COMMIT'] = args.source_commit
     scratch = job_root / '.scratch/hardware-r29'
-    scratch.mkdir(parents=True)
+    scratch.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PORTICO_LANE_SCRATCH=str(scratch), PORTICO_BUILD_JOBS='2',
+        PORTICO_FFMPEG_PHASE=args.phase,
         PORTICO_DISC_SOURCE_COMMIT=lock['discHelper']['sourceCommit'],
         PORTICO_DISC_FIXTURES=str(root / lock['discHelper']['fixtureManifest']),
         PORTICO_DISC_FIXTURES_SHA256=lock['discHelper']['fixtureManifestSHA256'],
@@ -193,8 +195,9 @@ def main():
         finally:
             collect_qualification_reports(job_root, args.source_commit, build_succeeded, build_failure)
     work = scratch / 'ffmpeg-build/linux-x64'
-    archive = work / 'portico-ffmpeg-linux-x64.tar.xz'
-    manifest = work / 'bundle/toolchain-manifest.json'
+    working = args.phase == 'working'
+    archive = work / ('portico-ffmpeg-linux-x64-working.tar.xz' if working else 'portico-ffmpeg-linux-x64.tar.xz')
+    manifest = work / 'bundle' / ('working-manifest.json' if working else 'toolchain-manifest.json')
     if not archive.is_file() or not manifest.is_file():
         raise ValueError('Successful canonical build did not produce the required bundle')
     artifact_parent = host_work / 'artifacts/hardware-r29' / args.source_commit
@@ -206,21 +209,26 @@ def main():
         # This is the requested retained product artifact, not the disposable
         # source/tmp tree. Preserve one payload only and return text by reference.
         archive.rename(staging / archive.name)
-        shutil.copyfile(manifest, staging / 'toolchain-manifest.json')
+        shutil.copyfile(manifest, staging / manifest.name)
         reports = [work / name for name in ('feature-report-bundle.json', 'disc-report-bundle.json',
                    'runtime-report-bundle.json', 'abi-report-bundle.json', 'repeat-build.json')]
         reports += [work / 'linux-output' / name for name in
                     ('dovi-profile-build.json', 'dovi-video-build.json')]
         for path in reports:
+            if working and not path.exists():
+                continue
             shutil.copyfile(path, staging / path.name)
+        if working:
+            for tool in ('ffmpeg', 'ffprobe', 'portico-disc'):
+                shutil.copy2(work / 'bundle/bin' / tool, Path(os.environ['PORTICO_RUNNER_OUTPUT']) / tool)
         hashes = {p.name: digest(p) for p in sorted(staging.iterdir()) if p.is_file()}
         receipt = {'schema': 1, 'host': os.uname().nodename,
             'at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'buildSourceCommit': args.source_commit, 'ffmpegSourceCommit': lock['ffmpeg']['commit'],
             'artifactPath': str(destination / archive.name), 'files': hashes,
-            'qualifiedTargetVerification': True, 'mainConsumerAdmission': False,
+            'qualifiedTargetVerification': not working, 'mainConsumerAdmission': False,
             'retention': 'Retain this verified product until explicit consumer release; per-job source/tmp is disposable.',
-            'scope': 'One Linux source bundle/generated fixtures/ABI/licences/repeat proof. No physical GPU, real Atmos/JOC, mastered FEL, other targets or full HW1-HW7 completion.',
+            'scope': ('First working Linux source bundle with licences and corresponding source; full target/repeat qualification pending.' if working else 'One Linux source bundle/generated fixtures/ABI/licences/repeat proof. No physical GPU, real Atmos/JOC, mastered FEL, other targets or full HW1-HW7 completion.'),
             'consumerFence': 'This exact product source must be normally merged on MAIN before feature consumers use the artifact.'}
         (staging / 'artifact-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
         staging.rename(destination)
@@ -228,7 +236,7 @@ def main():
         # A partial artifact was never announced or handed to a consumer.
         shutil.rmtree(staging)
         raise
-    print(json.dumps({'retainedVerifiedArtifact': receipt}, indent=2), flush=True)
+    print(json.dumps({'retainedWorkingArtifact' if working else 'retainedVerifiedArtifact': receipt}, indent=2), flush=True)
     return 0
 
 
