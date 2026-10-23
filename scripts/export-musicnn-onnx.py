@@ -64,22 +64,22 @@ def inspect(directory):
 
 def inference_graph(directory):
     import tensorflow as tf
+    lock = verify_checkpoint(directory)
     original = original_graph(directory)
+    nodes = {node.name: node for node in original.node}
 
-    def one(predicate, description):
-        nodes = [node for node in original.node if predicate(node)]
-        if len(nodes) != 1:
-            raise ValueError("original graph has an ambiguous " + description)
-        return nodes[0]
+    def tensor(key, op, dimensions):
+        node = nodes[lock["graph"][key]]
+        if node.op != op or shape(node) != dimensions:
+            raise ValueError("different original graph boundary: " + key)
+        return node
 
-    source = one(lambda n: n.op == "Placeholder" and shape(n) == [-1, 187, 96], "log-mel input")
-    training = one(lambda n: n.op == "Placeholder" and n.attr["dtype"].type == tf.bool.as_datatype_enum,
-                   "training switch")
-    embedding = one(lambda n: n.op == "Merge" and len(shape(n) or []) == 2
-                    and shape(n)[-1] == 200 and "/batch_normalization_" in n.name
-                    and not n.name.startswith("gradients/"), "penultimate inference feature")
-    logits = one(lambda n: n.op == "BiasAdd" and len(shape(n) or []) == 2
-                 and shape(n)[-1] == 50 and not n.name.startswith("gradients/"), "MTT logits")
+    source = tensor("input", "Placeholder", [-1, 187, 96])
+    training = tensor("training", "Placeholder", [])
+    if training.attr["dtype"].type != tf.bool.as_datatype_enum:
+        raise ValueError("different training switch type")
+    embedding = tensor("embedding", "Add", [-1, 200])
+    logits = tensor("logits", "BiasAdd", [-1, 50])
     graph = tf.compat.v1.graph_util.extract_sub_graph(original, [embedding.name, logits.name])
     reader = tf.train.load_checkpoint(str(directory) + "/")
     replaced = 0

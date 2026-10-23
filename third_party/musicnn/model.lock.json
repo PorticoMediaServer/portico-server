@@ -5,6 +5,12 @@
   "sourceCommit": "516acb2a0ff5ef73f64547898e018e793152c506",
   "license": "ISC",
   "licenseSHA256": "60c4194f702ddd969f969577743546327b4e9db560c07ec286be5cec27f55fcd",
+  "graph": {
+    "input": "model/Placeholder",
+    "training": "model/Placeholder_2",
+    "embedding": "model/batch_normalization_10/batchnorm/add_1",
+    "logits": "model/dense_1/BiasAdd"
+  },
   "distribution": {
     "url": "https://files.pythonhosted.org/packages/1b/6f/38229e7d99c438e11114bbfa39c8c39185458c398011d0b6d7d7c7401617/musicnn-0.1.0-py3-none-any.whl",
     "sha256": "f38a4890c648c1ddbb141c5d96d2b0a8cfcd36746002d896989f7b88beb65cfa",
