@@ -73,6 +73,16 @@ def main():
             raise ValueError('Join fixture bytes changed: ' + name)
         inputs['join-fixtures/' + name] = path
     hashes = {name: digest(path) for name, path in inputs.items()}
+    result_file = work / 'linux-output/dovi-video-build.json'
+    if result_file.exists():
+        result = json.loads(result_file.read_text())
+        if (result.get('qualified') is not True or result.get('inputs') != hashes or
+                result.get('binarySHA256') != pair or
+                result.get('sourceArchiveSHA256') != rounds[0]['sourceArchiveSHA256'] or
+                result.get('qualificationPrefixSealSHA256') != digest(work / 'qualification-prefix-files.json')):
+            raise ValueError('Previously qualified encoded HDR inputs changed; preserve the previous result')
+        print('Reused exact binary/source/fixture-bound encoded HDR and dual-PID proof')
+        return
     key = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
     frozen = work / 'linux-build-inputs' / ('hdr-' + key)
     for name, source in inputs.items():
@@ -133,7 +143,7 @@ python3 /inputs/qualify-dovi-join.py --fixtures /inputs/join-fixtures --hdr-fixt
         'video': video, 'hdr10plus': hdr, 'join': join,
         'joinFixtureManifestSHA256': contract['inputs']['joinManifest']['sha256'],
         'joinPatchSHA256': join_contract['patchSha256'], 'scope': contract['scope']}
-    (work / 'linux-output/dovi-video-build.json').write_text(json.dumps(result, indent=2) + '\n')
+    result_file.write_text(json.dumps(result, indent=2) + '\n')
     # Decoded/encoded test media and the test harness are not bundle payloads.
     # Only source, fixtures and measured reports/hashes enter provenance.
     shutil.rmtree(stage / 'runtime')
