@@ -32,6 +32,16 @@ container="$(docker create --label portico=video-server-r29 --label portico.purp
     dpkg-query -W gcc meson ninja-build pkg-config git python3
     exec python3 /source/third_party/portico-disc/tests/qualify-pinned-host.py --work /job/disc-host --static
   ')"
+set +e
 docker start -a "$container"
+attach_status=$?
+set -e
+container_status="$(docker inspect --format '{{.State.ExitCode}}' "$container")"
+if [[ "$attach_status" -ne 0 && "$container_status" -eq 0 ]]; then
+  exit "$attach_status"
+fi
+if [[ "$container_status" -ne 0 ]]; then
+  exit "$container_status"
+fi
 # No image was built. Only this labelled container and its per-job bind scratch
 # belong to the check; public dependency-image cache is not pruned here.
