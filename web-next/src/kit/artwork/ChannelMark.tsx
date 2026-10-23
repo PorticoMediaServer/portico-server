@@ -1,6 +1,5 @@
 import type {CSSProperties} from 'react';
-import type {ChannelMarkModel} from '@portico/client-core/kit-model';
-import {channelTint} from '@core/presentation/kit-model/channels.ts';
+import {channelTint, type ChannelMarkModel} from '@portico/client-core/kit-model';
 import {Artwork, artClass, artSize} from './Artwork';
 import type {ArtworkSource, ArtworkStatus, ArtStyleProps} from './types';
 import styles from './artwork.module.css';
