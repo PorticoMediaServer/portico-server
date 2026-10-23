@@ -138,6 +138,9 @@ button.identity:hover .expandTip, button.identity:focus-visible .expandTip { dis
 .mediaSurface { position: fixed; top: 0; left: 0; z-index: calc(var(--layer-player) + 1); transform-origin: 0 0; pointer-events: none; visibility: hidden; }
 .mediaSurface[data-raised] { z-index: calc(var(--layer-dialog) + 1); }
 .surfacePicture { position: relative; width: 100%; height: 100%; border-radius: inherit; overflow: hidden; background: var(--color-shadow); }
+/* The desktop host owns the matching native rectangle beneath the WebView. */
+.mediaSurface[data-native-video-active='true'] .surfacePicture { background: transparent; }
+.mediaSurface[data-native-video-active='true'] .surfacePicture > video { opacity: 0; }
 .surfacePicture > video { display: block; width: 100%; height: 100%; object-fit: contain; }
 .mediaSurface[data-docked] { border-radius: 8px; }
 .mediaSurface[data-docked] .surfacePicture > video { object-fit: cover; }

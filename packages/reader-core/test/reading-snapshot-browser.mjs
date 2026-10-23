@@ -1,6 +1,6 @@
 import {build,preview} from 'vite';
 import {spawn} from 'node:child_process';
-import {mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
@@ -11,10 +11,12 @@ const scratch=await mkdtemp(join(process.env.TMPDIR,'reader-snapshot-'));
 let server,chrome,socket;
 try {
   const root=fileURLToPath(new URL('./browser/',import.meta.url));
-  const fixture=await readFile(process.env.PORTICO_READER_EPUB);
-  await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true}});
+  const fixed=process.env.PORTICO_READER_MODE==='fixed';
+  const fixtures=fixed?{'/fixture.pdf':{bytes:await readFile(process.env.PORTICO_READER_PDF),mime:'application/pdf'},'/fixture.cbz':{bytes:await readFile(process.env.PORTICO_READER_CBZ),mime:'application/zip'}}
+    :{'/publication.epub':{bytes:await readFile(process.env.PORTICO_READER_EPUB),mime:'application/epub+zip'}};
+  await build({root,configFile:false,publicDir:false,build:{outDir:join(scratch,'dist'),emptyOutDir:true,rolldownOptions:{input:join(root,fixed?'fixed.html':'index.html')}}});
   server=await preview({root,configFile:false,build:{outDir:join(scratch,'dist')},preview:{host:'127.0.0.1',port:0},plugins:[{name:'lawful-verification-fixture',configurePreviewServer(value){value.middlewares.use((req,res,next)=>{
-    if(req.url==='/publication.epub'){res.setHeader('Content-Type','application/epub+zip');res.setHeader('Content-Length',fixture.length);res.end(fixture);}else next();
+    const fixture=fixtures[req.url];if(fixture){res.setHeader('Content-Type',fixture.mime);res.setHeader('Content-Length',fixture.bytes.length);res.end(fixture.bytes);}else next();
   });}}]});
   const httpPort=server.httpServer.address().port;
   const profile=join(scratch,'chrome');
@@ -33,12 +35,11 @@ try {
   const request=(method,params={})=>new Promise((resolve,reject)=>{const key=++id;pending.set(key,{resolve,reject});socket.send(JSON.stringify({id:key,method,params}));});
   await request('Page.enable');await request('Runtime.enable');
   const loaded=new Promise(resolve=>events.set('Page.loadEventFired',[resolve]));
-  await request('Page.navigate',{url:`http://127.0.0.1:${httpPort}/`});await loaded;
+  await request('Page.navigate',{url:`http://127.0.0.1:${httpPort}/${fixed?'fixed.html':''}`});await loaded;
   const outcome=await request('Runtime.evaluate',{expression:'window.snapshotProof.then(result=>({result,cleanup:window.readerCleanup}))',awaitPromise:true,returnByValue:true,timeout:60000});
   assert.ok(!outcome.exceptionDetails,JSON.stringify(outcome));
   const value=outcome.result.value;assert.equal(value.result.status,'pass');assert.equal(value.cleanup.surfaceChildren,0);assert.equal(value.cleanup.overrides,0);
   console.log(JSON.stringify(value));
-  if(process.env.PORTICO_RUNNER_OUTPUT)await writeFile(join(process.env.PORTICO_RUNNER_OUTPUT,'epub-snapshot-browser.json'),JSON.stringify(value,null,2)+'\n');
 }finally{
   socket?.close();
   if(chrome&&chrome.exitCode===null){const stopped=new Promise(resolve=>chrome.once('exit',resolve));chrome.kill('SIGTERM');const kill=setTimeout(()=>chrome.kill('SIGKILL'),3000);await stopped;clearTimeout(kill);}
