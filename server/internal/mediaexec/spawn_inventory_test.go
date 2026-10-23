@@ -50,6 +50,8 @@ var processSpawns = map[string]string{
 	"internal/mounts/native.go:approveExecutable":                "rclone version, to approve the configured executable",
 	"internal/mounts/native.go:validateCandidate":                "rclone native helper (server binary)",
 	"internal/mounts/guardian.go:Guardian":                       "rclone under the guardian",
+	"internal/rcloneprogram/command_other.go:versionCommand":     "fixed rclone version probe; Check bounds runtime/output and applies childprocess cleanup; no media input",
+	"internal/rcloneprogram/command_windows.go:versionCommand":   "fixed rclone version probe, including a selected .cmd/.bat wrapper; same Check bounds and childprocess cleanup; no media input",
 	"internal/networking/topology.go:defaultGateway":             "/sbin/route on macOS",
 	"internal/telemetry/command.go:runCommand":                   "fixed read-only platform reporters",
 	"internal/httpapi/fixture/fixture.go:cloneFile":              "test fixture copy (cp), not built into the server",
