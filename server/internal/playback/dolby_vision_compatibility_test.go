@@ -33,9 +33,8 @@ func TestDolbyVisionProfile8CompatibilityUsesExactDeclaredVariant(t *testing.T) 
 func TestDolbyVisionProfile8CompatibilityValidation(t *testing.T) {
 	for _, ids := range [][]int{{1}, {4}, {1, 2, 4}, {0}, {3}, {1, 1}} {
 		doc := BaselineCapabilityDocument()
-		engine := doc.Engines[EngineNative]
+		engine := doc.Engines.Native
 		engine.Video = append(engine.Video, ClientVideoCodec{Codec: "hevc", BitDepths: []int{10}, DynamicRanges: []string{"sdr", "dolby_vision"}, DolbyVisionProfiles: []int{8}, DolbyVisionProfile8Compatibility: ids})
-		doc.Engines[EngineNative] = engine
 		err := doc.Accept()
 		invalid := len(ids) == 1 && (ids[0] == 0 || ids[0] == 3) || len(ids) == 2 && ids[0] == ids[1]
 		if (err != nil) != invalid {
