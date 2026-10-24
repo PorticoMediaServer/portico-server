@@ -10093,6 +10093,31 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "post_admin_access_invitation_short_code",
+    "method": "POST",
+    "path": "/v1/admin/access/invitations/{id}/short-code",
+    "summary": "Issue a one-time display short invitation code",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "invitation_not_found",
+      "idempotency_key_reused",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "post_admin_access_invitations",
     "method": "POST",
     "path": "/v1/admin/access/invitations",
@@ -18755,6 +18780,7 @@ export const routePaths = {
   "patch_sign_in_policy": "/v1/admin/sign-in/policy",
   "post_access_invitations_accept": "/v1/access/invitations/accept",
   "post_admin_access_invitation_link": "/v1/admin/access/invitations/{id}/link",
+  "post_admin_access_invitation_short_code": "/v1/admin/access/invitations/{id}/short-code",
   "post_admin_access_invitations": "/v1/admin/access/invitations",
   "post_admin_access_invitations_id_revoke": "/v1/admin/access/invitations/{id}/revoke",
   "post_admin_access_members_bulk": "/v1/admin/access/members/bulk",
