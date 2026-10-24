@@ -291,14 +291,14 @@ type browsePivot struct {
 
 var browsePivots = map[string][]browsePivot{
 	"book": {
-		{ID: "books", LabelKey: "library.books", EntityKinds: []string{"ebook"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
-		{ID: "authors", LabelKey: "library.authors", EntityKinds: []string{}, SupportedViews: []string{"list"}},
-		{ID: "series", LabelKey: "library.series", EntityKinds: []string{}, SupportedViews: []string{"list"}},
+		{ID: "books", LabelKey: "library.tab.books", EntityKinds: []string{"ebook"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
+		{ID: "authors", LabelKey: "library.tab.authors", EntityKinds: []string{}, SupportedViews: []string{"list"}},
+		{ID: "series", LabelKey: "library.tab.series", EntityKinds: []string{}, SupportedViews: []string{"list"}},
 	},
 	"comic": {
-		{ID: "comics", LabelKey: "library.comics", EntityKinds: []string{"comic"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
-		{ID: "authors", LabelKey: "library.authors", EntityKinds: []string{}, SupportedViews: []string{"list"}},
-		{ID: "series", LabelKey: "library.series", EntityKinds: []string{}, SupportedViews: []string{"list"}},
+		{ID: "series", LabelKey: "library.tab.series", EntityKinds: []string{}, SupportedViews: []string{"list"}},
+		{ID: "comics", LabelKey: "library.tab.volumesAndIssues", EntityKinds: []string{"comic"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
+		{ID: "authors", LabelKey: "library.tab.authors", EntityKinds: []string{}, SupportedViews: []string{"list"}},
 	},
 	"movie": {
 		{ID: "discover", LabelKey: "library.discover", EntityKinds: []string{"movie"}, SupportedViews: []string{"rail"}, DefaultSort: titleAscending()},
