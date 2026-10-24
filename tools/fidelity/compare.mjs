@@ -27,7 +27,7 @@ function samePaint(a, b) {
 }
 
 /** Deterministic anchor -> role/text/order matching. Never widens policy to pass. */
-export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = []} = {}) {
+export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}) {
   const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
   const cascadeRoots = {reference: [], actual: []};
   const invalidAnchors = new Set([...(reference.anchorIssues ?? []), ...(actual.anchorIssues ?? [])].map(issue => issue.name));
@@ -48,8 +48,15 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const exclude = new Set(referenceOnly);
   const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
   const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || actual.viewport.deviceScaleFactor !== 1)
-    differences.push({kind: 'screen-state', label: 'Complete same-size DPR1 screen', expected: reference.root, actual: actual.root});
+  const nativeLogical = actual.measurement?.renderer === 'react-native' && ['dp', 'pt'].includes(actual.measurement.coordinateUnit);
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!nativeLogical && actual.viewport.deviceScaleFactor !== 1))
+    differences.push({kind: 'screen-state', label: 'Complete same-size logical screen / DOM DPR1', expected: reference.root, actual: actual.root});
+  for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
+  if (focus) {
+    const focused = actual.elements.filter(node => node.focused === true), target = actual.elements.filter(node => node.frame === focus.frame);
+    if (typeof focus.frame !== 'string' || target.length !== 1 || target[0]?.focused !== true || focused.length !== 1)
+      differences.push({kind: 'focus-state', label: focus.frame ?? 'Drawn focus target', expected: {frame: focus.frame, count: 1}, actual: {frames: focused.map(node => node.frame ?? node.id), count: focused.length}});
+  }
   for (const node of expected) {
     let candidates = observed.filter(other => !used.has(other.id)), method;
     if (node.repeat) {

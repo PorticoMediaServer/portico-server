@@ -80,3 +80,8 @@ compares the frame to itself (zero differences), then perturbs exactly one
 measured font-size or caption-opacity fact (one difference each). Raw text metrics
 are explicitly unscored diagnostics. A measured
 FAIL is a useful result. No application styling is changed by this command.
+
+Native and desktop producers use the same [measurement interface](NATIVE-CONTRACT.md)
+and `compare-files.mjs` CLI. Native dump ownership stays with its producer;
+logical geometry, actual pixel ratio, unavailable facts and explicit drawn
+focus states are handled without a second comparator.
