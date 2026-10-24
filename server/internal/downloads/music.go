@@ -78,7 +78,7 @@ func musicTarget(id string, s source) (playback.DeliverySource, bool) {
 	if !ok {
 		return playback.DeliverySource{}, false
 	}
-	r := decoder.PreparedRecipe{AudioOnly: true, MusicQuality: q, MusicCodec: c, Source: decoder.PreparedSource{AudioCodec: s.AudioCodec, AudioSampleRate: s.AudioRate, AudioBitDepth: s.AudioDepth, AudioBitrateBPS: s.AudioBitrateBPS, AudioChannels: []int{s.AudioChannels}}}
+	r := decoder.PreparedRecipe{AudioOnly: true, MusicQuality: q, MusicCodec: c, Source: decoder.PreparedSource{AudioLossless: s.AudioLossless, AudioCodec: s.AudioCodec, AudioSampleRate: s.AudioRate, AudioBitDepth: s.AudioDepth, AudioBitrateBPS: s.AudioBitrateBPS, AudioChannels: []int{s.AudioChannels}}}
 	o, e := decoder.PreparedMusicFormat(r)
 	if e != nil {
 		return playback.DeliverySource{}, false

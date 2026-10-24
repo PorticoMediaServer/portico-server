@@ -61,7 +61,11 @@ func PreparedMusicFormat(r PreparedRecipe) (PreparedMusicOutput, error) {
 		o.BitrateBPS *= 1000
 		// A compatibility conversion must not assign a higher bitrate to a lossy
 		// source. The source-equivalent case normally retains the file unchanged.
-		if !preparedLossless(s.AudioCodec) && !strings.HasPrefix(s.AudioCodec, "dsd_") && s.AudioBitrateBPS > 0 {
+		lossless := preparedLossless(s.AudioCodec)
+		if s.AudioCodec == "wavpack" && s.AudioLossless != nil {
+			lossless = *s.AudioLossless
+		}
+		if !lossless && !strings.HasPrefix(s.AudioCodec, "dsd_") && s.AudioBitrateBPS > 0 {
 			o.BitrateBPS = min(o.BitrateBPS, s.AudioBitrateBPS)
 		}
 		switch o.Codec {
