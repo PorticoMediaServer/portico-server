@@ -5,6 +5,8 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {transformTsx} from './transform-tsx.mjs';
 import type {MobileChooserAttempt, MobileChooserProps, MobileChooserRow} from '../src/screens/accounts/Servers.route';
+import {AppSessionStore, type AppSessionRecord, type AppServerSession} from '@core/app-sessions.ts';
+import {BrowserAppSessionActions} from '../src/platform/app-sessions.ts';
 
 registerHooks({load(url, context, next) {
   // The route shell owns navigation; this unit render never mounts the app router.
@@ -144,4 +146,32 @@ test('an admin directory fact renders the drawn badge with the Administrator cat
   const html = render({rows: [{id: 'admin-server', label: 'Studio', signIn: 'portico', selected: false, administrator: true}], onDifferentAccount: undefined});
   assert.match(html, /Administrator/);
   assert.doesNotMatch(html, /Owner|Signed in with a local account/);
+});
+
+function sessionEntry(id: string): AppServerSession {
+  return {signIn: 'local', connection: {version: '1', selectionId: id.padEnd(32, '_'), logicalOrigin: 'https://' + id + '.test',
+    pin: {serverId: id, publicKey: 'p', fingerprint: 'f'}, routes: {paired: ['https://' + id + '.test']},
+    session: {sessionFamilyId: 'family-' + id, tokenGeneration: '1', accessToken: 'credential-' + id, expiresAt: '2099-01-01T00:00:00Z',
+      authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {serverId: id, accountId: 'membership-' + id, profileId: 'profile-' + id, authority: 'local', role: 'member'}}}};
+}
+
+test('a cancelled durable selection cannot commit over its successor or advance the fence', async () => {
+  let raw: AppSessionRecord = {version: 1, revision: 1, selectedServerId: 'local', servers: [sessionEntry('local'), sessionEntry('first'), sessionEntry('second')]};
+  let unlock!: () => void, entered!: () => void, first = true, current = true;
+  const waiting = new Promise<void>(resolve => { unlock = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+  let tail = Promise.resolve();
+  const store = new AppSessionStore({read: async () => structuredClone(raw), change: (update, beforeCommit) => {
+    const result = tail.then(async () => { const next = update(raw); if (first) { first = false; entered(); await waiting; } beforeCommit?.(); raw = next; });
+    tail = result.catch(() => {});
+    return result;
+  }});
+  const actions = new BrowserAppSessionActions(store, () => { throw new Error('No network expected.'); }, async () => { throw new Error('No revocation expected.'); });
+  const cancelled = assert.rejects(actions.switchServer('first', () => current), {code: 'cancelled'});
+  await started; current = false;
+  const successor = actions.switchServer('second');
+  assert.equal((await store.read()).selectedServerId, 'local');
+  unlock(); await cancelled; await successor;
+  assert.equal((await store.read()).selectedServerId, 'second');
+  assert.equal((await store.read()).revision, 2, 'only the successor advanced the admission fence');
+  actions.dispose();
 });

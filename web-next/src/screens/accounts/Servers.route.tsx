@@ -283,7 +283,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
       } else setAttempt({kind: 'unreachable', row});
     };
     try {
-      await browserAppSessionActions().switchServer(row.id);
+      await browserAppSessionActions().switchServer(row.id, () => alive.current && lock.owns(token));
       if (!alive.current || !lock.owns(token)) return;
       // All restoration/profile/factor checks remain in the one real Entry.
       await entry.loadProfiles();
