@@ -9,10 +9,10 @@ import '../../bootstrap.css';
 // presence or ownership that the saved-session store does not hold.
 if (!import.meta.env.DEV) throw new Error('Mobile chooser specimens require development.');
 const rows: readonly MobileChooserRow[] = [
-  {id: 'portico-demo', label: 'Portico demo', signIn: 'portico', selected: false, status: {kind: 'online'}, owner: true},
-  {id: 'the-cottage', label: 'The cottage', signIn: 'portico', selected: false, status: {kind: 'online'}},
-  {id: 'dads-server', label: 'Dad’s server', signIn: 'portico', selected: false, status: {kind: 'seen', at: '2026-10-12T12:00:00Z'}},
-  {id: 'lake-house', label: 'Lake house', signIn: 'portico', selected: false, status: {kind: 'never'}},
+  {id: 'portico-demo', label: 'Portico demo', signIn: 'portico', selected: false, status: {kind: 'online'}, owner: true}, // lint-strings-allow: drawn sample server name
+  {id: 'the-cottage', label: 'The cottage', signIn: 'portico', selected: false, status: {kind: 'online'}}, // lint-strings-allow: drawn sample server name
+  {id: 'dads-server', label: 'Dad’s server', signIn: 'portico', selected: false, status: {kind: 'seen', at: '2026-10-12T12:00:00Z'}}, // lint-strings-allow: drawn sample server name
+  {id: 'lake-house', label: 'Lake house', signIn: 'portico', selected: false, status: {kind: 'never'}}, // lint-strings-allow: drawn sample server name
 ];
 const record = (kind: string, value?: string) => {document.documentElement.dataset.chooserAction = JSON.stringify({kind, value});};
 // The frame was drawn with day-month dates; the DEV specimen shows that same authored state.
