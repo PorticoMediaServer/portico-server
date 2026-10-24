@@ -384,3 +384,92 @@ test('updating a folder uses the captured membership and exact CAS; a missing fo
   } finally {f.folders.dispose();}
 });
 
+test('removing a captured folder sends the canonical CAS and publishes only the confirmed reread', async () => {
+  let reads = 0;
+  const calls: {path: string; method: string; body?: unknown}[] = [];
+  const f = fixture(async <T>(path: string, method = 'GET', body?: unknown) => {
+    calls.push({path, method, body});
+    if (method === 'DELETE') return undefined as T;
+    reads++;
+    return configuration('selected', 4 + reads, reads === 1 ? [source('keep', '/media/keep'), source('gone', '/media/gone')] : [source('keep', '/media/keep')]) as T;
+  });
+  try {
+    await f.folders.select('selected');
+    assert.equal(await f.folders.remove('selected', 'missing'), false);
+    assert.equal(calls.length, 1);
+    assert.equal(await f.folders.remove('selected', 'gone'), true);
+    assert.deepEqual(calls.map(call => [call.path, call.method]), [
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+      ['/v1/admin/libraries/selected/sources/gone', 'DELETE'],
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+    ]);
+    assert.deepEqual(calls[1].body, {expectedRevision: 5});
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['keep']);
+    assert.equal(f.folders.getSnapshot().mutation, 'idle');
+  } finally {f.folders.dispose();}
+});
+
+test('folder commands distinguish a refusal, an unknown outcome and a confirmed write awaiting reconciliation', async () => {
+  for (const outcome of ['rejected', 'ambiguous', 'reconciliation'] as const) {
+    let writes = 0, rereadFailures = 0;
+    const f = fixture(async <T>(_path: string, method = 'GET') => {
+      if (method === 'POST') {
+        writes++;
+        if (outcome === 'rejected') throw Object.assign(new Error('refused'), {code: 'invalid_request'});
+        if (outcome === 'ambiguous') throw new TypeError('lost response');
+        return source('added', '/media/new', '/media/new') as T;
+      }
+      if (rereadFailures > 0) {rereadFailures--;throw new Error('confirming reread failed');}
+      return configuration('selected', 7, [source('existing', '/media/a')]) as T;
+    });
+    try {
+      await f.folders.select('selected');
+      if (outcome === 'reconciliation') rereadFailures = 1;
+      assert.equal(await f.folders.save('selected', undefined, edit), false);
+      const snapshot = f.folders.getSnapshot();
+      assert.equal(snapshot.mutation, outcome);
+      assert.equal(snapshot.error instanceof Error, true);
+      if (outcome === 'rejected') {
+        assert.equal(snapshot.config?.revision, 7);
+        assert.equal(await f.folders.save('selected', undefined, edit), false);
+        assert.equal(writes, 2);assert.equal(f.folders.getSnapshot().mutation, 'rejected');
+      } else {
+        assert.equal('config' in snapshot, false);
+        assert.equal(await f.folders.save('selected', undefined, edit), false);
+        assert.equal(writes, 1);
+        await f.folders.refresh();
+        assert.equal(f.folders.getSnapshot().mutation, 'idle');
+        assert.equal(f.folders.getSnapshot().error, undefined);
+        assert.equal(f.folders.config('selected')?.revision, 7);
+      }
+    } finally {f.folders.dispose();}
+  }
+});
+
+test('clearing or replacing the selection suppresses a late folder command publication', async () => {
+  for (const close of ['select', 'clear', 'dispose'] as const) {
+    let release!: () => void, writes = 0, confirming = 0;
+    const gate = {hold: undefined as Promise<void> | undefined};
+    const f = fixture(async <T>(path: string, method = 'GET') => {
+      if (method === 'POST') {writes++;await gate.hold;return source('added', '/media/new', '/media/new') as T;}
+      const libraryId = path.includes('/other/') ? 'other' : 'selected';
+      if (libraryId === 'selected') confirming++;
+      return configuration(libraryId, 7, [source('existing', `/media/${libraryId}`, `/media/${libraryId}`, libraryId)]) as T;
+    });
+    try {
+      await f.folders.select('selected');
+      gate.hold = new Promise(resolve => {release = resolve;});
+      const saving = f.folders.save('selected', undefined, edit);
+      assert.equal(f.folders.getSnapshot().mutation, 'pending');
+      if (close === 'select') await f.folders.select('other');
+      else if (close === 'clear') f.folders.clear();
+      else f.folders.dispose();
+      const confirmed = confirming;
+      release();assert.equal(await saving, false);
+      assert.equal(writes, 1);assert.equal(confirming, confirmed);
+      if (close === 'select') {assert.equal(f.folders.config('selected'), undefined);assert.equal(f.folders.config('other')?.sources[0].id, 'existing');}
+      else assert.deepEqual(f.folders.getSnapshot(), {loading: false, mutation: 'idle'});
+      assert.deepEqual(f.errors, []);
+    } finally {f.folders.dispose();}
+  }
+});

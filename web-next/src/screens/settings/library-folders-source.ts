@@ -1,6 +1,6 @@
 import type {ContentScope, LibraryContentApi} from '@core/library-content.ts';
 import {readLibraryInventoryConfig, type InventoryConfig, type SourceSettings} from '@core/library-inventory.ts';
-import {saveLibraryFolder} from '@core/server-admin/libraries.ts';
+import {removeLibraryFolder, saveLibraryFolder} from '@core/server-admin/libraries.ts';
 
 /** The canonical folder fields, with the inventory-config revision captured by this source. */
 export type SettingsLibraryFolderEdit = Omit<SourceSettings, 'expectedRevision'>;
@@ -58,6 +58,12 @@ export class SettingsLibraryFoldersSource {
     const captured = this.captured(libraryId);
     if (!captured || (sourceId !== undefined && !captured.sources.some(item => item.id === sourceId))) return Promise.resolve(false);
     return this.command(libraryId, captured, signal => saveLibraryFolder(this.api, libraryId, sourceId, {...edit, expectedRevision: captured.revision}, signal));
+  };
+  /** Remove exactly a captured folder at the captured inventory revision. */
+  remove = (libraryId: string, sourceId: string): Promise<boolean> => {
+    const captured = this.captured(libraryId);
+    if (!captured || !captured.sources.some(item => item.id === sourceId)) return Promise.resolve(false);
+    return this.command(libraryId, captured, signal => removeLibraryFolder(this.api, libraryId, sourceId, captured.revision, signal));
   };
   private read(libraryId: string): Promise<void> {
     this.request?.abort();
