@@ -93,7 +93,7 @@ export type CompositeId =
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
   // Kept by the device and read before the app draws anything (B-19.10).
   | 'layout';
-export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
+export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV' | 'customizeHome';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
   | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
@@ -291,6 +291,9 @@ const accountPages: readonly AuthoredPage[] = [
   {
     id: 'appearance', title: 'settings.page.appearance', icon: 'sliders', sections: [
       {id: 'look', rows: [
+        // The same customization Home draws at the end of its rows; this is the profile's own
+        // layout, so it is a link to that one dialog, not a setting kept here.
+        {kind: 'action', id: 'customizeHome', label: 'next.settingsSpec.account.appearance.groups.0.rows.0.label', help: 'next.settingsSpec.account.appearance.groups.0.rows.0.help', scope: 'profile'},
         // Every app draws cards at this size and backdrops behind titles (the shell applies both).
         {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', needs: c => !c.preferenceKeys || c.preferenceKeys.has('appearance.cardSizePercent'), control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
         toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops'}),
