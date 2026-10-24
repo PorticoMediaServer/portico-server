@@ -185,7 +185,7 @@ if (only !== 'reference') {
 }
 report.vite = viteLog.slice(-400);
 await writeFile(join(output, 'web-home-r46-capture.json'), JSON.stringify(report, null, 2) + '\n');
-console.log('CAPTURE ' + JSON.stringify({reference: report.reference.rect, actual: report.actual.rect, rows: [report.reference.rows?.length, report.actual.rows?.length]}));
+console.log('CAPTURE ' + JSON.stringify({reference: report.reference, actual: report.actual, pageErrors}));
 
 try { await call('Target.closeTarget', {targetId}); } catch {}
 socket.close();
