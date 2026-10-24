@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -178,5 +179,166 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// alternativesKeys returns n distinct accepted image keys in the reader's
+// deterministic ascending order.
+func alternativesKeys(n int) []string {
+	keys := make([]string, 0, n)
+	for i := 1; i <= n; i++ {
+		keys = append(keys, fmt.Sprintf("%064x", i))
+	}
+	return keys
+}
+
+func containsOrigin(origins []string, key string) bool {
+	for _, origin := range origins {
+		if origin == "local:"+key {
+			return true
+		}
+	}
+	return false
+}
+
+// Nine accepted images used to stop at the first eight-key page; every one of
+// them must reach the editor and exactly the first queued pick stays.
+func TestSeedLocalArtworkSeedsEveryAcceptedAlternativeAcrossPages(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "alt9")
+	keys := alternativesKeys(9)
+	seedScannedAlternatives(t, db, "alt9", movie, "poster", keys...)
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != len(keys) {
+		t.Fatalf("seeded %d of %d accepted images", len(origins), len(keys))
+	}
+	for _, key := range keys {
+		if !containsOrigin(origins, key) {
+			t.Fatalf("accepted image %s was skipped", key)
+		}
+	}
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+keys[0] {
+		t.Fatalf("queued slot %v, want the first accepted image", jobs)
+	}
+}
+
+// The catalogue reader caps one call at 128; 130 accepted images must cross that
+// bound through continuation instead of being capped.
+func TestSeedLocalArtworkContinuationCrossesTheReaderBound(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "alt130")
+	keys := alternativesKeys(130)
+	seedScannedAlternatives(t, db, "alt130", movie, "poster", keys...)
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	if len(origins) != len(keys) {
+		t.Fatalf("seeded %d of %d accepted images", len(origins), len(keys))
+	}
+	var rows int
+	if err := db.QueryRow(`SELECT count(*) FROM artwork_candidates WHERE kind='item' AND entity_id=? AND role='poster' AND provider='local'`, movie.ID).Scan(&rows); err != nil || rows != len(keys) {
+		t.Fatalf("candidate rows %d of %d (%v)", rows, len(keys), err)
+	}
+	if jobs := localArtworkJobs(t, db, movie.ID, "poster"); len(jobs) != 1 || jobs[0] != "local:"+keys[0] {
+		t.Fatalf("queued slot %v, want the first accepted image", jobs)
+	}
+}
+
+// An interruption after one page must leave the following pass with the same
+// final set as an uninterrupted pass, without duplicate or skipped candidates.
+func TestSeedLocalArtworkRestartsAnInterruptedContinuation(t *testing.T) {
+	cleanDB, cleanMovie := openAlternativesFixture(t, "altclean")
+	cleanKeys := alternativesKeys(130)
+	seedScannedAlternatives(t, cleanDB, "altclean", cleanMovie, "poster", cleanKeys...)
+	seedLocalArtworkAlternativesNow(t, cleanDB, "item", cleanMovie)
+
+	db, movie := openAlternativesFixture(t, "altrestart")
+	keys := alternativesKeys(130)
+	seedScannedAlternatives(t, db, "altrestart", movie, "poster", keys...)
+	// Simulate a pass that stopped after its first page: the transaction rolls
+	// back, so no partial progress is durable and the dirty row would stay.
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := RepairTarget{Kind: "item", ID: movie.Public}
+	fence, err := artworkFence(ctx, tx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, done, err := seedLocalArtworkCandidatePage(ctx, tx, target, movie.ID, "poster", "", fence, "now"); err != nil || done {
+		t.Fatalf("first page done=%v err=%v", done, err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+
+	restarted, _ := localCandidates(t, db, movie.ID, "poster")
+	clean, _ := localCandidates(t, cleanDB, cleanMovie.ID, "poster")
+	if len(restarted) != len(keys) || len(clean) != len(keys) {
+		t.Fatalf("restarted %d, clean %d of %d", len(restarted), len(clean), len(keys))
+	}
+	for n := range clean {
+		if restarted[n] != clean[n] {
+			t.Fatalf("restarted set differs at %d: %q vs %q", n, restarted[n], clean[n])
+		}
+	}
+	if got, want := localArtworkJobs(t, db, movie.ID, "poster"), localArtworkJobs(t, cleanDB, cleanMovie.ID, "poster"); len(got) != 1 || len(want) != 1 || got[0] != want[0] {
+		t.Fatalf("restarted jobs %v, clean jobs %v", got, want)
+	}
+}
+
+// A repeated dirty pass is stable: the same candidate rows and the same queued
+// pick, with no duplicates.
+func TestSeedLocalArtworkRepeatDirtyIsStable(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altrepeat")
+	keys := alternativesKeys(20)
+	seedScannedAlternatives(t, db, "altrepeat", movie, "poster", keys...)
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	first, _ := localCandidates(t, db, movie.ID, "poster")
+	firstJobs := localArtworkJobs(t, db, movie.ID, "poster")
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	second, _ := localCandidates(t, db, movie.ID, "poster")
+	secondJobs := localArtworkJobs(t, db, movie.ID, "poster")
+	if len(first) != len(second) {
+		t.Fatalf("repeat dirty changed the set: %d then %d", len(first), len(second))
+	}
+	for n := range first {
+		if first[n] != second[n] {
+			t.Fatalf("repeat dirty differs at %d: %q vs %q", n, first[n], second[n])
+		}
+	}
+	if len(firstJobs) != 1 || len(secondJobs) != 1 || firstJobs[0] != secondJobs[0] {
+		t.Fatalf("repeat dirty changed the queued pick: %v then %v", firstJobs, secondJobs)
+	}
+}
+
+// A source revision replaces the accepted evidence; the pass converges on the
+// new keys, keeps candidate history, and leaves an owner choice and the slot's
+// queued pick alone.
+func TestSeedLocalArtworkFollowsASourceRevision(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altrev")
+	keys := alternativesKeys(3)
+	seedScannedAlternatives(t, db, "altrev", movie, "poster", keys...)
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	jobs := localArtworkJobs(t, db, movie.ID, "poster")
+	if len(jobs) != 1 {
+		t.Fatalf("initial queued slot %v", jobs)
+	}
+	fresh := []string{fmt.Sprintf("%064x", 10), fmt.Sprintf("%064x", 11)}
+	mustExec(t, db, `UPDATE inventory_objects SET revision='r2' WHERE id='object-altrev'`)
+	mustExec(t, db, `DELETE FROM inventory_artwork_candidates WHERE object_id='object-altrev'`)
+	for _, key := range fresh {
+		mustExec(t, db, `INSERT INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES('object-altrev','r2',?,'item',?,'poster',?)`, movie.Token, movie.ID, key)
+	}
+	seedLocalArtworkAlternativesNow(t, db, "item", movie)
+	origins, _ := localCandidates(t, db, movie.ID, "poster")
+	for _, key := range fresh {
+		if !containsOrigin(origins, key) {
+			t.Fatalf("revised image %s was skipped", key)
+		}
+	}
+	if got := localArtworkJobs(t, db, movie.ID, "poster"); len(got) != 1 || got[0] != jobs[0] {
+		t.Fatalf("source revision changed the queued pick: %v then %v", jobs, got)
 	}
 }

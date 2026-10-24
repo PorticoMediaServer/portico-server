@@ -185,30 +185,55 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now)
 }
 
-// localArtworkCandidatePage bounds the numbered images one dirty entity adds to
-// a slot; the scan's own candidate set is bounded already.
+// localArtworkCandidatePage bounds one read of a slot's accepted images. The
+// catalogue reader accepts at most 128 per call; continuation follows its
+// deterministic key order until a short page, so a slot converges however many
+// images the scan accepted.
 const localArtworkCandidatePage = 8
 
-// seedLocalArtworkAlternatives seeds the numbered sidecar images the scan
+// seedLocalArtworkAlternatives seeds every numbered sidecar image the scan
 // accepted for a head's slot (inventory_artwork_candidates), after the primary
 // local_artwork images above. The primary, an owner lock or a pending local job
 // already holds the slot, so an alternative only queues a fetch when nothing
-// else does — it never replaces a choice.
+// else does — it never replaces a choice. Each slot continues from the last key
+// it processed until a short page; a caller that stops early returns before the
+// target's dirty row is cleared, so the next pass restarts the continuation.
 func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string) error {
 	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
 		return nil
 	}
 	for _, role := range []string{"poster", "backdrop", "logo"} {
-		keys, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, "", localArtworkCandidatePage)
-		if err != nil {
-			return err
-		}
-		for _, key := range keys {
-			origin := "local:" + key
-			if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
+		after := ""
+		for {
+			next, done, err := seedLocalArtworkCandidatePage(ctx, tx, t, entity, role, after, fence, now)
+			if err != nil {
 				return err
 			}
+			if done {
+				break
+			}
+			after = next
 		}
 	}
 	return nil
+}
+
+// seedLocalArtworkCandidatePage seeds one bounded page of accepted keys for one
+// slot and reports the cursor after its last key. done means the page was short:
+// every accepted key for the slot has been seeded.
+func seedLocalArtworkCandidatePage(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, after, fence, now string) (next string, done bool, err error) {
+	keys, err := catalog.ReadLocalArtworkCandidatesTx(ctx, tx, t.Kind, entity, role, after, localArtworkCandidatePage)
+	if err != nil {
+		return "", false, err
+	}
+	for _, key := range keys {
+		origin := "local:" + key
+		if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
+			return "", false, err
+		}
+	}
+	if len(keys) == 0 {
+		return "", true, nil
+	}
+	return keys[len(keys)-1], len(keys) < localArtworkCandidatePage, nil
 }
