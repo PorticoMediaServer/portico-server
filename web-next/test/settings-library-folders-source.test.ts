@@ -14,10 +14,10 @@ function configuration(libraryId = 'selected', revision = 9, sources = [source('
   return {scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId, revision, sources, policy: {tier: 'basic', revision: 4, operations: ['probe']}};
 }
 function fixture(request: LibraryContentApi['request']) {
-  let current = true;
+  let current = true, notified = 0;
   const errors: unknown[] = [];
-  const folders = new SettingsLibraryFoldersSource({request}, scope, () => current, () => {}, error => {errors.push(error);});
-  return {folders, errors, retire: () => {current = false;}};
+  const folders = new SettingsLibraryFoldersSource({request}, scope, () => current, () => {notified++;}, error => {errors.push(error);});
+  return {folders, errors, notified: () => notified, retire: () => {current = false;}};
 }
 
 test('the folder configuration is inert until a library is explicitly selected', async () => {
@@ -200,5 +200,126 @@ test('an explicit refresh recovers from an error without duplicating a read alre
     assert.equal(attempts, 3);
     assert.equal(f.folders.config('selected')?.revision, 43);
     assert.deepEqual(f.errors, [failure]);
+  } finally {f.folders.dispose();}
+});
+
+test('two controllers over one transport keep independent state, aborts and scope fences', async () => {
+  let release!: (value: unknown) => void;
+  const held = new Promise(resolve => {release = resolve;});
+  const calls: {path: string; signal?: AbortSignal}[] = [];
+  const request = async <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+    calls.push({path, signal});
+    if (path.includes('/held/')) return held as Promise<T>;
+    const libraryId = path.includes('/other/') ? 'other' : 'selected';
+    return configuration(libraryId, 5, [source('only', `/media/${libraryId}`, `/media/${libraryId}`, libraryId)]) as T;
+  };
+  const first = fixture(request), second = fixture(request), foreignErrors: unknown[] = [];
+  const foreign = new SettingsLibraryFoldersSource({request}, {serverId: 'another-server', viewerId: 'owner'}, () => true, () => {}, error => {foreignErrors.push(error);});
+  try {
+    const reading = first.folders.select('held');
+    await second.folders.select('other');
+    assert.equal(first.folders.getSnapshot().loading, true);assert.equal(first.folders.config('held'), undefined);
+    assert.equal(second.folders.config('other')?.sources[0].path, '/media/other');
+    assert.deepEqual(calls.map(call => call.path), ['/v1/admin/libraries/held/inventory-config', '/v1/admin/libraries/other/inventory-config']);
+    const firstNotified = first.notified(), secondNotified = second.notified();
+    second.folders.dispose();
+    assert.deepEqual(second.folders.getSnapshot(), {loading: false});
+    assert.equal(calls[0].signal?.aborted, false);
+    release(configuration('held', 8, [source('only', '/media/held', '/media/held', 'held')]));
+    await reading;
+    assert.equal(first.folders.config('held')?.revision, 8);
+    assert.equal(first.notified() > firstNotified, true);assert.equal(second.notified(), secondNotified);
+    await foreign.select('selected');
+    assert.equal(foreign.getSnapshot().error instanceof Error, true);
+    assert.equal('config' in foreign.getSnapshot(), false);
+    assert.equal(foreignErrors.length, 1);
+    assert.equal(first.folders.config('held')?.revision, 8);
+  } finally {first.folders.dispose();foreign.dispose();}
+});
+
+test('the controller keeps the caller scope it was constructed with', async () => {
+  const callerScope = {serverId: 'server', viewerId: 'owner'};
+  const errors: unknown[] = [];
+  const folders = new SettingsLibraryFoldersSource({request: async <T>() => configuration('selected', 2) as T}, callerScope, () => true, () => {}, error => {errors.push(error);});
+  try {
+    callerScope.serverId = 'another-server';
+    await folders.select('selected');
+    assert.equal(folders.config('selected')?.revision, 2);
+    assert.equal(folders.config('selected')?.scope.serverId, 'server');
+    assert.deepEqual(errors, []);
+  } finally {folders.dispose();}
+});
+
+test('clearing and reselecting the same library ignores a retired refresh success and failure', async () => {
+  for (const outcome of ['success', 'failure'] as const) {
+    let reads = 0, settle!: (value: unknown) => void, fail!: (error: unknown) => void, retiredSignal: AbortSignal | undefined;
+    const f = fixture(async <T>(_path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+      reads++;
+      if (reads === 2) {retiredSignal = signal;return new Promise((resolve, reject) => {settle = resolve;fail = reject;}) as Promise<T>;}
+      return configuration('selected', reads === 1 ? 50 : 60, [source('only', '/media/current', '/media/current')]) as T;
+    });
+    try {
+      await f.folders.select('selected');
+      const retired = f.folders.refresh();
+      f.folders.clear();
+      await f.folders.select('selected');
+      assert.equal(retiredSignal?.aborted, true);
+      assert.equal(f.folders.config('selected')?.revision, 60);
+      if (outcome === 'success') settle(configuration('selected', 9, [source('stale', '/media/stale')]));
+      else fail(new Error('retired refresh failure'));
+      await retired;
+      assert.equal(f.folders.config('selected')?.revision, 60);
+      assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['only']);
+      assert.equal(f.folders.getSnapshot().error, undefined);
+      assert.deepEqual(f.errors, []);
+    } finally {f.folders.dispose();}
+  }
+});
+
+test('a superseded selection or a disposed controller never publishes or reports a stale error', async () => {
+  for (const close of ['select', 'dispose'] as const) {
+    let rejectRetired!: (error: unknown) => void, retiredSignal: AbortSignal | undefined;
+    const f = fixture(async <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+      if (path.includes('/retired/')) {retiredSignal = signal;return new Promise((_resolve, reject) => {rejectRetired = reject;}) as Promise<T>;}
+      return configuration('current', 4, [source('only', '/media/c', '/media/c', 'current')]) as T;
+    });
+    try {
+      const retired = f.folders.select('retired');
+      if (close === 'select') await f.folders.select('current');
+      else f.folders.dispose();
+      assert.equal(retiredSignal?.aborted, true);
+      rejectRetired(new Error('retired transport failure'));
+      await retired;
+      assert.deepEqual(f.errors, []);
+      if (close === 'select') {assert.equal(f.folders.config('current')?.revision, 4);assert.equal(f.folders.getSnapshot().error, undefined);}
+      else assert.deepEqual(f.folders.getSnapshot(), {loading: false});
+    } finally {f.folders.dispose();}
+  }
+});
+
+test('the canonical inventory projection passes through without reordering, merging or re-versioning', async () => {
+  let serverRevision = 6;
+  const f = fixture(async <T>() => {
+    if (serverRevision === 6) return {
+      scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId: 'selected', revision: 6,
+      sources: [
+        source('third', '/media/z', '/mnt/z'),
+        {...source('third', '/media/duplicate', '/media/duplicate'), name: 'duplicate'},
+        {id: 'unreadable', libraryId: 'selected', kind: 'local', name: 'broken'},
+        source('first', '/media/a'),
+      ],
+      policy: {tier: 'basic', revision: 4, operations: ['probe']},
+    } as T;
+    return {scope: {serverId: 'server', viewerFence: 'fence-7'}, libraryId: 'selected', revision: 3, sources: [source('first', '/media/a')], policy: {tier: 'basic', revision: 4, operations: ['probe']}} as T;
+  });
+  try {
+    await f.folders.select('selected');
+    assert.equal(f.folders.config('selected')?.revision, 6);
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => [item.id, item.path, item.resolvedPath]), [['third', '/media/z', '/mnt/z'], ['first', '/media/a', '/media/a']]);
+    serverRevision = 3;
+    await f.folders.refresh();
+    assert.equal(f.folders.config('selected')?.revision, 3);
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['first']);
+    assert.deepEqual(f.errors, []);
   } finally {f.folders.dispose();}
 });
