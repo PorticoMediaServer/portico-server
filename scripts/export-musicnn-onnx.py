@@ -9,6 +9,7 @@ import hashlib
 import importlib.metadata
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -272,7 +273,7 @@ def canonical_graph(model):
     return model
 
 
-def export(directory, output, check_only=False):
+def export(directory, output, check_only=False, conformance=None):
     lock = verify_checkpoint(directory)
     if output is not None and output.exists():
         raise ValueError("output already exists; never overwrite an installed model")
@@ -332,6 +333,16 @@ def export(directory, output, check_only=False):
                 errors[i] = max(errors[i], error)
                 if error > (5e-4 if i == 0 else 2e-5):
                     raise ValueError("ONNX parity failed: " + str(errors))
+        # The native ARM job has no TensorFlow installation. Carry actual
+        # original-checkpoint outputs, not a second runtime's guessed values.
+        reference_cases = []
+        for number in range(3):
+            values = [0.0 if number == 0 else 2 + math.sin(i * .013 * number) + math.cos(i * .003)
+                      for i in range(187 * 96)]
+            patch = np.asarray(values, dtype=np.float32).reshape(1, 187, 96)
+            expected = reference.run([graph.get_tensor_by_name("embedding:0"), graph.get_tensor_by_name("tags:0")],
+                                     {graph.get_tensor_by_name("log_mel:0"): patch})
+            reference_cases.append([float(v) for output_values in expected for v in output_values[0]])
     print(json.dumps({"status": "conversion_parity_validated", "modelId": lock["modelId"], "version": version,
                       "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
                       "patches": 4, "maxAbsoluteError": {"embedding": errors[0], "tags": errors[1]}}))
@@ -357,6 +368,9 @@ def export(directory, output, check_only=False):
     print(json.dumps({"status": "onnx_parity_passed", "modelId": lock["modelId"], "version": version,
                       "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
                       "patches": 4, "maxAbsoluteError": {"embedding": errors[0], "tags": errors[1]}}))
+    if conformance:
+        conformance.write_text(json.dumps({"modelSHA256": hashlib.sha256(data).hexdigest(),
+                                          "reference": "original-tensorflow-checkpoint", "cases": reference_cases}) + "\n")
 
 
 def check_versions():
@@ -384,12 +398,14 @@ def main():
                         help="validate conversion parity and print its identity without publishing any model")
     parser.add_argument("--inspect", action="store_true",
                         help="inspect the verified graph's actual inference boundaries")
+    parser.add_argument("--conformance", type=Path,
+                        help="write original-checkpoint reference outputs for native bundle checks")
     args = parser.parse_args()
     check_versions()
     if args.inspect:
         inspect(args.checkpoint)
     if args.check_only or args.output:
-        export(args.checkpoint, args.output, args.check_only)
+        export(args.checkpoint, args.output, args.check_only, args.conformance)
     elif not args.inspect:
         parser.error("an output directory or --inspect is required")
 

@@ -59,3 +59,26 @@ Conformance jobs supply `PORTICO_SONIC_HELPER_TEST` and
 The media-tier `TestSonicActualConfinedCueDecodeAndSingleAllocation` additionally
 uses the real FFmpeg range decoder. It tests source/decoder/model composition;
 it is separate from the owner/job publication and discovery contracts.
+
+## Linux distribution
+
+The manual `sonic-toolchain.yml` workflow exports the original model once, then
+builds the helper natively on Linux x64 and ARM64. Each extracted bundle runs
+against outputs of the original TensorFlow checkpoint and through the supervised
+Go runtime before publication. `runtime.lock.json` names the non-latest release.
+
+`build-sonic-runtime.sh SDK BUILD OUTPUT` uses only the SDK already verified by
+`prepare-sonic-runtime.py`. CMake sets `$ORIGIN/lib` for the packaged SDK library.
+`sonic-bundle.py` reads the actual ELF NEEDED closure and packages its ONNX
+libraries/aliases. The OS C/C++ runtime remains external; every observed system
+library is recorded. No SDK headers or converter/training packages ship.
+
+The bundle contains the helper, `lib/`, `musicnn-mtt/{model.onnx,model.json,LICENSE.md}`,
+original ONNX MIT licence/notices, the Portico GPLv3 licence and corresponding
+helper source/build recipe. Sonic's manifest is verified separately before its
+files are composed beside `bin/ffmpeg`; the original FFmpeg manifest is never
+changed. Both inventories and the exact installed union are then checked.
+
+Missing optional Sonic inputs in a development/server build leave the existing
+unavailable state. Linux release and Docker jobs explicitly require their pinned
+Sonic bundle. macOS and Windows packaging are later work.

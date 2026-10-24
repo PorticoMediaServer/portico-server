@@ -22,7 +22,7 @@ import (
 const (
 	ModelID      = "musicnn-mtt"
 	ModelVersion = "516acb2a0ff5ef73f64547898e018e793152c506-onnx1"
-	ModelSHA256  = "59876d9801156711a7051b4496f45ccfeeac598cf79df02968238d6318627f8a"
+	ModelSHA256  = "4b4e26d3e1ca0083884bf18955c646f47d640745df7d14e28a7952f603caff46"
 	TagCount     = 50
 )
 
