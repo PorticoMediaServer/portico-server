@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/supervise"
+	"portico.local/server/internal/worker"
 	"sort"
 	"time"
 )
@@ -25,6 +27,9 @@ type pendingFolder struct{ first, last time.Time }
 // The monitor has one bounded native helper, one debounce map, and a periodic
 // fallback. It never stats a library in the server process or judges absence.
 func (s *Service) runMonitor(ctx context.Context) {
+	configurationChanged := worker.NewSignal()
+	unregister := dbwork.WakeOnTables(configurationChanged, "library_sources", "libraries", "admin_documents", "dvr_private_libraries")
+	defer unregister()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	events := make(chan storage.InventoryChange, 512)
@@ -76,10 +81,17 @@ func (s *Service) runMonitor(ctx context.Context) {
 			digest = ""
 			nextConfig = time.Now().Add(30 * time.Second)
 		case now := <-ticker.C:
+			if configurationChanged.Take() {
+				nextConfig = time.Time{}
+			}
 			if !now.Before(nextConfig) {
 				nextConfig = now.Add(5 * time.Second)
 				current, request, err := s.monitorConfiguration(ctx)
 				if err == nil {
+					// Real configuration commits invalidate immediately; the
+					// shared worker backstop repairs a missed signal without
+					// polling SQL every five seconds on an idle server.
+					nextConfig = now.Add(worker.SafetyTick)
 					sources = current
 					for id := range fallback {
 						if _, ok := sources[id]; !ok {
