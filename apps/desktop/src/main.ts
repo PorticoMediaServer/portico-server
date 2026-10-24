@@ -39,6 +39,7 @@ async function startDesktop(){
   lifetime.retain(()=>downloads.dispose());
   // The original app owns all screen/router/React assembly and captured viewers.
   await lifetime.importWebApp(()=>import('../../../web-next/src/main.tsx'));
+  if(import.meta.env.DEV)void import('./dev-measurement.ts').then(module=>module.installDesktopMeasurement(lifetime.signal)).catch(()=>console.warn('desktop_measurement_unavailable'));
 }
 void startDesktop().catch(error=>{
   if(!lifetime.signal.aborted&&!(error instanceof DOMException&&error.name==='AbortError'))console.error('desktop_start_failed');
