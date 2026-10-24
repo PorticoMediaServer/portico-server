@@ -35,3 +35,5 @@ export {createReadingCollection, createReadingContinueCollection} from './librar
 export type {ReadingLibraryItem, ReadingContinueItem} from './library-collection';
 export {readDestination, readItemEligibility} from './navigation';
 export type {ReadItemEligibility} from './navigation';
+export {FacetPage} from './FacetPage';
+export {authorPredicate, loadFacetPage, type FacetRequest, type ReadingFacetField} from './facets';
