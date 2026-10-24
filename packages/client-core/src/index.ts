@@ -299,7 +299,9 @@ export class HttpLocalApi {
   ) {
     this.baseUrl = routeOrigin(baseUrl);
     this.token = token;
-    this.rawFetcher = fetcher;
+    // Native Window.fetch accepts a value call, not this API as its receiver.
+    // An explicitly bound injected transport retains its own receiver.
+    this.rawFetcher = (input, init) => fetcher(input, init);
     this.fetcher = (input,init) => this.rawFetcher(input,{...init,redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
     const routes = sessionRoute(token); if (routes) this.useRoutes(routes);
   }
@@ -2159,3 +2161,6 @@ export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
 export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
 export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';
+
+export {parsePlaybackInfo} from './playback-v1/playback-info.ts';
+export type {PlaybackInfo, PlaybackRoute, PlaybackPictureFacts, PlaybackSoundFacts, PlaybackSubtitleFacts, PlaybackMediaFacts, PlaybackReplacement} from './playback-v1/playback-info.ts';

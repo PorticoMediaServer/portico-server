@@ -156,7 +156,11 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 					return storage.ErrRemoteConfig
 				}
 				// Canonical approval parsing validates all other host/path/port facts.
-				leaf.Origins = append(leaf.Origins, raw)
+				origin, err := remotemedia.EndpointOrigin(raw)
+				if err != nil {
+					return storage.ErrRemoteConfig
+				}
+				leaf.Origins = append(leaf.Origins, origin)
 			}
 			if (kind == "webdav" || kind == "http") && fields["url"] == "" {
 				return storage.ErrRemoteConfig

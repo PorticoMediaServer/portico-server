@@ -156,7 +156,7 @@ export class PlayOnController {
     const started = this.options.sender.start(source.fence.itemId, meta, source.positionSeconds, this.attempt.choices);
     return started.then(ok => this.current() && serial === this.serial && ok && this.options.sender.getSnapshot().phase === 'casting');
   }
-  startAirPlay(): void { this.assertCurrent(); if (!this.state.airPlayAvailable) return; this.publish({panel: null}); this.options.airPlay?.showPicker(); }
+  startAirPlay(): void { this.assertCurrent(); if (!this.options.airPlay?.available()) {if (this.state.airPlayAvailable) this.publish({airPlayAvailable: false});return;} this.publish({panel: null}); this.options.airPlay.showPicker(); }
   private requireRemote(token: CastRemoteToken): CastRemoteView | undefined {
     if (!this.current()) return;
     const remote = this.state.remote;
@@ -203,12 +203,12 @@ export class PlayOnController {
 }
 
 /** The same HTML media node owns the browser's AirPlay picker; this does not claim a TV name. */
-export function mediaAirPlayPort(video: HTMLVideoElement, userAgent = navigator.userAgent): AirPlayPort {
+export function mediaAirPlayPort(video: HTMLVideoElement, userAgent = navigator.userAgent, source?: Readonly<{isCurrent(): boolean; subscribe(listener: () => void): () => void}>): AirPlayPort {
   type WirelessVideo = HTMLVideoElement & {webkitShowPlaybackTargetPicker?: () => void};
   const element = video as WirelessVideo;
   const safari = /Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|Edg\/|OPR\/|CriOS\/|FxiOS\//.test(userAgent);
   const supported = safari && typeof element.webkitShowPlaybackTargetPicker === 'function';
-  const available = () => supported && !element.disableRemotePlayback;
+  const available = () => {try {return supported && !element.disableRemotePlayback && source?.isCurrent() === true;} catch {return false;}};
   return {
     available,
     subscribe: listener => {
@@ -217,7 +217,8 @@ export function mediaAirPlayPort(video: HTMLVideoElement, userAgent = navigator.
       observer.observe(element, {attributes: true, attributeFilter: ['disableremoteplayback']});
       element.addEventListener('loadedmetadata', listener);
       element.addEventListener('emptied', listener);
-      return () => { observer.disconnect(); element.removeEventListener('loadedmetadata', listener); element.removeEventListener('emptied', listener); };
+      const offSource = source?.subscribe(listener);
+      return () => {offSource?.();observer.disconnect(); element.removeEventListener('loadedmetadata', listener); element.removeEventListener('emptied', listener); };
     },
     showPicker: () => { if (available()) element.webkitShowPlaybackTargetPicker!(); },
   };

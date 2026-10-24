@@ -28,7 +28,7 @@ func queueArtworkPreview(ctx context.Context, tx *sql.Tx, t RepairTarget, candid
 	if current != fence {
 		return ErrRepairConflict
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_jobs(id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,actor,created_at,preview) VALUES(?,?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(kind,entity_id,role,subject,preview) DO UPDATE SET id=excluded.id,candidate_id=excluded.candidate_id,origin=excluded.origin,provider=excluded.provider,source_fence=excluded.source_fence,status='pending',attempts=0,next_attempt='',lease='',lease_until='',error='',actor=excluded.actor,created_at=excluded.created_at`, identity.Token(), t.Kind, entity, role, subject, candidate, origin, provider, fence, actor, now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO artwork_jobs(id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,actor,created_at,preview) VALUES(?,?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(kind,entity_id,role,subject,preview) DO UPDATE SET id=excluded.id,candidate_id=excluded.candidate_id,origin=excluded.origin,provider=excluded.provider,source_fence=excluded.source_fence,status='pending',attempts=0,next_attempt='',lease='',lease_until='',error='',size_refresh=0,actor=excluded.actor,created_at=excluded.created_at`, identity.Token(), t.Kind, entity, role, subject, candidate, origin, provider, fence, actor, now)
 	return err
 }
 

@@ -401,7 +401,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
-		trace.Video = &TraceVideo{Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
+		trace.Video = traceVideoSource(video)
 	}
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
@@ -877,7 +877,7 @@ func traceAudioSource(audio *SourceAudio, chosenBy string, tracks int) *TraceAud
 	if audio == nil {
 		return nil
 	}
-	return &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, ChosenBy: chosenBy, Tracks: tracks}
+	return &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, Profile: audio.Profile, Variant: audio.AudioVariant, Layout: audio.Layout, SampleRate: audio.SampleRate, BitDepth: audio.BitsPerSample, ChosenBy: chosenBy, Tracks: tracks}
 }
 
 // sourceAudioAt is the source track with the given absolute stream index.

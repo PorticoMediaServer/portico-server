@@ -5,6 +5,7 @@ import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
+import {createScreenPlayEffect} from './playback-effect';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -44,13 +45,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         back() {assert();router.history.back();},
         openBrowse(selector) {assert();navigate(router.navigate({to: '/library/$libraryId', params: {libraryId: selector.libraryId},
           search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
-        async play(target, signal) {
-          assert();signal.throwIfAborted();
-          const playback = binding.current.playback;
-          if (!playback) throw new DOMException('Playback is still loading', 'AbortError');
-          await playback.runtime.playFromScreen(target, {signal, isCurrent: current});
-          assert();signal.throwIfAborted();
-        },
+        play: createScreenPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         async chooseVersion(request) {
           assert();request.signal.throwIfAborted();
           await openWatchVersionChooser(context, {...request, isCurrent: () => current() && request.isCurrent()});
