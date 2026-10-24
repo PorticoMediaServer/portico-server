@@ -87,10 +87,16 @@ export function parseDirectSignIn(raw:unknown):DirectSignIn{
  }
  if(Object.hasOwn(raw,'deviceApprovalPending'))invalid();
  const snapshot=parseDirectSnapshot(raw);
+ // A sign-in can never admit a disabled membership, even if its snapshot is
+ // otherwise valid for management/display reads.
+ if(snapshot.account.disabled)invalid();
  if(raw.passwordChangeRequired!==undefined&&typeof raw.passwordChangeRequired!=='boolean')invalid();
  const passwordChangeRequired=raw.passwordChangeRequired===true;
  const session=parseLocalSession(raw.session,{authority:'local',accountId:snapshot.account.id,serverId:snapshot.serverId,profileId:snapshot.account.primaryProfileId});
  const accountScoped=session.viewer.role==='account';
+ // Direct sign-in names the primary profile. Its viewer role must be the
+ // actual membership role; an account-only grant remains account-only.
+ if(!accountScoped&&session.viewer.role!==snapshot.account.role)invalid();
  if(snapshot.twoStepSetupRequired&&!accountScoped)invalid();
  if(raw.resetFileOwnerSession!==undefined&&raw.resetFileOwnerSession!==true)invalid();
  const resetFileOwnerSession=raw.resetFileOwnerSession===true;

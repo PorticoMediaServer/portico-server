@@ -26,6 +26,7 @@ async function fixture() {
     session: {accessToken: 'server-access', refreshToken: Buffer.alloc(32, 8).toString('base64url'), sessionFamilyId: 'new-server-family', tokenGeneration: '1', installationId: installation,
       expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer: {authority: 'local', serverId: pin.serverId, accountId: 'server-account', profileId: 'main', role: 'account'}},
   };
+  let afterFinalWrite: (() => void) | undefined;
   const calls: string[] = [], retired: string[] = [], exposed: RegisteredSignIn[] = [];
   const connection = {pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {calls.push('dispose-prepared');}};
   const api = {baseUrl: origin, getRouteConnection: () => connection, setAccessToken: () => {},
@@ -41,7 +42,7 @@ async function fixture() {
   let gate: Promise<void> | undefined, resolveGate: (() => void) | undefined;
   const storage = {read: async () => undefined, change: async () => {}};
   const ports: Ports = {
-    journal: {assertAvailable: () => {calls.push('secure-context');}, read: async () => saved, change: async update => {saved = update(saved);}},
+    journal: {assertAvailable: () => {calls.push('secure-context');}, read: async () => saved, change: async update => {saved = update(saved);if (saved?.expiresAt) afterFinalWrite?.();}},
     sessions: {read: async () => ({version: 1, revision, servers: []}), connectionStorage: (_id, admission) => {assert.equal(admission?.expectedRevision, 7); calls.push('admission'); return storage;}},
     environment: () => ({storage}), installationId: () => currentInstallation, pageOrigin: () => origin,
     startURL: value => {assert.equal(saved?.pending?.verifier, pending.verifier); exposed.push(value); return hostedOrigin + '/#canonical-builder-result';},
@@ -61,6 +62,7 @@ async function fixture() {
   const callback = {href: origin + '/auth/portico-return', fragment: '#code=src_' + 'a'.repeat(43) + '&state=' + pending.state + '&transaction=srt_' + 't'.repeat(43)};
   const prepare = () => flow.prepare(api, origin, hostedOrigin, installation, {moveTicket: pending.moveTicket});
   return {flow, prepare, callback, calls, retired, exposed, saved: () => saved, another: () => new BrowserRegisteredSignIn(ports), api,
+    afterFinalWrite: (run: () => void) => {afterFinalWrite = run;},
     revise: () => {revision++;}, changeInstallation: () => {currentInstallation = 'changed-installation'.padEnd(43, '_');},
     mutate: (update: (old: NonNullable<Pending>) => Pending) => {saved = update(saved!);},
     hold: () => {gate = new Promise(resolve => {resolveGate = resolve;});}, release: () => {resolveGate?.(); gate = undefined;},
@@ -159,3 +161,13 @@ for (const createdAt of [undefined, null, NaN, Infinity, 'not-a-local-timestamp'
     assert.equal(f.saved(), undefined); assert.equal(f.calls.includes('connect'), false); assert.equal(f.calls.includes('exchange'), false);
   });
 }
+
+test('a signed prepare that expires during its final private write never yields a handoff URL', async t => {
+  const f = await fixture(), future = Date.now() + 600000;
+  f.afterFinalWrite(() => {t.mock.method(Date, 'now', () => future);});
+  await assert.rejects(f.prepare());
+  assert.equal(f.saved(), undefined, 'only this expired attempt is removed');
+  assert.equal(f.calls.includes('exchange'), false);
+  assert.equal(f.calls.includes('remember'), false);
+  assert.deepEqual(f.retired, []);
+});

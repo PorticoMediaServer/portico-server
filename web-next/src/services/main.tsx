@@ -19,6 +19,6 @@ if (entry.native !== 'forwarded' && !(window as Window & {__porticoUnsupportedBr
   if (entry.native === 'invalid') createRoot(document.getElementById('root')!).render(<><IconSprite /><ServicesInvalidLink /></>);
   else {
     if (globalThis.isSecureContext && globalThis.crypto?.subtle && navigator.locks) await import('../platform/polyfills');
-    createRoot(document.getElementById('root')!).render(<ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} signIn={entry.signIn} />);
+    createRoot(document.getElementById('root')!).render(<ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} signIn={entry.signIn} owner={entry.owner} />);
   }
 }
