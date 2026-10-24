@@ -6,7 +6,7 @@ export const auth4b = {
   referenceWindowViewport: {width: 1440, height: 986, deviceScaleFactor: 1},
   referenceSelector: '.frame[data-f="4b"] > .screen > .pg',
   entry: '/src/dev/entries/accounts.html?frame=4b', actualSelector: '[data-account-specimen] > section',
-  stateSteps: [{action: 'tab', selector: '[data-auth-content] button'}],
+  stateSteps: [{action: 'tab', selector: '[data-auth-content] > button'}],
   expectations: [{frame: 'continue', focused: true}], focus: {frame: 'continue'},
   reference: {screen: '$root', backdrop: '.gen', brand: '.mark-tl', content: '.au', eyebrow: '.why',
     title: 'h1', lede: '.lede', continue: '.au > button', links: '.links', recovery: '.links > a',

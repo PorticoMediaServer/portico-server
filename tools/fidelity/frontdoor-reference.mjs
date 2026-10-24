@@ -28,6 +28,19 @@ export const frontdoorStateAdapters = {
       contentSlots: ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-label'}))}},
 };
 
+/** Current declared-paint cohort: the same existing Button fill hosts now have
+ * public DEV IDs. Keep historical recipes unchanged for historical captures. */
+export function frontdoorDeclaredStateAdapter(platform) {
+  const old = frontdoorStateAdapters[platform];
+  if (!old) throw new Error('Unknown public frontdoor platform');
+  const adapter = structuredClone(old);
+  const prefix = platform === 'phone' ? 'accounts-welcome' : 'tv-front-door';
+  for (const [id, name] of [['portico', 'primary'], ['local', 'secondary']]) adapter.anchors[`${prefix}-${id}/face`] = `${name}-action-face`;
+  adapter.comparison.actualContentOnly.push('primary-action-face', 'secondary-action-face');
+  adapter.comparison.paintSlots = ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-face', properties: ['effectiveBackgroundColor']}));
+  return adapter;
+}
+
 /** Add verified matching annotations to a cached genuine reference. Preserve
  * all observed bounds/style/text/density and keep the input file immutable. */
 export function annotateFrontdoorReference(measured, platform) {

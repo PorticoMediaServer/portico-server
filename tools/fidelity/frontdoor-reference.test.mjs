@@ -1,8 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {frontdoorReferences, frontdoorStateAdapters, annotateFrontdoorReference} from './frontdoor-reference.mjs';
+import {frontdoorReferences, frontdoorStateAdapters, frontdoorDeclaredStateAdapter, annotateFrontdoorReference} from './frontdoor-reference.mjs';
 import {authoredReferenceScreen} from './reference-screen.mjs';
 import {calibrateFrame} from './calibration.mjs';
+
+test('declared Button face mapping preserves historical recipes and host geometry ownership', () => {
+  for (const platform of ['phone', 'androidTV']) {
+    const before = JSON.stringify(frontdoorStateAdapters[platform]), value = frontdoorDeclaredStateAdapter(platform);
+    assert.equal(value.comparison.paintSlots.length, 2);
+    assert.deepEqual(value.comparison.paintSlots[0].properties, ['effectiveBackgroundColor']);
+    assert.ok(value.comparison.actualContentOnly.includes('primary-action-face'));
+    assert.equal(JSON.stringify(frontdoorStateAdapters[platform]), before);
+  }
+  assert.throws(() => frontdoorDeclaredStateAdapter('unknown'));
+});
 
 test('frontdoor public adapters map the observed Button label separately from its focus host', () => {
   for (const [platform, id] of [['phone', 'accounts-welcome-portico'], ['androidTV', 'tv-front-door-portico']]) {
