@@ -155,5 +155,5 @@ jobs:
           test -s ".sonic-release/portico-sonic-${tag}-linux-arm64.tar.xz"
           (cd .sonic-release && sha256sum ./*.tar.xz | sort -k2 > checksums.sha256)
           if gh release view "$tag" >/dev/null 2>&1; then echo 'Bump Sonic releaseTag before publishing another build.' >&2; exit 1; fi
-          gh release create "$tag" .sonic-release/* --target "$GITHUB_SHA" --latest=false --title "Sonic runtime $tag" \
+          gh release create "$tag" .sonic-release/* --target "$GITHUB_SHA" --prerelease --latest=false --title "Sonic runtime $tag" \
             --notes 'Native Linux x64 and ARM64 musicnn/ONNX Runtime bundles. Both run the original-checkpoint CPU conformance and supervised server runtime checks. ISC model, original MIT runtime notices, GPLv3 helper and corresponding source are included.'
