@@ -121,7 +121,7 @@ func TestBackgroundSpeedControlsRetentionQuantum(t *testing.T) {
 	if _, err = db.Exec(`UPDATE maintenance_retention_rows SET created_ms=0`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`INSERT INTO admin_documents(scope,revision,updated_ms,body) VALUES('maintenance',1,0,'{"backgroundSpeed":"gentle"}') ON CONFLICT(scope) DO UPDATE SET body=excluded.body`); err != nil {
+	if _, err = db.Exec(`UPDATE maintenance_settings SET background_speed='gentle' WHERE singleton=1`); err != nil {
 		t.Fatal(err)
 	}
 	more, err := Sweep(context.Background(), db, time.Now(), 256)
@@ -132,7 +132,7 @@ func TestBackgroundSpeedControlsRetentionQuantum(t *testing.T) {
 	if err = db.QueryRow(`SELECT count(*) FROM admin_receipts`).Scan(&left); err != nil || left != 66 {
 		t.Fatalf("gentle quantum: %d remaining: %v", left, err)
 	}
-	if _, err = db.Exec(`UPDATE admin_documents SET body='{"backgroundSpeed":"fast"}' WHERE scope='maintenance'`); err != nil {
+	if _, err = db.Exec(`UPDATE maintenance_settings SET background_speed='fast' WHERE singleton=1`); err != nil {
 		t.Fatal(err)
 	}
 	_, err = Sweep(context.Background(), db, time.Now(), 256)

@@ -2152,3 +2152,4 @@ export type {VideoTrackWords, VideoTrackNameParts} from './video-track-labels.ts
 export {createReadingHost, connectReadingHost} from './reading-host.ts';
 export type {ReadingHostSession, ReadingHostTransport, ReadingGuest} from './reading-host.ts';
 export {savedViewSummary, type SavedViewSummary, type SavedViewSummaryText} from './presentation/saved-view-summary.ts';
+export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';

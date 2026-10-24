@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseSearchGenres, readSearchGenres, searchGenresPath} from '../src/search-genres.ts';
+import {parseSearchGenres, readSearchGenres, searchGenresPath, searchGenreBrowsePivot, searchGenreBrowseRequest} from '../src/search-genres.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 
 const artwork = (id: string, role: 'poster' | 'backdrop', kind = 'item') => ({kind, id, path: `/v1/metadata/${kind}/${id}/art/${role}?v=${'a'.repeat(64)}&w=${role === 'backdrop' ? 1920 : 400}`});
@@ -74,4 +74,12 @@ test('a cancelled caller neither starts another read nor installs a late respons
   assert.equal(reads, 1);
   await assert.rejects(readSearchGenres(api, {}, controller.signal), {name: 'AbortError'});
   assert.equal(reads, 1);
+});
+
+test('a genre opens the canonical video-only across browse with its exact value', () => {
+  const request = searchGenreBrowseRequest('Sci-Fi & Fantasy');
+  assert.equal(searchGenreBrowsePivot, 'video-titles');
+  assert.deepEqual(request, {pivot: 'video-titles', query: {field: 'genre', operator: 'equals', value: 'Sci-Fi & Fantasy'}, sort: [{field: 'title', direction: 'asc'}]});
+  assert.ok(Object.isFrozen(request) && Object.isFrozen(request.query) && Object.isFrozen(request.sort));
+  for (const value of ['', 'x'.repeat(1025), 'Crime\u0000private']) assert.throws(() => searchGenreBrowseRequest(value));
 });
