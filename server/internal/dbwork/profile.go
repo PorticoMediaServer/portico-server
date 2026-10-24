@@ -25,9 +25,11 @@ type StatementProfileEntry struct {
 	// Shape is the statement with its whitespace collapsed and its bound
 	// arguments left as placeholders, truncated. It identifies the query, not the
 	// values it ran with.
-	Shape string `json:"shape"`
-	Count int64  `json:"count"`
-	Nanos int64  `json:"nanos"`
+	Shape       string `json:"shape"`
+	Count       int64  `json:"count"`
+	Nanos       int64  `json:"nanos"`
+	FirstMicros int64  `json:"firstMicros"`
+	LastMicros  int64  `json:"lastMicros"`
 }
 
 // Millis is the total time this shape accounted for.
@@ -53,6 +55,7 @@ const statementShapeLength = 240
 type statementProfileTable struct {
 	mu      sync.Mutex
 	entries map[string]*StatementProfileEntry
+	started time.Time
 }
 
 var statementProfileOn atomic.Bool
@@ -63,6 +66,7 @@ var statementProfile = statementProfileTable{entries: map[string]*StatementProfi
 func ProfileStatements(on bool) {
 	statementProfile.mu.Lock()
 	statementProfile.entries = map[string]*StatementProfileEntry{}
+	statementProfile.started = time.Now()
 	statementProfile.mu.Unlock()
 	statementProfileOn.Store(on)
 }
@@ -82,9 +86,10 @@ func profileStatement(query string, elapsed time.Duration) {
 		if len(statementProfile.entries) >= statementProfileShapes {
 			return
 		}
-		entry = &StatementProfileEntry{Shape: shape}
+		entry = &StatementProfileEntry{Shape: shape, FirstMicros: time.Since(statementProfile.started).Microseconds()}
 		statementProfile.entries[shape] = entry
 	}
+	entry.LastMicros = time.Since(statementProfile.started).Microseconds()
 	entry.Count++
 	entry.Nanos += int64(elapsed)
 }
