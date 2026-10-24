@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"path/filepath"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/storage"
@@ -103,7 +104,7 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 		return
 	}
 	for _, v := range page.Entries {
-		if v.Directory || !sidecarLike(v.Name) {
+		if v.Directory || (!sidecarLike(v.Name) && !assets.SupportedForKind(v.Name, "music")) {
 			continue
 		}
 		if l.names >= maxListedNames {

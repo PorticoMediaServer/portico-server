@@ -62,16 +62,8 @@ func TestMusicScannerConformancePlexTheWallPackedNumbers(t *testing.T) {
 		}
 		raw := numbers[i]
 		packed := cohort[raw]
-		switch {
-		case song.Song.TrackNumber == nil:
-			t.Fatalf("track %d has no number: %+v", i, song.Song)
-		case *song.Song.TrackNumber == raw:
-			// Caller wiring is reviewer-owned; before it the file-name number
-			// stays as the track number, exactly as the Plex cohort supplies it.
-		case *song.Song.TrackNumber == packed.Track && song.Song.DiscNumber != nil && *song.Song.DiscNumber == packed.Disc:
-			// Wired: the packed number is disc and track.
-		default:
-			t.Fatalf("track %d number %d disc %v is neither raw %d nor packed %d/%d", i, *song.Song.TrackNumber, song.Song.DiscNumber, raw, packed.Disc, packed.Track)
+		if song.Song.TrackNumber == nil || *song.Song.TrackNumber != packed.Track || song.Song.DiscNumber == nil || *song.Song.DiscNumber != packed.Disc {
+			t.Fatalf("track %d did not commit packed %d/%d: %+v", i, packed.Disc, packed.Track, song.Song)
 		}
 	}
 }
