@@ -7,7 +7,7 @@ permissions:
   contents: read
 concurrency:
   group: merge-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 env:
   CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   GOTOOLCHAIN: go1.26.10
