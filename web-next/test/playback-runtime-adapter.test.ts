@@ -2452,3 +2452,31 @@ test('AirPlay rechecks its actual source at activation instead of trusting cache
  eligible=false;controller.startAirPlay();assert.equal(picks,0);assert.equal(controller.getSnapshot().airPlayAvailable,false);
  eligible=true;controller.startAirPlay();assert.equal(picks,1,'a fresh actual source may be used even before a cached availability event');
 });
+
+
+test('subtitle choices preserve the offered clock exactly and refuse fractional milliseconds before a session write',async t=>{
+ for(const [offsetUs,expected] of [['500',undefined],['-1500',undefined],['0',0],['-2000',-2],['2500',undefined]] as const){
+  const f=setup(t);
+  f.intercept(async(request,response)=>{
+   if(!request.path.includes('/playback-offers?'))return response;
+   const body=response.body as {current:{sessionId:string;generation:number;sourceId:string}};
+   const current=body.current;
+   return {...response,body:{...body,subtitlePlan:{version:1,sessionId:current.sessionId,generation:current.generation,sourceId:current.sourceId,revision:1,catalogRevision:1,
+    renderer:'external_text',mode:'off',offAvailable:true,offsetUs:'0',selected:null,resources:[{id:'s4',sourceId:current.sourceId,revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs,canManage:true,enabled:true}],discovered:[]}}};
+  });
+  await f.runtime.play('movie');await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  assert.equal(f.runtime.getSnapshot().offers!.subtitlePlan!.resources[0]!.offsetUs,offsetUs);
+  const before=f.log.filter(request=>request.method==='PATCH').length;
+  if(expected===undefined){
+   await assert.rejects(f.runtime.selectSubtitle(fence,'s4'),/playback_subtitle_unavailable/);
+   assert.equal(f.log.filter(request=>request.method==='PATCH').length,before,'an unrepresentable resource correction cannot reach the integer-ms wire');
+   await f.runtime.selectSubtitle(fence,null);
+   const off=f.log.filter(request=>request.method==='PATCH').at(-1)!.body as {subtitles:{trackId:string|null};subtitleOffsetMs?:number};
+   assert.equal(off.subtitles.trackId,null);assert.equal(off.subtitleOffsetMs,undefined,'turning captions off does not need a correction');
+  }else{
+   await f.runtime.selectSubtitle(fence,'s4');
+   const selected=f.log.filter(request=>request.method==='PATCH').at(-1)!.body as {subtitles:{trackId:string};subtitleOffsetMs:number};
+   assert.equal(selected.subtitles.trackId,'s4');assert.equal(selected.subtitleOffsetMs,expected);
+  }
+ }
+});
