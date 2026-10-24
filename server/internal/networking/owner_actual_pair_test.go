@@ -290,7 +290,14 @@ func TestActualOwnerContinuationInstallsAndSpendsOneGenuineHostedGrant(t *testin
 	api := httpapi.New(httpapi.Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: control, Networking: claims, Console: operations.New(db), Access: httpapi.AccessArea{Access: access.New(db)}, Origins: []string{"https://server.example"}})
 	request := func(method, path string, body any) *httptest.ResponseRecorder {
 		t.Helper()
-		raw, _ := json.Marshal(body)
+		var raw []byte
+		if body != nil {
+			var e error
+			raw, e = json.Marshal(body)
+			if e != nil {
+				t.Fatal("actual local request encoding failed")
+			}
+		}
 		defer clear(raw)
 		r := httptest.NewRequest(method, "https://server.example"+path, bytes.NewReader(raw))
 		r.Header.Set("Content-Type", "application/json")
