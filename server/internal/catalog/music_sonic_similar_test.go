@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/sonic"
@@ -141,5 +142,50 @@ func TestMusicSonicSimilarRanksExactCosineAndReportsGenreFallback(t *testing.T) 
 	got, err = s.ListeningSimilarBySound(viewer, seed.Public, 12)
 	if err != nil || got.BySound {
 		t.Fatal("off claimed sound rather than existing genre/co-listening", got, err)
+	}
+}
+
+// Synthetic vectors exercise catalogue/profile grouping, not model inference.
+func TestMusicSonicArtistMeanIncludesActualGuestCreditsAndFencesHiddenSongs(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("credited-music", "Music", "music", "/credits")
+	main := c.Artist(library, "Album artist")
+	guest := c.Artist(library, "Guest artist")
+	album := c.Album(main, "Album", 2026)
+	one := c.Song(album, 1, "/credits/one.flac", "One")
+	hidden := c.Song(album, 2, "/credits/hidden.flac", "Hidden")
+	sonicStoredFixture(t, c, one, 1, 0)
+	sonicStoredFixture(t, c, hidden, 0, 1)
+	for _, item := range []catalogtest.Item{one, hidden} {
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			return compactcatalog.SetSongArtistsTx(ctx, tx, item.ID, []int64{main.ID, guest.ID})
+		})
+	}
+	c.Attributes(hidden.ID, "label", "private")
+	c.Drain()
+	viewer := Viewer{Profile: identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}), Libraries: []string{"credited-music"}}
+	s := New(c.DB)
+	read := func() []sonicGroup {
+		t.Helper()
+		var out []sonicGroup
+		if err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+			return s.WithContext(ctx).sonicGroups(viewer, 5, guest.ID, func(group sonicGroup) { out = append(out, group) })
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	groups := read()
+	if len(groups) != 1 || groups[0].vector[0] < .70 || groups[0].vector[1] < .70 {
+		t.Fatal("guest credits missing from artist mean", groups)
+	}
+	viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"private"}}
+	groups = read()
+	if len(groups) != 1 || groups[0].vector[0] != 1 || groups[0].vector[1] != 0 {
+		t.Fatal("hidden guest credit affected mean", groups)
+	}
+	batch, err := s.MusicRadioBatch(viewer, RadioBatchRequest{Seed: guest.Public, Start: true, Limit: 1})
+	if err != nil || len(batch.IDs) != 1 || batch.IDs[0] != one.Public || !batch.BySound {
+		t.Fatal("credited artist radio did not start a permitted credited track", batch, err)
 	}
 }

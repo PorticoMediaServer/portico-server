@@ -62,9 +62,11 @@ const currentSonicVectorSQL = `(SELECT embedding.vector FROM music_sonic_embeddi
 // profile computes another mean over that profile's permitted tracks.
 func (s *Service) sonicGroups(viewer Viewer, kind int, only int64, visit func(sonicGroup)) error {
 	target := "item.id"
+	creditJoin := ""
 	switch kind {
 	case 5:
-		target = "album.artist_id"
+		target = "COALESCE(credit.artist_id,album.artist_id)"
+		creditJoin = ` LEFT JOIN catalog_song_artists credit ON credit.song_id=item.id `
 	case 6:
 		target = "song.album_id"
 	case 7:
@@ -80,7 +82,7 @@ func (s *Service) sonicGroups(viewer Viewer, kind int, only int64, visit func(so
  FROM catalog_entities item JOIN catalog_libraries library ON library.id=item.library_id
  JOIN libraries configured ON configured.id=library.library_id AND configured.kind='music'
  JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id
- JOIN catalog_entities target ON target.id=`+target+` AND target.retired=0
+ `+creditJoin+` JOIN catalog_entities target ON target.id=`+target+` AND target.retired=0
  WHERE item.kind=7 AND `+visible+`
 	 AND `+currentSonicEligibleSQL+`
  AND COALESCE((SELECT enabled FROM library_sonic_settings settings WHERE settings.library_id=library.library_id),1)=1

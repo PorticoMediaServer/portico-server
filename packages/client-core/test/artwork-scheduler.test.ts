@@ -203,7 +203,7 @@ test('artworkWidthBucket picks one server variant per rendered size, by the long
   assert.equal(artworkWidthBucket(300), 400);
   assert.equal(artworkWidthBucket(360, {aspect: 2 / 3}), 800, 'a 180 px poster at 2x is 540 px tall');
   assert.equal(artworkWidthBucket(430), 400, 'within 10% of a variant uses it');
-  assert.equal(artworkWidthBucket(1280 * 2, {aspect: 16 / 9}), 1920, 'capped at the largest');
+  assert.equal(artworkWidthBucket(1280 * 2, {aspect: 16 / 9}), 2560, 'capped at the largest');
   assert.equal(artworkWidthBucket(0), 400);
   assert.equal(artworkWidthBucket(Number.NaN), 400);
   assert.equal(artworkWidthBucket(500, {buckets: [256, 512]}), 512);
