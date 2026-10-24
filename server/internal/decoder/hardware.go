@@ -667,6 +667,10 @@ type ConversionRequest struct {
 	// Source facts are never inferred from the requested output codec/depth.
 	SourceVideoCodec string
 	SourceBitDepth   int
+	// HDR10+ carry is explicit intent over measured source facts. Empty intent
+	// keeps the encoder's default-off behavior, regardless of bundle capability.
+	HDR10PlusIntent HDR10PlusEncoding
+	HDR10PlusSource HDR10PlusEncodeSource
 	// SoftwareDecode disables only hardware decoding. Qualified hardware
 	// filters/encoding may still upload the software-decoded frames.
 	SoftwareDecode bool
@@ -767,6 +771,9 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio || target.CopyDolbyVision && !r.CopyVideo {
 		return out, ErrInvalidConfiguration
 	}
+	if r.HDR10PlusIntent != "" && (!r.ConvertVideo || r.SourceVideoCodec != r.HDR10PlusSource.Codec || r.SourceBitDepth != r.HDR10PlusSource.BitDepth) {
+		return out, ErrInvalidConfiguration
+	}
 	if r.ConvertVideo && (target.BitDepth != 8 && target.BitDepth != 10 || target.VideoCodec == "h264" && (target.BitDepth != 8 || target.DynamicRange != "sdr")) {
 		return out, ErrInvalidConfiguration
 	}
@@ -865,6 +872,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, ExecutionSoftware}, HardwareStage{StageEncode, ExecutionSoftware})
 	}
 	if r.ConvertVideo {
+		hdr10PlusOptions, err := HDR10PlusLibX265Options(HDR10PlusEncodeRequest{
+			Intent: r.HDR10PlusIntent, Target: target, Source: r.HDR10PlusSource,
+			Encoder: encoder, Deinterlace: r.Deinterlace, BurnIn: r.BurnIn != nil,
+		}, r.Toolchain)
+		if err != nil {
+			return out, err
+		}
 		native := r.BurnIn == nil && backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
 		if r.DisableHardwareDecode {
 			native = false
@@ -984,13 +998,18 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				}
 				out.Stages = append(out.Stages, HardwareStage{"subtitle_burn_in", ExecutionSoftware})
 			}
-			filters = append(filters, boundedScaleFilter(BackendSoftware, r.MaxWidth, r.MaxHeight))
-			if target.DynamicRange != "sdr" {
-				filters = append(filters, "format="+pixel)
+			if len(hdr10PlusOptions) == 0 {
+				filters = append(filters, boundedScaleFilter(BackendSoftware, r.MaxWidth, r.MaxHeight))
+				if target.DynamicRange != "sdr" {
+					filters = append(filters, "format="+pixel)
+				}
 			}
 			if spec.upload != "" {
 				filters = append(filters, "format="+surface, strings.NewReplacer("format=nv12", "format="+surface, "format=yuv420p", "format="+pixel).Replace(spec.upload))
 			}
+		}
+		if len(hdr10PlusOptions) > 0 && (backend != BackendSoftware || decode != ExecutionSoftware || native || len(filters) > 0 || out.VideoMap != "" || len(out.ExtraInput) > 0) {
+			return out, ErrInvalidConfiguration
 		}
 		if len(filters) > 0 {
 			if out.VideoMap != "" {
@@ -1000,6 +1019,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			}
 		}
 		out.Video = append(out.Video, "-c:v", encoder)
+		out.Video = append(out.Video, hdr10PlusOptions...)
 		if backend == BackendSoftware {
 			out.Video = append(out.Video, "-threads", "2")
 		}
@@ -1079,7 +1099,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if r.ToneMap {
 			out.Stages = append(out.Stages, HardwareStage{StageToneMap, toneExecution})
 		}
-		if r.MaxHeight > 0 || r.MaxWidth > 0 {
+		if (r.MaxHeight > 0 || r.MaxWidth > 0) && len(hdr10PlusOptions) == 0 {
 			out.Stages = append(out.Stages, HardwareStage{StageScale, scaleExecution})
 		}
 		out.Stages = append(out.Stages, HardwareStage{StageEncode, encode})
