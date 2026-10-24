@@ -75,7 +75,7 @@ test('a maker that aborts then throws cannot publish a stale local error',async(
 test('a reentrant local maker cannot adopt or fail over a newer accepted source',async()=>{
  const x=setup();let next:Promise<void>|undefined;
  try{
-  await assert.rejects(x.service.playLocal('old',()=>{next=x.service.playLocal('new',()=>local('local:new:2'));throw Error('old maker failed');}),{name:'AbortError'});
+  await assert.rejects(x.service.playLocal('old',()=>{next=x.service.playLocal('new',()=>local('local:new:2'));throw Error('old maker failed');},undefined,{isCurrent:()=>true}),{name:'AbortError'});
   await next;assert.equal(x.service.getSnapshot().session?.id,'local:new:2');assert.equal(x.service.getSnapshot().error,undefined);
  }finally{x.service.leave();}
 });
@@ -106,4 +106,15 @@ test('a genuine session returned after synchronous host retirement is cleaned wi
   await tick();assert.equal(x.service.getSnapshot().phase,'idle');assert.equal(x.service.getSnapshot().error,undefined);
   assert.equal(x.service.getSnapshot().session,undefined);assert.deepEqual(x.stopped,['local:entry:1']);
  }finally{x.service.leave();}
+});
+
+
+test('three-argument local starts retain quiet supersession compatibility',async()=>{
+ const journal=deferred<[]>();let oldMaker=0;
+ const x=setup({deferRecovery:true,journal:{load:()=>journal.promise,save:async()=>{}}});
+ try{
+  const old=x.service.playLocal('old',()=>{oldMaker++;return local();});
+  const next=x.service.playLocal('new',()=>local('local:new:2'));journal.resolve([]);await Promise.all([old,next]);
+  assert.equal(oldMaker,0);assert.equal(x.service.getSnapshot().session?.id,'local:new:2');
+ }finally{journal.resolve([]);x.service.leave();}
 });

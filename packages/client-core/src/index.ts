@@ -1419,6 +1419,10 @@ export class PlaybackService {
       this.requestSeek(session.resumeSeconds, { session, duration: session.duration });
       check();
       this.persist();
+    } catch(error) {
+      // Existing three-argument callers quietly finish when another Play replaces them.
+      if(!context&&this.snapshot.intentId!==intentId&&error instanceof Error&&error.name==='AbortError')return;
+      throw error;
     } finally {detach();}
   }
   private startupProbe?: () => Readonly<Record<string, unknown>>;
