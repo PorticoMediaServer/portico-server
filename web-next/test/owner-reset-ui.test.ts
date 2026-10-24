@@ -103,3 +103,9 @@ test('reset-file display uses the actual returned directory and never infers an 
     assert.equal(f.m.resetFilePath({systemKind: 'windows', fileDirectory: 'D:\\Actual\\State\\', fileName: 'reset-code.txt'}), 'D:\\Actual\\State\\reset-code.txt');
   } finally {f.restore();}
 });
+
+// The disclosure documents the approved install-guide paths; it is not the
+// actual server path (that always comes from ResetFileLocation).
+test('reset disclosure preserves the exact Windows path without doubled separators', () => {
+  assert.equal(defaultI18n.t('accounts.recovery.windowsPath'), String.raw`C:\ProgramData\Portico Media Server\reset-code.txt`);
+});
