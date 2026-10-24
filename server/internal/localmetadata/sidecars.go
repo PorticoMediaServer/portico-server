@@ -68,7 +68,7 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 		}
 	case "tv", "anime":
 		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		if key := first(dirs[:1], videoArtworkNames(stem+"-thumb")...); key != "" {
+		if key := first(dirs[:1], stem+"-thumb.jpg", stem+"-thumb.png"); key != "" {
 			out["item/still"] = key
 		}
 
