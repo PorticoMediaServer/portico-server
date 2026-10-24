@@ -1702,7 +1702,7 @@ ALTER TABLE ONLY wake_state
 INSERT INTO account_identity_schema VALUES (true, 1);
 INSERT INTO account_security_schema VALUES (true, 1);
 INSERT INTO apple_notification_schema VALUES (true, 1);
-INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 25);
+INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 26);
 INSERT INTO hosted_signing_state VALUES (true, 0, '\x', false, '', '\x');
 INSERT INTO identity_protocol_policy VALUES (true, 1, false, NULL, clock_timestamp());
 
@@ -1747,6 +1747,12 @@ CREATE TABLE owner_claim_starts (
     original_claim_signature bytea NOT NULL CHECK (octet_length(original_claim_signature)=64),
     start_payload bytea NOT NULL CHECK (octet_length(start_payload) BETWEEN 1 AND 8192),
     start_signature bytea NOT NULL CHECK (octet_length(start_signature)=64),
+    switch_count_payload bytea,
+    switch_count_signature bytea,
+    CONSTRAINT owner_claim_starts_switch_count_pair_check CHECK (
+        (switch_count_payload IS NULL AND switch_count_signature IS NULL) OR
+        (switch_count_payload IS NOT NULL AND switch_count_signature IS NOT NULL AND
+         octet_length(switch_count_payload) BETWEEN 1 AND 8192 AND octet_length(switch_count_signature)=64)),
     CHECK (expires_at>issued_at AND expires_at<=issued_at+interval '5 minutes'),
     CHECK ((approved_account_id IS NULL AND approved_username IS NULL AND family_id IS NULL AND access_hash IS NULL AND account_epoch IS NULL AND family_generation IS NULL AND captured_session_mode IS NULL) OR
            (approved_account_id IS NOT NULL AND approved_username IS NOT NULL AND family_id IS NOT NULL AND access_hash IS NOT NULL AND account_epoch IS NOT NULL AND family_generation IS NOT NULL AND captured_session_mode IS NOT NULL)),
