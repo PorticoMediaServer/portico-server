@@ -1,8 +1,9 @@
+import {scopedHostedSetupClaim} from './setup-pending';
 import type {ServicesAccount} from './session';
 import {restoreServicesLink, type LinkCapture, type ServicesLink, type ServicesLinkStore} from './intake';
 import {hostedSignInStore, restoreHostedSignIn, type HostedSignIn, type SignInCapture} from './sign-in';
 import type {HostedOwnerClaimCapture} from './owner-claim';
-import {hostedOwnerPendingStore, restoreHostedOwnerPending, scopedHostedOwnerClaim,
+import {hostedOwnerPendingStore, restoreHostedOwnerPending, scopedHostedOwnerClaim, hostedApprovalPurpose,
   type HostedOwnerPending, type HostedOwnerPendingStore} from './owner-pending';
 
 export type ServicesBootstrapSnapshot = Readonly<{phase: 'restoring' | 'ready' | 'error'; link?: ServicesLink; signIn?: HostedSignIn; invalidSignIn?: boolean; ownerPending?: boolean; invalidOwner?: boolean; error?: unknown}>;
@@ -31,6 +32,15 @@ export class ServicesBootstrap {
     const controller = scopedHostedOwnerClaim(account, this.ownerState.store, this.ownerState.pending);
     this.ownerControllers.add(controller);
     return controller;
+  }
+  approvalPurpose(account: ServicesAccount, signal: AbortSignal) {
+    if (this.disposed || this.state.phase !== 'ready' || !this.state.ownerPending || !this.ownerState || account.service !== this.account.service) throw new Error('claim_stale');
+    return hostedApprovalPurpose(account,this.ownerState.store,this.ownerState.pending,signal);
+  }
+  setupApproval(account: ServicesAccount) {
+    if (this.disposed || this.state.phase !== 'ready' || !this.state.ownerPending || !this.ownerState || account.service !== this.account.service) return;
+    const controller=scopedHostedSetupClaim(account,this.ownerState.store,this.ownerState.pending);
+    this.ownerControllers.add(controller);return controller;
   }
   private async restore() {
     this.ownerControllers.forEach(controller => controller.dispose()); this.ownerControllers.clear();
