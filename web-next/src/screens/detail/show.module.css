@@ -75,9 +75,9 @@
 
 .castBlock button > span:first-child { width: 96px; height: 96px; }
 
-.castBlock button b { font-size: var(--type-person-title-size); font-weight: var(--type-person-title-weight); }
+.castBlock button b { margin-top: 10px; font-size: var(--type-person-title-size); font-weight: var(--type-person-title-weight); line-height: normal; }
 
-.castBlock button small { margin-top: 2px; font-size: var(--type-caption-strong-size); font-weight: var(--type-caption-strong-weight); }
+.castBlock button small { margin-top: 2px; font-size: var(--type-caption-strong-size); font-weight: var(--type-caption-strong-weight); line-height: normal; }
 
 .pinActions { gap: 10px; }
 

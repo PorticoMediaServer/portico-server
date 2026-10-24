@@ -214,7 +214,13 @@ const time = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
 const viewer: Viewer = {serverId, authority: 'local', accountId: 'specimen-account', profileId: 'demo', role: 'owner'};
 const session: LocalSession = {accessToken: 'specimen-public', refreshToken: '', sessionFamilyId: 'specimen-family', tokenGeneration: '1',
   installationId: 'i'.repeat(43), expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer};
-const libraries: readonly Library[] = [{id: libraryId, name: 'TV Shows', kind: 'show'}];
+const libraries: readonly Library[] = [
+  {id: 'movies', name: 'Movies', kind: 'movie'},
+  {id: libraryId, name: 'TV Shows', kind: 'show'},
+  {id: 'anime', name: 'Anime', kind: 'show'},
+  {id: 'music', name: 'Music', kind: 'music'},
+  {id: 'audiobooks', name: 'Audiobooks', kind: 'audiobook'},
+];
 const identity: ShellIdentity = {viewer, username: 'demo', profileName: 'Demo', profileArt: 'blue', serverName: 'Portico demo', // lint-strings-allow
   primaryProfile: true, profiles: [], canManageProfiles: false, accountFacts: [], libraries, liveAvailable: true, unread: 3, showNotificationDot: true,
   capabilities: {manageAccount: false, managePeople: false, manageServer: true, manageSignIn: false}};
