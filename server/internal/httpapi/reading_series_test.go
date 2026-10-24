@@ -21,7 +21,7 @@ func readingSeriesOwnerField(t *testing.T, r *readingFixture, item, field, value
 }
 func readingSeriesDrain(t *testing.T, r *readingFixture) {
 	t.Helper()
-	if err := compactcatalog.NewWorker(r.f.db).Drain(context.Background()); err != nil {
+	if err := compactcatalog.Drain(context.Background(), r.f.db); err != nil {
 		t.Fatal(err)
 	}
 }
