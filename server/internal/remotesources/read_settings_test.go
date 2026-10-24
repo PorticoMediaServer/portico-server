@@ -151,11 +151,18 @@ func TestSourceReadSettingsRetirementSurvivesRequestCancelAndReceiptReplay(t *te
 	defer old.Release()
 	reader := captureOwnerSource(t, f, ref, identities, owner, SourceReading, func() {})
 	defer reader.Close()
-	revision := commitWithoutNotification(1, "list")
-	canceled, cancel := context.WithCancel(ctx)
-	cancel()
-	if err = f.s.finishReadSettings(canceled, "remote", revision); err != nil {
-		t.Fatal("request cancellation prevented committed cleanup", err)
+	var revision int64
+	if err = dbwork.WithReadSnapshot(ctx, f.s.db, func(stale context.Context) error {
+		before, err := SourceReadProfileTx(stale, dbwork.Snapshot(stale), "remote")
+		if err != nil || before.Revision != 1 {
+			t.Fatal("failed to pin the request's old profile", before, err)
+		}
+		revision = commitWithoutNotification(1, "list")
+		canceled, cancel := context.WithCancel(stale)
+		cancel()
+		return f.s.finishReadSettings(canceled, "remote", revision)
+	}); err != nil {
+		t.Fatal("request cancellation/stale snapshot prevented committed cleanup", err)
 	}
 	if old.CheckLocal() == nil || reader.life.Err() == nil {
 		t.Fatal("committed cleanup left old process/reader alive")
