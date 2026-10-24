@@ -61,6 +61,17 @@ function watchApi(page, calls = [], state = {}) {
     if (!url.pathname.startsWith('/v1/')) return;
     calls.push({status: response.status(), method: response.request().method(), path: url.pathname});
     if (calls.length > 600) calls.shift();
+    if (url.pathname === '/v1/direct/account') {
+      response.json().then(body => {
+        state.account = {
+          status: response.status(),
+          canManage: body.canManage === true,
+          capabilities: Object.keys(body.capabilities || {}).filter(key => body.capabilities[key]).slice(0, 12),
+          profiles: (body.profiles || []).map(profile => ({name: profile.name, primary: profile.primary === true})),
+          accountName: body.account && body.account.username ? 'present' : undefined,
+        };
+      }).catch(() => { state.account = {status: response.status(), unreadable: true}; });
+    }
     if (url.pathname === '/v1/direct' && response.status() === 200) {
       response.json().then(body => {
         state.direct = {
@@ -723,17 +734,19 @@ async function main() {
         }
         assert(/Owner only/.test(libs), `the owner server settings never rendered: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
         assert(libs.trim().length > 40, 'owner Libraries settings rendered almost no text');
-        await page.goto(origin + '/dashboard', {waitUntil: 'domcontentloaded'});
-        await settle(page, {quiet: 2500});
-        const dash = await bodyText(page);
-        assert(dash.trim().length > 60, 'owner Dashboard rendered almost no text');
         const scan = await findAny(page, [{role: 'button', name: /scan/i}, {text: /^Scan/}], {timeout: 4000});
         if (!scan) {
-          throw blocked(`no scan control on the owner Libraries page; ${profileNote}; at ${new URL(page.url()).pathname}${new URL(page.url()).search}; page was: ${libs.replace(/\n/g, ' ').slice(0, 200)}`);
+          const payload = JSON.stringify({me: apiState.me ? {role: apiState.me.role, profileIdKnown: !!apiState.viewerProfileId} : null,
+            account: apiState.account || null, direct: apiState.direct ? {canManage: apiState.direct.canManage, profiles: apiState.direct.profiles.map(p => ({name: p.name, primary: p.primary}))} : null});
+          throw blocked(`no scan control on the owner Libraries page; ${profileNote}; at ${new URL(page.url()).pathname}${new URL(page.url()).search}; payload ${payload.slice(0, 420)}; page was: ${libs.replace(/\n/g, ' ').slice(0, 160)}`);
         }
         await scan.click({timeout: 8000});
         await page.waitForTimeout(3000);
         const scanResult = 'scan control pressed';
+        await page.goto(origin + '/dashboard', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2500});
+        const dash = await bodyText(page);
+        assert(dash.trim().length > 60, 'owner Dashboard rendered almost no text');
         return {detail: `dashboard ${dash.length} chars; libraries ${libs.length} chars; ${scanResult}; ${profileNote}`,
           evidence: {screenshot: await evidence.shot(page, 'settings-libraries')}};
       });
