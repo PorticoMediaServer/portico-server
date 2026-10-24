@@ -1,25 +1,25 @@
-.storagePath { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 14px; color: var(--color-text-secondary); }
+.storagePath { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: var(--type-synopsis-size); color: var(--color-text-secondary); }
 .storage { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.storageFailure { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 14px; color: var(--color-text-secondary); }
-.storageFailure button { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--color-accent-strong); cursor: pointer; }
+.storageFailure { display: flex; align-items: center; gap: 14px; margin: 0; font-size: var(--type-synopsis-size); color: var(--color-text-secondary); }
+.storageFailure button { border: 0; background: none; padding: 0; font: inherit; font-weight: var(--type-row-heading-weight); color: var(--color-accent-strong); cursor: pointer; }
 .storageFailure button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; border-radius: 4px; }
-.storageTotal { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 6px; font-size: 14px; color: var(--color-text-secondary); }
-.storageTotal b { color: var(--color-text); font-weight: 700; }
+.storageTotal { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 6px; font-size: var(--type-synopsis-size); color: var(--color-text-secondary); }
+.storageTotal b { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
 .storageList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .storageList li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; padding: 12px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
 .storageText { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.storageText b { font-size: 14px; font-weight: 700; color: var(--color-text); }
-.storageText small { font-size: 13px; font-weight: 500; color: var(--color-text-tertiary); }
-.storageSize { font-size: 14px; font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.storageText b { font-size: var(--type-synopsis-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
+.storageText small { font-size: var(--type-caption-size); font-weight: var(--type-micro-weight); color: var(--color-text-tertiary); }
+.storageSize { font-size: var(--type-synopsis-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .storageBar { grid-column: 1 / -1; height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--color-text) 10%, transparent); overflow: hidden; }
 .storageBar i { display: block; height: 100%; border-radius: inherit; background: var(--color-accent-strong); }
-.storageNote { margin: 0; font-size: 13px; color: var(--color-text-tertiary); }
-.sectionLink { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--color-accent-strong); cursor: pointer; }
+.storageNote { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.sectionLink { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); color: var(--color-accent-strong); cursor: pointer; }
 .sectionLink:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; border-radius: 4px; }
 .backupNow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .backupProgress { display: block; flex: 1; min-width: 120px; max-width: 320px; height: 4px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--color-text) 10%, transparent); }
 .backupProgress i { display: block; height: 100%; border-radius: inherit; background: var(--color-accent-strong); }
-.backupFailure { margin: 0; flex-basis: 100%; font-size: 14px; color: var(--color-danger, #f38b88); }
-.backupEmpty { margin: 0; font-size: 14px; color: var(--color-text-tertiary); }
+.backupFailure { margin: 0; flex-basis: 100%; font-size: var(--type-synopsis-size); color: var(--color-danger); }
+.backupEmpty { margin: 0; font-size: var(--type-synopsis-size); color: var(--color-text-tertiary); }
 .backupFolder { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .backupFolder .storagePath { flex: 1; min-width: 0; }

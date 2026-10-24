@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {SettingsRow, SettingsValue} from '@core/presentation/settings-spec.ts';
 import {Button, TextField} from '../../kit/controls';
@@ -61,7 +61,7 @@ export function SubtitlePreview({paint, text}: {paint: {color: string; backgroun
   return <div className={styles.preview} role="img" aria-label={t('next.settings.audioSubtitles.previewLabel', {text})}>
     <ColourBackdrop shape="side" fill />
     <div className={styles.previewCaption} data-position={paint.position}>
-      <span className={styles.previewText} style={{fontSize: `calc(5.2cqh * ${paint.scale})`, color: paint.color, backgroundColor: paint.backgroundColor, textShadow: paint.textShadow}}>{text}</span>
+      <span className={styles.previewText} style={{'--preview-size': `calc(5.2cqh * ${paint.scale})`, '--preview-color': paint.color, '--preview-background': paint.backgroundColor, '--preview-shadow': paint.textShadow} as CSSProperties}>{text}</span>
     </div>
   </div>;
 }

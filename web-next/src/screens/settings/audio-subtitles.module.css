@@ -10,4 +10,4 @@
 .previewCaption { position: absolute; left: 5%; right: 5%; bottom: 6.5%; text-align: center; }
 .previewCaption[data-position='raised'] { bottom: 17%; }
 .previewCaption[data-position='top'] { bottom: auto; top: 8%; }
-.previewText { display: inline; font-weight: var(--type-body-strong-weight); line-height: normal; padding: .08em .38em; border-radius: .22em; white-space: pre-line; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.previewText { display: inline; font-size: var(--preview-size); color: var(--preview-color); background-color: var(--preview-background); text-shadow: var(--preview-shadow); font-weight: var(--type-body-strong-weight); line-height: normal; padding: .08em .38em; border-radius: .22em; white-space: pre-line; -webkit-box-decoration-break: clone; box-decoration-break: clone; }

@@ -147,7 +147,7 @@ const rows: readonly HomeRow[] = [
   }),
   row('because_you_watched', 'next.home.becauseYouWatched', 'Because you watched Inside Out', 'poster', because, {
     priority: 30, privacySensitivity: 'personal', seeAll: {type: 'row', rowId: 'because_you_watched'},
-    titleText: {code: 'next.home.becauseYouWatched', params: {title: 'Inside Out'}, fallback: 'Because you watched Inside Out'},
+    titleText: {code: 'next.home.becauseYouWatched', params: {title: 'Inside Out'}, fallback: 'Because you watched Inside Out'}, // lint-strings-allow fixture data
   }),
   row('featured_collection', 'next.home.collection', 'Collection', 'poster', [], {
     priority: 40, privacySensitivity: 'catalog', seeAll: {type: 'collection', resourceId: 'col-toy-story', libraryId: 'lib-movies'},
@@ -180,7 +180,7 @@ const spotlight: readonly HomeSpotlight[] = [
 
   {entry: entry('sp-spirited', 'movie', 'Spirited Away', {year: 2001, genres: ['Animation', 'Family'], duration: 7500, posterUrl: photo('p-spirited.jpg'), backdropUrl: photo('bd-spirited.jpg'),
     overview: 'A young girl, Chihiro, becomes trapped in a strange new world of spirits. When her parents undergo a mysterious transformation, she must call upon the courage she never knew she had to free her family.'}),
-    reason: {kind: 'because_you_watched', text: {code: 'next.home.becauseYouWatched', params: {title: 'Inside Out'}, fallback: 'Because you watched Inside Out'}}},
+    reason: {kind: 'because_you_watched', text: {code: 'next.home.becauseYouWatched', params: {title: 'Inside Out'}, fallback: 'Because you watched Inside Out'}}}, // lint-strings-allow fixture data
   {entry: entry('sp-spiderverse', 'movie', 'Spider-Man: Into the Spider-Verse', {year: 2018, genres: ['Animation', 'Action'], duration: 7020, posterUrl: photo('p-spiderverse.jpg'), backdropUrl: photo('bd-spiderverse.jpg'),
     overview: 'Brooklyn teenager Miles Morales is bitten by a radioactive spider, and discovers a super collider that pulls Spider-People from across the Spider-Verse into his dimension.'}),
     reason: {kind: 'recommended', text: {code: 'next.home.reason.recommended', fallback: 'Recommended for you'}}},

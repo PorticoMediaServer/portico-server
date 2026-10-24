@@ -137,9 +137,9 @@ const panelAiring = (id: string, from: [number, number], to: [number, number], t
   const start = at(...from), format = (value: number) => new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {hour: 'numeric', minute: '2-digit', timeZone: timezone}).format(value);
   return {id, start, time: format(start), range: defaultI18n.t('guide.cellTime', {start: format(start), end: format(at(...to))}), day: defaultI18n.t('guide.today'), title, episode, channelId: 'pk'};
 };
-const panelRawProgramme: GuideProgramme = {id: panelProgrammeId, channelId: 'pk', title: 'Story Time Island',
+const panelRawProgramme: GuideProgramme = {id: panelProgrammeId, channelId: 'pk', title: 'Story Time Island', // lint-strings-allow fixture data
   start: new Date(at(16, 0)).toISOString(), end: new Date(at(16, 30)).toISOString(), lineage: 'provider-id', seriesId: '',
-  episodeId: '', newEvidence: 'new', description: 'Story Time Island on Pebble Kids. A fictional listing from the Portico demo guide, used to test how the guide shows descriptions of different lengths.',
+  episodeId: '', newEvidence: 'new', description: 'Story Time Island on Pebble Kids. A fictional listing from the Portico demo guide, used to test how the guide shows descriptions of different lengths.', // lint-strings-allow fixture data
   subtitle: 'Homecoming', episode: {season: 3, number: 1}, categories: ['Kids', 'Animation'], rating: {system: 'TV', value: 'TV-Y'}, flags: {new: true}}; // lint-strings-allow
 const panelRecording: Recording = {id: 'rec-pk3', revision: 1,
   occurrence: {sourceId: 'synthetic', channelId: 'pk', generation: 'synthetic', programmeId: panelProgrammeId},
@@ -156,7 +156,7 @@ const panelSnapshot: ProgrammeSnapshot = {phase: 'ready', favorite: true, record
     panelAiring('pk8', [22, 0], [22, 30], 'Crossed Wires', 'S6 E5')]}};
 
 function PanelSpecimen() {
-  return <aside className={live.programmePanel} style={{position: 'fixed', top: 76, right: 0, bottom: 0, width: 600, zIndex: 30, overflow: 'auto'}} data-panel-specimen>
+  return <aside className={live.programmePanel} style={{position: 'fixed', top: 76, right: 0, bottom: 0, width: 600, zIndex: 'var(--layer-player)', overflow: 'auto'}} data-panel-specimen>
     <ProgrammePanelView channel={panelChannelRow} programme={panelProgramme} now={NOW} timezone={timezone}
       snapshot={panelSnapshot} choice={panelChoice} seriesOpen={true} reminders={['pk7']}
       onClose={() => {}} onWatch={() => {}} onRecord={() => {}} onCancelRecording={() => {}} onRecordSeries={() => {}}

@@ -130,13 +130,13 @@ function episodeDetail(index = 0) {
   const revision = {catalog: 1, viewer: 1};
   const episode = episodes[index] ?? episodes[0];
   const credits = index === 2
-    ? [{id: 'nick-offerman', name: 'Nick Offerman', role: 'Bill', department: 'Acting', provider: 'specimen'},
-      {id: 'murray-bartlett', name: 'Murray Bartlett', role: 'Frank', department: 'Acting', provider: 'specimen'},
-      {id: 'peter-hoar', name: 'Peter Hoar', role: 'Director', department: 'Directing', provider: 'specimen'},
-      {id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'}]
-    : [{id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'},
-      {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}];
-  const neighbours = index === 2 ? {previous: {id: 'ep-2', number: 2, title: 'Infected'}, next: {id: 'ep-4', number: 4, title: 'Please Hold to My Hand'}} : {};
+    ? [{id: 'nick-offerman', name: 'Nick Offerman', role: 'Bill', department: 'Acting', provider: 'specimen'}, // lint-strings-allow fixture data
+      {id: 'murray-bartlett', name: 'Murray Bartlett', role: 'Frank', department: 'Acting', provider: 'specimen'}, // lint-strings-allow fixture data
+      {id: 'peter-hoar', name: 'Peter Hoar', role: 'Director', department: 'Directing', provider: 'specimen'}, // lint-strings-allow fixture data
+      {id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'}] // lint-strings-allow fixture data
+    : [{id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'}, // lint-strings-allow fixture data
+      {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}]; // lint-strings-allow fixture data
+  const neighbours = index === 2 ? {previous: {id: 'ep-2', number: 2, title: 'Infected'}, next: {id: 'ep-4', number: 4, title: 'Please Hold to My Hand'}} : {}; // lint-strings-allow fixture data
   return {
     scope: {serverId, libraryId, itemId: episode.id, viewerFence}, revision,
     item: {id: episode.id, libraryId, kind: 'episode', title: episode.title, year: 2023, durationMs: episode.duration * 1000, progressMs: episode.progressSeconds * 1000,
@@ -146,9 +146,9 @@ function episodeDetail(index = 0) {
     actions: [{id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId: episode.id, startMs: 0}},
       {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true},
       {id: 'watched', labelKey: 'entry.markWatched', enabled: true}],
-    facts: {contentRating: 'TV-MA', releaseDate: episode.airDate, studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'},
-    episodeDetails: {contentRating: 'TV-MA', ...neighbours},
-    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}],
+    facts: {contentRating: 'TV-MA', releaseDate: episode.airDate, studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'}, // lint-strings-allow fixture data
+    episodeDetails: {contentRating: 'TV-MA', ...neighbours}, // lint-strings-allow fixture data
+    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}], // lint-strings-allow fixture data
       credits, creditTotals: {cast: credits.filter(credit => credit.department === 'Acting').length, crew: credits.filter(credit => credit.department !== 'Acting').length}},
     languages: {audio: ['en'], subtitles: ['en']},
     collections: [], markers: [],
