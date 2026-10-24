@@ -28,6 +28,17 @@ import {servicesMessages} from './en-US/services.ts';
 import {savedViewSummaryMessages} from './en-US/saved-view.ts';
 
 export const enUS = {
+  // Player engine facts shown by the shared player; keep their existing wording.
+  "playback.engine.rateUnavailable": "This speed is unavailable for this media. Choose a supported speed, then press Play.",
+  "playback.engine.seekUnavailable": "That position is not available yet. Try seeking again.",
+  "playback.engine.networkInterrupted": "The media connection was interrupted. Verifying another route.",
+  "playback.engine.mediaUnavailable": "This media could not be played. Check its format or try again.",
+  "playback.engine.invalidAddress": "Invalid media address.",
+  "playback.engine.restoredPositionUnavailable": "Connection restored, but the retained position is not available. Your playback session was not replaced.",
+  "playback.engine.previousPositionUnavailable": "The previous playback position is unavailable on this connection. Your position has been retained.",
+  "playback.engine.invalidSubtitleCommand": "The subtitle command is invalid.",
+  "playback.engine.foreignSubtitleAddress": "The subtitle address does not belong to this playback session.",
+
   ...systemMessages,
   ...accountMessages,
   'listening.rewound': 'Rewound {seconds} seconds',
