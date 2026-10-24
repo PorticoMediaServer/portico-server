@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {decodeBrowseLibraryResponse} from '../../contracts/src/decoders.ts';
 import {schemas} from '../../contracts/src/schemas.ts';
+import {defaultI18n} from '../../i18n/src/index.ts';
 import {BrowseQueryBuilder, BrowseQueryError, browseContextFacetsPath, browseCountsRequest, parseBrowseCapabilities, parseBrowseNode, parseBrowseResult, validateBrowseQuery, type BrowseCapabilities, type BrowseFieldCapability, type BrowseNode} from '../src/browse.ts';
 import {validateHomeSeeAll} from '../src/home.ts';
 import {parseContentSeeAll} from '../src/library-content.ts';
+import {PersonalSavedService} from '../src/personal-saved.ts';
+import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
 
 /**
  * Relative recency (`within-last-days`) crosses four layers, and they do not all say
@@ -26,8 +29,9 @@ import {parseContentSeeAll} from '../src/library-content.ts';
  *
  * The same window crosses every other server-sourced boundary verbatim — the
  * published vocabulary and its quick filters, a See all destination, a Home row's
- * See all, a counts request and a facet link — and none of them turns it into a
- * date computed from the clock.
+ * See all, a counts request, a facet link and a saved view's stored definition —
+ * and none of them turns it into a date computed from the clock. Only the
+ * executable and rendering paths check it against the published vocabulary.
  */
 
 const OPERATOR = 'within-last-days';
@@ -63,6 +67,23 @@ function page(query: BrowseNode | null): any {
 }
 
 const queryError = (path: string) => (error: unknown) => error instanceof BrowseQueryError && error.code === 'invalid_query' && error.field === path;
+
+/** A server vocabulary carrying the relative window, one operator it does not know and
+ * one quick filter this app cannot read. */
+const vocabulary = {
+  library: {id: 'library', name: 'Library', kind: 'movie', defaultView: 'browse'},
+  pivots: [{id: 'movies', labelKey: 'browse.pivot.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true, filters: ['dateAdded', 'year']}],
+  fields: [
+    {id: 'dateAdded', labelKey: 'browse.field.dateAdded', type: 'date', controlHint: 'date-range', operators: [OPERATOR, 'within-last-weeks', 'at-least'], applicableKinds: ['movie']},
+    {id: 'year', labelKey: 'browse.field.year', type: 'number', controlHint: 'number-range', operators: ['at-least', 'between'], applicableKinds: ['movie']},
+  ],
+  sorts: [{id: 'added', labelKey: 'sort.added', directions: ['asc', 'desc'], defaultDirection: 'desc', applicableKinds: ['movie']}],
+  quickFilters: [
+    {id: 'recent', labelKey: 'filter.quick.recent', query: {field: 'dateAdded', operator: OPERATOR, value: 30}},
+    {id: 'invented', labelKey: 'filter.quick.invented', query: {field: 'dateAdded', operator: 'within-last-weeks', value: 4}},
+  ],
+  queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000},
+};
 
 test('the published relative window is exactly the three date fields, in whole days from 1 to 36500', () => {
   assert.deepEqual([...relative.properties.field.enum].sort(), [...DATE_FIELDS].sort());
@@ -162,21 +183,7 @@ test('every operator the published predicate shape can express is structurally r
 });
 
 test('the published vocabulary keeps the relative operator and drops only what the grammar cannot read', () => {
-  const published = {
-    library: {id: 'library', name: 'Library', kind: 'movie', defaultView: 'browse'},
-    pivots: [{id: 'movies', labelKey: 'browse.pivot.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true, filters: ['dateAdded', 'year']}],
-    fields: [
-      {id: 'dateAdded', labelKey: 'browse.field.dateAdded', type: 'date', controlHint: 'date-range', operators: [OPERATOR, 'within-last-weeks', 'at-least'], applicableKinds: ['movie']},
-      {id: 'year', labelKey: 'browse.field.year', type: 'number', controlHint: 'number-range', operators: ['at-least', 'between'], applicableKinds: ['movie']},
-    ],
-    sorts: [{id: 'added', labelKey: 'sort.added', directions: ['asc', 'desc'], defaultDirection: 'desc', applicableKinds: ['movie']}],
-    quickFilters: [
-      {id: 'recent', labelKey: 'filter.quick.recent', query: {field: 'dateAdded', operator: OPERATOR, value: 30}},
-      {id: 'invented', labelKey: 'filter.quick.invented', query: {field: 'dateAdded', operator: 'within-last-weeks', value: 4}},
-    ],
-    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 10000},
-  };
-  const caps = parseBrowseCapabilities(published);
+  const caps = parseBrowseCapabilities(vocabulary);
   // An operator this app does not know leaves the field's own list; the relative one stays.
   assert.deepEqual(caps.fields.find(field => field.id === 'dateAdded')?.operators, [OPERATOR, 'at-least']);
   // A quick filter carrying a relative window is offered with its query intact; one the
@@ -215,4 +222,29 @@ test('a counts or facets request carries the relative window unchanged, never a 
   assert.deepEqual(later, first);
   assert.equal(JSON.stringify(later).includes(OPERATOR), true);
   assert.equal(/20\d\d-\d\d-\d\d/.test(JSON.stringify(later)), false);
+});
+
+test('a saved view is transport for the query it stores, and rendering withholds what it cannot build', async () => {
+  const forbidden = {field: 'year', operator: OPERATOR, value: 30};
+  const definition = {libraryId: 'library', pivot: 'movies', query: forbidden, sort: [{field: 'added', direction: 'desc'}], presentation: 'grid'};
+  const writes: any[] = [];
+  const directory = () => ({serverId: 'server', viewerFence: 'fence', revision: 1, nextCursor: '', resources: [{serverId: 'server', viewerFence: 'fence', id: 'year-window', kind: 'view', name: 'Year', summary: '', visibility: 'private', revision: 1, role: 'owner', entryCount: 0, actions: ['pin', 'update', 'delete'], status: 'ready', invalidComponents: [], pinned: false, pinRevision: 0, shares: [], definition}]});
+  const service = new PersonalSavedService(
+    {request: async (_path: string, method?: string, body?: any) => {
+      if (method === 'GET') return directory();
+      writes.push(body);
+      return {serverId: 'server', viewerFence: 'fence', receipt: {operationId: body.operationId, resourceId: 'year-window', revision: 2, deleted: false}};
+    }},
+    {serverId: 'server', viewerId: 'viewer'},
+    async () => '00000000-0000-4000-8000-000000000001',
+  );
+  await service.select({view: 'views'});
+  // The directory is transport: the server owns execution and validation, so the
+  // definition it stored is kept verbatim, including a window the contract cannot express.
+  assert.deepEqual(service.getSnapshot().resources[0]?.definition, definition);
+  assert.equal(await service.mutate({action: 'create', kind: 'view', name: 'Year', definition: definition as never}), true);
+  assert.deepEqual(writes[0].definition, definition);
+  service.dispose();
+  // Rendering is the guarded side: the summary is withheld rather than mislabelled as recency.
+  assert.equal(savedViewSummary(definition as never, parseBrowseCapabilities(vocabulary), defaultI18n), undefined);
 });
