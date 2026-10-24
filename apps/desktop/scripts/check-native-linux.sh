@@ -36,6 +36,8 @@ if [ "$PORTICO_NATIVE_CHECK" = retirement ]; then
   xvfb-run -a -s "-screen 0 800x600x24" cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib shell::surface::tests -- --test-threads=1
 elif [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   python3 apps/desktop/test/native-fixtures.py
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib boundary::tests
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib download_receipt::tests
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
   cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::wavpack_tests -- --ignored --test-threads=1
