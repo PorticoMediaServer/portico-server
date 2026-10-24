@@ -28,7 +28,7 @@ export function HostedSetupApproval({serverName, address, accountName, requested
   const steps = <div className={styles.steps} aria-label={t('web.setup.stepsLabel')}>
     <Step state="done" number={<Icon name="i-check" size={18}/>} title={t('web.setup.stepServer')} body={serverName}/>
     <Step state={approved ? 'done' : 'current'} number={approved ? <Icon name="i-check" size={18}/> : 2} title={t('web.setup.stepAccount')}
-      body={approved ? t('web.claim.approved') : t('web.setup.stepAccountBody')}/>
+      body={approved ? t('web.claim.approved') : t('web.claim.approvalStep')}/>
     <Step state="next" number={3} title={t('web.setup.stepLibrary')} body={t('web.setup.stepLibraryBody')}/>
   </div>;
   if (error && !approved) return <div className={styles.host}>
@@ -43,7 +43,7 @@ export function HostedSetupApproval({serverName, address, accountName, requested
       <p className={styles.okline}><Icon name="i-okc" size={20}/>{t('web.claim.connectedTitle')}</p>
       <h1>{t('web.setup.youOwn', {server: serverName})}</h1>
       <p className={styles.lede}>{t('web.claim.connected', {server: serverName})} {t('web.claim.nextFirstLibrary')}</p>
-      <div className={styles.btnRow}><Button variant="primary" size="hero" loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
+      <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
       <ServicesQuiet>{t('web.claim.signedInAs', {account: accountName})}</ServicesQuiet>
     </AuthStage>
     {steps}

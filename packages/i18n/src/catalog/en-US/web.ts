@@ -603,6 +603,7 @@ export const webMessages = {
   'web.claim.nextFirstLibrary': 'Next, add your first library.',
   'web.claim.signedInAs': 'You’re signed in there as {account}, the owner. Anyone you invite signs in on web.getportico.tv with their own Portico Account.',
   'web.claim.approved': 'Approved',
+  'web.claim.approvalStep': 'Approve this server',
   'web.claim.approve': 'Approve',
   'web.claim.deny': 'Deny',
   'web.claim.loading': 'Looking up this server',

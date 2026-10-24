@@ -45,7 +45,7 @@ try {
     await page.goto(`${origin}/dev/setup/setup.html${id === '3' ? '?frame=3' : id === '2b' || id === '2c' ? `?approval=${id === '2c' ? 'approved' : 'pending'}` : ''}`, {waitUntil: 'networkidle'});
     if (prepare) await prepare();
     await page.evaluate(async () => {await document.fonts.ready; await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));});
-    await page.mouse.move(1, 1); await page.evaluate(() => document.activeElement?.blur());
+    await page.mouse.move(1, 1);
     await page.screenshot({path: join(output, `${name}-build.jpg`), type: 'jpeg', quality: 94});
     await page.route('**/__setup-reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml(id)}));
     await page.goto(`${origin}/__setup-reference__`, {waitUntil: 'networkidle'});
