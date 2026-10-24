@@ -88,6 +88,7 @@ async function walk(page, viewportName) {
   const bookText = () => page.evaluate(() => [document.body.innerText,
     ...Array.from(document.querySelectorAll('iframe'), frame => { try { return frame.contentDocument?.body?.innerText ?? ''; } catch { return ''; } })].join('\n'));
   const settle = async (ms = 350) => page.waitForTimeout(ms);
+  let choseProfileAt = 0, chosenProfile = '';
   const signIn = async () => {
     await page.goto(base + '/sign-in', {waitUntil: 'domcontentloaded'});
     const user = page.locator('input[name=username]');
@@ -95,7 +96,20 @@ async function walk(page, viewportName) {
     await user.fill(creds.username);
     await page.locator('input[name=password]').fill(creds.password);
     await page.locator('form button[type=submit]').click();
-    await page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000});
+    // A signed-in account with more than one profile meets the drawn chooser;
+    // choose the main one, then record the exact moment it was chosen so a
+    // fast Settings entry can be measured against it.
+    const main = page.getByText(/Main profile/i).first();
+    await Promise.race([
+      page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000}),
+      main.waitFor({timeout: 30000}).catch(() => {}),
+    ]).catch(() => {});
+    if (await main.count()) {
+      await main.click();
+      await page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000});
+      choseProfileAt = Date.now();
+      chosenProfile = 'main';
+    }
     await settle(1200);
   };
   await step('sign-in', async () => { await signIn(); return {path: new URL(page.url()).pathname}; });
@@ -106,6 +120,20 @@ async function walk(page, viewportName) {
   });
 
   // Search: type, wait for results, open one, return, then the no-match state.
+
+  await step('settings-fast-entry', async () => {
+    const wait = Number(process.env.PORTICO_FLOW_POST_CHOICE_WAIT_MS ?? '0');
+    if (wait > 0) await settle(wait);
+    const started = Date.now();
+    await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
+    await settle(1500);
+    const body = await text();
+    const serverScope = /General/.test(body) && /Dashboard/.test(body);
+    if (!serverScope) throw new Error('fast Settings entry fell back to account scope: ' + excerpt(body, 300));
+    return {serverScope, sinceChoiceMs: choseProfileAt ? started - choseProfileAt : null, wait,
+      profile: chosenProfile || 'none', text: excerpt(body, 400)};
+  });
+
   await step('search-results', async () => {
     await page.goto(base + '/search', {waitUntil: 'domcontentloaded'});
     const field = page.locator('input[type=search]');

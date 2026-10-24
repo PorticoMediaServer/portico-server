@@ -301,6 +301,9 @@ def main():
         setup.post('/v1/setup/finish', {'revision': str(state['revision'])})
         signed = setup.post('/v1/direct/sign-in', {'username': 'owner', 'password': password})
         api.token = signed['session']['accessToken']
+        # A second, non-primary profile so the browser sign-in meets the drawn
+        # profile chooser, exactly like the demo's account.
+        api.post('/v1/direct/profiles', {'name': 'Review', 'art': 'blue'}, (201,))
         api.call('PUT', '/v1/me/devices/current/capabilities', e2e.capabilities(), (204,))
         console = api.get('/v1/admin/console/settings')
         values = console['data']['requested']
