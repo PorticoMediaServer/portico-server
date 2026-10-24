@@ -785,6 +785,7 @@ export const settingsSpecMessages = {
   "next.settingsSpec.account.device.groups.2.rows.0.label": "Now playing",
   "next.settingsSpec.account.device.groups.2.rows.0.control.itemAction.label": "Pause",
   "next.settingsSpec.account.device.groups.3.rows.0.label": "Server",
+  "next.settingsSpec.account.device.groups.3.rows.0.help": "Connected to {server}.",
   "next.settingsSpec.account.device.groups.3.rows.0.control.label": "Switch server…",
   "next.settingsSpec.account.device.groups.4.rows.0.label": "Downloads",
   "next.settingsSpec.account.device.groups.4.rows.0.control.label": "Open Downloads",
