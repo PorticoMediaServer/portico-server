@@ -19,7 +19,7 @@ import {createReport, assert, blocked} from '../lib/report.mjs';
 import {loadCredentials, redactor} from '../lib/creds.mjs';
 import {
   loadPlaywright, launch, Evidence, settle, clickAny, findAny, bodyText,
-  samplePlayback, playbackEvidence, surfaceState,
+  samplePlayback, playbackEvidence, surfaceState, watchSessions,
 } from '../lib/page.mjs';
 
 const origin = (process.env.SMOKE_ORIGIN || 'https://demo.getportico.tv').replace(/\/$/, '');
@@ -152,6 +152,7 @@ async function main() {
   const evidence = new Evidence(out);
   const apiState = {};
   const api = watchApi(firstPage, [], apiState);
+  const sessions = watchSessions(firstPage);
   let page = firstPage;
   page.__smokeErrors = [];
   page.on('pageerror', error => page.__smokeErrors.push(String(error).slice(0, 200)));
@@ -562,7 +563,7 @@ async function main() {
             {calls});
         }
         return {detail: `decoded ${verdict.width}x${verdict.height}, advanced ${verdict.advanced.toFixed(1)}s; media ${media.map(m => m.status).join(',')}; quality control ${quality ? 'used' : 'not drawn'}`,
-          evidence: {screenshot: await evidence.shot(page, 'playback-transcode'), readings: readings.slice(0, 3)}};
+          evidence: {screenshot: await evidence.shot(page, 'playback-transcode'), readings: readings.slice(0, 3), sessions: sessions.slice(-4)}};
       });
     }
 
@@ -764,7 +765,7 @@ async function main() {
               new Error(`tuning ${label} did not decode: ${verdict.reason}`), {readings: readings.slice(0, 4)});
           }
         }
-        return {detail: `${channels} channels; ${tuned}`, evidence: {screenshot: await evidence.shot(page, 'live'), tuned}};
+        return {detail: `${channels} channels; ${tuned}`, evidence: {screenshot: await evidence.shot(page, 'live'), tuned, sessions: sessions.slice(-4)}};
       });
     }
 

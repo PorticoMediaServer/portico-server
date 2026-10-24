@@ -205,3 +205,49 @@ export async function surfaceState(page) {
     };
   });
 }
+
+/**
+ * The safe projection of a playback session body: what the player was given, without the grant,
+ * the locator or any query. Used by the live and transcode checks so a later analysis has the
+ * presentation fields instead of only a status code.
+ */
+export function projectSession(body) {
+  if (!body || typeof body !== 'object') return null;
+  const presentation = body.presentation || {};
+  const pathPrefix = value => {
+    if (typeof value !== 'string' || !value) return null;
+    try { return new URL(value, 'http://x').pathname.split('/').slice(0, 4).join('/'); } catch { return 'unparsable'; }
+  };
+  const linear = presentation.linear;
+  return {
+    state: body.state,
+    generation: body.generation,
+    mode: presentation.mode,
+    presentationGeneration: presentation.generation,
+    urlPresent: typeof presentation.url === 'string' && presentation.url.length > 0,
+    urlPathPrefix: pathPrefix(presentation.url),
+    linearPresent: !!linear,
+    linear: linear ? {
+      state: linear.state,
+      errorCode: linear.errorCode ?? linear.error_code ?? null,
+      windowStartMs: linear.windowStartMs ?? null,
+      windowEndMs: linear.windowEndMs ?? null,
+      liveEdgeMs: linear.liveEdgeMs ?? null,
+    } : null,
+  };
+}
+
+/** Records playback-session responses with the projected presentation and a UTC timestamp. */
+export function watchSessions(page, sink = []) {
+  page.on('response', async response => {
+    const url = new URL(response.url());
+    if (!url.pathname.startsWith('/v1/playback/sessions')) return;
+    const entry = {at: new Date().toISOString(), status: response.status(), method: response.request().method(), path: url.pathname};
+    if (response.status() === 200) {
+      try { entry.session = projectSession(await response.json()); } catch { entry.bodyUnreadable = true; }
+    }
+    sink.push(entry);
+    if (sink.length > 20) sink.shift();
+  });
+  return sink;
+}
