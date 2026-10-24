@@ -12,3 +12,5 @@ func syncDirectory(path string) error {
 	defer file.Close()
 	return file.Sync()
 }
+
+func syncDirectoryHandle(file *os.File) error { return file.Sync() }

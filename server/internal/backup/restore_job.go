@@ -24,6 +24,13 @@ type RestoreJob struct {
 // StartRestore returns immediately. Copy and integrity work keep their own
 // lifetime, so an HTTP timeout or a disconnected browser cannot interrupt them.
 func (s *Service) StartRestore(ctx context.Context, source Source, operation string) (string, error) {
+	return s.StartRestoreWithPassphrase(ctx, source, operation, "")
+}
+
+func (s *Service) StartRestoreWithPassphrase(ctx context.Context, source Source, operation, passphrase string) (string, error) {
+	if len(passphrase) > 1024 {
+		return "", ErrInvalid
+	}
 	if !validOperationID(operation) {
 		return "", ErrInvalid
 	}
@@ -71,7 +78,7 @@ func (s *Service) StartRestore(ctx context.Context, source Source, operation str
 	s.restoreJob = &RestoreJob{JobID: id, Phase: "queued"}
 	s.mu.Unlock()
 	supervise.Go("backup.restore", func() {
-		result, err := s.Stage(context.WithoutCancel(ctx), source)
+		result, err := s.StageWithPassphrase(context.WithoutCancel(ctx), source, passphrase)
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if err != nil {

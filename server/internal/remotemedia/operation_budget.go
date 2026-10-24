@@ -42,6 +42,16 @@ func (b *OperationBudget) Counts() OperationCounts {
 	return OperationCounts{Capacity: cap(b.slots), Active: b.active, Peak: b.peak}
 }
 
+// Context is resource lifetime only, never an actor/session or content grant.
+// A provisional process sharing this source's budget must physically retire
+// with that budget instead of outliving a revoked source/profile incarnation.
+func (b *OperationBudget) Context() context.Context {
+	if b == nil {
+		return nil
+	}
+	return b.life
+}
+
 func (b *OperationBudget) enter(ctx context.Context) (context.Context, func(), error) {
 	if b == nil || b.life == nil || cap(b.slots) < 1 || ctx == nil {
 		return nil, nil, ErrPolicy
