@@ -5,6 +5,7 @@ import {once} from 'node:events';
 import {readdir} from 'node:fs/promises';
 import {withMeasurementBrowser} from './browser.mjs';
 import {compareScreens} from './compare.mjs';
+import {applyControlledState} from './controlled-state.mjs';
 
 // Public synthetic measurement fixture, never a product screen or approved design.
 const html = `<!doctype html><html><style>
@@ -32,7 +33,7 @@ test('real browser measures the whole viewport and protects source, secret and n
     const measured = await withMeasurementBrowser({scratch: process.env.TMPDIR, executable,
       viewport: {width: 800, height: 600, deviceScaleFactor: 1}, allowedOrigins: [origin]}, async browser => {
       await browser.navigate(origin, 'main');
-      await browser.evaluate('document.querySelector("input[name=password]").focus()');
+      await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
       const screen = await browser.measure('main');
       assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
       assert.equal(screen.scope, 'screen'); assert.equal(screen.fullViewport, true);
@@ -84,7 +85,7 @@ test('real browser measures the whole viewport and protects source, secret and n
     await withMeasurementBrowser({scratch: process.env.TMPDIR, executable,
       viewport: {width: 800, height: 600, deviceScaleFactor: 2}, allowedOrigins: [origin]}, async browser => {
       await browser.navigate(origin, 'main');
-      await browser.evaluate('document.querySelector("input[name=password]").focus()');
+      await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
       const dense = await browser.measure('main');
       assert.equal(dense.viewport.deviceScaleFactor, 2, 'actual density is preserved');
       assert.deepEqual(dense.root, measured.root, 'DOM reports unchanged CSS logical bounds');

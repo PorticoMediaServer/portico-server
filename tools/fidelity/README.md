@@ -88,3 +88,23 @@ Native and desktop producers use the same [measurement interface](NATIVE-CONTRAC
 and `compare-files.mjs` CLI. Native dump ownership stays with its producer;
 logical geometry, actual pixel ratio, unavailable facts and explicit drawn
 focus states are handled without a second comparator.
+
+## Controlled state adapters and pending copy baseline
+
+`run-web.mjs --adapter /external/state.json` accepts a declarative adapter using
+existing genuine DEV entries. Optional `stateSteps` use real click/insertText
+browser events on unique visible public-fixture selectors; arbitrary evaluation,
+DOM/style rewrites and direct focus calls are not state preparation. Explicit
+`expectations` check actual focused input type/length and, where applicable,
+native-caret eligibility. Unrelated Kit states have no implicit auth4 password
+requirement. An optional readySelector waits for the genuine mounted specimen;
+readiness errors stay unmeasured. It never creates an alternate renderer.
+
+The pending player Info string baseline includes the existing PlaybackInfo copy
+slots inFile/playingHere/routes/sections/fields/routeName/originalValue and the
+canonical projection's reason/loss/network/screen/output/shown, DV conversion
+and unit patterns. Map approved frame text through the sole strings extractor
+when that area is reached. Missing catalogue bindings remain explicit; no copied
+test words, new fallback copy or parallel extractor. The Info domain owner binds
+the resulting published catalogue keys. This queue entry is not a mapping or a
+screen measurement. Relative Browse date and Live Series rules remain excluded.
