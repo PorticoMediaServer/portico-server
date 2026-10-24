@@ -27,7 +27,7 @@
 
 .name {
   font-size: var(--type-body-size);
-  font-weight: var(--type-body-strong-weight);
+  font-weight: calc(var(--type-body-strong-weight) + 50);
   overflow-wrap: anywhere;
 }
 

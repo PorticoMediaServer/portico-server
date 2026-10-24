@@ -88,6 +88,8 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-slow: 320ms;
   --font: 'Portico Sans', 'Avenir Next', 'Avenir', system-ui, sans-serif;
+  /* The pinned account frame draws Manrope; keep that page's font named. */
+  --font-manrope: 'Manrope', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
