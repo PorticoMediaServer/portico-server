@@ -325,6 +325,7 @@ export function decodeGetSavedResourcesIdResponse(input: unknown): types.GetSave
 export function decodeGetSavedResourcesIdContentResponse(input: unknown): types.GetSavedResourcesIdContentResponse { return decode("GetSavedResourcesIdContentResponse", input) as types.GetSavedResourcesIdContentResponse; }
 export function decodeGetSavedResourcesIdShareCandidatesResponse(input: unknown): types.GetSavedResourcesIdShareCandidatesResponse { return decode("GetSavedResourcesIdShareCandidatesResponse", input) as types.GetSavedResourcesIdShareCandidatesResponse; }
 export function decodeGetScanIssuesResponse(input: unknown): types.GetScanIssuesResponse { return decode("GetScanIssuesResponse", input) as types.GetScanIssuesResponse; }
+export function decodeGetSearchGenresResponse(input: unknown): types.GetSearchGenresResponse { return decode("GetSearchGenresResponse", input) as types.GetSearchGenresResponse; }
 export function decodeGetSearchHistoryResponse(input: unknown): types.GetSearchHistoryResponse { return decode("GetSearchHistoryResponse", input) as types.GetSearchHistoryResponse; }
 export function decodeGetSeasonsIdEpisodesResponse(input: unknown): types.GetSeasonsIdEpisodesResponse { return decode("GetSeasonsIdEpisodesResponse", input) as types.GetSeasonsIdEpisodesResponse; }
 export function decodeGetServerResponse(input: unknown): types.GetServerResponse { return decode("GetServerResponse", input) as types.GetServerResponse; }
