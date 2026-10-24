@@ -15,7 +15,7 @@ import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {Icon} from '../../kit/Icon';
 import type {SearchBindings} from './bindings';
-import type {SearchOnNowCard} from './on-now';
+import {onNowTime, type SearchOnNowCard} from './on-now';
 import {appendedWindow} from './window';
 import styles from './search.module.css';
 import {TopResult} from './TopResult';
@@ -26,13 +26,10 @@ import {useShellWidth} from '../../shell/viewport';
 import {RecentSearches} from './RecentSearches';
 import {nowNext} from '@core/guide/index.ts';
 import {channelTint, type FactPart} from '@portico/client-core/kit-model';
-import {serviceI18n} from '@core/presentation/service-text.ts';
 import {regionPreferences} from '@core/preference-effects.ts';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
-const searchTimezone = () => serviceI18n().region.timeZone;
-const onNowTime = (at: number) => new Intl.DateTimeFormat(locale(), {hour: 'numeric', minute: '2-digit', timeZone: searchTimezone()}).format(new Date(at));
 function onNowProgramme(card: SearchOnNowCard, now: number) {
   const current = nowNext(card.programmes, now), programme = current.now;
   if (!programme) return {title: t('guide.noInformation'), facts: [] as readonly FactPart[]};

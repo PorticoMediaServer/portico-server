@@ -1,6 +1,10 @@
 import {legacyGuideSource, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {fetchGuideSourceSummaries} from '@core/guide/directory.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
+import {serviceI18n} from '@core/presentation/service-text.ts';
+
+/** Programme clock through the confirmed catalogue: formats locale, hour cycle and zone. */
+export const onNowTime = (at: number) => serviceI18n().time(at);
 
 export type SearchOnNowCard = Readonly<{
   channel: Readonly<{sourceId: string; id: string; name: string; number?: string; mark?: Readonly<{text: string; seed: string}>; logoUrl?: string}>;
