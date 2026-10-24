@@ -266,6 +266,12 @@ func (s *Service) MusicRadioBatch(viewer Viewer, request RadioBatchRequest) (Rad
 		// a one-artist/one-song library, relaxing this is the only way to keep
 		// an authorized radio going; no unavailable placeholder is invented.
 		for i, item := range pool {
+			// Artist variety must not revive a recently played or excluded
+			// occurrence while a fresh, unexcluded song remains. Relax the
+			// artist constraint within the best available freshness tier first.
+			if item.excluded != pool[0].excluded || (item.recent > 0) != (pool[0].recent > 0) {
+				continue
+			}
 			if !radioOverlap(lastArtists, item.artists) {
 				chosen = i
 				break

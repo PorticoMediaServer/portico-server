@@ -45,6 +45,11 @@ func TestMusicRadioRankingUsesCurrentProfileHistoryVisibilityAndArtists(t *testi
 	read(near.Public, true) // another profile's history is never borrowed.
 	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms) VALUES('mine','local','account','profile','Fixture',?,'music',7,'Near',?,?,1000)`, near.ID, now.Add(-time.Hour).UnixMilli(), now.Add(-time.Hour).UnixMilli())
 	read(far.Public, true)
+	c.Attributes(far.ID, "label", "temporarily-blocked")
+	c.Drain()
+	viewer.Restrictions = identity.ContentRestrictions{BlockedLabels: []string{"temporarily-blocked"}}
+	read(same.Public, true) // prefer a fresh song over reviving a recent different artist.
+	viewer.Restrictions = identity.ContentRestrictions{}
 	c.Exec(`DELETE FROM play_history WHERE playback_id='mine'`)
 	c.Attributes(near.ID, "label", "private")
 	c.Drain()

@@ -22831,6 +22831,9 @@ export const schemas = {
   },
   "GetAdminLibrariesIdSonicAnalysisResponse": {
     "properties": {
+      "available": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -22916,6 +22919,7 @@ export const schemas = {
     },
     "required": [
       "libraryId",
+      "available",
       "enabled",
       "revision",
       "policyAllows",
@@ -151434,6 +151438,9 @@ export const schemas = {
   },
   "PostAdminLibrariesIdSonicAnalysisRetryResponse": {
     "properties": {
+      "available": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -151519,6 +151526,7 @@ export const schemas = {
     },
     "required": [
       "libraryId",
+      "available",
       "enabled",
       "revision",
       "policyAllows",
@@ -177959,6 +177967,9 @@ export const schemas = {
   },
   "PutAdminLibrariesIdSonicAnalysisResponse": {
     "properties": {
+      "available": {
+        "type": "boolean"
+      },
       "done": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -178044,6 +178055,7 @@ export const schemas = {
     },
     "required": [
       "libraryId",
+      "available",
       "enabled",
       "revision",
       "policyAllows",
