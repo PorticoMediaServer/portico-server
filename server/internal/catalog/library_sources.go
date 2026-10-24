@@ -67,7 +67,7 @@ type TrickplaySettings struct {
 const (
 	DefaultTrickplayIntervalSeconds = 10
 	DefaultTrickplayTileWidth       = 320
-	DefaultTrickplayMaxTiles        = 3600
+	DefaultTrickplayMaxTiles        = 1080
 )
 
 // Normalized returns the effective production geometry. Callers never see a
@@ -128,7 +128,21 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 	}
 	switch p.Tier {
 	case "file_list_only":
-		p.Operations = []string{}
+		// Preserve independent picture choices while all content reads are off.
+		// The runtime's Allows gate still refuses every operation for this tier.
+		seen := map[string]bool{}
+		for _, op := range p.Operations {
+			if seen[op] || (op != "probe" && op != "trickplay" && op != "chapter_images") {
+				return p, ErrAdminQuery
+			}
+			seen[op] = true
+		}
+		if (seen["trickplay"] || seen["chapter_images"]) && !seen["probe"] {
+			return p, ErrAdminQuery
+		}
+		if p.Operations == nil {
+			p.Operations = []string{}
+		}
 	case "basic":
 		p.Operations = append([]string{}, BasicScanOperations...)
 	case "complete":
@@ -226,6 +240,24 @@ func (s *Service) LibrarySources(ctx context.Context, library string) ([]Library
 	}
 	return out, rows.Err()
 }
+
+// LibrarySourcesTx is the same bounded source projection in a caller's read snapshot.
+func LibrarySourcesTx(ctx context.Context, tx *sql.Tx, library string) ([]LibrarySource, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT `+sourceColumns+` FROM library_sources WHERE library_id=? ORDER BY id LIMIT 65`, library)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LibrarySource{}
+	for rows.Next() {
+		v, e := scanLibrarySource(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
 func (s *Service) LibrarySource(ctx context.Context, id string) (LibrarySource, error) {
 	return scanLibrarySource(s.read().QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM library_sources WHERE id=?`, id))
 }
@@ -268,6 +300,9 @@ func configurationFence(ctx context.Context, tx *sql.Tx, library string, expecte
 func (s *Service) SaveSource(ctx context.Context, library, id string, input SourceSettings, authorize func(*sql.Tx) error) (LibrarySource, error) {
 	var result LibrarySource
 	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" {
+		input.Name = filepath.Base(filepath.Clean(input.Path))
+	}
 	if input.Name == "" || len(input.Name) > 100 || !utf8.ValidString(input.Name) || strings.IndexFunc(input.Name, unicode.IsControl) >= 0 || input.Classification != "local" && input.Classification != "network" || input.IntervalSeconds != 0 && (input.IntervalSeconds < 900 || input.IntervalSeconds > 365*86400) {
 		return result, ErrAdminQuery
 	}
