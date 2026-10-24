@@ -4,6 +4,16 @@ use crate::shutdown::ShutdownState;
 use tauri::{Manager,WebviewWindow};
 use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::EqualizerStore};
 
+/// Called by the Linux executable before Tauri/GTK or any application threads.
+#[cfg(target_os="linux")]
+pub fn configure_linux_webview(){
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none(){
+        // SAFETY: main invokes this before initializing any runtime or threads.
+        unsafe{std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER","1");}
+    }
+    crate::spike::record("linux-dmabuf-disabled",if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref()==Ok("1"){0}else{-1});
+}
+
 #[cfg(target_os="linux")]
 #[path="surface_linux.rs"] mod surface;
 #[cfg(target_os="macos")]
@@ -351,7 +361,7 @@ async fn desktop_equalizer_change(window:WebviewWindow,change:EqualizerChange)->
 }
 #[tauri::command]
 fn desktop_window_state(window:WebviewWindow,state:tauri::State<Arc<crate::window::ChromeState>>)->Result<crate::window::WindowSnapshot>{
-    caller(&window)?;crate::window::snapshot(&window,&state)
+    caller(&window)?;let result=crate::window::snapshot(&window,&state);crate::spike::record("window-state-confirmed",if result.is_ok(){0}else{-1});result
 }
 #[tauri::command]
 fn desktop_window_action(window:WebviewWindow,action:crate::window::WindowAction)->Result<()>{

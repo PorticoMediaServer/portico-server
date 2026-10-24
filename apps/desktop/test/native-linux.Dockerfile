@@ -10,6 +10,6 @@ COPY --from=rust-toolchain /usr/local/cargo /opt/portico/cargo
 COPY --from=rust-toolchain /usr/local/rustup /opt/portico/rustup
 RUN apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 update && apt-get install -y --no-install-recommends \
     build-essential pkg-config ca-certificates python3 curl \
-    libwebkit2gtk-4.1-dev libgtk-3-dev libmpv-dev ffmpeg xvfb xauth \
+    libwebkit2gtk-4.1-dev libgtk-3-dev libmpv-dev ffmpeg xvfb xauth dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /source
