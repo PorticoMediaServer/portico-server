@@ -209,3 +209,13 @@ test('music, audiobook, VOD and true channel identities have distinct supplied f
   assert.equal(playbackIdentity({...channel, programmeTitle: undefined}, 'full', env).title, 'Summit Sports');
   assert.deepEqual(parts(playbackIdentity({kind: 'audiobook', item: {id: 'b', kind: 'book', title: 'The Hobbit', author: 'J. R. R. Tolkien', narrator: 'Andy Serkis'}}, 'full', env).subtitle), [['author', 'J. R. R. Tolkien', 'identity'], ['narrator', 'Read by Andy Serkis', 'context']]);
 });
+
+test('Reading card identity never acquires audiovisual runtime, narration or progress',()=>{
+ for(const kind of ['ebook','comic'] as const)for(const context of ['ordinary','continuation','dock'] as const){
+  const text=cardText({id:'reading',kind,title:'Actual title',author:'Accepted author',year:2026,durationSeconds:1000,positionSeconds:400,narrator:'Unrelated audio narrator'},context,env);
+  assert.equal(text.title,'Actual title');
+  assert.deepEqual(parts(text.caption),[['author','Accepted author','identity']]);
+  assert.deepEqual(parts(text.detail),[['year','2026','value']]);
+  assert.equal(text.progress,undefined);
+ }
+});
