@@ -5,7 +5,7 @@ import {createReadingHost, connectReadingHost, type ReadingHostSession} from '..
 import {parsePreferenceSnapshot} from '../src/preferences.ts';
 import {ReadingError, type ReadingManifest} from '../src/reading.ts';
 const preferences = parsePreferenceSnapshot(JSON.parse(readFileSync(new URL('../../../server/testdata/contracts/get-bootstrap.json', import.meta.url), 'utf8')).response.preferences);
-function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf') {
+function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf', beforeConnect?: (host: ReturnType<typeof createReadingHost>) => void) {
   const life = new AbortController(), sent: string[] = [], calls: string[] = [];
   const payload = Uint8Array.from({length: 170003}, (_, i) => i % 251);
   const manifest: ReadingManifest = Object.freeze({sessionId: 'session', sourceId: 'asset', itemId: 'item', revision: 'a'.repeat(64), size: payload.length, format, metadata: {title: 'Actual title'},
@@ -20,8 +20,9 @@ function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf') {
   };
   const host = createReadingHost({session: facade, channel: 'captured_unique_channel', preferences: () => preferences, initialProgress: {progress: null}, current: () => current,
     send(message) {sent.push(message); input?.(message);}, onBack() {back++;}, onSettings() {settings++;}});
+  beforeConnect?.(host);
   const connection = connectReadingHost({send: host.receive, subscribe(listener) {input = listener; return () => {input = undefined;};}});
-  return {connection, host, life, calls, payload, sent, facade, get back() {return back;}, get settings() {return settings;}, retire() {current = false; host.dispose();}};
+  return {connection, host, life, calls, payload, sent, facade, deliver(message: string) {input?.(message);}, get back() {return back;}, get settings() {return settings;}, retire() {current = false; host.dispose();}};
 }
 test('trusted bridge delivers actual source bytes in bounded chunks, metadata omission and confirmed preferences', async () => {
   for (const format of ['pdf', 'epub', 'cbz'] as const) {
@@ -61,4 +62,26 @@ test('caller cancellation aborts the actual in-flight facade callback and releas
   await new Promise<void>(resolve => setImmediate(resolve)); caller.abort();
   await assert.rejects(pending, /cancelled/); assert.equal(aborted, true);
   guest.dispose(); f.host.dispose();
+});
+
+test('a retained reader hidden before the handshake reports inactive to its first guest subscriber', async t => {
+  const f = pair('pdf', host => host.setActive(false)), guest = await f.connection.ready;
+  t.after(() => {guest.dispose(); f.host.dispose();});
+  const states: boolean[] = [], off = guest.onActive(active => states.push(active));
+  assert.deepEqual(states, [false]);
+  f.host.setActive(true); assert.deepEqual(states, [false, true]);
+  off(); f.host.setActive(false); assert.deepEqual(states, [false, true]);
+  assert.deepEqual(f.calls, [], 'activity handoff starts no source, progress or Settings request');
+});
+
+test('activity received before a guest subscribes is replayed without accepting another channel or reviving a retired guest', async t => {
+  const f = pair(), guest = await f.connection.ready;
+  t.after(() => {guest.dispose(); f.host.dispose();});
+  f.host.setActive(false); f.host.setActive(true); f.host.setActive(false);
+  f.deliver(JSON.stringify({v: 1, channel: 'another_channel_name', kind: 'active', active: true}));
+  const states: boolean[] = []; guest.onActive(active => states.push(active));
+  assert.deepEqual(states, [false]);
+  f.host.setActive(true); assert.deepEqual(states, [false, true]);
+  f.retire(); f.host.setActive(false); guest.onActive(active => states.push(active));
+  assert.equal(guest.session.signal.aborted, true); assert.deepEqual(states, [false, true]);
 });

@@ -7,12 +7,12 @@ const png=new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFc
 const active=()=>new AbortController().signal;
 function fixture(format:'epub'|'pdf'|'cbz') {
   const lifetime=new AbortController(),calls:string[]=[],revision='a'.repeat(64);
-  const manifest:ReadingManifest=Object.freeze({sessionId:'session-one',itemId:'item',sourceId:'asset',revision,format,size:100000,metadata:Object.freeze({title:'Catalogue title'}),
+  let manifest:ReadingManifest=Object.freeze({sessionId:'session-one',itemId:'item',sourceId:'asset',revision,format,size:100000,metadata:Object.freeze({title:'Catalogue title'}),
     ...format==='epub'?{resources:Object.freeze([{path:'chapter.xhtml',mime:'application/xhtml+xml',size:1}]),spine:Object.freeze(['chapter.xhtml'])}:{},
     ...format==='cbz'?{pageNames:Object.freeze(['page.png'])}:{}});
-  const session:ReaderSessionInput={manifest,signal:lifetime.signal,async headPDF(){calls.push('head');},async readRange(range){calls.push('range');return new Uint8Array(range.endExclusive-range.start);},
-    async readAsset(){calls.push('asset');return new Uint8Array([1]);},async page(index){calls.push('page');return {index,name:'page.png',bytes:png,mime:'image/png'};}};
-  return {session,lifetime,calls};
+  const session:ReaderSessionInput={get manifest(){return manifest;},signal:lifetime.signal,async headPDF(){calls.push('head');},async readRange(range){calls.push('range');return new Uint8Array(range.endExclusive-range.start);},
+    async openSequential(){calls.push('sequential');return new ReadableStream<Uint8Array>();},async readAsset(){calls.push('asset');return new Uint8Array([1]);},async page(index){calls.push('page');return {index,name:'page.png',bytes:png,mime:'image/png'};}};
+  return {session,lifetime,calls,replaceManifest(change:Partial<ReadingManifest>){manifest=Object.freeze({...manifest,...change});}};
 }
 
 test('PDF publication HEADs once and exposes only captured bounded ranges with owned bytes',async()=>{
@@ -67,4 +67,58 @@ test('resume mapping preserves null and rejects stale/wrong-source progress with
   assert.equal(publication.resumeLocation({progress:null}),null);assert.deepEqual(publication.resumeLocation(progress),{format:'pdf',page:0,progression:0});
   assert.equal(publication.resumeLocation({progress:{...progress.progress!,sourceRevision:'b'.repeat(64),stale:true}}),null);
   assert.throws(()=>publication.resumeLocation({progress:{...progress.progress!,sourceId:'other'}}),{code:'invalid_source'});assert.deepEqual(f.calls,['head']);publication.dispose();
+});
+
+test('sequential PDF publication exposes a from-start pull stream, never a range reader or eager body',async()=>{
+  const f=fixture('pdf');f.replaceManifest({sequential:true,size:6});
+  let pulls=0;const bytes=new Uint8Array([1,2,3]),input=new ReadableStream<Uint8Array>({pull(c){pulls++;if(pulls<=2)c.enqueue(bytes);else c.close();}},{highWaterMark:0});
+  f.session.openSequential=async()=>{f.calls.push('sequential');return input;};
+  const publication=await createReadingPublication(f.session);assert.equal(publication.source.read,undefined);assert.ok(Object.isFrozen(publication.source.sequential));
+  const stream=await publication.source.sequential!.open(active());assert.deepEqual(f.calls,['head','sequential']);assert.equal(pulls,0);
+  const reader=stream.getReader();const first=(await reader.read()).value!;assert.deepEqual(first,bytes);assert.notEqual(first,bytes);assert.equal(pulls,1);
+  first.fill(99);assert.deepEqual(bytes,new Uint8Array([1,2,3]));assert.deepEqual((await reader.read()).value,bytes);assert.equal((await reader.read()).done,true);
+  reader.releaseLock();assert.equal(input.locked,false);assert.equal(f.lifetime.signal.aborted,false);publication.dispose();
+});
+
+for(const retirement of ['session','publication','operation','consumer'] as const)test(`sequential publication retains cancellation after headers: ${retirement}`,async()=>{
+  const f=fixture('pdf');f.replaceManifest({sequential:true});let cancelled=0;
+  const input=new ReadableStream<Uint8Array>({cancel(){cancelled++;}},{highWaterMark:0});f.session.openSequential=async()=>input;
+  const publication=await createReadingPublication(f.session),operation=new AbortController(),stream=await publication.source.sequential!.open(operation.signal),reader=stream.getReader();
+  const pending=reader.read();
+  if(retirement==='consumer'){await reader.cancel();assert.equal((await pending).done,true);}
+  else {
+    const rejected=assert.rejects(pending);
+    if(retirement==='session')f.lifetime.abort();else if(retirement==='operation')operation.abort();else publication.dispose();
+    await rejected;
+  }
+  await Promise.resolve();assert.equal(cancelled,1);assert.equal(input.locked,false);
+  if(retirement!=='session')assert.equal(f.lifetime.signal.aborted,false);
+  reader.releaseLock();publication.dispose();
+});
+
+test('sequential publication rejects late-open bytes and identity changes before/after reads',async()=>{
+  const f=fixture('pdf');f.replaceManifest({sequential:true});let deliver!:(stream:ReadableStream<Uint8Array>)=>void,cancelled=0;
+  f.session.openSequential=async()=>new Promise(done=>deliver=done);
+  const publication=await createReadingPublication(f.session),opening=publication.source.sequential!.open(active());
+  publication.dispose();deliver(new ReadableStream({cancel(){cancelled++;}}));await assert.rejects(opening,{code:'aborted'});assert.equal(cancelled,1);
+  for(const when of ['before','during'] as const){
+    const g=fixture('pdf');g.replaceManifest({sequential:true});let enqueue!:(bytes:Uint8Array)=>void,cancelled=0;
+    const input=new ReadableStream<Uint8Array>({start(c){enqueue=bytes=>c.enqueue(bytes);},cancel(){cancelled++;}},{highWaterMark:0});g.session.openSequential=async()=>input;
+    const p=await createReadingPublication(g.session),reader=(await p.source.sequential!.open(active())).getReader();
+    if(when==='before')g.replaceManifest({revision:'b'.repeat(64)});
+    const pending=reader.read(),rejected=assert.rejects(pending,{code:'invalid_source'});
+    if(when==='during'){await Promise.resolve();g.replaceManifest({revision:'b'.repeat(64)});enqueue(new Uint8Array([1]));}
+    await rejected;assert.equal(cancelled,1);reader.releaseLock();p.dispose();
+  }
+});
+
+test('sequential publication checks exact EOF and bounded byte chunks without buffering',async()=>{
+  for(const kind of ['short','long','oversized'] as const){
+    const f=fixture('pdf'),size=kind==='oversized'?2*1024*1024:2;f.replaceManifest({sequential:true,size});let cancelled=0;
+    const input=new ReadableStream<Uint8Array>({pull(c){if(kind==='short')c.close();else c.enqueue(new Uint8Array(kind==='long'?3:1024*1024+1));},cancel(){cancelled++;}},{highWaterMark:0});f.session.openSequential=async()=>input;
+    const p=await createReadingPublication(f.session),reader=(await p.source.sequential!.open(active())).getReader();
+    await assert.rejects(reader.read(),{code:kind==='oversized'?'limit_exceeded':'invalid_source'});assert.equal(input.locked,false);assert.equal(cancelled,kind==='short'?0:1);reader.releaseLock();p.dispose();
+  }
+  const missing=fixture('pdf');missing.replaceManifest({sequential:true});delete missing.session.openSequential;await assert.rejects(createReadingPublication(missing.session),{code:'invalid_source'});assert.deepEqual(missing.calls,[]);
+  for(const format of ['epub','cbz'] as const){const f=fixture(format);f.replaceManifest({sequential:true});await assert.rejects(createReadingPublication(f.session),{code:'invalid_source'});assert.deepEqual(f.calls,[]);}
 });

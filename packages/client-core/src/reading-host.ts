@@ -54,7 +54,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
 }>) {
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
   const manifest = session.manifest, life = new AbortController(), requests = new Map<number, AbortController>();
-  let started = false, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
+  let started = false, active = true, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
   const valid = () => !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;
   const check = () => {if (!valid()) fail('cancelled');};
   const post = (value: RecordValue) => {if (valid()) send(JSON.stringify({v: 1, channel, ...value}));};
@@ -78,7 +78,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
     try {data = packet(message, 16384);} catch {return;}
     if (data.kind === 'ready') {
       if (started || !valid()) return;
-      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress}); return;
+      started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
     if (data.kind === 'cancel' && integer(data.id, 1, last)) {requests.get(data.id)?.abort(); if (transfer?.id === data.id) release(); return;}
@@ -124,7 +124,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
     })().catch(error => {if (transfer?.id === id) release(); post({kind: 'reply', id, error: errorInfo(error)});})
       .finally(() => {clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
   };
-  return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});}, setActive: (active: boolean) => {if (started) post({kind: 'active', active});}});
+  return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});}, setActive: (value: boolean) => {active = value; if (started) post({kind: 'active', active});}});
 }
 
 export type ReadingGuest = Readonly<{
@@ -137,7 +137,7 @@ export type ReadingGuest = Readonly<{
 export function connectReadingHost(transport: ReadingHostTransport): Readonly<{ready: Promise<ReadingGuest>; dispose: () => void}> {
   const life = new AbortController(), waiting = new Map<number, {resolve: (value: unknown) => void; reject: (error: unknown) => void}>();
   const listeners = new Set<() => void>(), activeListeners = new Set<(active: boolean) => void>();
-  let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, binaryTail = Promise.resolve();
+  let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, active = true, binaryTail = Promise.resolve();
   let resolveReady!: (guest: ReadingGuest) => void, rejectReady!: (error: unknown) => void;
   const ready = new Promise<ReadingGuest>((resolve, reject) => {resolveReady = resolve; rejectReady = reject;});
   void ready.catch(() => {});
@@ -186,6 +186,10 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
         const manifest: ReadingManifest = frozen(decodePostReadingSessionsResponse(data.manifest));
         snapshot = parsePreferenceSnapshot(data.preferences);
         const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
+        // Older trusted app hosts omit this optional v1 state. New hosts retain
+        // activity through Settings even before the guest has finished loading.
+        if (data.active !== undefined && typeof data.active !== 'boolean') fail();
+        active = typeof data.active === 'boolean' ? data.active : true;
         channel = data.channel; initialized = true; clearTimeout(startDeadline);
         const session: ReadingHostSession = Object.freeze({manifest, signal: life.signal,
           headPDF: async signal => {await call('head', {}, signal);},
@@ -201,13 +205,16 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
         });
         resolveReady(Object.freeze({session, initialProgress,
           preferences: Object.freeze({getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}}),
-          onActive: (listener: (active: boolean) => void) => {activeListeners.add(listener); return () => {activeListeners.delete(listener);};},
+          onActive: (listener: (active: boolean) => void) => {
+            if (life.signal.aborted) return () => {};
+            activeListeners.add(listener); listener(active); return () => {activeListeners.delete(listener);};
+          },
           back: async () => {await call('back');}, openSettings: async () => {await call('settings');}, dispose,
         }));
       } else if (initialized && data.channel === channel) {
         if (data.kind === 'retired') {dispose(new ReadingError(record(data.error) && typeof data.error.code === 'string' ? data.error.code : 'cancelled')); return;}
         if (data.kind === 'preferences') {snapshot = parsePreferenceSnapshot(data.preferences); for (const listener of [...listeners]) listener();}
-        else if (data.kind === 'active' && typeof data.active === 'boolean') {for (const listener of [...activeListeners]) listener(data.active);}
+        else if (data.kind === 'active' && typeof data.active === 'boolean') {active = data.active; for (const listener of [...activeListeners]) listener(active);}
         else if (data.kind === 'reply' && integer(data.id, 1, sequence)) {
           const pending = waiting.get(data.id); if (!pending) return;
           if (record(data.error)) pending.reject(new ReadingError(typeof data.error.code === 'string' ? data.error.code : 'reading_unavailable', integer(data.error.status, 100, 599) ? data.error.status : undefined));

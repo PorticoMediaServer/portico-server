@@ -105,6 +105,11 @@ func (f *Source) Progress() (*Progress, error) {
 	if v.Revision != f.Revision {
 		return nil, ErrChanged
 	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, g.Tx()); err != nil {
+			return nil, err
+		}
+	}
 	progress, err := progressTx(ctx, g.Tx(), identity.PersonalKey(p.Viewer), v)
 	g.Rollback()
 	if err == nil {
@@ -147,9 +152,9 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	}
 	switch f.Format {
 	case "epub":
-		e, err := OpenEPUB(ctx, f, f.Size)
+		e, err := f.epub()
 		if err != nil {
-			return nil, false, err
+			return nil, false, f.StopAndRecheck(err)
 		}
 		if location.Section != "" {
 			found := false
@@ -164,20 +169,16 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 			}
 		}
 	case "cbz":
-		c, err := OpenComic(ctx, f, f.Size)
+		c, err := f.comic()
 		if err != nil {
-			return nil, false, err
+			return nil, false, f.StopAndRecheck(err)
 		}
 		if *location.PageIndex >= int64(len(c.Names)) {
 			return nil, false, ErrInvalid
 		}
 	case "pdf":
-		var header [5]byte
-		if _, err = f.ReadAt(header[:], 0); err != nil {
+		if err = f.CheckPDF(); err != nil {
 			return nil, false, err
-		}
-		if string(header[:]) != "%PDF-" {
-			return nil, false, ErrInvalid
 		}
 	}
 	if err = f.Validate(); err != nil {
@@ -195,6 +196,11 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	}
 	if v.Revision != f.Revision {
 		return nil, false, ErrChanged
+	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return nil, false, err
+		}
 	}
 	owner := identity.PersonalKey(p.Viewer)
 	current, err := progressTx(ctx, tx, owner, v)
@@ -232,6 +238,11 @@ func (f *Source) SaveProgress(expected int64, location Location) (*Progress, boo
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, false, err
+	}
+	if f.remoteSession != nil {
+		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return nil, false, err
+		}
 	}
 	if err = g.Commit(); err != nil {
 		return nil, false, err

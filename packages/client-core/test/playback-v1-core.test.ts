@@ -543,3 +543,50 @@ test('playback options retain verified alternatives and collection successor fac
  const error=new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:2,playing:2});assert.deepEqual(error.streamLimit,{scope:'account',limit:2,playing:2});
  assert.equal(new PlaybackApiError(409,'stream_limit_reached','after_refresh',{scope:'account',limit:-1,playing:2}).streamLimit,undefined);
 });
+
+
+test('controller scoped changes reject abort-ignoring replies before the media generation loads',async()=>{
+ for(const retire of ['abort','host','play'] as const){
+  const c=clockwork(),server=new FakePlaybackServer({now:c.now}),inner=fakeHttp(server),player=new FakePlayer();
+  let hold=false,entered!:()=>void,release!:()=>void,signal:AbortSignal|undefined;
+  const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+  const ctl=new PlaybackSessionController({http:{send:async request=>{const response=await inner.send(request as never);if(hold&&request.method==='PATCH'){signal=request.signal;entered();await gate;}return response as never;}},player,timers:c,key});
+  try{await ctl.start({itemId:'movie'});const abort=new AbortController();let current=true;hold=true;
+   const pending=ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false,signal:abort.signal,isCurrent:()=>current});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
+   if(retire==='abort')abort.abort();else if(retire==='host')current=false;else await ctl.start({itemId:'other'});
+   if(retire==='abort')assert.equal(signal!.aborted,true);const loads=player.loads.length,shown=ctl.getSnapshot().session;
+   release();await rejected;assert.equal(player.loads.length,loads);assert.equal(ctl.getSnapshot().session,shown);assert.equal(ctl.getSnapshot().changing,false,retire);
+  }finally{ctl.dispose();}
+ }
+});
+
+test('controller strict ended refusal never invokes lease recovery or end-driven queue replacement',async()=>{
+ for(const status of [404,410]){
+  const c=clockwork(),server=new FakePlaybackServer({now:c.now}),inner=fakeHttp(server),player=new FakePlayer();let recovering=0,ended=0,refuse=false;
+  const ctl=new PlaybackSessionController({http:{send:async request=>refuse&&request.method==='PATCH'?{status,headers:{},body:{error:{code:'session_ended',retry:'never'}}}:await inner.send(request as never) as never},player,timers:c,key,onLeaseExpired:()=>{recovering++;},onServerEnded:()=>{ended++;}});
+  try{await ctl.start({itemId:'movie'});refuse=true;
+   await assert.rejects(ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false}),error=>error instanceof PlaybackApiError&&error.status===status);
+   await settle();assert.equal(recovering,0);assert.equal(ended,0);assert.equal(player.loads.length,1);assert.equal(ctl.getSnapshot().phase,'active');assert.equal(ctl.getSnapshot().changing,false);
+  }finally{ctl.dispose();}
+ }
+});
+
+test('a canceled controller change queued behind another command never sends its PATCH',async()=>{
+ const c=clockwork(),server=new FakePlaybackServer({now:c.now}),inner=fakeHttp(server),player=new FakePlayer();let hold=false,patches=0,entered!:()=>void,release!:()=>void;
+ const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+ const ctl=new PlaybackSessionController({http:{send:async request=>{const response=await inner.send(request as never);if(request.method==='PATCH'){patches++;if(hold){hold=false;entered();await gate;}}return response as never;}},player,timers:c,key});
+ try{await ctl.start({itemId:'movie'});hold=true;const first=ctl.setAudio('a1');await reached;
+  const abort=new AbortController(),queued=ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false,signal:abort.signal});const rejected=assert.rejects(queued,{name:'AbortError'});abort.abort();release();await first;await rejected;
+  assert.equal(patches,1);assert.equal(player.loads.length,2);assert.equal(ctl.getSnapshot().changing,false);
+ }finally{ctl.dispose();}
+});
+
+test('a retired controller change cannot adopt a 412 recovery presentation or reapply its intent',async()=>{
+ const c=clockwork(),server=new FakePlaybackServer({now:c.now}),inner=fakeHttp(server),player=new FakePlayer();let current=true,entered!:()=>void,release!:()=>void,patches=0;
+ const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+ const ctl=new PlaybackSessionController({http:{send:async request=>{const response=await inner.send(request as never);if(request.method==='PATCH'){patches++;if(response.status===412){entered();await gate;}}return response as never;}},player,timers:c,key});
+ try{const session=(await ctl.start({itemId:'movie'}))!;server.bump(session.id,{audio:{trackId:'a2'}});
+  const pending=ctl.change({subtitles:{trackId:'s1',delivery:'burn'}},{recoverEnded:false,isCurrent:()=>current});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;current=false;release();await rejected;
+  assert.equal(patches,1);assert.equal(player.loads.length,1);assert.equal(ctl.getSnapshot().session,session);
+ }finally{ctl.dispose();}
+});

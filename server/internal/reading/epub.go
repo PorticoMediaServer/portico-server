@@ -90,7 +90,10 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 		return nil, ErrInvalid
 	}
 	mime, err := a.read(ctx, "mimetype", 64)
-	if err != nil || string(mime) != "application/epub+zip" {
+	if err != nil {
+		return nil, err
+	}
+	if string(mime) != "application/epub+zip" {
 		return nil, ErrInvalid
 	}
 	b, err := a.read(ctx, "META-INF/container.xml", 256<<10)

@@ -203,6 +203,9 @@ func TestReadingPrivateCancellationAndSessionClosureStopReaders(t *testing.T) {
 	if n, err := reader.ReadAt(make([]byte, 5), 0); n != 0 || err == nil {
 		t.Fatal("cancelled request returned bytes", n, err)
 	}
+	if err := reader.Validate(); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled buffered publication fence did not reject request", err)
+	}
 	// A cancelled extent does not turn its session into a new bearer grant or
 	// reopen the old helper. Other requests acquire fresh rooted readers.
 	a, err := r.s.OpenSession(ctx, r.p, session.ID)
