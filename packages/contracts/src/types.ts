@@ -647,6 +647,8 @@ export type GetSavedResourcesIdShareCandidatesRequest = {  };
 export type GetSavedResourcesIdShareCandidatesResponse = { "candidates": Array<{ "accountId": string; "authority": string; "displayName": string; "id": string; "profileId": string }>; "nextCursor": string; "resourceId": string; "revision": number; "serverId": string; "viewerFence": string };
 export type GetScanIssuesRequest = {  };
 export type GetScanIssuesResponse = { "count": number; "hasMore": boolean; "items": Array<{ "category": string; "line": number; "messageKey": string; "path": string; "reason": string; "sequence": number; "warning": boolean }>; "jobId": string; "nextSequence": number };
+export type GetSearchGenresRequest = {  };
+export type GetSearchGenresResponse = { "genres": Array<{ "backdrop"?: { "id": string; "kind": string; "path": string }; "count": number; "covers": Array<{ "id": string; "kind": string; "path": string }>; "label": string; "value": string }>; "nextCursor"?: string; "revision": string };
 export type GetSearchHistoryRequest = {  };
 export type GetSearchHistoryResponse = { "entries": Array<{ "query": string; "updatedAt": string }>; "remembered": boolean };
 export type GetSeasonsIdEpisodesRequest = {  };
@@ -1744,6 +1746,7 @@ export type RouteContracts = {
 "get_saved_resources_id_content": { request: GetSavedResourcesIdContentRequest; response: GetSavedResourcesIdContentResponse };
 "get_saved_resources_id_share_candidates": { request: GetSavedResourcesIdShareCandidatesRequest; response: GetSavedResourcesIdShareCandidatesResponse };
 "get_scan_issues": { request: GetScanIssuesRequest; response: GetScanIssuesResponse };
+"get_search_genres": { request: GetSearchGenresRequest; response: GetSearchGenresResponse };
 "get_search_history": { request: GetSearchHistoryRequest; response: GetSearchHistoryResponse };
 "get_seasons_id_episodes": { request: GetSeasonsIdEpisodesRequest; response: GetSeasonsIdEpisodesResponse };
 "get_server": { request: GetServerRequest; response: GetServerResponse };

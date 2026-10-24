@@ -131583,6 +131583,101 @@
         ],
         "type": "object"
       },
+      "GetSearchGenresRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSearchGenresResponse": {
+        "properties": {
+          "genres": {
+            "items": {
+              "properties": {
+                "backdrop": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "item",
+                        "show"
+                      ],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "item",
+                          "show"
+                        ],
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id",
+                      "path"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label",
+                "count",
+                "covers"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "genres"
+        ],
+        "type": "object"
+      },
       "GetSearchHistoryRequest": {
         "properties": {},
         "required": [],
@@ -453851,6 +453946,172 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/search/genres": {
+      "get": {
+        "operationId": "get_search_genres",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "properties": {
+                          "backdrop": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "item",
+                                  "show"
+                                ],
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id",
+                              "path"
+                            ],
+                            "type": "object"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "covers": {
+                            "items": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "item",
+                                    "show"
+                                  ],
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id",
+                                "path"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 2,
+                            "type": "array"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "label",
+                          "count",
+                          "covers"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "genres"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read permitted video genres with selected representative artwork",
+        "x-access": "device",
+        "x-admission": "expensive",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
           "internal"
         ],
         "x-lane": "browsing",
