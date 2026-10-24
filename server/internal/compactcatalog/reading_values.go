@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -45,7 +46,7 @@ type ReadingValues struct {
 
 type ReadingRuleInput struct {
 	Item                     int64
-	SourceRoot, RelativePath string // Actual folder-source identity, not asset token.
+	SourceRoot, RelativePath string // Actual admitted library folder root, not an asset token.
 	Kind                     Kind
 }
 
@@ -55,28 +56,61 @@ type ReadingOwnerValue struct {
 }
 
 var readingTags = regexp.MustCompile(`\[[^\[\]]*\]|\([^()]*\)`)
-var readingMarkedNumber = regexp.MustCompile(`(?i)(?:^|[ _.-])(?:v(?:ol(?:ume)?\.?)?|book|#)\s*([0-9]+(?:\.[0-9]+)?)(?:$|[ _-])`)
+var readingMarkedNumber = regexp.MustCompile(`(?i)(?:^|[ _.-])(?:v(?:ol(?:ume)?\.?)?|issue|book|#)\s*([0-9]+(?:\.[0-9]+)?)(?:$|[ _-])`)
 var readingDashNumber = regexp.MustCompile(`\s+-\s+([0-9]+(?:\.[0-9]+)?)(?:\s+-\s+|$)`)
-var readingOnlyNumber = regexp.MustCompile(`(?i)^(?:(?:v(?:ol(?:ume)?\.?)?|book|#)\s*)?[0-9]+(?:\.[0-9]+)?$`)
+var readingOnlyNumber = regexp.MustCompile(`(?i)^(?:(?:v(?:ol(?:ume)?\.?)?|issue|book|#)\s*)?[0-9]+(?:\.[0-9]+)?$`)
 var readingStartsNumber = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)(?:$|[ _-])`)
-var readingEndsNumber = regexp.MustCompile(`(?:^|[ _-])[0-9]+(?:\.[0-9]+)?$`)
+var readingSequence = regexp.MustCompile(`(?i)(?:^|[ _.-])(?:(?:v(?:ol(?:ume)?\.?)?|issue|book|#)\s*)?([0-9]+(?:\.[0-9]+)?)(?:$|[ _-])`)
 var readingDate = regexp.MustCompile(`\b(?:19|20)[0-9]{2}(?:-[0-9]{2}(?:-[0-9]{2})?|[0-9]{4})\b`)
 var readingOwnerNumber = regexp.MustCompile(`^[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
-func readingDirectoryKey(in ReadingRuleInput, directory string) string {
-	return in.SourceRoot + "\x00" + directory
+type readingDirectory struct{ root, path string }
+
+var readingGenericFolders = map[string]bool{
+	"books": true, "ebooks": true, "e-books": true, "comics": true, "manga": true, "magazines": true, "library": true,
+	"calibre library": true, "unsorted": true, "misc": true, "new": true, "downloads": true, "inbox": true, "to read": true,
+}
+
+func readingFolders(relative string) []string {
+	var out []string
+	parts := strings.Split(relative, "/")
+	for _, part := range parts[:len(parts)-1] {
+		if !readingGenericFolders[ReadingValueKey(readingCleanTitle(part))] {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func readingFileAuthor(stem string) (string, string) {
-	left, right, ok := strings.Cut(stem, " - ")
-	left, right = strings.TrimSpace(left), strings.TrimSpace(right)
-	if !ok || left == "" || right == "" || readingOnlyNumber.MatchString(left) || readingStartsNumber.MatchString(right) {
+	if strings.Count(stem, " - ") != 1 {
 		return "", stem
 	}
-	if number, _ := readingNumber(left, ""); number != nil || readingEndsNumber.MatchString(left) {
+	left, right, _ := strings.Cut(stem, " - ")
+	left, right = strings.TrimSpace(left), strings.TrimSpace(right)
+	first, _ := utf8.DecodeRuneInString(left)
+	if left == "" || right == "" || unicode.IsDigit(first) || readingHasSequence(left) {
 		return "", stem
 	}
 	return left, right
+}
+
+func readingHasSequence(stem string) bool {
+	for _, match := range readingSequence.FindAllStringSubmatchIndex(stem, -1) {
+		if !readingNumberOverlapsDate(stem, match[2], match[3]) {
+			return true
+		}
+	}
+	return false
+}
+
+func readingNumberOverlapsDate(stem string, start, end int) bool {
+	for _, date := range readingDate.FindAllStringIndex(stem, -1) {
+		if start < date[1] && end > date[0] {
+			return true
+		}
+	}
+	return false
 }
 
 func readingCleanTitle(s string) string {
@@ -118,7 +152,11 @@ func readingNumber(stem, series string) (*ReadingNumber, string) {
 			}
 		}
 	}
-	if rest, ok := readingStripPrefix(stem, series); ok && series != "" && !readingDate.MatchString(rest) {
+	rest := stem
+	if stripped, ok := readingStripPrefix(stem, series); ok && series != "" {
+		rest = stripped
+	}
+	if series != "" && !readingDate.MatchString(rest) {
 		match := readingStartsNumber.FindStringSubmatch(rest)
 		if len(match) > 1 {
 			n, err := strconv.ParseFloat(match[1], 64)
@@ -130,50 +168,82 @@ func readingNumber(stem, series string) (*ReadingNumber, string) {
 	return nil, stem
 }
 
-// ReadingPathValues applies the documented Author/Series/Title and Author -
-// Title shapes. A direct folder with >=2 items is a series unless its author
-// role is evidenced by a nested series or a matching filename attribution.
-// Ambiguous names are not classified as people by spelling/capitalisation.
+// ReadingPathValues consumes accepted paths relative to the library root.
+// Inputs are ordered by the producer's canonical version selection; versions
+// of the same item count as one title, using that first version's path. No
+// spelling/capitalisation-based person classifier is used. Section 45 permits
+// source-labelled folder guesses and excludes fixed generic folder names.
 func ReadingPathValues(items []ReadingRuleInput) (map[int64]ReadingValues, error) {
-	counts, authorFolders, seen := map[string]int{}, map[string]bool{}, map[int64]bool{}
+	type folder struct {
+		count     int
+		allSeries bool
+	}
+	folders := map[readingDirectory]*folder{}
+	canonical := make([]ReadingRuleInput, 0, len(items))
+	seen := map[int64]Kind{}
 	for _, in := range items {
-		if in.Item < 1 || seen[in.Item] || in.SourceRoot == "" || len(in.RelativePath) > 4096 || !utf8.ValidString(in.RelativePath) || path.Clean(in.RelativePath) != in.RelativePath || strings.HasPrefix(in.RelativePath, "/") || strings.ContainsAny(in.RelativePath, "\\\x00") || in.RelativePath == "." || strings.HasPrefix(in.RelativePath, "../") || (in.Kind != Ebook && in.Kind != Comic) {
+		if in.Item < 1 || in.SourceRoot == "" || len(in.SourceRoot) > 4096 || !utf8.ValidString(in.SourceRoot) || strings.ContainsRune(in.SourceRoot, 0) || len(in.RelativePath) > 4096 || !utf8.ValidString(in.RelativePath) || path.Clean(in.RelativePath) != in.RelativePath || strings.HasPrefix(in.RelativePath, "/") || strings.ContainsAny(in.RelativePath, "\\\x00") || in.RelativePath == "." || strings.HasPrefix(in.RelativePath, "../") || (in.Kind != Ebook && in.Kind != Comic) {
 			return nil, ErrReadingValue
 		}
-		seen[in.Item] = true
-		dir := path.Dir(in.RelativePath)
-		counts[readingDirectoryKey(in, dir)]++
-		parts := strings.Split(in.RelativePath, "/")
-		if len(parts) == 3 {
-			authorFolders[readingDirectoryKey(in, parts[0])] = true
+		if kind, ok := seen[in.Item]; ok {
+			if kind != in.Kind {
+				return nil, ErrReadingValue
+			}
+			continue
 		}
+		seen[in.Item] = in.Kind
+		canonical = append(canonical, in)
+		parts := readingFolders(in.RelativePath)
+		directory := strings.Join(parts, "/")
+		key := readingDirectory{in.SourceRoot, directory}
+		f := folders[key]
+		if f == nil {
+			f = &folder{allSeries: true}
+			folders[key] = f
+		}
+		f.count++
 		stem := strings.TrimSuffix(path.Base(in.RelativePath), path.Ext(in.RelativePath))
-		author, _ := readingFileAuthor(stem)
-		if dir != "." && author != "" && localGenreKey(author) == localGenreKey(path.Base(dir)) {
-			authorFolders[readingDirectoryKey(in, dir)] = true
-		}
+		_, title := readingFileAuthor(stem)
+		normalizedTitle, normalizedFolder := ReadingValueKey(readingCleanTitle(title)), ReadingValueKey(readingCleanTitle(path.Base(directory)))
+		f.allSeries = f.allSeries && (strings.HasPrefix(normalizedTitle, normalizedFolder) || readingHasSequence(title))
 	}
-	out := make(map[int64]ReadingValues, len(items))
-	for _, in := range items {
-		dir := path.Dir(in.RelativePath)
+	out := make(map[int64]ReadingValues, len(canonical))
+	for _, in := range canonical {
+		parts := readingFolders(in.RelativePath)
+		directory := strings.Join(parts, "/")
 		stem := strings.TrimSuffix(path.Base(in.RelativePath), path.Ext(in.RelativePath))
 		author, title := readingFileAuthor(stem)
 		v := ReadingValues{}
 		if author != "" {
 			v.Author = &ReadingValue{author, ReadingFileName}
 		}
-		parts := strings.Split(in.RelativePath, "/")
-		if v.Author == nil && len(parts) == 3 {
-			v.Author = &ReadingValue{parts[0], ReadingFolder}
-		}
-		key := readingDirectoryKey(in, dir)
-		if dir != "." {
-			if authorFolders[key] {
-				if v.Author == nil {
-					v.Author = &ReadingValue{path.Base(dir), ReadingFolder}
+		f := folders[readingDirectory{in.SourceRoot, directory}]
+		if len(parts) > 0 {
+			inner := parts[len(parts)-1]
+			parent := ""
+			if len(parts) > 1 {
+				parent = parts[len(parts)-2]
+			}
+			switch {
+			case f.count == 1:
+				if ReadingValueKey(readingCleanTitle(inner)) == ReadingValueKey(readingCleanTitle(title)) {
+					if parent != "" && v.Author == nil {
+						v.Author = &ReadingValue{parent, ReadingFolder}
+					}
+				} else if v.Author == nil {
+					v.Author = &ReadingValue{inner, ReadingFolder}
 				}
-			} else if counts[key] >= 2 {
-				v.Series = &ReadingValue{path.Base(dir), ReadingFolder}
+			case parent != "":
+				if v.Author == nil {
+					v.Author = &ReadingValue{parent, ReadingFolder}
+				}
+				v.Series = &ReadingValue{inner, ReadingFolder}
+			case f.allSeries:
+				v.Series = &ReadingValue{inner, ReadingFolder}
+			default:
+				if v.Author == nil {
+					v.Author = &ReadingValue{inner, ReadingFolder}
+				}
 			}
 		}
 		series := ""
@@ -191,9 +261,41 @@ func ReadingPathValues(items []ReadingRuleInput) (map[int64]ReadingValues, error
 			v.Title = readingCleanTitle(stem)
 		}
 		if v.Title == "" {
-			return nil, ErrReadingValue
+			v.Title = strings.TrimSpace(stem)
+		}
+		if v.Title == "" {
+			v.Title = path.Base(in.RelativePath)
 		}
 		out[in.Item] = v
+	}
+	return out, nil
+}
+
+// ReadingAutomaticValues combines already accepted facts, without opening a
+// publication or accepting raw archive metadata. Later file metadata wins over
+// path rules; the owner overlay remains a separate, higher-priority step.
+func ReadingAutomaticValues(pathValues, fileMetadata ReadingValues) (ReadingValues, error) {
+	out := pathValues
+	for _, fields := range []struct {
+		input  *ReadingValue
+		target **ReadingValue
+	}{{fileMetadata.Author, &out.Author}, {fileMetadata.Series, &out.Series}} {
+		if fields.input == nil {
+			continue
+		}
+		v := fields.input
+		if v.Source != ReadingFileMetadata || strings.TrimSpace(v.Value) == "" || len(v.Value) > 4096 || !utf8.ValidString(v.Value) || strings.ContainsAny(v.Value, "\x00\r\n") {
+			return ReadingValues{}, ErrReadingValue
+		}
+		copy := *v
+		*fields.target = &copy
+	}
+	if v := fileMetadata.SeriesNumber; v != nil {
+		if v.Source != ReadingFileMetadata || math.IsInf(v.Value, 0) || math.IsNaN(v.Value) || v.Value < 0 {
+			return ReadingValues{}, ErrReadingValue
+		}
+		copy := *v
+		out.SeriesNumber = &copy
 	}
 	return out, nil
 }
