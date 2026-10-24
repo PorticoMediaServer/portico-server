@@ -14,7 +14,7 @@ export function compareTextMetrics(reference, actual) {
     const observed = candidates.filter(value => value.text === expected.text && !used.has(value.id)).sort((a, b) => distance(expected, a) - distance(expected, b))[0];
     if (!observed) continue;
     matched++; used.add(observed.id);
-    const identity = {text: expected.text, reference: expected.id, actual: observed.id};
+    const identity = {text: expected.text, referenceElement: expected.id, actualElement: observed.id};
     if (!expected.rects || !observed.rects) unassessed.push({...identity, fact: 'native-input-glyph-bounds', reason: 'DOM exposes the input host, not its native value glyph rectangles; full-frame raster remains compared.'});
     else if (JSON.stringify(expected.rects) !== JSON.stringify(observed.rects)) differences.push({...identity, fact: 'text-rectangles', expected: expected.rects, actual: observed.rects});
     if (expected.style && observed.style) for (const property of typography) {

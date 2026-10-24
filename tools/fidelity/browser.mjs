@@ -3,7 +3,6 @@ import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {measureScreen} from './measure-screen.mjs';
-import {decodePNG} from './png.mjs';
 
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
@@ -43,13 +42,13 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     socket = new WebSocket(endpoint); await once(socket, 'open');
     socket.addEventListener('message', async event => {
       const message = JSON.parse(event.data);
-      if (message.method === 'Runtime.exceptionThrown') pageErrors.push(message.params.exceptionDetails.text);
+      if (message.method === 'Runtime.exceptionThrown') pageErrors.push({kind: 'page-exception'});
       if (message.method === 'Fetch.requestPaused') {
         const {requestId, request} = message.params, url = new URL(request.url);
         const permit = (url.protocol === 'data:' || allowed.has(url.origin)) && !url.pathname.startsWith('/v1/');
-        if (!permit) blocked.push({origin: url.origin, path: url.pathname, method: request.method});
+        if (!permit) blocked.push({kind: url.pathname.startsWith('/v1/') ? 'api' : 'outside-origin', method: request.method});
         try {await call(permit ? 'Fetch.continueRequest' : 'Fetch.failRequest', permit ? {requestId} : {requestId, errorReason: 'BlockedByClient'}, message.sessionId);}
-        catch (error) {pageErrors.push(error.message);}
+        catch {pageErrors.push({kind: 'request-interception-error'});}
       }
       const task = pending.get(message.id);
       if (!task) return;
@@ -68,16 +67,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
         if (response.errorText) throw new Error('Measurement navigation failed');
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
       },
-      measure: selector => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport})})`),
-      async raster(selector, {referenceFrame = false} = {}) {
-        const rect = await evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(selector)});if(!root)throw new Error('Missing screen');const r=root.getBoundingClientRect();return{x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,viewportX:r.x,viewportY:r.y}})()`);
-        if (rect.width !== viewport.width || rect.height !== viewport.height || (!referenceFrame && (rect.viewportX !== 0 || rect.viewportY !== 0))) throw new Error('Only the complete declared screen can be compared');
-        const result = await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: referenceFrame, fromSurface: true,
-          clip: {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1}});
-        const pixels = decodePNG(Buffer.from(result.data, 'base64'));
-        if (pixels.width !== viewport.width * viewport.deviceScaleFactor || pixels.height !== viewport.height * viewport.deviceScaleFactor) throw new Error('Raster does not match declared viewport and DPR');
-        return pixels;
-      },
+      measure: (selector, anchors = {}) => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport, anchors})})`),
       evaluate,
       call,
       blocked,

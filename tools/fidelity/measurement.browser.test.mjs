@@ -44,16 +44,12 @@ test('real browser measures the whole viewport and protects source, secret and n
       assert.equal(password.focused, true); assert.equal(password.input.value, null);
       assert.equal(password.input.length, 'never-serialize-this'.length); assert.equal(password.input.redacted, true);
       assert.ok(screen.elements.some(value => value.tag === '::after' && value.content === '"!"'));
-      assert.match(screen.elements.find(value => value.glyph)?.glyph.shape, /^[a-f0-9]{64}$/);
+      assert.ok(screen.elements.some(value => value.image?.kind === 'icon'));
       const serialized = JSON.stringify(screen);
       assert.ok(!serialized.includes('never-serialize-this')); assert.ok(!serialized.includes('M0 0L10 10'));
       assert.ok(!serialized.includes('<main>')); assert.ok(!serialized.includes('<style>'));
-      const pixels = await browser.raster('main');
-      assert.equal(pixels.width, 800); assert.equal(pixels.height, 600);
-      assert.equal(pixels.rgba.length, 800 * 600 * 4);
-      await assert.rejects(() => browser.raster('button'), /complete declared screen/);
       await browser.evaluate('fetch("/v1/private-test").catch(()=>{})');
-      assert.deepEqual(browser.blocked, [{origin, path: '/v1/private-test', method: 'GET'}]);
+      assert.deepEqual(browser.blocked, [{kind: 'api', method: 'GET'}]);
       assert.equal(apiRequests, 0, 'no auth API request reaches even the disposable fixture');
       assert.deepEqual(browser.pageErrors, []);
       return screen;

@@ -42,3 +42,25 @@ export function catalogueMatches(screen, catalogue) {
   }
   return stringInventory(screen).map(value => ({...value, catalogueKeys: values.get(value.text) ?? []}));
 }
+
+export function mapScreenStrings(screen, catalogue, {keys = {}, data = {}} = {}) {
+  const index = new Map();
+  for (const [key, value] of Object.entries(catalogue)) if (typeof value === 'string') {const ids = index.get(value) ?? []; ids.push(key); index.set(value, ids);}
+  return screen.strings.map(value => {
+    const slot = data[value.frame];
+    if (slot) return {...value, status: value.text === slot.value ? 'data' : 'data-mismatch', dataSlot: slot.name, expected: slot.value};
+    const selected = (Array.isArray(keys[value.frame]) ? keys[value.frame] : [keys[value.frame]]).filter(key => key && catalogue[key] === value.text);
+    const candidates = selected.length ? selected : index.get(value.text) ?? [];
+    return {...value, status: candidates.length === 1 ? 'mapped' : candidates.length > 1 ? 'ambiguous' : 'unmapped', catalogueKeys: candidates};
+  });
+}
+
+export function compareCatalogueStrings(reference, actual, catalogue, adapter) {
+  const frame = mapScreenStrings(reference, catalogue, adapter), built = mapScreenStrings(actual, catalogue, adapter), differences = [];
+  for (const value of frame) if (['unmapped', 'ambiguous', 'data-mismatch'].includes(value.status)) differences.push({kind: 'frame-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});
+  const frameText = new Set(frame.map(value => value.text));
+  for (const value of built) if (value.status === 'data-mismatch' || value.status === 'ambiguous' || value.status === 'unmapped' && !frameText.has(value.text)) differences.push({kind: 'built-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});
+  const staticVisible = values => ({scope: 'screen', strings: values.filter(value => value.status !== 'data' && value.kind !== 'accessible-label' && value.kind !== 'placeholder')});
+  const copy = compareStrings(staticVisible(frame), staticVisible(built)); differences.push(...copy.differences);
+  return {frame, built, requiredVisibleStrings: copy.required, matchedVisibleStrings: copy.matched, differences};
+}

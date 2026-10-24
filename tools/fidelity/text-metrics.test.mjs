@@ -8,7 +8,7 @@ test('repeated exact strings match separate nearest occurrences and expose measu
   const actual = {strings: [text('a2', 100, {fontSize: '16px'}), text('a1', 11, {fontSize: '17px'})]};
   const report = compareTextMetrics(reference, actual);
   assert.equal(report.matchedOccurrences, 2); assert.equal(report.differences.length, 2);
-  assert.equal(report.differences[0].actual, 'a1'); assert.equal(report.differences[0].fact, 'text-rectangles');
+  assert.equal(report.differences[0].actualElement, 'a1'); assert.equal(report.differences[0].fact, 'text-rectangles');
   assert.equal(report.differences[1].fact, 'fontSize'); assert.deepEqual(report.unassessed, []);
 });
 test('native input host rectangles are never presented as measured glyph rectangles', () => {
