@@ -193,4 +193,5 @@ export const shared = {
   'next.watch.andMore': 'and {count} more',
   'next.watch.episodeOptions': 'Episode options',
   'next.watch.seasonOptions': 'Season options',
+  'next.watch.goToArtist': 'Go to the artist',
 } as const;
