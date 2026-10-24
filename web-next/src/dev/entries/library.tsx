@@ -93,14 +93,15 @@ const fields = fieldRows.map(([id, labelKey, type, operators, controlHint, compl
   ...(extra.facet ? {facetSource: {endpoint: '/v1/browse/facets', field: extra.facet}} : {})}));
 const filterIds = fieldRows.map(([id]) => id);
 const sortRows = [
-  {id: 'title', labelKey: 'sort.title', defaultDirection: 'asc' as const}, {id: 'added', labelKey: 'sort.added', defaultDirection: 'desc' as const},
+  // The server's own movies menu: For you is expensive; Random is the seeded shuffle.
+  {id: 'forYou', labelKey: 'sort.forYou', defaultDirection: 'desc' as const}, {id: 'title', labelKey: 'sort.title', defaultDirection: 'asc' as const}, {id: 'added', labelKey: 'sort.added', defaultDirection: 'desc' as const},
   {id: 'year', labelKey: 'sort.year', defaultDirection: 'desc' as const}, {id: 'duration', labelKey: 'sort.duration', defaultDirection: 'desc' as const},
   {id: 'communityRating', labelKey: 'sort.communityRating', defaultDirection: 'desc' as const}, {id: 'criticRating', labelKey: 'sort.criticRating', defaultDirection: 'desc' as const},
   {id: 'personalRating', labelKey: 'sort.personalRating', defaultDirection: 'desc' as const}, {id: 'lastPlayed', labelKey: 'sort.lastPlayed', defaultDirection: 'desc' as const},
   {id: 'playCount', labelKey: 'sort.playCount', defaultDirection: 'desc' as const}, {id: 'resolution', labelKey: 'sort.resolution', defaultDirection: 'desc' as const},
   {id: 'releaseDate', labelKey: 'sort.releaseDate', defaultDirection: 'desc' as const}, {id: 'random', labelKey: 'sort.random', defaultDirection: 'asc' as const},
 ];
-const sorts = sortRows.map(row => Object.freeze({...row, directions: ['asc', 'desc'], expensive: row.id === 'random', seeded: row.id === 'random',
+const sorts = sortRows.map(row => Object.freeze({...row, directions: ['asc', 'desc'], expensive: row.id === 'forYou', seeded: row.id === 'random',
   requiresGroup: false, applicableKinds: allKinds}));
 const quickFilters = Object.freeze([
   {id: 'unwatched', labelKey: 'filter.unwatched', query: {field: 'playState', operator: 'equals', value: 'unplayed'}},
@@ -139,6 +140,7 @@ function filmEntry(fact: FilmFact): ContentEntry {
 function collectionEntry(fact: (typeof collections)[number]): ContentEntry {
   const id = slug(fact.name), covers = films.slice(0, Math.min(4, fact.films)).map(film => `specimen-art://poster/${slug(film[0])}`);
   return Object.freeze({id: `collection-${id}`, kind: 'collection', libraryId, title: fact.name, count: fact.films, yearMin: fact.from, yearMax: fact.to,
+    ...(fact.watched === undefined ? {} : {watchedCount: fact.watched, unwatchedCount: fact.films - fact.watched}),
     origin: 'automatic', available: true, missing: false, watched: fact.watched === undefined ? false : fact.watched >= fact.films,
     addedAt: '2026-10-17T03:10:02.549Z', artworkPaths: Object.freeze(covers), backdropUrl: `specimen-art://backdrop/${id}`,
     posterUrl: `specimen-art://poster/${id}`, navigation: Object.freeze({view: 'browse' as const, category: id}),

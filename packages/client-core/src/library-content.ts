@@ -22,6 +22,8 @@ export type ContentEntry = Readonly<{
   /** The letter a browse page files the entry under (its sort title's, articles already set aside): a key of the page's `positionIndex`. */
   sortLetter?: string;
   missing?:boolean; available?: boolean; watched?:boolean;discNumber?:number;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
+  /** A container's watched tally, when the server publishes one. Absent is not zero. */
+  watchedCount?: number; unwatchedCount?: number;
   year?: number; contentRating?: string; genres?: readonly string[]; watchlisted?: boolean;
   /** The album artist; album entities only (M24, behind presence). Absent on older servers. */
   artist?: Readonly<{ id: string; name: string }>;
@@ -170,6 +172,10 @@ function entry(v: unknown): ContentEntry {
   if (string(v.sortLetter, 8) && v.sortLetter) row.sortLetter = v.sortLetter as string; else left('entry.sortLetter', v.sortLetter);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
   if (count(v.totalAtLeast) && row.count !== undefined) row.countIsLowerBound = true; else left('entry.totalAtLeast', v.totalAtLeast);
+  // A container's tallies stay exact nonnegative counts; absence stays absent, never zero.
+  for (const field of ['watchedCount', 'unwatchedCount'] as const) {
+    if (count(v[field])) row[field] = v[field] as number; else left('entry.' + field, v[field]);
+  }
   for(const flag of ['dateBased','special'] as const)if(typeof v[flag]==='boolean')row[flag]=v[flag] as boolean;
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
   if(typeof v.new==='boolean')row.new=v.new;else left('entry.new',v.new);

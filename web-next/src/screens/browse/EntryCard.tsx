@@ -8,6 +8,7 @@ import type {TextEnvironment} from '@portico/client-core/kit-model';
 import {GeneratedArt} from '../../kit/artwork';
 import {CircleCard, CollectionTile, GenreTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
 import type {ShellArtwork} from '../../shell/artwork';
+import {collectionWatchedCount, collectionWatchedProgress} from './collection-card';
 
 export type BrowseItemActions = Readonly<{
   onOpen: () => void;
@@ -25,7 +26,13 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
   const shape = shapeFor(entry.kind, 'grid');
   const ordinary = cardText({...homeCardSubject(entry), itemCount: ['collection', 'category', 'playlist'].includes(entry.kind) ? entry.count : undefined, albumCount: entry.albumCount, songCount: entry.kind === 'album' || entry.kind === 'disc' ? entry.count : undefined, countIsLowerBound: entry.countIsLowerBound}, 'ordinary', env);
   const kind = entry.kind === 'movie' ? 'next.browse.kind.movie' : entry.kind === 'show' && family === 'anime' ? 'next.browse.kind.anime' : entry.kind === 'show' && family === 'tv' ? 'next.browse.kind.show' : undefined;
-  const model = entry.kind === 'collection' && family === 'movie' ? {...ordinary, caption: entry.count === undefined ? [] : [{id: 'films', role: 'supplement' as const, text: defaultI18n.t(entry.countIsLowerBound ? 'next.browse.filmCountAtLeast' : 'next.browse.filmCount', {count: entry.count})}], detail: entry.yearMin !== undefined && entry.yearMax !== undefined ? [{id: 'years', role: 'supplement' as const, text: env.t('next.kit.range', {start: String(entry.yearMin), end: String(entry.yearMax)})}] : []} :
+  // Frame #collections draws the watched share after the years, and only when a film is watched.
+  const watched = entry.kind === 'collection' ? collectionWatchedCount(entry) : undefined;
+  const watchedProgress = entry.kind === 'collection' ? collectionWatchedProgress(entry) : undefined;
+  const model = entry.kind === 'collection' && family === 'movie' ? {...ordinary, caption: entry.count === undefined ? [] : [{id: 'films', role: 'supplement' as const, text: defaultI18n.t(entry.countIsLowerBound ? 'next.browse.filmCountAtLeast' : 'next.browse.filmCount', {count: entry.count})}],
+    detail: [...(entry.yearMin !== undefined && entry.yearMax !== undefined ? [{id: 'years', role: 'supplement' as const, text: env.t('next.kit.range', {start: String(entry.yearMin), end: String(entry.yearMax)})}] : []),
+      ...(watched !== undefined && watched > 0 && entry.count !== undefined ? [{id: 'watched', role: 'supplement' as const, text: defaultI18n.t('next.browse.watchedOf', {watched, count: entry.count})}] : [])],
+    ...(watchedProgress === undefined ? {} : {progress: watchedProgress})} :
     mixed && kind ? {...ordinary, caption: [...(entry.year !== undefined ? [{id: 'year', role: 'supplement' as const, text: String(entry.year)}] : []), {id: 'kind', role: 'supplement' as const, text: defaultI18n.t(kind)}]} : ordinary;
   const props = {model, context: 'grid' as const, visible, watched: entry.watched, isNew: entry.new,
     onNavigate: actions.onOpen, onPlay: actions.onPlay, onMore: actions.onMore, moreExpanded: actions.moreExpanded,

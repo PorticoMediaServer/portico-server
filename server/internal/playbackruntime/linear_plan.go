@@ -116,7 +116,6 @@ func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.Line
 	}
 	plan.Fragmented = selected.OutputContainer == "fmp4_hls"
 	plan.CopyHEVC = sourceVideo != nil && sourceVideo.Codec == "hevc" && selected.VideoAction == "copy"
-	plan.CopyAAC = sourceAudio != nil && sourceAudio.Codec == "aac" && selected.AudioAction == "copy"
 	q := w.Selection.Quality
 	plan.Video, plan.Audio = video != nil, audio != nil
 	plan.ConvertVideo, plan.ConvertAudio = selected.VideoAction == "convert", selected.AudioAction == "convert"
