@@ -129521,6 +129521,144 @@
                 },
                 "key": {
                   "type": "string"
+                },
+                "series": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "id": {
+                        "pattern": "^[A-Za-z0-9_-]{43}$",
+                        "type": "string"
+                      },
+                      "libraryId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 4096,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "preview": {
+                        "items": {
+                          "properties": {
+                            "author": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "source": {
+                                  "enum": [
+                                    "owner",
+                                    "file-metadata",
+                                    "file-name",
+                                    "folder"
+                                  ],
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "maxLength": 4096,
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "source"
+                              ],
+                              "type": "object"
+                            },
+                            "format": {
+                              "enum": [
+                                "epub",
+                                "pdf",
+                                "cbz"
+                              ],
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "inventoryAvailable": {
+                              "type": "boolean"
+                            },
+                            "libraryId": {
+                              "type": "string"
+                            },
+                            "series": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "maxLength": 4096,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "minimum": 0,
+                                  "type": "number"
+                                },
+                                "source": {
+                                  "enum": [
+                                    "owner",
+                                    "file-metadata",
+                                    "file-name",
+                                    "folder"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name",
+                                "source"
+                              ],
+                              "type": "object"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "libraryId",
+                            "title",
+                            "format",
+                            "sourceId",
+                            "inventoryAvailable"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "readCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "libraryId",
+                      "name",
+                      "count",
+                      "readCount",
+                      "preview"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
                 }
               },
               "required": [
@@ -463148,6 +463286,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "seriesLimit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -463257,6 +463403,144 @@
                           },
                           "key": {
                             "type": "string"
+                          },
+                          "series": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "count": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "id": {
+                                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                                  "type": "string"
+                                },
+                                "libraryId": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "maxLength": 4096,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "preview": {
+                                  "items": {
+                                    "properties": {
+                                      "author": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "owner",
+                                              "file-metadata",
+                                              "file-name",
+                                              "folder"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "maxLength": 4096,
+                                            "minLength": 1,
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "value",
+                                          "source"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "format": {
+                                        "enum": [
+                                          "epub",
+                                          "pdf",
+                                          "cbz"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "inventoryAvailable": {
+                                        "type": "boolean"
+                                      },
+                                      "libraryId": {
+                                        "type": "string"
+                                      },
+                                      "series": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "id": {
+                                            "minLength": 1,
+                                            "type": "string"
+                                          },
+                                          "name": {
+                                            "maxLength": 4096,
+                                            "minLength": 1,
+                                            "type": "string"
+                                          },
+                                          "number": {
+                                            "minimum": 0,
+                                            "type": "number"
+                                          },
+                                          "source": {
+                                            "enum": [
+                                              "owner",
+                                              "file-metadata",
+                                              "file-name",
+                                              "folder"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "name",
+                                          "source"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "sourceId": {
+                                        "type": "string"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "libraryId",
+                                      "title",
+                                      "format",
+                                      "sourceId",
+                                      "inventoryAvailable"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 3,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "readCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "libraryId",
+                                "name",
+                                "count",
+                                "readCount",
+                                "preview"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
                           }
                         },
                         "required": [

@@ -7251,7 +7251,8 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "libraryId",
-      "limit"
+      "limit",
+      "seriesLimit"
     ],
     "errors": [
       "invalid_request",
