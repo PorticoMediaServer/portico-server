@@ -2,6 +2,12 @@ import type {AudioStream, SubtitleStream, VideoStream} from './playback-v1/types
 import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
 import {trackName} from './presentation/language.ts';
 
+/** Technical naming accepts facts without requiring an invented track identity. */
+export type VideoAudioFormatFacts = Pick<AudioStream, 'codec' | 'profile' | 'variant' | 'objectAudio' | 'channels' | 'layout'> & Partial<Pick<AudioStream, 'atmos' | 'dtsx'>>;
+export type VideoAudioNameFacts = VideoAudioFormatFacts & Pick<AudioStream, 'title' | 'language'>;
+export type VideoSubtitleNameFacts = Pick<SubtitleStream, 'format' | 'language' | 'title'> & Partial<Pick<SubtitleStream, 'source'>>;
+export type VideoPictureNameFacts = Pick<VideoStream, 'width' | 'height' | 'interlaced' | 'hdr' | 'hdr10Plus'>;
+
 type Translate = (id: MessageId, values?: MessageValues) => string;
 export type VideoTrackWords = Readonly<{
   fourK: string; stereo: string; mono: string;
@@ -34,25 +40,25 @@ function layoutName(track: Pick<AudioStream, 'layout' | 'channels'>, words: Vide
   // A count alone does not establish 5.1, 7.1 or stereo speaker geometry.
   return Number.isSafeInteger(track.channels) && track.channels! > 0 && track.channels! <= 64 ? words.channels(track.channels!) : undefined;
 }
-function audioParts(track: AudioStream, words: VideoTrackWords) {
+function audioParts(track: VideoAudioFormatFacts, words: VideoTrackWords) {
   const codec = track.codec.toLowerCase();
   const format = VARIANTS[track.variant ?? ''] ?? ((codec === 'dts' || codec === 'dca') ? DTS_PROFILES[track.profile?.toLowerCase() ?? ''] : undefined) ?? AUDIO[codec] ?? (codec.startsWith('pcm_') ? 'LPCM' : technical(track.codec));
   const objects = track.objectAudio === 'atmos' || track.atmos || track.variant === 'truehd_atmos' || track.variant === 'eac3_joc' ? 'atmos' : track.objectAudio === 'dtsx' || track.dtsx || track.variant === 'dtsx' ? 'dtsx' : undefined;
   const layout = layoutName(track, words);
   return {format, objects, layout};
 }
-function audioFormatName(track: AudioStream, words: VideoTrackWords, separator: string): string {
+function audioFormatName(track: VideoAudioFormatFacts, words: VideoTrackWords, separator: string): string {
   const {format, objects, layout} = audioParts(track, words);
   const named = format && objects === 'atmos' ? words.withAtmos(format) : format;
   const rest = [named, layout].filter(Boolean).join(separator);
   return rest && objects === 'dtsx' ? words.withDtsx(rest) : rest;
 }
 /** Version/file format only, with the chooser's space-separated format and layout. */
-export function videoAudioFormatName(track: AudioStream, words: VideoTrackWords): string {
+export function videoAudioFormatName(track: VideoAudioFormatFacts, words: VideoTrackWords): string {
   return audioFormatName(track, words, ' ');
 }
 /** Picture facts only; unknown scan never becomes a p/i suffix. */
-export function videoPictureName(video: VideoStream, words: Pick<VideoTrackWords, 'fourK'>): string {
+export function videoPictureName(video: VideoPictureNameFacts, words: Pick<VideoTrackWords, 'fourK'>): string {
   const width = video.width ?? 0, height = video.height ?? 0;
   const resolution = width >= 3840 || height >= 2160 ? words.fourK : height > 0 && Number.isSafeInteger(height) && typeof video.interlaced === 'boolean' ? `${height}${video.interlaced ? 'i' : 'p'}` : '';
   const ranges: Readonly<Record<string, string>> = {dolbyvision: 'Dolby Vision', dolby_vision: 'Dolby Vision', hdr10plus: 'HDR10+', hdr10_plus: 'HDR10+', hdr10: video.hdr10Plus === true ? 'HDR10+' : 'HDR10', hlg: 'HLG'};
@@ -60,7 +66,7 @@ export function videoPictureName(video: VideoStream, words: Pick<VideoTrackWords
 }
 export type VideoTrackNameParts = Readonly<{first: string; rest: string; label: string; title?: string; language?: string; format?: string; objectAudio?: string; layout?: string; subtitleOrigin?: SubtitleStream['source']}>;
 /** Menus consume explicit parts. Rendition identity labels never enter this function. */
-export function videoTrackName(track: AudioStream | SubtitleStream, words: VideoTrackWords): VideoTrackNameParts {
+export function videoTrackName(track: VideoAudioNameFacts | VideoSubtitleNameFacts, words: VideoTrackWords): VideoTrackNameParts {
   const title = track.title?.trim() || undefined, language = track.language || undefined;
   const first = title ?? (language ? words.language(language) : '');
   if ('codec' in track) {
@@ -78,4 +84,9 @@ export function formatVideoBytes(bytes: number | undefined, locale?: string): st
   let value = bytes, unit = 0;
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
   return `${new Intl.NumberFormat(locale, {maximumFractionDigits: unit === 0 ? 0 : 1}).format(value)} ${units[unit]}`;
+}
+
+/** Explicit layout or an actual channel count; counts never imply geometry. */
+export function videoAudioChannelName(track: Pick<AudioStream, 'layout' | 'channels'>, words: VideoTrackWords): string | undefined {
+  return layoutName(track, words);
 }

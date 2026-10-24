@@ -15,7 +15,7 @@ import type {AudioEffectsSettings} from '@core/audio-effects.ts';
 import type {QualityRequest} from '@core/playback-v1/quality.ts';
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
-import type {DockState, DockTransition, PlaybackFence, PolicyView, SkipMode} from '../../../../packages/player-core/src/index.ts';
+import type {DockState, DockTransition, PlaybackFence, QueuePlaybackFence, PolicyView, SkipMode} from '../../../../packages/player-core/src/index.ts';
 import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts';
 import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
@@ -75,6 +75,12 @@ export type WebPlaybackPresentation = Readonly<{
   playing: boolean; expanded: boolean; finished: boolean; controls: readonly WebPlaybackControl[];
   seekWindow?: Readonly<{startSeconds: number; endSeconds: number}>;
   volume: number; muted: boolean; rate: number; policy: PolicyView | null;
+}>;
+/** A fresh authorized GET, separate from queue adoption and renderer observations. */
+export type WebPlaybackInfoRead = Readonly<{
+  fence:QueuePlaybackFence;sessionRevision:string;
+  playbackInfo?:Session['playbackInfo'];observedPlayback?:Session['observedPlayback'];
+  isCurrent():boolean;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
   /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
