@@ -22,10 +22,11 @@ import (
 )
 
 type sourceNetwork struct {
-	Policy      remotemedia.Policy
-	Fingerprint string
-	Native      *nativeSourceAuthority
-	Imported    *importedSourceConfiguration
+	Policy       remotemedia.Policy
+	Fingerprint  string
+	Native       *nativeSourceAuthority
+	Imported     *importedSourceConfiguration
+	WebDAVLeaves sql.NullInt64
 }
 
 // sourceNetworkTx reuses durable owner network approvals. An absent record is
@@ -35,13 +36,13 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 	out := sourceNetwork{Policy: remotemedia.Policy{Resolver: s.resolver}}
 	var kind string
 	var config []byte
-	if err := tx.QueryRowContext(ctx, `SELECT kind,config FROM remote_sources WHERE id=? AND root=? AND removed=0`, id, root).Scan(&kind, &config); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT kind,config,webdav_leaf_count FROM remote_sources WHERE id=? AND root=? AND removed=0`, id, root).Scan(&kind, &config, &out.WebDAVLeaves); err != nil {
 		return out, err
 	}
 	if len(config) > 64<<10 {
 		return out, storage.ErrRemoteConfig
 	}
-	evidence := []any{kind, hex.EncodeToString(sha256Sum(config))}
+	evidence := []any{kind, hex.EncodeToString(sha256Sum(config)), out.WebDAVLeaves}
 	if kind == "webdav" {
 		c, err := s.privateDAVConfig(config)
 		if err != nil {
@@ -298,6 +299,13 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if network.Imported != nil {
 		if err = s.checkImportedMaterial(ctx, *network.Imported, material.Configuration, material.Remote); err != nil {
 			return nil, err
+		}
+		leaves, err := configuredBackends(material.Configuration, material.Remote)
+		if err != nil {
+			return nil, err
+		}
+		if !network.WebDAVLeaves.Valid || network.WebDAVLeaves.Int64 != int64(webDAVLeafCount(leaves)) {
+			return nil, storage.ErrRemoteChanged
 		}
 	}
 	var proxy *remotemedia.PolicyProxy
