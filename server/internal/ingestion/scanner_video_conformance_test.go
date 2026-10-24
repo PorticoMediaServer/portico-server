@@ -159,7 +159,7 @@ func TestPlex45SubtitleSidecarsStoreFlagsWithoutBecomingItems(t *testing.T) {
 	}
 	want := map[string]struct {
 		format, language, title string
-		forced, hearingImpaired  bool
+		forced, hearingImpaired bool
 	}{
 		"Avatar (2009).en.srt":        {format: "srt", language: "en"},
 		"Avatar (2009).en.forced.srt": {format: "srt", language: "en", forced: true},
