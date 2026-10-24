@@ -41,13 +41,6 @@ func qualifiedLinuxCohorts() []qualifiedBundleCohort {
 		manifest: "0752536dae07409853b1655dd491305b63824e17fae36abb6f8248e3758e07de",
 		ffmpeg:   "3358b4460db76c75bf7c16a56dda3a5530d4275eadbcfd5405287f110dd2c1de",
 		ffprobe:  "7fd702192189b604f7f8fb80f6f1bf1a87aa5bb357c5ee88e5cdcb5e2932c1f2",
-	}, {
-		// 8e34acfd adds explicitly default-off libx265 HDR10+ carry. Its
-		// opt-in, implicit-off and explicit-off target encodes all passed.
-		manifest:  "fc0a342cd01e0b331ed26457e54bd93bdbd7f2e8a5a368c9bbd1f0d711d15023",
-		ffmpeg:    "6f03245033dc4180cb54fea50652114d967cdab229ea48d057ab84eb6738291b",
-		ffprobe:   "b19debf496f68b777874b3676b3828905213e76841e41b528d0e2923ba1e5174",
-		hdr10plus: true,
 	}}
 }
 
