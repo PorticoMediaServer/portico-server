@@ -158,7 +158,7 @@ try {
   await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
   await driver.navigate(`${base}/settings?scope=account&section=playback`);
   await driver.waitFor(`[...document.querySelectorAll('main h1')].some(heading => heading.textContent === 'Playback')`, 30000);
-  await driver.waitFor(`document.querySelector('#playback\\.skipping')`, 30000);
+  await driver.waitFor(`document.getElementById('playback.skipping')`, 30000);
   await sleep(350);
   // Frame state: Recaps changed to Skip automatically, so the row offers Reset and Saved is visible.
   await driver.evaluate(`(() => {const field = [...document.querySelectorAll('fieldset')].find(item => item.querySelector('legend')?.textContent === 'Recaps');
