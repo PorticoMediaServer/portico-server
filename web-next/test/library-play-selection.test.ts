@@ -39,7 +39,7 @@ function setup(playback?: Pick<V1QueuePlayer, 'playSegments'>, readDetail: (id: 
   const selection = createLibraryPlaySelection({source, api, scope, principal: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'},
     requestId: async () => {throw new Error('No mutation operation may be issued by a grant read');}, signal: navigation.signal, isCurrent: () => authority, playback});
   return {source, selection, navigation, detailReads: () => detailReads, authority: (value: boolean) => {authority = value;},
-    async load() {await source.load();await settle();}, dispose() {selection.dispose();source.dispose();}};
+    async load() {selection.start();await source.load();await settle();}, dispose() {selection.dispose();source.dispose();}};
 }
 
 test('Library selection defers to an actual token and offers no grant or Detail read without an executor', async () => {
@@ -119,4 +119,30 @@ test('query and authority changes permanently retire the original model even if 
       assert.throws(() => owner.selection.toggle(rows[0]), {name: 'AbortError'});
     } finally {owner.dispose();}
   }
+});
+
+test('an actual denied grant retires cached selections before any Play can be dispatched', async () => {
+  let denied = false, plays = 0;
+  const owner = setup({playSegments: async () => {plays++;return queue;}}, async id => {
+    if (denied) throw Object.assign(new Error('denied'), {status: 403, code: 'forbidden'});
+    return detail(id);
+  });
+  try {
+    await owner.load();const rows = await owner.selection.registerWindow(0, 1);owner.selection.toggle(rows[0]);
+    assert.equal(owner.selection.getSnapshot().canPlay, true);denied = true;
+    await assert.rejects(owner.selection.registerWindow(2, 3));
+    assert.equal(owner.selection.getSnapshot().phase, 'error');assert.equal(owner.selection.getSnapshot().canPlay, false);
+    await assert.rejects(owner.selection.play(), {name: 'AbortError'});assert.equal(plays, 0);
+  } finally {owner.dispose();}
+});
+
+test('the original navigation signal cancels all queued grant reads and admits no late rows', async () => {
+  const pending: {id: string; signal?: AbortSignal; result: ReturnType<typeof deferred<unknown>>}[] = [];
+  const owner = setup({playSegments: async () => queue}, async (id, signal) => {const result = deferred<unknown>();pending.push({id, signal, result});return result.promise;});
+  try {
+    await owner.load();const read = owner.selection.registerWindow(0, 9);await settle();assert.equal(owner.detailReads(), 4);
+    owner.navigation.abort();await assert.rejects(read, {name: 'AbortError'});assert(pending.every(value => value.signal?.aborted));
+    for (const value of pending) value.result.resolve(detail(value.id));await settle();
+    assert.equal(owner.detailReads(), 4);assert.deepEqual(owner.selection.getSnapshot().rows, []);
+  } finally {for (const value of pending) value.result.resolve(detail(value.id));owner.dispose();}
 });

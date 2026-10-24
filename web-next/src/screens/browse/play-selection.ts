@@ -46,7 +46,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   if (scope.serverId !== principal.serverId) throw unavailable();
   const playback = input.playback && Object.freeze({playSegments: input.playback.playSegments.bind(input.playback)});
   const life = new AbortController(), listeners = new Set<() => void>(), grants = new Map<ContentEntry, Grant>(), queued: Grant[] = [];
-  let active = 0, closed = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
+  let active = 0, closed = false, started = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
   let sourceOff = () => {}, collectionOff = () => {}, expected: Readonly<{queryRevision: number; revision: string}> | undefined;
   let window: Window | undefined, handles = new WeakMap<LibraryPlayRow, Readonly<{window: Window; run: string}>>();
   let playing: Readonly<{operation: SelectionOperation<BrowseSelectionContext>; controller: AbortController}> | undefined;
@@ -135,15 +135,22 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     prune();
   };
   function dispose() {retire();}
-  signal.addEventListener('abort', dispose, {once: true});
-  sourceOff = source.subscribe(sync);collectionOff = source.collection.subscribe(prune);sync();
+  const start = () => {
+    if (closed || started) return;
+    started = true;
+    if (!current()) return;
+    signal.addEventListener('abort', dispose, {once: true});
+    sourceOff = source.subscribe(sync);collectionOff = source.collection.subscribe(prune);sync();
+  };
   return {
+    start,
     getSnapshot(): LibraryPlaySelectionSnapshot {
       if (!closed && (signal.aborted || !isCurrent())) retire(undefined, true);
       return state;
     },
     subscribe(listener: () => void) {if (closed) return () => {};listeners.add(listener);return () => {listeners.delete(listener);};},
     registerWindow(first: number, last: number): Promise<readonly LibraryPlayRow[]> {
+      start();
       if (!current()) return Promise.reject(cancelled());
       if (!model || !expected) return Promise.reject(unavailable());
       if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first || last - first >= 60) return Promise.reject(unavailable());
@@ -202,3 +209,4 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     dispose,
   };
 }
+export type LibraryPlaySelection = ReturnType<typeof createLibraryPlaySelection>;

@@ -14,4 +14,4 @@ export {HomeRowScreen} from './HomeRow';
 export type {HomeRowBindings} from './HomeRow';
 export {LibraryDiscoveryScreen} from './Discovery';
 export type {DiscoveryBindings} from './Discovery';
-export {createLibraryPlaySelection, type LibraryPlayRow, type LibraryPlaySelectionOptions, type LibraryPlaySelectionSnapshot} from './play-selection';
+export {createLibraryPlaySelection, type LibraryPlayRow, type LibraryPlaySelection, type LibraryPlaySelectionOptions, type LibraryPlaySelectionSnapshot} from './play-selection';
