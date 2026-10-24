@@ -48,7 +48,12 @@ test('a plain /join opens the typed short entry only before any capability attem
     let scrubbed = 0;
     const history = {state: null, replaceState: () => {scrubbed++;}};
     assert.deepEqual(captureServicesEntry(page, history, origin), {plainShortJoin: true, invalidContinuation: false});
+    assert.deepEqual(captureServicesEntry(page, history, origin), {plainShortJoin: true, invalidContinuation: false});
     assert.equal(scrubbed, 0);
+  }
+  for (const suffix of ['?', '#']) {
+    const page = {href: origin + '/join' + suffix, pathname: '/join', hash: '', search: '', replace() {}};
+    assert.deepEqual(captureServicesEntry(page, {state: null, replaceState() {}}, origin), {join: undefined, invalidContinuation: true});
   }
 });
 
