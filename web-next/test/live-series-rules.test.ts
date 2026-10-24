@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRulesState, matchingAirings, rulesReducer} from '../src/screens/live/series-rules-model';
+import {createRulesState, matchingAirings, matchingCount, rulesReducer} from '../src/screens/live/series-rules-model';
 import {seriesRulesFixture as view} from '../src/dev/families/live-rules.fixture';
 
 test('the frame starts with the Clockmakers draft and three matching airings', () => {
@@ -12,11 +12,14 @@ test('the frame starts with the Clockmakers draft and three matching airings', (
   assert.equal(createRulesState({...view, selectedRuleId: 'missing'}).draft, undefined);
 });
 test('new episodes, channel choice and pause filter actual airing facts without mutating the view', () => {
-  const rule = {...view.rules[0]!, airings: [...view.rules[0]!.airings, {...view.rules[0]!.airings[2]!, id: 'other-channel', channelId: 'other'}]};
+  const rule = {...view.rules[0]!, airings: [...view.rules[0]!.airings!, {...view.rules[0]!.airings![2]!, id: 'other-channel', channelId: 'other'}]};
   assert.equal(matchingAirings(rule, {...rule.settings, episodes: 'new'}).length, 2);
   assert.equal(matchingAirings(rule, {...rule.settings, episodes: 'new', channel: 'this'}).length, 1);
   assert.equal(matchingAirings(rule, {...rule.settings, enabled: false}).length, 0);
-  assert.equal(view.rules[0]!.airings.length, 3);
+  assert.equal(view.rules[0]!.airings!.length, 3);
+  assert.equal(matchingCount(view.rules[1]!), 2);
+  assert.equal(matchingAirings(view.rules[1]!).length, 0);
+  assert.equal(matchingCount(view.rules[3]!), 0);
 });
 test('all editor controls change only the draft; Cancel closes and discards; reopening uses saved settings', () => {
   let state = createRulesState(view);

@@ -1,12 +1,15 @@
 /** Local editor state; the caller supplies resolved display copy and real airing facts. */
 export type RuleSettings = Readonly<{enabled: boolean; episodes: 'new' | 'all'; channel: 'this' | 'any'; keep: 'all' | '1' | '3'; startEarly: number; endLate: number}>;
 export type RuleAiring = Readonly<{id: string; time: string; day: string; channelId: string; channel: string; episode: string; title: string; isNew: boolean}>;
-export type SeriesRule = Readonly<{id: string; title: string; glyph: string; tone: 'documentary' | 'news' | 'sport'; channelId: string; channelName: string; recorded: number; next: string; conflict?: boolean; settings: RuleSettings; airings: readonly RuleAiring[]}>;
+export type SeriesRule = Readonly<{id: string; title: string; glyph: string; tone: 'documentary' | 'news' | 'sport'; channelId: string; channelName: string; recorded?: number; upcomingCount: number; next: string; showNextChannel?: boolean; conflict?: boolean; settings: RuleSettings; airings?: readonly RuleAiring[]}>;
 export type SeriesRulesView = Readonly<{sourceName: string; channelCount: number; guideThrough: string; upcomingCount: number; recordedCount: number; conflictCount: number; storage: Readonly<{used: number; free: number; hoursLeft: number}>; rules: readonly SeriesRule[]; selectedRuleId?: string}>;
 export type RulesState = Readonly<{rules: readonly SeriesRule[]; selectedId?: string; draft?: RuleSettings}>;
 export type RulesAction = Readonly<{type: 'select'; id: string}> | Readonly<{type: 'change'; patch: Partial<RuleSettings>}> | Readonly<{type: 'cancel' | 'save' | 'delete'}>;
 export function matchingAirings(rule: SeriesRule, settings: RuleSettings = rule.settings): readonly RuleAiring[] {
-  return settings.enabled ? rule.airings.filter(airing => (settings.episodes === 'all' || airing.isNew) && (settings.channel === 'any' || airing.channelId === rule.channelId)) : [];
+  return settings.enabled ? (rule.airings ?? []).filter(airing => (settings.episodes === 'all' || airing.isNew) && (settings.channel === 'any' || airing.channelId === rule.channelId)) : [];
+}
+export function matchingCount(rule: SeriesRule, settings: RuleSettings = rule.settings): number {
+  return settings.enabled ? rule.airings ? matchingAirings(rule, settings).length : rule.upcomingCount : 0;
 }
 export function createRulesState(view: SeriesRulesView): RulesState {
   const rule = view.rules.find(rule => rule.id === view.selectedRuleId);
