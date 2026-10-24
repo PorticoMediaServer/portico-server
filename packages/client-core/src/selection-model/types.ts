@@ -20,6 +20,11 @@ export type SelectionScope = Readonly<{
 }>;
 export type SelectionRevision = Readonly<{catalogRevision: string; viewerRevision: string}>;
 export type SelectionContext = Readonly<{scope: SelectionScope; revision: SelectionRevision}>;
+/** Browse reports one opaque page revision, not a viewer fence or revision pair.
+ * The caller retires this context on principal/route authority replacement.
+ * viewId captures the applied library, pivot, full query and ordering. */
+export type BrowseSelectionScope = Omit<SelectionScope, 'privacyFence'>;
+export type BrowseSelectionContext = Readonly<{scope: BrowseSelectionScope; revision: Readonly<{pageRevision: string}>}>;
 
 /** All-of facts from actual capabilities, not inferred permission grants. */
 export type SelectionCapabilities = Readonly<{
@@ -79,17 +84,17 @@ export type SelectionWindow = Readonly<{
   items: readonly SelectionItem[];
 }>;
 export type SelectedItem = Readonly<{key: string; item: SelectionItem}>;
-export type ExplicitSelectionTarget = Readonly<{
+export type ExplicitSelectionTarget<C = SelectionContext> = Readonly<{
   mode: 'explicit';
-  context: SelectionContext;
+  context: C;
   /** In pick order for queue actions. Aggregate identities remain aggregates. */
   items: readonly SelectedItem[];
   /** The same picks in displayed section/position order, for Play. */
   displayItems: readonly SelectedItem[];
 }>;
-export type QuerySelectionTarget = Readonly<{
+export type QuerySelectionTarget<C = SelectionContext> = Readonly<{
   mode: 'query';
-  context: SelectionContext;
+  context: C;
   queryId: string;
   selector: WholeSelectionSelector;
   /** Selected count, after semantic narrowing and exclusions. */
@@ -103,13 +108,13 @@ export type QuerySelectionTarget = Readonly<{
   summary: SelectionSummary;
   expected: Readonly<{catalogRevision: string}>;
 }>;
-export type SelectionTarget = ExplicitSelectionTarget | QuerySelectionTarget;
-export type SelectionSnapshot = Readonly<{
+export type SelectionTarget<C = SelectionContext> = ExplicitSelectionTarget<C> | QuerySelectionTarget<C>;
+export type SelectionSnapshot<C = SelectionContext> = Readonly<{
   version: number;
-  context: SelectionContext;
+  context: C;
   active: boolean;
   summary: SelectionSummary;
-  target: SelectionTarget | null;
+  target: SelectionTarget<C> | null;
   /** Explicit identities only: this never enumerates a query. */
   selectedKeys: readonly string[];
   lastSectionId: string | null;
@@ -118,8 +123,8 @@ export type SelectionSnapshot = Readonly<{
 }>;
 
 /** Model-issued tickets are checked by object identity as well as generation. */
-export type SelectionReadTicket = Readonly<{context: SelectionContext}>;
-export type SelectionOperation = Readonly<{target: SelectionTarget}>;
+export type SelectionReadTicket<C = SelectionContext> = Readonly<{context: C}>;
+export type SelectionOperation<C = SelectionContext> = Readonly<{target: SelectionTarget<C>}>;
 export type SelectionFailure =
   | 'disposed' | 'stale-context' | 'unregistered' | 'no-anchor'
   | 'different-section' | 'range-not-loaded' | 'not-query-member'
