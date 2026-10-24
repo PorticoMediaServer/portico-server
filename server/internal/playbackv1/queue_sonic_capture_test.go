@@ -119,3 +119,54 @@ func TestSonicCaptureNeverActivatesForMixedQueueWithMusicOnlyCurrentWindow(t *te
 		return nil
 	})
 }
+
+func TestSonicCaptureFreezesHeardOrdinaryWindowBeforeBackgroundKeysExist(t *testing.T) {
+	c, s, caller, q := sonicQueueFixture(t)
+	var snapshot string
+	var raw []byte
+	if err := c.DB.QueryRow(`SELECT snapshot_id FROM queue_v1_segments WHERE id='g_music'`).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DB.QueryRow(`SELECT keys FROM queue_v1_chunks WHERE snapshot_id=? AND chunk_no=0`, snapshot).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`UPDATE queue_v1_snapshots SET state='building',built=0 WHERE id=?`, snapshot)
+	c.Exec(`DELETE FROM queue_v1_chunks WHERE snapshot_id=?`, snapshot)
+	s.SmoothOrder = func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error) {
+		t.Fatal("unknown or already captured window consulted later analysis")
+		return catalog.MusicSmoothOrder{}, nil
+	}
+	var first []int64
+	for phase := 0; phase < 2; phase++ {
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			if phase == 1 {
+				if err := writeQueueChunkTx(ctx, tx, snapshot, 0, raw, false); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE queue_v1_snapshots SET state='ready',built=5 WHERE id=?`, snapshot); err != nil {
+					return err
+				}
+			}
+			l, err := s.readLayout(ctx, tx, q)
+			if err != nil {
+				return err
+			}
+			if err = s.captureMusicWindowTx(ctx, tx, caller, l, 0); err != nil {
+				return err
+			}
+			if captured, ok := l.sonicWindows[0]; !ok || captured.model != nil {
+				t.Fatal("unknown background coverage claimed smoothing", captured, ok)
+			}
+			got := []int64{}
+			for position := int64(0); position < 5; position++ {
+				got = append(got, l.orderToSource(position))
+			}
+			if phase == 0 {
+				first = got
+			} else if !reflect.DeepEqual(first, got) {
+				t.Fatal("background completion changed heard order", first, got)
+			}
+			return nil
+		})
+	}
+}

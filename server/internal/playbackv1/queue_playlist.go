@@ -68,7 +68,15 @@ func (s *Service) SaveQueueAsPlaylist(ctx context.Context, c Caller, id, ifMatch
 	// absent for them (SEC-02), and a playlist entry would say it exists.
 	items := []string{}
 	large, order, size := false, "", int64(0)
-	err = s.withLayout(ctx, q, func(l *layout) error {
+	err = s.withMusicLayout(ctx, c, q.id, func(l *layout) ([]int64, error) {
+		if ifMatch != "" && l.q.revision != q.revision {
+			return nil, ErrRevision
+		}
+		if l.total() > catalog.MaxPlaylistEntries {
+			return nil, nil
+		}
+		return l.sonicWindowsForRange(0, l.total())
+	}, func(l *layout) error {
 		if l.waiting() {
 			return ErrQueueBuilding
 		}

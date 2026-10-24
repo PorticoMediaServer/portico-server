@@ -295,6 +295,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	}
 	listed := s.scanListed(ctx, job, source)
 	artworkListed := s.scanArtworkListed(ctx, job, source)
+	musicListed := s.scanMusicTracksListed(ctx, job, source)
 	artworkObserved := true
 	readContext := func(operation string) context.Context {
 		// The original media target is the invocation, not the observation of a
@@ -307,6 +308,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		// What this scan saw when it listed the directory spares a helper
 		// process for every sidecar that is not there.
 		rooted = localmetadata.WithListing(rooted, listed)
+		rooted = localmetadata.WithMusicTrackListing(rooted, musicListed)
 		rooted = localmetadata.WithArtworkListing(rooted, artworkListed)
 		rooted = localmetadata.WithArtworkReadCheck(rooted, func() { artworkObserved = false })
 		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {

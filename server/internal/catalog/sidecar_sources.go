@@ -94,6 +94,10 @@ func releaseAutomaticSidecar(ctx context.Context, tx *sql.Tx, c sidecarCarrier) 
 	if _, err := tx.ExecContext(ctx, `UPDATE artwork_jobs SET status='stale',lease='',lease_until='' WHERE kind=? AND entity_id=? AND role=? AND provider='local' AND origin=? AND actor='' AND locked=0 AND status IN('pending','retry','running')`, c.kind, c.entity, c.role, "local:"+c.key); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO artwork_dirty(kind,entity_id) VALUES(?,?)`, c.kind, c.entity)
+	return markSidecarArtworkDirtyTx(ctx, tx, c.kind, c.entity)
+}
+
+func markSidecarArtworkDirtyTx(ctx context.Context, tx *sql.Tx, kind string, entity int64) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO artwork_dirty(kind,entity_id) VALUES(?,?)`, kind, entity)
 	return err
 }

@@ -7115,7 +7115,8 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
-      "not_found"
+      "not_found",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7137,7 +7138,8 @@ export const routes = [
       "invalid_request",
       "unauthorized",
       "not_found",
-      "queue_building"
+      "queue_building",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7160,7 +7162,8 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "not_found"
+      "not_found",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"
@@ -9492,7 +9495,8 @@ export const routes = [
     "errors": [
       "invalid_request",
       "unauthorized",
-      "not_found"
+      "not_found",
+      "revision_mismatch"
     ],
     "status": 200,
     "admission": "browsing"

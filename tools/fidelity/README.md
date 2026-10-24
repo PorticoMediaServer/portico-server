@@ -23,7 +23,9 @@ is extracted twice and must be deterministic.
 Adapters map semantic part names to reference/built selectors. They add no DOM
 attributes, markup or style to either screen. An existing `data-frame` anchor
 is preferred when present; adapter anchors come next, then deterministic
-role/text/DOM order. Repeated lists anchor their container and match children by
+role/text/DOM order within the nearest already matched semantic ancestor.
+Different wrapper depths do not change that scope; multiple candidates inside
+the same scope still fail as ambiguous. Repeated lists anchor their container and match children by
 role, normalized descendant text and order. A list cardinality fault is reported
 once; descendant missing/extra/string cascades are suppressed. Own text is used
 as fallback only on leaves. Missing, extra and ambiguous elements are failures; order
@@ -120,3 +122,22 @@ for 900 can select a loaded 800 face when no 900 face exists. The requested
 computed weight remains 900 and is still compared exactly. An existing failed
 matching face is not masked by a different loaded weight; this is readiness
 selection, never a font/style substitution or relaxed comparison threshold.
+
+Existing `/dev/kit?family=...&case=...&capture=true` specimens are allowed only
+when the actual gallery registry contains that exact case and its logical
+viewport matches the adapter. Missing/unknown cases cannot fall back to a pass.
+Capture mode loads only the selected genuine family before module imports;
+registry clients use `loadGalleryFamilies(familyId)` for the same isolation.
+The normal interactive gallery keeps the no-argument all-family behavior.
+A settled-motion adapter awaits real finite animations without canceling or
+rewriting them. Portals require a whole BODY root and a readySelector covering
+the actual open surface, not a crop of the gallery section.
+Contact-sheet adapters may declare `referenceWindowViewport` large enough for
+the existing authored screen to reach its natural size. The shared reference
+extractor rejects a scaled root; it does not rewrite DOM/CSS or rescale values.
+
+Dynamic catalogue copy uses explicit named messageSlots (existing key + public
+fixture values) formatted by the canonical defaultI18n API, not another message
+formatter. preferredKeys select existing used keys for repeated static wording;
+named dataValues declare approved literal fixture facts. All matching stays
+exact, and formatted-message occurrence counts still detect missing/extra copy.
