@@ -13,7 +13,7 @@ const resource=(playbackInfo?:unknown)=>({id:'session',revision:'1',kind:'vod',r
 function wire(raw:unknown){const paths:string[]=[];const http:V1Http={send:async request=>{paths.push(request.path);return {status:200,headers:{},body:JSON.parse(JSON.stringify(raw))};}};return {client:new SessionsClient(http),paths};}
 
 test('SessionsClient reads exact sparse source/delivery comparison independently of output observations',async()=>{
- const raw={...resource({...info(),privateUrl:'https://private.invalid?token=secret'}),observedPlayback:{audio:{handling:'decoded',channels:2,sampleRate:48000}};
+ const raw={...resource({...info(),privateUrl:'https://private.invalid?token=secret'}),observedPlayback:{audio:{handling:'decoded',channels:2,sampleRate:48000}}};
  const {client,paths}=wire(raw);const session=await client.get('session');
  assert.deepEqual(paths,[routePath('get_playback_session',{id:'session'})]);
  assert.deepEqual(session.playbackInfo,info());

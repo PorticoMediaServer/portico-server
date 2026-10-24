@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/subtitles"
 )
 
 // ReadPlaybackInfoTx reads only the committed VOD media generation. The caller
 // must authorize its V1 session and title in this SAME snapshot. This reader
 // grants no media access and never opens or refreshes the source.
-func ReadPlaybackInfoTx(ctx context.Context, tx *sql.Tx, session string, generation int) (*PlaybackInfo, error) {
+func ReadPlaybackInfoTx(ctx context.Context, tx *sql.Tx, session string, generation int, viewer identity.Principal) (*PlaybackInfo, error) {
 	if tx == nil || session == "" || generation < 1 {
 		return nil, nil
 	}
@@ -33,21 +36,21 @@ func ReadPlaybackInfoTx(ctx context.Context, tx *sql.Tx, session string, generat
 	if plan == nil || plan.Trace == nil || plan.Trace.Video == nil {
 		return nil, nil
 	}
-	subtitle, err := readPlaybackSubtitleFacts(ctx, tx, session, current, plan.SourceID)
+	subtitle, err := readPlaybackSubtitleFacts(ctx, tx, session, current, plan.SourceID, subtitles.ViewerKey(viewer.Authority, viewer.AccountID, viewer.ProfileID, viewer.ServerID))
 	if err != nil {
 		return nil, err
 	}
 	return PlaybackInfoForPlan(*plan, subtitle), nil
 }
 
-func readPlaybackSubtitleFacts(ctx context.Context, tx *sql.Tx, session string, generation int, asset string) (*PlaybackSubtitleFacts, error) {
+func readPlaybackSubtitleFacts(ctx context.Context, tx *sql.Tx, session string, generation int, asset, viewer string) (*PlaybackSubtitleFacts, error) {
 	var resource, renderer string
 	out := &PlaybackSubtitleFacts{}
 	err := tx.QueryRowContext(ctx, `SELECT state.resource_id,state.renderer,COALESCE(rev.format,''),COALESCE(rev.language,''),COALESCE(rev.title,''),COALESCE(rev.origin,'')
  FROM playback_subtitle_state state
- LEFT JOIN subtitle_resources resource ON resource.id=state.resource_id AND resource.source_id=? AND resource.deleted=0
+ LEFT JOIN subtitle_resources resource ON resource.id=state.resource_id AND resource.source_id=? AND resource.deleted=0 AND (resource.scope='shared' OR resource.owner=?)
  LEFT JOIN subtitle_revisions rev ON rev.resource_id=resource.id AND rev.revision=state.resource_revision
- WHERE state.session_id=? AND state.generation=?`, asset, session, generation).Scan(&resource, &renderer, &out.Format, &out.Language, &out.Title, &out.Origin)
+ WHERE state.session_id=? AND state.generation=?`, asset, viewer, session, generation).Scan(&resource, &renderer, &out.Format, &out.Language, &out.Title, &out.Origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

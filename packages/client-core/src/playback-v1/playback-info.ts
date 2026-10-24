@@ -22,7 +22,8 @@ export type PlaybackInfo = Readonly<{
 }>;
 
 type RecordValue = Record<string,unknown>;
-function record(v:unknown):RecordValue { if(!v||typeof v!=='object'||Array.isArray(v))throw new Error('invalid playback comparison');return v; }
+function isRecord(v:unknown):v is RecordValue { return !!v&&typeof v==='object'&&!Array.isArray(v); }
+function record(v:unknown):RecordValue { if(!isRecord(v))throw new Error('invalid playback comparison');return v; }
 function text(v:unknown):string { if(typeof v!=='string'||v.length>500||/[\u0000-\u001f\u007f]/u.test(v))throw new Error('invalid comparison text');return v; }
 function choice<T extends string>(v:unknown,values:readonly T[]):T { const found=values.find(value=>value===v);if(found===undefined)throw new Error('invalid comparison choice');return found; }
 function strings(v:RecordValue,keys:readonly string[]):Record<string,string> { const out:Record<string,string>={};for(const key of keys)if(v[key]!==undefined)out[key]=text(v[key]);return out; }

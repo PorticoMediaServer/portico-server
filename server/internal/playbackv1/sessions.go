@@ -1331,7 +1331,7 @@ func (s *Service) Get(ctx context.Context, c Caller, id string) (SessionView, er
 		if current.ended == 0 {
 			view.ObservedPlayback, err = playback.ReadObservedPlayback(readCtx, tx, id, current.generation, view.Presentation.Generation)
 			if err == nil && current.kind == "vod" {
-				view.PlaybackInfo, err = playback.ReadPlaybackInfoTx(readCtx, tx, current.media, current.mediaGeneration)
+				view.PlaybackInfo, err = playback.ReadPlaybackInfoTx(readCtx, tx, current.media, current.mediaGeneration, c.Principal)
 			}
 		}
 		return err

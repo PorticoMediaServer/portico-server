@@ -39,6 +39,14 @@ func TestSessionPlaybackComparisonUsesAuthorizedCommittedGeneration(t *testing.T
 	if string(actual) != string(original) {
 		t.Fatal("catalogue refresh changed committed comparison")
 	}
+
+	// A selected resource does not grant access to another viewer's current
+	// private metadata if its ownership changes after the selection.
+	f.catalog.Exec(`UPDATE subtitle_resources SET owner='different-viewer' WHERE id=?`, f.tracks[0]["en"])
+	private, err := f.service.Get(ctx, f.caller, session.ID)
+	if err != nil || private.PlaybackInfo == nil || private.PlaybackInfo.Source.Subtitles != nil {
+		t.Fatal("private resource metadata crossed viewer authority", err)
+	}
 	denied := errors.New("profile can no longer view title")
 	blocked := f.caller
 	blocked.AuthorizeItem = func(context.Context, string) error { return denied }
