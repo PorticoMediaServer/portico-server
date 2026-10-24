@@ -210,6 +210,7 @@ CREATE TABLE reading_progress(
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
+CREATE INDEX reading_progress_recent ON reading_progress(owner_key,observed_at DESC,item_id DESC,asset_id DESC);
 CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
@@ -6353,14 +6354,12 @@ CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'personal.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
 CREATE TRIGGER personal_change_hint_update AFTER UPDATE ON viewer_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,CASE WHEN OLD.revision IS NOT NEW.revision THEN 'personal.changed' ELSE 'progress.changed' END,'library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
-CREATE TRIGGER server_settings_hint AFTER UPDATE ON console_documents WHEN NEW.scope='server' BEGIN
+CREATE TRIGGER server_settings_hint AFTER UPDATE OF revision ON console_settings_revision WHEN NEW.singleton=1 AND OLD.revision IS NOT NEW.revision BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TABLE catalog_retention_cursors(name TEXT PRIMARY KEY,after_id INTEGER NOT NULL,after_root TEXT NOT NULL DEFAULT '',after_key TEXT NOT NULL DEFAULT '') STRICT;
 CREATE INDEX catalog_credits_role ON catalog_credits(role_id,entity_id);
 CREATE INDEX catalog_credits_department ON catalog_credits(department_id,entity_id);
 CREATE INDEX catalogue_failures_recent ON catalog_derivation_failures(failed_ms DESC,domain,entity_id);
-CREATE TRIGGER server_settings_insert_hint AFTER INSERT ON console_documents WHEN NEW.scope='server' BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER catalogue_generation_published AFTER UPDATE OF retaining ON catalog_generations WHEN OLD.retaining=1 AND NEW.retaining=0 BEGIN
  UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1; END;
 CREATE TRIGGER search_generation_published AFTER UPDATE OF active_slot ON catalog_derivations WHEN NEW.domain=17 AND OLD.active_slot IS NOT NEW.active_slot BEGIN
@@ -8220,3 +8219,11 @@ CREATE TABLE library_sonic_settings(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)
 ) STRICT;
+
+CREATE TABLE maintenance_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,backup_keep_count INTEGER NOT NULL DEFAULT 7 CHECK(backup_keep_count BETWEEN 1 AND 365),background_speed TEXT NOT NULL DEFAULT 'normal' CHECK(background_speed IN('gentle','normal','fast')),updated_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO maintenance_settings(singleton) VALUES(1);
+CREATE TABLE maintenance_retention(category TEXT PRIMARY KEY CHECK(category IN('trickplay','prepared','conversions','subtitles','downloads','logs')),days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 3650)) STRICT;
+INSERT INTO maintenance_retention VALUES('trickplay',365),('prepared',90),('conversions',7),('subtitles',365),('downloads',30),('logs',30);
+INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
+INSERT INTO maintenance_window_days(window_id,day) VALUES('heavy','monday'),('heavy','tuesday'),('heavy','wednesday'),('heavy','thursday'),('heavy','friday'),('heavy','saturday'),('heavy','sunday');
+INSERT INTO maintenance_window_tasks(window_id,task) VALUES('heavy','analysis'),('heavy','trickplay');

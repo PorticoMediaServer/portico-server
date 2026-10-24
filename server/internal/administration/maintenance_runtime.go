@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/workpolicy"
+	"reflect"
 )
 
 func maintenanceRuntime(ctx context.Context, tx *sql.Tx, settings *MaintenanceSettingsDocument) error {
@@ -36,7 +37,7 @@ func (s *Service) BackupKeepCount(ctx context.Context) int {
 		return fallback
 	}
 	defer snapshot.Rollback()
-	settings, _, err := readDocument(ctx, snapshot.Tx(), maintenanceScope, DefaultMaintenanceSettings())
+	settings, _, err := readMaintenanceSettings(ctx, snapshot.Tx())
 	if err != nil {
 		return fallback
 	}
@@ -47,7 +48,7 @@ func (s *Service) BackupKeepCount(ctx context.Context) int {
 func (s *Service) loadMaintenanceRuntime(ctx context.Context, auth Authorize) (MaintenanceDocument, error) {
 	var out MaintenanceDocument
 	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		settings, revision, err := readDocument(ctx, tx, maintenanceScope, DefaultMaintenanceSettings())
+		settings, revision, err := readMaintenanceSettings(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -85,7 +86,7 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 			out = saved
 			return nil
 		}
-		_, revision, err := readDocument(ctx, tx, maintenanceScope, DefaultMaintenanceSettings())
+		current, revision, err := ReadMaintenanceConfiguration(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -102,8 +103,58 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 		}
 		storedValue := value
 		storedValue.Windows = nil
-		if err = writeDocument(ctx, tx, maintenanceScope, revision+1, storedValue, s.milliseconds()); err != nil {
+		if err = writeMaintenanceSettings(ctx, tx, revision+1, storedValue, s.milliseconds()); err != nil {
 			return err
+		}
+		changed := map[string]bool{}
+		if current.BackgroundSpeed != value.BackgroundSpeed {
+			changed["backgroundSpeed"] = true
+		}
+		if current.BackupKeepCount != value.BackupKeepCount {
+			changed["backupKeepCount"] = true
+		}
+		for key, days := range value.Retention {
+			if current.Retention[key] != days {
+				changed["retention."+key] = true
+			}
+		}
+		for _, next := range value.Windows {
+			for _, before := range current.Windows {
+				if next.ID != before.ID {
+					continue
+				}
+				prefix := maintenanceWindowRole(next) + "."
+				if next.Enabled != before.Enabled || next.Cadence != before.Cadence || next.Timezone != before.Timezone {
+					changed[prefix+"mode"] = true
+				}
+				if next.StartMinute != before.StartMinute {
+					changed[prefix+"start"] = true
+				}
+				if next.DurationMinutes != before.DurationMinutes {
+					changed[prefix+"hours"] = true
+				}
+				if !reflect.DeepEqual(next.Days, before.Days) {
+					changed[prefix+"days"] = true
+				}
+			}
+		}
+		for field := range changed {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO server_setting_sources VALUES(?,'server') ON CONFLICT(field) DO UPDATE SET source=excluded.source`, "maintenance:"+field); err != nil {
+				return err
+			}
+		}
+		if len(changed) > 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE console_settings_revision SET revision=revision+1 WHERE singleton=1`); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE server_configuration_state SET pending_revision=(SELECT revision FROM console_settings_revision WHERE singleton=1) WHERE singleton=1`); err != nil {
+				return err
+			}
+			for field := range changed {
+				if _, err = tx.ExecContext(ctx, `INSERT INTO server_configuration_pending(field,revision) VALUES(?,(SELECT revision FROM console_settings_revision WHERE singleton=1)) ON CONFLICT(field) DO UPDATE SET revision=excluded.revision`, "maintenance:"+field); err != nil {
+					return err
+				}
+			}
 		}
 		out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision + 1, Digest: digestOf(value), Settings: value})
 		policy, readErr := workpolicy.ReadTx(ctx, tx)
@@ -115,6 +166,9 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 	})
 	if err == nil {
 		s.ApplyBackgroundPolicy(ctx)
+		if s.ConfigurationCommitted != nil {
+			err = s.ConfigurationCommitted(context.WithoutCancel(ctx))
+		}
 	}
 	return out, err
 }

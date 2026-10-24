@@ -128,7 +128,7 @@ func (s *Service) Run(ctx context.Context) {
 	// tick and no more; on a busy one it hears about work as it is enqueued,
 	// which is sooner than the timer it replaces.
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "console_documents", "admin_documents")
+	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 	defer unregister()
 	progress := worker.NewProgress(dbwork.ChangingCommits)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
@@ -203,7 +203,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 			urgent, unsubscribe := s.missingWake.Subscribe()
 			defer unsubscribe()
 			wake := worker.NewSignal()
-			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "console_documents", "admin_documents")
+			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 			defer unregister()
 			progress := worker.NewProgress(dbwork.ChangingCommits)
 			worker.RunWith(ctx, "metadata.artwork-lane", urgent, wake, func(ctx context.Context) time.Duration {

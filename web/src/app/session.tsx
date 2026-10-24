@@ -643,7 +643,8 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
   /**
    * C45: what a direct sign-in answer leads to. A viewer session is accepted; an account-scoped one
    * opens the profile chooser; a challenge asks for a code; a required password change asks for a new
-   * password; a device waiting for approval says so. Returns 'failed' when nothing was kept.
+   * password. Retired device-approval payloads are refused by the canonical parser before
+   * reaching this controller. Returns 'failed' when nothing was kept.
    * A Portico sign-in (`extra.again`) keeps its Hosted route source, repeats its identity sign-in
    * instead of a password, and may pick up the profile it had before (`preferProfileId`, silent
    * re-admission) when that needs no PIN here.
@@ -654,11 +655,6 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
     if (result.kind === 'challenge') {
       stepRef.current = {connected, username, password, token: result.token, again, hosted};
       setDirectStep({kind: 'code'});
-      return 'step';
-    }
-    if (result.kind === 'device-pending') {
-      stepRef.current = {connected, username, password, again, hosted};
-      setDirectStep({kind: 'device-pending'});
       return 'step';
     }
     const {snapshot, session} = result;
@@ -702,8 +698,6 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
         // After the change, sign in again with the new password.
         result = await directSignIn(step.connected.api, step.username, value);
         step.password = value;
-      } else if (directStep?.kind === 'device-pending') {
-        result = step.again ? await step.again() : await directSignIn(step.connected.api, step.username, step.password);
       } else return;
       await finishDirectSignIn(step.connected, result, step.username, step.password, () => gen === generation.current, {again: step.again, hosted: step.hosted});
     } catch (e) {

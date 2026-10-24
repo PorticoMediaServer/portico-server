@@ -223,6 +223,7 @@ func (s *telemetryService) capacityReport(ctx context.Context, a operations.Auth
 // and the telemetry package's own view of it.
 func transcodeSettings(v operations.Settings) telemetry.TranscodeSettings {
 	return telemetry.TranscodeSettings{
+		ConversionMode: v.ConversionMode, OutputFormat: v.OutputFormat, DownloadMaxQuality: v.DownloadMaxQuality, MaxMusicQuality: v.MusicAwayQuality,
 		Enabled:                 v.TranscodingEnabled,
 		HardwareBackend:         v.HardwareBackend,
 		HardwareDevice:          v.HardwareDevice,

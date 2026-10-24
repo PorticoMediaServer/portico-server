@@ -114,6 +114,17 @@ func TestReadingPrivateActualVersionSelectionAndCASAreIndependent(t *testing.T) 
 			t.Fatal(p, err)
 		}
 	}
+	continued, err := r.s.Continue(ctx, r.p, r.library, "", 10)
+	if err != nil || len(continued.Items) != 1 || continued.Items[0].Item.SourceID != alternateToken || continued.Items[0].Progress.Location.Format != "epub" {
+		t.Fatal("continue did not choose the actual most recent version", continued, err)
+	}
+	if _, _, err = r.s.SaveSessionProgress(ctx, r.p, epubSession.ID, 1, reading.Location{Format: "epub", CFI: "epubcfi(/6/4!/4/2:0)", Section: "EPUB/chapter.xhtml", Progression: 1}); err != nil {
+		t.Fatal(err)
+	}
+	continued, err = r.s.Continue(ctx, r.p, r.library, "", 10)
+	if err != nil || len(continued.Items) != 0 {
+		t.Fatal("finished latest version fell back to older unfinished version", continued, err)
+	}
 	if _, err = r.s.Open(ctx, r.p, item, alternateToken, pdf.Selection.Revision); !errors.Is(err, reading.ErrChanged) {
 		t.Fatal("mixed version revision", err)
 	}

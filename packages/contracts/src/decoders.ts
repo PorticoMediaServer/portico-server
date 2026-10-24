@@ -311,6 +311,7 @@ export function decodeGetQueueEntryForItemResponse(input: unknown): types.GetQue
 export function decodeGetQueueWindowResponse(input: unknown): types.GetQueueWindowResponse { return decode("GetQueueWindowResponse", input) as types.GetQueueWindowResponse; }
 export function decodeGetRatingSystemsResponse(input: unknown): types.GetRatingSystemsResponse { return decode("GetRatingSystemsResponse", input) as types.GetRatingSystemsResponse; }
 export function decodeGetReadinessResponse(input: unknown): types.GetReadinessResponse { return decode("GetReadinessResponse", input) as types.GetReadinessResponse; }
+export function decodeGetReadingContinueResponse(input: unknown): types.GetReadingContinueResponse { return decode("GetReadingContinueResponse", input) as types.GetReadingContinueResponse; }
 export function decodeGetReadingItemsResponse(input: unknown): types.GetReadingItemsResponse { return decode("GetReadingItemsResponse", input) as types.GetReadingItemsResponse; }
 export function decodeGetReadingSessionsSessionIdAssetsResponse(input: unknown): types.GetReadingSessionsSessionIdAssetsResponse { return decode("GetReadingSessionsSessionIdAssetsResponse", input) as types.GetReadingSessionsSessionIdAssetsResponse; }
 export function decodeGetReadingSessionsSessionIdPagesPageIndexResponse(input: unknown): types.GetReadingSessionsSessionIdPagesPageIndexResponse { return decode("GetReadingSessionsSessionIdPagesPageIndexResponse", input) as types.GetReadingSessionsSessionIdPagesPageIndexResponse; }
@@ -328,6 +329,7 @@ export function decodeGetSearchHistoryResponse(input: unknown): types.GetSearchH
 export function decodeGetSeasonsIdEpisodesResponse(input: unknown): types.GetSeasonsIdEpisodesResponse { return decode("GetSeasonsIdEpisodesResponse", input) as types.GetSeasonsIdEpisodesResponse; }
 export function decodeGetServerResponse(input: unknown): types.GetServerResponse { return decode("GetServerResponse", input) as types.GetServerResponse; }
 export function decodeGetServerMetadataAttentionResponse(input: unknown): types.GetServerMetadataAttentionResponse { return decode("GetServerMetadataAttentionResponse", input) as types.GetServerMetadataAttentionResponse; }
+export function decodeGetSettingsConfigurationResponse(input: unknown): types.GetSettingsConfigurationResponse { return decode("GetSettingsConfigurationResponse", input) as types.GetSettingsConfigurationResponse; }
 export function decodeGetSetupStateResponse(input: unknown): types.GetSetupStateResponse { return decode("GetSetupStateResponse", input) as types.GetSetupStateResponse; }
 export function decodeGetShowsIdEpisodesResponse(input: unknown): types.GetShowsIdEpisodesResponse { return decode("GetShowsIdEpisodesResponse", input) as types.GetShowsIdEpisodesResponse; }
 export function decodeGetShowsIdMetadataTvdbResponse(input: unknown): types.GetShowsIdMetadataTvdbResponse { return decode("GetShowsIdMetadataTvdbResponse", input) as types.GetShowsIdMetadataTvdbResponse; }

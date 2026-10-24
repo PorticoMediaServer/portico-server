@@ -27,7 +27,7 @@ func validSegmentMode(v string) bool {
 // library.segmentDetection); a server that never saved one runs standard.
 func serverSegmentModeTx(ctx context.Context, q queryer) (string, error) {
 	var mode sql.NullString
-	err := q.QueryRowContext(ctx, `SELECT json_extract(body,'$."library.segmentDetection"') FROM console_documents WHERE scope='server'`).Scan(&mode)
+	err := q.QueryRowContext(ctx, `SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1`).Scan(&mode)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}

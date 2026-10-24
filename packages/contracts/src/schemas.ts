@@ -6638,6 +6638,9 @@ export const schemas = {
       "operationId": {
         "type": "string"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6709,6 +6712,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6740,6 +6746,7 @@ export const schemas = {
       }
     },
     "required": [
+      "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
       "revision",
@@ -6803,6 +6810,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "conversionMode": {
+            "type": "string"
+          },
           "customCertificateDomain": {
             "type": "string"
           },
@@ -6822,6 +6832,9 @@ export const schemas = {
           },
           "dlnaEnabled": {
             "type": "boolean"
+          },
+          "downloadMaxQuality": {
+            "type": "string"
           },
           "ffmpegPath": {
             "type": "string"
@@ -6909,6 +6922,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "musicAwayQuality": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -6916,6 +6932,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "outputFormat": {
+            "type": "string"
+          },
+          "ownAddressEnabled": {
+            "type": "boolean"
           },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
@@ -6978,9 +7000,6 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "transcodingEnabled": {
-            "type": "boolean"
-          },
           "trustedProxies": {
             "items": {
               "type": "string"
@@ -7008,7 +7027,10 @@ export const schemas = {
           "subtitleTrackLimit",
           "subtitleFileLimitMiB",
           "name",
-          "transcodingEnabled",
+          "conversionMode",
+          "outputFormat",
+          "downloadMaxQuality",
+          "musicAwayQuality",
           "perAccountCap",
           "serverCap",
           "hardwareBackend",
@@ -7050,6 +7072,7 @@ export const schemas = {
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
           "advertisedInterface",
+          "ownAddressEnabled",
           "customCertificatePath",
           "customCertificateKeyPath",
           "customCertificateDomain",
@@ -7112,6 +7135,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7131,6 +7157,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7218,6 +7247,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -7225,6 +7257,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -7287,9 +7325,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7317,7 +7352,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7359,6 +7397,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -7437,6 +7476,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7456,6 +7498,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7543,6 +7588,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -7550,6 +7598,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -7612,9 +7666,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7642,7 +7693,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7684,6 +7738,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -15831,13 +15886,25 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "matchedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "nextCursor": {
         "type": "string"
+      },
+      "totalCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "limit",
-      "items"
+      "items",
+      "totalCount",
+      "matchedCount"
     ],
     "type": "object"
   },
@@ -31230,6 +31297,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "ownAddressEnabled": {
+        "type": "boolean"
+      },
       "pausedSessionTimeoutMinutes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -31261,6 +31331,7 @@ export const schemas = {
       }
     },
     "required": [
+      "ownAddressEnabled",
       "connectionLimit",
       "advertiseUrl",
       "revision",
@@ -31444,6 +31515,9 @@ export const schemas = {
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -31475,6 +31549,7 @@ export const schemas = {
           }
         },
         "required": [
+          "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
           "revision",
@@ -31773,6 +31848,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -31792,6 +31870,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -31879,6 +31960,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -31886,6 +31970,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -31948,9 +32038,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -31978,7 +32065,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -32020,6 +32110,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -32098,6 +32189,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -32117,6 +32211,9 @@ export const schemas = {
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -32204,6 +32301,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -32211,6 +32311,12 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -32273,9 +32379,6 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -32303,7 +32406,10 @@ export const schemas = {
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -32345,6 +32451,7 @@ export const schemas = {
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -118430,6 +118537,133 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetReadingContinueRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingContinueResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "item": {
+              "properties": {
+                "format": {
+                  "enum": [
+                    "epub",
+                    "pdf",
+                    "cbz"
+                  ],
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "inventoryAvailable": {
+                  "type": "boolean"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "libraryId",
+                "title",
+                "format",
+                "sourceId",
+                "inventoryAvailable"
+              ],
+              "type": "object"
+            },
+            "progress": {
+              "properties": {
+                "location": {
+                  "properties": {
+                    "cfi": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "pageIndex": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "progression": {
+                      "type": "number"
+                    },
+                    "section": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "progression"
+                  ],
+                  "type": "object"
+                },
+                "observedAt": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "sourceRevision": {
+                  "type": "string"
+                },
+                "stale": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "sourceId",
+                "sourceRevision",
+                "location",
+                "revision",
+                "observedAt",
+                "stale"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "item",
+            "progress"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "GetReadingItemsRequest": {
     "properties": {},
     "required": [],
@@ -127295,6 +127529,102 @@ export const schemas = {
       "name",
       "api",
       "setupRequired"
+    ],
+    "type": "object"
+  },
+  "GetSettingsConfigurationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSettingsConfigurationResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "fields": {
+            "items": {
+              "properties": {
+                "applicationMode": {
+                  "type": "string"
+                },
+                "configOnly": {
+                  "type": "boolean"
+                },
+                "current": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "default": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "effective": {
+                  "nullable": true,
+                  "type": "any"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "key",
+                "current",
+                "effective",
+                "default",
+                "source",
+                "configOnly",
+                "applicationMode"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          },
+          "registryRevision": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "registryRevision",
+          "path",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },
@@ -156681,6 +157011,21 @@ export const schemas = {
       "claimOperationId": {
         "type": "string"
       },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
       "expiresAt": {
         "type": "string"
       },
@@ -156728,7 +157073,8 @@ export const schemas = {
       "registration",
       "challenge",
       "expiresAt",
-      "proof"
+      "proof",
+      "context"
     ],
     "type": "object"
   },

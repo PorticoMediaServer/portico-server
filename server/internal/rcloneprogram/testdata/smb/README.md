@@ -15,6 +15,11 @@ The native NAS cases need rootful Docker routing to reach their private192.168
 container addresses. `PORTICO_CONTROLLER_ONLY_TEST=1` instead runs the real DAV
 range/sequential controller case without Docker; this does not qualify native
 NAS connectivity.
+Other package tests can run within the same locked-executable and cleanup scope:
+`bash internal/rcloneprogram/testdata/run-native-fixtures.sh --exec go test ...`.
+The command receives `PORTICO_RCLONE_TEST_PROGRAM`; a production-resolver test
+may also set `PORTICO_RCLONE` to that exact path inside its command. No executable
+survives the helper's exit.
 
 Build with `docker build --network=host --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" --iidfile "$TMPDIR/samba-image" internal/rcloneprogram/testdata/smb`.
 Set `PORTICO_SAMBA_TEST_IMAGE` to that exact image ID and

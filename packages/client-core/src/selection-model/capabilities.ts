@@ -5,7 +5,7 @@ import type {
 
 export const selectionKinds: readonly SelectionKind[] = Object.freeze([
   'movie', 'show', 'season', 'episode', 'artist', 'album', 'song', 'book',
-  'audiobook_file', 'chapter', 'collection', 'category', 'author', 'book_series', 'disc', 'extra',
+  'audiobook_file', 'chapter', 'collection', 'playlist', 'category', 'author', 'book_series', 'disc', 'extra',
   'channel', 'person',
 ]);
 export const selectionCapabilityNames = Object.freeze([

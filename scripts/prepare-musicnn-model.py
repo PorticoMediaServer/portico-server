@@ -35,6 +35,8 @@ def prepare(wheel, output, lock):
     if digest(license_source) != lock["licenseSHA256"] or lock["license"] != "ISC":
         raise ValueError("pinned original licence mismatch")
     verified = {}
+    if lock["sourceModel"] not in ("MTT_musicnn", "MSD_musicnn"):
+        raise ValueError("unknown original musicnn model")
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
@@ -59,8 +61,8 @@ def prepare(wheel, output, lock):
         for expected in lock["files"]:
             name = expected["path"]
             relative = Path(name)
-            if not relative.is_relative_to("musicnn/MTT_musicnn") or ".." in relative.parts:
-                raise ValueError("model path outside the original MTT weights")
+            if (not relative.is_relative_to("musicnn/" + lock["sourceModel"]) and name not in ("musicnn/models.py", "musicnn/configuration.py")) or ".." in relative.parts:
+                raise ValueError("model path outside the original weights/source")
             data = read(name, expected["bytes"])
             if len(data) != expected["bytes"] or hashlib.sha256(data).hexdigest() != expected["sha256"]:
                 raise ValueError("original model file mismatch: " + name)

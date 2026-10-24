@@ -21,12 +21,15 @@ import {TopResult} from './TopResult';
 import {runScreenCommand} from '../detail/context';
 import {useLoadingClock} from '../detail/Loading';
 import {ScreenProblem} from '../detail/ScreenProblem';
+import {useShellWidth} from '../../shell/viewport';
+import {RecentSearches} from './RecentSearches';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
 export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; onConsumeLinkedQuery?: () => void};
 
 export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: SearchScreenProps) {
+  const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   useFreshDocument([dependsOn.libraries, ...titlesWithPersonalState(), dependsOn.settings('preferences'), dependsOn.event('stream.resync')], refresh => service.revalidate(refresh), () => service.getSnapshot().phase === 'ready');
@@ -61,6 +64,11 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
   const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
+  const recentBlock = <RecentSearches queries={recent} compact={compact}
+    onSelect={query => {if (context.isCurrent()) {setText(query);setChip('all');committed.current = '';}}}
+    onClear={() => {
+      void binding.clearRecent().then(() => {if (context.isCurrent()) {setRecent([]);setClearFailed(false);}}, () => {if (context.isCurrent()) setClearFailed(true);});
+    }}/>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
@@ -79,9 +87,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
         count={!off && result?.totalCountExact ? result.totalCount : undefined} onClick={() => { setChip(value.id); }}>{t(value.label)}</Chip>;
     })}</div>}
     <div ref={results} className={styles.results}>
-      {!text.trim() && recent.length > 0 && <section className={styles.recent}><header><h2>{t('web.search.recent')}</h2><Button variant="text" size="small" onClick={() => {
-        void binding.clearRecent().then(() => { if (context.isCurrent()) { setRecent([]); setClearFailed(false); } }, () => { if (context.isCurrent()) setClearFailed(true); });
-      }}>{t('web.search.clearRecent')}</Button></header><div>{recent.map(q => <Chip key={q} icon="i-clock" onClick={() => setText(q)}>{q}</Chip>)}</div></section>}
+      {!text.trim() && recentBlock}
       {clearFailed && <p role="alert">{t('web.search.clearFailed')}</p>}
       {problem && <p role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</p>}
       {snapshot.phase === 'loading' && !showing && <SearchLoading key={snapshot.generation} />}
@@ -89,6 +95,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery}: Searc
       {failed.length > 0 && <div role="status" className={styles.partial}><Icon name="i-clock" size={22} /><span>{t('web.search.partial', {groups: new Intl.ListFormat(locale(), {style: 'long', type: 'conjunction'}).format(failed.map(value => t(searchGroupLabel(value.id))))})}</span><Button icon="i-retry" size="small" onClick={() => { void service.refresh(); }}>{t('next.states.tryAgain')}</Button></div>}
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
+      {empty && !group && recentBlock}
       {top && <TopResult binding={binding} result={top} />}
       {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} onCommit={commit} />
         : orderedSearchGroups(groups).map(result => {

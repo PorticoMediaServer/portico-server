@@ -1469,7 +1469,10 @@ export const routes = [
     "query": [
       "cursor",
       "limit",
-      "state"
+      "state",
+      "q",
+      "sort",
+      "direction"
     ],
     "errors": [
       "invalid_request",
@@ -7135,6 +7138,36 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_reading_continue",
+    "method": "GET",
+    "path": "/v1/reading/continue",
+    "summary": "List the viewer's unfinished reading publications",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_reading_items",
     "method": "GET",
     "path": "/v1/reading/items",
@@ -7591,6 +7624,28 @@ export const routes = [
     ],
     "status": 200,
     "admission": "browsing"
+  },
+  {
+    "id": "get_settings_configuration",
+    "method": "GET",
+    "path": "/v1/admin/settings/configuration",
+    "summary": "Read settings values, defaults and configuration sources",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_setup_state",
@@ -18253,6 +18308,7 @@ export const routePaths = {
   "get_queue_window": "/v1/queues/{id}/window",
   "get_rating_systems": "/v1/rating-systems",
   "get_readiness": "/v1/readiness",
+  "get_reading_continue": "/v1/reading/continue",
   "get_reading_items": "/v1/reading/items",
   "get_reading_sessions_sessionId_assets": "/v1/reading/sessions/{sessionId}/assets",
   "get_reading_sessions_sessionId_pages_pageIndex": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",
@@ -18270,6 +18326,7 @@ export const routePaths = {
   "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
   "get_server": "/v1/server",
   "get_server_metadata_attention": "/v1/admin/metadata/attention",
+  "get_settings_configuration": "/v1/admin/settings/configuration",
   "get_setup_state": "/v1/setup/state",
   "get_shows_id_episodes": "/v1/shows/{id}/episodes",
   "get_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",

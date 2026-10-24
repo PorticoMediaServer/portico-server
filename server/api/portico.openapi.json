@@ -6902,6 +6902,9 @@
           "operationId": {
             "type": "string"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6973,6 +6976,9 @@
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -7004,6 +7010,7 @@
           }
         },
         "required": [
+          "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
           "revision",
@@ -7067,6 +7074,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "conversionMode": {
+                "type": "string"
+              },
               "customCertificateDomain": {
                 "type": "string"
               },
@@ -7086,6 +7096,9 @@
               },
               "dlnaEnabled": {
                 "type": "boolean"
+              },
+              "downloadMaxQuality": {
+                "type": "string"
               },
               "ffmpegPath": {
                 "type": "string"
@@ -7173,6 +7186,9 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "musicAwayQuality": {
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -7180,6 +7196,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "outputFormat": {
+                "type": "string"
+              },
+              "ownAddressEnabled": {
+                "type": "boolean"
               },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
@@ -7254,9 +7276,6 @@
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "transcodingEnabled": {
-                "type": "boolean"
-              },
               "trustedProxies": {
                 "items": {
                   "type": "string"
@@ -7284,7 +7303,10 @@
               "subtitleTrackLimit",
               "subtitleFileLimitMiB",
               "name",
-              "transcodingEnabled",
+              "conversionMode",
+              "outputFormat",
+              "downloadMaxQuality",
+              "musicAwayQuality",
               "perAccountCap",
               "serverCap",
               "hardwareBackend",
@@ -7326,6 +7348,7 @@
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
               "advertisedInterface",
+              "ownAddressEnabled",
               "customCertificatePath",
               "customCertificateKeyPath",
               "customCertificateDomain",
@@ -7388,6 +7411,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "conversionMode": {
+                    "type": "string"
+                  },
                   "customCertificateDomain": {
                     "type": "string"
                   },
@@ -7407,6 +7433,9 @@
                   },
                   "dlnaEnabled": {
                     "type": "boolean"
+                  },
+                  "downloadMaxQuality": {
+                    "type": "string"
                   },
                   "ffmpegPath": {
                     "type": "string"
@@ -7494,6 +7523,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "musicAwayQuality": {
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -7501,6 +7533,12 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "outputFormat": {
+                    "type": "string"
+                  },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
                   },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
@@ -7575,9 +7613,6 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "transcodingEnabled": {
-                    "type": "boolean"
-                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -7605,7 +7640,10 @@
                   "subtitleTrackLimit",
                   "subtitleFileLimitMiB",
                   "name",
-                  "transcodingEnabled",
+                  "conversionMode",
+                  "outputFormat",
+                  "downloadMaxQuality",
+                  "musicAwayQuality",
                   "perAccountCap",
                   "serverCap",
                   "hardwareBackend",
@@ -7647,6 +7685,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -7725,6 +7764,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "conversionMode": {
+                    "type": "string"
+                  },
                   "customCertificateDomain": {
                     "type": "string"
                   },
@@ -7744,6 +7786,9 @@
                   },
                   "dlnaEnabled": {
                     "type": "boolean"
+                  },
+                  "downloadMaxQuality": {
+                    "type": "string"
                   },
                   "ffmpegPath": {
                     "type": "string"
@@ -7831,6 +7876,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "musicAwayQuality": {
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -7838,6 +7886,12 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "outputFormat": {
+                    "type": "string"
+                  },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
                   },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
@@ -7912,9 +7966,6 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "transcodingEnabled": {
-                    "type": "boolean"
-                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -7942,7 +7993,10 @@
                   "subtitleTrackLimit",
                   "subtitleFileLimitMiB",
                   "name",
-                  "transcodingEnabled",
+                  "conversionMode",
+                  "outputFormat",
+                  "downloadMaxQuality",
+                  "musicAwayQuality",
                   "perAccountCap",
                   "serverCap",
                   "hardwareBackend",
@@ -7984,6 +8038,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -17715,13 +17770,25 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "matchedCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "nextCursor": {
             "type": "string"
+          },
+          "totalCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
           "limit",
-          "items"
+          "items",
+          "totalCount",
+          "matchedCount"
         ],
         "type": "object"
       },
@@ -33528,6 +33595,9 @@
             },
             "type": "array"
           },
+          "ownAddressEnabled": {
+            "type": "boolean"
+          },
           "pausedSessionTimeoutMinutes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -33559,6 +33629,7 @@
           }
         },
         "required": [
+          "ownAddressEnabled",
           "connectionLimit",
           "advertiseUrl",
           "revision",
@@ -33742,6 +33813,9 @@
                 },
                 "type": "array"
               },
+              "ownAddressEnabled": {
+                "type": "boolean"
+              },
               "pausedSessionTimeoutMinutes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -33773,6 +33847,7 @@
               }
             },
             "required": [
+              "ownAddressEnabled",
               "connectionLimit",
               "advertiseUrl",
               "revision",
@@ -34073,6 +34148,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "conversionMode": {
+                    "type": "string"
+                  },
                   "customCertificateDomain": {
                     "type": "string"
                   },
@@ -34092,6 +34170,9 @@
                   },
                   "dlnaEnabled": {
                     "type": "boolean"
+                  },
+                  "downloadMaxQuality": {
+                    "type": "string"
                   },
                   "ffmpegPath": {
                     "type": "string"
@@ -34179,6 +34260,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "musicAwayQuality": {
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -34186,6 +34270,12 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "outputFormat": {
+                    "type": "string"
+                  },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
                   },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
@@ -34260,9 +34350,6 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "transcodingEnabled": {
-                    "type": "boolean"
-                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -34290,7 +34377,10 @@
                   "subtitleTrackLimit",
                   "subtitleFileLimitMiB",
                   "name",
-                  "transcodingEnabled",
+                  "conversionMode",
+                  "outputFormat",
+                  "downloadMaxQuality",
+                  "musicAwayQuality",
                   "perAccountCap",
                   "serverCap",
                   "hardwareBackend",
@@ -34332,6 +34422,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -34410,6 +34501,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "conversionMode": {
+                    "type": "string"
+                  },
                   "customCertificateDomain": {
                     "type": "string"
                   },
@@ -34429,6 +34523,9 @@
                   },
                   "dlnaEnabled": {
                     "type": "boolean"
+                  },
+                  "downloadMaxQuality": {
+                    "type": "string"
                   },
                   "ffmpegPath": {
                     "type": "string"
@@ -34516,6 +34613,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "musicAwayQuality": {
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -34523,6 +34623,12 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "outputFormat": {
+                    "type": "string"
+                  },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
                   },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
@@ -34597,9 +34703,6 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "transcodingEnabled": {
-                    "type": "boolean"
-                  },
                   "trustedProxies": {
                     "items": {
                       "type": "string"
@@ -34627,7 +34730,10 @@
                   "subtitleTrackLimit",
                   "subtitleFileLimitMiB",
                   "name",
-                  "transcodingEnabled",
+                  "conversionMode",
+                  "outputFormat",
+                  "downloadMaxQuality",
+                  "musicAwayQuality",
                   "perAccountCap",
                   "serverCap",
                   "hardwareBackend",
@@ -34669,6 +34775,7 @@
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
                   "advertisedInterface",
+                  "ownAddressEnabled",
                   "customCertificatePath",
                   "customCertificateKeyPath",
                   "customCertificateDomain",
@@ -122748,6 +122855,133 @@
         ],
         "type": "object"
       },
+      "GetReadingContinueRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingContinueResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "item": {
+                  "properties": {
+                    "format": {
+                      "enum": [
+                        "epub",
+                        "pdf",
+                        "cbz"
+                      ],
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "inventoryAvailable": {
+                      "type": "boolean"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "libraryId",
+                    "title",
+                    "format",
+                    "sourceId",
+                    "inventoryAvailable"
+                  ],
+                  "type": "object"
+                },
+                "progress": {
+                  "properties": {
+                    "location": {
+                      "properties": {
+                        "cfi": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "enum": [
+                            "epub",
+                            "pdf",
+                            "cbz"
+                          ],
+                          "type": "string"
+                        },
+                        "pageIndex": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "progression": {
+                          "type": "number"
+                        },
+                        "section": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "format",
+                        "progression"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "sourceRevision": {
+                      "type": "string"
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "sourceRevision",
+                    "location",
+                    "revision",
+                    "observedAt",
+                    "stale"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "item",
+                "progress"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "GetReadingItemsRequest": {
         "properties": {},
         "required": [],
@@ -131859,6 +132093,126 @@
           "name",
           "api",
           "setupRequired"
+        ],
+        "type": "object"
+      },
+      "GetSettingsConfigurationRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSettingsConfigurationResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "fields": {
+                "items": {
+                  "properties": {
+                    "applicationMode": {
+                      "type": "string"
+                    },
+                    "configOnly": {
+                      "type": "boolean"
+                    },
+                    "current": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "default": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effective": {
+                      "anyOf": [
+                        {
+                          "not": {
+                            "type": "null"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "key",
+                    "current",
+                    "effective",
+                    "default",
+                    "source",
+                    "configOnly",
+                    "applicationMode"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "path": {
+                "type": "string"
+              },
+              "registryRevision": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "registryRevision",
+              "path",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "data"
         ],
         "type": "object"
       },
@@ -175093,6 +175447,21 @@
           "claimOperationId": {
             "type": "string"
           },
+          "context": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
           "expiresAt": {
             "type": "string"
           },
@@ -175140,7 +175509,8 @@
           "registration",
           "challenge",
           "expiresAt",
-          "proof"
+          "proof",
+          "context"
         ],
         "type": "object"
       },
@@ -218293,6 +218663,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -218368,13 +218762,25 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "matchedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "totalCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "limit",
-                    "items"
+                    "items",
+                    "totalCount",
+                    "matchedCount"
                   ],
                   "type": "object"
                 }
@@ -223343,6 +223749,9 @@
                       },
                       "type": "array"
                     },
+                    "ownAddressEnabled": {
+                      "type": "boolean"
+                    },
                     "pausedSessionTimeoutMinutes": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -223374,6 +223783,7 @@
                     }
                   },
                   "required": [
+                    "ownAddressEnabled",
                     "connectionLimit",
                     "advertiseUrl",
                     "revision",
@@ -223493,6 +223903,9 @@
                   "operationId": {
                     "type": "string"
                   },
+                  "ownAddressEnabled": {
+                    "type": "boolean"
+                  },
                   "pausedSessionTimeoutMinutes": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -223572,6 +223985,9 @@
                       },
                       "type": "array"
                     },
+                    "ownAddressEnabled": {
+                      "type": "boolean"
+                    },
                     "pausedSessionTimeoutMinutes": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -223603,6 +224019,7 @@
                     }
                   },
                   "required": [
+                    "ownAddressEnabled",
                     "connectionLimit",
                     "advertiseUrl",
                     "revision",
@@ -223841,6 +224258,9 @@
                           },
                           "type": "array"
                         },
+                        "ownAddressEnabled": {
+                          "type": "boolean"
+                        },
                         "pausedSessionTimeoutMinutes": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -223872,6 +224292,7 @@
                         }
                       },
                       "required": [
+                        "ownAddressEnabled",
                         "connectionLimit",
                         "advertiseUrl",
                         "revision",
@@ -227285,6 +227706,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "conversionMode": {
+                              "type": "string"
+                            },
                             "customCertificateDomain": {
                               "type": "string"
                             },
@@ -227304,6 +227728,9 @@
                             },
                             "dlnaEnabled": {
                               "type": "boolean"
+                            },
+                            "downloadMaxQuality": {
+                              "type": "string"
                             },
                             "ffmpegPath": {
                               "type": "string"
@@ -227391,6 +227818,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "musicAwayQuality": {
+                              "type": "string"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -227398,6 +227828,12 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "outputFormat": {
+                              "type": "string"
+                            },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
                             },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
@@ -227472,9 +227908,6 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
-                            "transcodingEnabled": {
-                              "type": "boolean"
-                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -227502,7 +227935,10 @@
                             "subtitleTrackLimit",
                             "subtitleFileLimitMiB",
                             "name",
-                            "transcodingEnabled",
+                            "conversionMode",
+                            "outputFormat",
+                            "downloadMaxQuality",
+                            "musicAwayQuality",
                             "perAccountCap",
                             "serverCap",
                             "hardwareBackend",
@@ -227544,6 +227980,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -227622,6 +228059,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "conversionMode": {
+                              "type": "string"
+                            },
                             "customCertificateDomain": {
                               "type": "string"
                             },
@@ -227641,6 +228081,9 @@
                             },
                             "dlnaEnabled": {
                               "type": "boolean"
+                            },
+                            "downloadMaxQuality": {
+                              "type": "string"
                             },
                             "ffmpegPath": {
                               "type": "string"
@@ -227728,6 +228171,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "musicAwayQuality": {
+                              "type": "string"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -227735,6 +228181,12 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "outputFormat": {
+                              "type": "string"
+                            },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
                             },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
@@ -227809,9 +228261,6 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
-                            "transcodingEnabled": {
-                              "type": "boolean"
-                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -227839,7 +228288,10 @@
                             "subtitleTrackLimit",
                             "subtitleFileLimitMiB",
                             "name",
-                            "transcodingEnabled",
+                            "conversionMode",
+                            "outputFormat",
+                            "downloadMaxQuality",
+                            "musicAwayQuality",
                             "perAccountCap",
                             "serverCap",
                             "hardwareBackend",
@@ -227881,6 +228333,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -228034,6 +228487,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "conversionMode": {
+                        "type": "string"
+                      },
                       "customCertificateDomain": {
                         "type": "string"
                       },
@@ -228053,6 +228509,9 @@
                       },
                       "dlnaEnabled": {
                         "type": "boolean"
+                      },
+                      "downloadMaxQuality": {
+                        "type": "string"
                       },
                       "ffmpegPath": {
                         "type": "string"
@@ -228140,6 +228599,9 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "musicAwayQuality": {
+                        "type": "string"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -228147,6 +228609,12 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "outputFormat": {
+                        "type": "string"
+                      },
+                      "ownAddressEnabled": {
+                        "type": "boolean"
                       },
                       "pausedSessionTimeoutMinutes": {
                         "maximum": 9007199254740991,
@@ -228221,9 +228689,6 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
-                      "transcodingEnabled": {
-                        "type": "boolean"
-                      },
                       "trustedProxies": {
                         "items": {
                           "type": "string"
@@ -228251,7 +228716,10 @@
                       "subtitleTrackLimit",
                       "subtitleFileLimitMiB",
                       "name",
-                      "transcodingEnabled",
+                      "conversionMode",
+                      "outputFormat",
+                      "downloadMaxQuality",
+                      "musicAwayQuality",
                       "perAccountCap",
                       "serverCap",
                       "hardwareBackend",
@@ -228293,6 +228761,7 @@
                       "uploadCapacityKbps",
                       "pausedSessionTimeoutMinutes",
                       "advertisedInterface",
+                      "ownAddressEnabled",
                       "customCertificatePath",
                       "customCertificateKeyPath",
                       "customCertificateDomain",
@@ -228363,6 +228832,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "conversionMode": {
+                              "type": "string"
+                            },
                             "customCertificateDomain": {
                               "type": "string"
                             },
@@ -228382,6 +228854,9 @@
                             },
                             "dlnaEnabled": {
                               "type": "boolean"
+                            },
+                            "downloadMaxQuality": {
+                              "type": "string"
                             },
                             "ffmpegPath": {
                               "type": "string"
@@ -228469,6 +228944,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "musicAwayQuality": {
+                              "type": "string"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -228476,6 +228954,12 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "outputFormat": {
+                              "type": "string"
+                            },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
                             },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
@@ -228550,9 +229034,6 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
-                            "transcodingEnabled": {
-                              "type": "boolean"
-                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -228580,7 +229061,10 @@
                             "subtitleTrackLimit",
                             "subtitleFileLimitMiB",
                             "name",
-                            "transcodingEnabled",
+                            "conversionMode",
+                            "outputFormat",
+                            "downloadMaxQuality",
+                            "musicAwayQuality",
                             "perAccountCap",
                             "serverCap",
                             "hardwareBackend",
@@ -228622,6 +229106,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -228700,6 +229185,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "conversionMode": {
+                              "type": "string"
+                            },
                             "customCertificateDomain": {
                               "type": "string"
                             },
@@ -228719,6 +229207,9 @@
                             },
                             "dlnaEnabled": {
                               "type": "boolean"
+                            },
+                            "downloadMaxQuality": {
+                              "type": "string"
                             },
                             "ffmpegPath": {
                               "type": "string"
@@ -228806,6 +229297,9 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "musicAwayQuality": {
+                              "type": "string"
+                            },
                             "name": {
                               "type": "string"
                             },
@@ -228813,6 +229307,12 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "outputFormat": {
+                              "type": "string"
+                            },
+                            "ownAddressEnabled": {
+                              "type": "boolean"
                             },
                             "pausedSessionTimeoutMinutes": {
                               "maximum": 9007199254740991,
@@ -228887,9 +229387,6 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
-                            "transcodingEnabled": {
-                              "type": "boolean"
-                            },
                             "trustedProxies": {
                               "items": {
                                 "type": "string"
@@ -228917,7 +229414,10 @@
                             "subtitleTrackLimit",
                             "subtitleFileLimitMiB",
                             "name",
-                            "transcodingEnabled",
+                            "conversionMode",
+                            "outputFormat",
+                            "downloadMaxQuality",
+                            "musicAwayQuality",
                             "perAccountCap",
                             "serverCap",
                             "hardwareBackend",
@@ -228959,6 +229459,7 @@
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
                             "advertisedInterface",
+                            "ownAddressEnabled",
                             "customCertificatePath",
                             "customCertificateKeyPath",
                             "customCertificateDomain",
@@ -259933,6 +260434,180 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/settings/configuration": {
+      "get": {
+        "operationId": "get_settings_configuration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "fields": {
+                          "items": {
+                            "properties": {
+                              "applicationMode": {
+                                "type": "string"
+                              },
+                              "configOnly": {
+                                "type": "boolean"
+                              },
+                              "current": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "default": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "effective": {
+                                "anyOf": [
+                                  {
+                                    "not": {
+                                      "type": "null"
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "key",
+                              "current",
+                              "effective",
+                              "default",
+                              "source",
+                              "configOnly",
+                              "applicationMode"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "path": {
+                          "type": "string"
+                        },
+                        "registryRevision": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "registryRevision",
+                        "path",
+                        "fields"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read settings values, defaults and configuration sources",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "revision_mismatch",
+          "idempotency_key_reused",
+          "rate_limited",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/sign-in": {
       "get": {
         "operationId": "get_sign_in_settings",
@@ -268700,6 +269375,21 @@
                     "claimOperationId": {
                       "type": "string"
                     },
+                    "context": {
+                      "properties": {
+                        "payload": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "payload",
+                        "signature"
+                      ],
+                      "type": "object"
+                    },
                     "expiresAt": {
                       "type": "string"
                     },
@@ -268747,7 +269437,8 @@
                     "registration",
                     "challenge",
                     "expiresAt",
-                    "proof"
+                    "proof",
+                    "context"
                   ],
                   "type": "object"
                 }
@@ -439477,6 +440168,215 @@
         ],
         "x-lane": "default",
         "x-scope": "open"
+      }
+    },
+    "/v1/reading/continue": {
+      "get": {
+        "operationId": "get_reading_continue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "item": {
+                            "properties": {
+                              "format": {
+                                "enum": [
+                                  "epub",
+                                  "pdf",
+                                  "cbz"
+                                ],
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "inventoryAvailable": {
+                                "type": "boolean"
+                              },
+                              "libraryId": {
+                                "type": "string"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "libraryId",
+                              "title",
+                              "format",
+                              "sourceId",
+                              "inventoryAvailable"
+                            ],
+                            "type": "object"
+                          },
+                          "progress": {
+                            "properties": {
+                              "location": {
+                                "properties": {
+                                  "cfi": {
+                                    "type": "string"
+                                  },
+                                  "format": {
+                                    "enum": [
+                                      "epub",
+                                      "pdf",
+                                      "cbz"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "pageIndex": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "progression": {
+                                    "type": "number"
+                                  },
+                                  "section": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "format",
+                                  "progression"
+                                ],
+                                "type": "object"
+                              },
+                              "observedAt": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              },
+                              "sourceRevision": {
+                                "type": "string"
+                              },
+                              "stale": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "sourceId",
+                              "sourceRevision",
+                              "location",
+                              "revision",
+                              "observedAt",
+                              "stale"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "item",
+                          "progress"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "List the viewer's unfinished reading publications",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/reading/items": {
