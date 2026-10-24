@@ -43,6 +43,12 @@ func TestNativeSavedNASConnectionAndForbiddenEdits(t *testing.T) {
 	}
 }
 
+func TestImportedSavedPrivateEndpointsAndCryptOrigin(t *testing.T) {
+	for _, backend := range []string{"http", "s3", "crypt"} {
+		t.Run(backend, func(t *testing.T) { testNativeSavedNAS(t, backend) })
+	}
+}
+
 func testNativeSavedNAS(t *testing.T, backend string) {
 	program := lockedRcloneFixture(t)
 	image, job := os.Getenv("PORTICO_SAMBA_TEST_IMAGE"), os.Getenv("PORTICO_SAMBA_TEST_JOB")
@@ -121,6 +127,14 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 		t.Fatal(err)
 	}
 	arguments := []string{"run", "--detach", "--label", "portico=remote-sources-r40", "--label", "portico.job=" + job, "--read-only", "--memory=256m", "--cpus=1", "--pids-limit=128", "--network", network, "--ip", address, "--log-driver=none", "--tmpfs", "/run", "--tmpfs", "/var/lib/samba", "--tmpfs", "/var/cache/samba", "--tmpfs", "/var/log/samba", "--mount", "type=bind,source=" + root + ",target=/media,readonly", "--mount", "type=bind,source=" + configPath + ",target=/etc/samba/smb.conf,readonly"}
+	if backend == "s3" {
+		if err := os.Mkdir(filepath.Join(root, "bucket"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "bucket", "one.mkv"), payload, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	known, password := "", ""
 	if backend == "sftp" {
 		private := t.TempDir()
@@ -158,8 +172,28 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 		password = strings.TrimSpace(string(value))
 		clear(value)
 		arguments = append(arguments, "--entrypoint=/fixture/rclone", "--mount", "type=bind,source="+program+",target=/fixture/rclone,readonly", "--mount", "type=bind,source="+private+",target=/fixture/private,readonly", image, "serve", "sftp", "/media", "--addr", "0.0.0.0:2222", "--key", "/fixture/private/key", "--authorized-keys", "/fixture/private/authorized", "--user=fixture", "--pass=fixture-only", "--read-only", "--dir-cache-time=0s", "--buffer-size=0", "--log-level=ERROR")
-	} else {
+	} else if backend == "smb" {
 		arguments = append(arguments, image)
+	} else {
+		protocol := backend
+		if backend == "crypt" {
+			protocol = "webdav"
+		}
+		arguments = append(arguments, "--entrypoint=/fixture/rclone", "--mount", "type=bind,source="+program+",target=/fixture/rclone,readonly", image, "serve", protocol, "/media", "--addr", "0.0.0.0:8080", "--read-only", "--dir-cache-time=0s", "--buffer-size=0", "--log-level=ERROR")
+		if backend == "s3" {
+			arguments = append(arguments, "--auth-key=fixture,fixture-only")
+		}
+		if backend == "crypt" {
+			obscure := exec.CommandContext(ctx, program, "obscure", "fixture-only")
+			obscure.Env = environment
+			childprocess.Configure(obscure)
+			value, e := obscure.Output()
+			if e != nil || len(value) > 512 {
+				t.Fatal("fixture password encoding", e)
+			}
+			password = strings.TrimSpace(string(value))
+			clear(value)
+		}
 	}
 	raw, err := docker(ctx, arguments...).Output()
 	if err != nil {
@@ -177,6 +211,14 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 		}
 	})
 	config := func(host string) string {
+		switch backend {
+		case "http":
+			return "[nas]\ntype=http\nurl=http://" + host + ":8080/\n"
+		case "s3":
+			return "[nas]\ntype=s3\nprovider=Other\nregion=us-east-1\naccess_key_id=fixture\nsecret_access_key=fixture-only\nforce_path_style=true\nno_check_bucket=true\nendpoint=http://" + host + ":8080/\n"
+		case "crypt":
+			return "[nas]\ntype=crypt\nremote=network:\npassword=" + password + "\n[network]\ntype=webdav\nurl=http://" + host + ":8080/\n"
+		}
 		if backend == "sftp" {
 			return "[nas]\ntype=sftp\nhost=" + host + "\nport=2222\nuser=fixture\npass=" + password + "\nknown_hosts_file=" + known + "\ndisable_hashcheck=true\n"
 		}
@@ -185,6 +227,12 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	remote := "nas:media"
 	if backend == "sftp" {
 		remote = "nas:/"
+	}
+	if backend == "http" || backend == "crypt" {
+		remote = "nas:"
+	}
+	if backend == "s3" {
+		remote = "nas:bucket"
 	}
 	command := mounts.Command{OperationID: nativeSaveOperation(101), Action: "create", Name: "NAS", Executable: program, Remote: remote, Config: config(address)}
 	// The real backend connection test supplies readiness; no synthetic success
@@ -225,6 +273,34 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 			t.Error("NAS source did not physically retire", err)
 		}
 	})
+	if backend == "http" || backend == "s3" || backend == "crypt" {
+		var stored []byte
+		if err = f.s.db.QueryRowContext(ctx, `SELECT config FROM remote_sources WHERE id=? AND kind='rclone'`, receipt.MountID).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		approved, err := f.s.importedSourceConfig(stored)
+		expected := "http://" + address + ":8080/"
+		if err != nil || len(approved.Approvals) != 1 || approved.Approvals[0].Root != expected || len(approved.Approvals[0].Addresses) != 1 || approved.Approvals[0].Addresses[0] != address {
+			t.Fatal("save did not persist only the tested origin", approved, err)
+		}
+		root, err := f.s.InspectRoot(ctx, receipt.Mount.MountPath)
+		if err != nil || !root.Directory {
+			t.Fatal("saved imported source did not connect", err)
+		}
+		if backend != "crypt" {
+			file, err := f.s.Stat(ctx, filepath.Join(receipt.Mount.MountPath, "one.mkv"))
+			if err != nil || file.Size != int64(len(payload)) {
+				t.Fatal("imported source metadata did not reach actual origin", file.Size, err)
+			}
+		}
+		for i, host := range []string{"127.0.0.1", "169.254.169.254", "169.254.1.2"} {
+			if _, err := managed.Command(ctx, "actual-owner-nas", receipt.MountID, mounts.Command{OperationID: nativeSaveOperation(130 + i), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config(host)}, authorize); err == nil {
+				t.Fatal("forbidden imported edit admitted", host)
+			}
+		}
+		t.Logf("imported_backend=%s saved_actual_private_origin=true blocked_edits_refused=true", backend)
+		return
+	}
 	metadata, err := process.Metadata(ctx)
 	if err != nil {
 		t.Fatal(err)
