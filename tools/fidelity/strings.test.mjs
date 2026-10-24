@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {catalogueMatches, compareStrings, stringInventory} from './strings.mjs';
+import {catalogueMatches, compareStrings, compareCatalogueStrings, mapScreenStrings, stringInventory} from './strings.mjs';
 
 const screen = strings => ({scope: 'screen', strings: strings.map((value, index) => ({id: String(index), kind: 'text', ...value}))});
 
@@ -32,4 +32,16 @@ test('catalogue lookup reports exact existing keys without normalizing or making
   assert.deepEqual(catalogueMatches(values, {first: "Can't connect", other: "Can't connect", unicode: 'é'}).map(value => value.catalogueKeys), [['first', 'other'], [], ['unicode'], []]);
   assert.throws(() => stringInventory({scope: 'crop', strings: []}), /screen measurement/);
   assert.throws(() => catalogueMatches(values, {wrong: {nested: true}}), /flat string/);
+});
+
+test('explicit keys resolve catalogue ambiguity; public data slots are exact and cannot bless arbitrary copy', () => {
+  const frame = screen([{text: 'Save', frame: 'save'}, {text: 'Public title', frame: 'title'}]);
+  const catalogue = {one: 'Save', two: 'Save'};
+  assert.equal(mapScreenStrings(frame, catalogue)[0].status, 'ambiguous');
+  const adapter = {keys: {save: 'two'}, data: {title: {name: 'title', value: 'Public title'}}};
+  assert.deepEqual(mapScreenStrings(frame, catalogue, adapter).map(value => value.status), ['mapped', 'data']);
+  const built = screen([{text: 'Save', frame: 'save'}, {text: 'Wrong title', frame: 'title'}, {text: 'Undrawn extra', frame: 'extra'}]);
+  const result = compareCatalogueStrings(frame, built, catalogue, adapter);
+  assert.ok(result.differences.some(value => value.kind === 'built-string-data-mismatch'));
+  assert.ok(result.differences.some(value => value.kind === 'built-string-unmapped' && value.text === 'Undrawn extra'));
 });

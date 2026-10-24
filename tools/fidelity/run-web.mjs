@@ -7,6 +7,7 @@ import {compareCatalogueStrings} from './strings.mjs';
 import {compareTextMetrics} from './text-metrics.mjs';
 import {compareScreens} from './compare.mjs';
 import {auth4} from './auth4.mjs';
+import {colorDifference, parseColor} from './color.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -40,12 +41,15 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       if (!password?.focused || password.input?.length !== 10) differences.push({kind: 'fixture-state', label: 'Real password focus and ten masked characters', focused: password?.focused, length: password?.input?.length});
       if (!deterministicReference || !deterministicActual) differences.push({kind: 'nondeterministic-extraction', label: 'Same-input determinism', reference: deterministicReference, actual: deterministicActual});
       if (browser.blocked.length || browser.pageErrors.length) differences.push({kind: 'page-readiness', label: 'Blocked or failed runtime resource', blocked: browser.blocked, pageErrors: browser.pageErrors});
-      const caret = reference.elements.find(node => node.frame === 'native-caret');
-      comparison.diagnostics.push({label: 'Native input caret', scored: false, ruling: 27, expectedColor: caret?.style.backgroundColor, actualColor: password?.style.caretColor,
-        focused: password?.focused, paintVisibility: 'not measured', reason: 'Native caret x/width are illustrative. Native blink paint requires a separate non-artwork visibility probe; no inferred pixel claim.'});
-      differences.push({kind: 'unassessed-native-caret-visibility', label: 'Native input caret paint', focused: password?.focused});
+      const caretColor = password && colorDifference(password.style.color, password.style.caretColor);
+      const nativeCaret = {ruling: 27, focused: Boolean(password?.focused && actual.documentFocused),
+        collapsedSelection: password?.input?.selectionStart === 10 && password?.input?.selectionEnd === 10,
+        colorFollowsText: Boolean(caretColor && caretColor.deltaE2000 <= 2 && caretColor.alpha <= .02 && parseColor(password.style.caretColor)?.[3] > 0),
+        qualification: 'Native caret existence/focus, collapsed insertion point and CSS colour; platform governs x/width/blink. No pixel or blink-timing claim.'};
+      if (!nativeCaret.focused || !nativeCaret.collapsedSelection || !nativeCaret.colorFollowsText) differences.push({kind: 'native-caret-state', label: 'Native input caret', ...nativeCaret});
+      comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
       return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
-        comparison, strings, textMetrics, differences, differenceCount: differences.length,
+        comparison, strings, textMetrics, nativeCaret, differences, differenceCount: differences.length,
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};

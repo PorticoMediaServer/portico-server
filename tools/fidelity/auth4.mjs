@@ -1,6 +1,6 @@
 /** Existing genuine DEV entry; only selectors, catalogue keys and public data slots. */
 export const auth4 = {
-  id: 'auth4', state: 'local-server-password-focused', viewport: {width: 1440, height: 900, deviceScaleFactor: 1},
+  id: 'auth4', state: 'local-server-password-focused-10-masked', viewport: {width: 1440, height: 900, deviceScaleFactor: 1},
   referenceSelector: '.frame[data-f="4"] > .screen', actualSelector: '[data-account-specimen] > section', entry: '/src/dev/entries/accounts.html?frame=4',
   reference: {
     screen: '$root', backdrop: '.gen', brand: '.mark-tl', content: '.au', eyebrow: '.why', title: '.au h1', lede: '.au > .lede',

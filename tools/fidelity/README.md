@@ -42,8 +42,10 @@ resulting rendered boxes are scored. Artwork content, illustrative object
 position and internal SVG fill/path shapes are not compared. All unscored
 properties and special native-input content mappings are included in results.
 Native value glyph bounds are never replaced with the input host rectangle.
-The native-caret illustration ruling excludes x/width; unresolved actual caret
-paint visibility is reported unassessed and cannot create a false PASS.
+The native-caret illustration ruling excludes x/width/blink. Auth4 verifies its
+actual focused native control, collapsed insertion point and caret colour
+following text (ruling27); this is native DOM eligibility, not a pixel or blink
+timing claim. It never substitutes a drawn caret or offsets native text.
 
 Every frame string is mapped to exact existing catalogue values. Adapters may
 select the actual existing key to resolve ambiguity. Public fixture values

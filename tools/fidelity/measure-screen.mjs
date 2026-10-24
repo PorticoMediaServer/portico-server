@@ -64,6 +64,9 @@ export async function measureScreen({selector, expectedViewport, anchors = {}} =
         record.input = {type: element.type, name: element.name, value: secret ? null : element.value,
           redacted: secret, length: element.value.length, placeholder: element.getAttribute('placeholder'),
           labels: [...(element.labels ?? [])].map(label => label.innerText)};
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+          record.input.selectionStart = element.selectionStart; record.input.selectionEnd = element.selectionEnd;
+        }
         if (!secret && element.value) strings.push({id: `${id}:value`, owner: id, frame: record.frame, kind: 'value', text: element.value, box: box(rect), style: style(computed)});
         if (record.input.placeholder) strings.push({id: `${id}:placeholder`, owner: id, frame: record.frame, kind: 'placeholder', text: record.input.placeholder});
       }

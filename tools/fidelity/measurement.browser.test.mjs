@@ -33,6 +33,7 @@ test('real browser measures the whole viewport and protects source, secret and n
       await browser.navigate(origin, 'main');
       await browser.evaluate('document.querySelector("input[name=password]").focus()');
       const screen = await browser.measure('main');
+      assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
       assert.equal(screen.scope, 'screen'); assert.equal(screen.fullViewport, true);
       assert.deepEqual(screen.root, {x: 0, y: 0, width: 800, height: 600});
       assert.deepEqual(screen.viewport, {width: 800, height: 600, deviceScaleFactor: 1});
