@@ -22,7 +22,8 @@ const cancelled = () => new DOMException('Search Live TV changed', 'AbortError')
 export class SearchOnNowController {
   private api: ChannelApi;
   private serverId: string;
-  private timezone: string;
+  /** The confirmed catalogue's device zone, read for each window; never a guessed UTC. */
+  private timeZone: () => string | undefined;
   private current: () => boolean;
   private signal: AbortSignal;
   private state = empty();
@@ -32,11 +33,11 @@ export class SearchOnNowController {
   private pending?: Promise<void>;
   private disposed = false;
   private limit: number;
-  constructor(input: Readonly<{api: ChannelApi; serverId: string; timezone: string; isCurrent: () => boolean; signal: AbortSignal; limit?: number}>) {
-    if (!input.serverId || !input.timezone) throw new Error('Invalid Search Live TV scope');
+  constructor(input: Readonly<{api: ChannelApi; serverId: string; timeZone: () => string | undefined; isCurrent: () => boolean; signal: AbortSignal; limit?: number}>) {
+    if (!input.serverId || typeof input.timeZone !== 'function') throw new Error('Invalid Search Live TV scope');
     const limit = input.limit ?? 4;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 4) throw new Error('Invalid Search Live TV window');
-    this.api = input.api;this.serverId = input.serverId;this.timezone = input.timezone;this.current = input.isCurrent;this.signal = input.signal;
+    this.api = input.api;this.serverId = input.serverId;this.timeZone = input.timeZone;this.current = input.isCurrent;this.signal = input.signal;
     this.limit = limit;
     this.signal.addEventListener('abort', this.dispose, {once: true});
     if (this.signal.aborted) this.dispose();
@@ -62,19 +63,29 @@ export class SearchOnNowController {
     this.publish({phase: 'loading', cards: Object.freeze([]), sourceNames: Object.freeze([])});
     const task = (async () => {
       try {
+        const timezone = this.timeZone();
+        // No confirmed zone means no window: refuse rather than read a guessed UTC one.
+        if (!timezone) {this.publish({phase: 'hidden', cards: Object.freeze([]), sourceNames: Object.freeze([])});return;}
         const now = Date.now();
-        const source = legacyGuideSource(this.api, this.serverId, {kind: 'all', sourceId: '', timezone: this.timezone, sort: 'favorites'});
+        const source = legacyGuideSource(this.api, this.serverId, {kind: 'all', sourceId: '', timezone, sort: 'favorites'});
         const page = await source.channels(0, this.limit, signal);
         if (!this.active() || generation !== this.generation || signal.aborted) throw cancelled();
         if (!page.items.length) {this.publish({phase: 'ready', cards: Object.freeze([]), sourceNames: Object.freeze([])});return;}
-        const channels: readonly GuideChannelRow[] = page.items.slice(0, this.limit);
+        // A row without its actual source is an incomplete identity, never an empty one.
+        const channels: readonly GuideChannelRow[] = page.items.filter(channel => !!channel.sourceId && !!channel.id && !!channel.name).slice(0, this.limit);
+        if (!channels.length) {this.publish({phase: 'hidden', cards: Object.freeze([]), sourceNames: Object.freeze([])});return;}
         const [programmes, summaries] = await Promise.all([
           source.programs(channels.map(channel => channel.id), now, now + 1, signal),
-          fetchGuideSourceSummaries(this.api, this.serverId, this.timezone, signal).catch(() => undefined),
+          // Source names are a convenience; an authority failure is not.
+          fetchGuideSourceSummaries(this.api, this.serverId, timezone, signal).catch((error: unknown) => {
+            const status = (error as {status?: unknown} | null)?.status, code = String((error as {code?: unknown} | null)?.code ?? '');
+            if (status === 401 || status === 403 || code === 'unauthorized' || code === 'forbidden') throw error;
+            return undefined;
+          }),
         ]);
         if (!this.active() || generation !== this.generation || signal.aborted) throw cancelled();
         const cards = Object.freeze(channels.map(channel => Object.freeze({
-          channel: Object.freeze({sourceId: channel.sourceId ?? '', id: channel.id, name: channel.name,
+          channel: Object.freeze({sourceId: channel.sourceId as string, id: channel.id, name: channel.name,
             ...(channel.number !== undefined ? {number: channel.number} : {}), ...(channel.mark ? {mark: channel.mark} : {}),
             ...(channel.logoUrl ? {logoUrl: channel.logoUrl} : {})}),
           programmes: Object.freeze(programmes[channel.id] ?? []),

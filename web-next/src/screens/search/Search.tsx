@@ -26,11 +26,12 @@ import {useShellWidth} from '../../shell/viewport';
 import {RecentSearches} from './RecentSearches';
 import {nowNext} from '@core/guide/index.ts';
 import {channelTint, type FactPart} from '@portico/client-core/kit-model';
-import {defaultI18n} from '@i18n';
+import {serviceI18n} from '@core/presentation/service-text.ts';
+import {regionPreferences} from '@core/preference-effects.ts';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
-const searchTimezone = () => defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+const searchTimezone = () => serviceI18n().region.timeZone;
 const onNowTime = (at: number) => new Intl.DateTimeFormat(locale(), {hour: 'numeric', minute: '2-digit', timeZone: searchTimezone()}).format(new Date(at));
 function onNowProgramme(card: SearchOnNowCard, now: number) {
   const current = nowNext(card.programmes, now), programme = current.now;
@@ -79,10 +80,13 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
     if (text.trim()) return;
     if (binding.genres.getSnapshot().phase === 'idle') void binding.genres.load().catch(() => {});
   }, [binding, text]);
+  // The confirmed region is the times' authority: a changed preference replaces the window/generation.
+  const regionKey = JSON.stringify(regionPreferences(preferences));
   useEffect(() => {
+    binding.onNow.cancel();
     if (text.trim() || context.identity?.liveAvailable !== true) return;
-    if (binding.onNow.getSnapshot().phase === 'idle') void binding.onNow.load().catch(() => {});
-  }, [binding, context.identity?.liveAvailable, text]);
+    void binding.onNow.load().catch(() => {});
+  }, [binding, context.identity?.liveAvailable, text, regionKey]);
   useEffect(() => {
     if (text.trim()) return;
     const timer = setInterval(() => setNow(Date.now()), 30_000);

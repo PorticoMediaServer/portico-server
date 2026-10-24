@@ -4,7 +4,7 @@ import {createDetailBindings} from '../detail/bindings';
 import {createShowBindings} from '../detail/show-bindings';
 import {SEARCH_CHIPS} from '@core/presentation/search-model.ts';
 import type {SearchData, SearchGroupResult} from '@core/search.ts';
-import {defaultI18n} from '@i18n';
+import {serviceI18n} from '@core/presentation/service-text.ts';
 import {SearchGenresController} from './genres';
 import {SearchOnNowController} from './on-now';
 
@@ -20,7 +20,7 @@ export function createSearchBindings(context: ScreenContext) {
   const service = new SearchService({api: life.api, scope: context.scope});
   const genres = new SearchGenresController({api: life.api, signal: life.signal(), isCurrent: life.current, slot: 'backdrop', limit: 8});
   const onNow = new SearchOnNowController({api: life.api, serverId: context.scope.serverId,
-    timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: () => serviceI18n().region.timeZone,
     isCurrent: life.current, signal: life.signal(), limit: 4});
   let text = '', group: SearchGroup | undefined;
   let resultKey = '';
