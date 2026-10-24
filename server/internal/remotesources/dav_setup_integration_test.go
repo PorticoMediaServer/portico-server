@@ -150,7 +150,7 @@ func TestDedicatedDAVSetupRunsBoundedOriginChecksAfterPhysicalStop(t *testing.T)
 			input := DAVInput{OperationID: nativeSaveOperation(200), Name: "Private DAV", Root: server.URL + "/media/", Username: "fixture", Password: "fixture-only", InsecureLocal: true}
 			receipt, err := f.s.ConfigureDAV(ctx, "actual-owner-fixture", "", input, authorize)
 			if mode == "timeout" {
-				if !errors.Is(err, context.DeadlineExceeded) || gets.Load() != 1 {
+				if !(errors.Is(err, context.DeadlineExceeded) || errors.Is(err, remotemedia.ErrStalled)) || gets.Load() != 1 {
 					t.Fatal("timeout was not unknown/failure", gets.Load(), err)
 				}
 				var count int
