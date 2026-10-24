@@ -44,6 +44,61 @@ epsilon. DOM equality and the 2-logical-unit element tolerance are unchanged.
 Use that same relation when deriving native `fullViewport`; an already emitted
 false flag remains a validation failure and is never silently replaced.
 
+### Physically observed native window geometry
+
+A producer with a checked native observer may choose
+`measurement.geometrySource:'native-window'` for a NEW capture. This is a source
+policy for the complete capture, not a preference for whichever API returns zero.
+Root, each host and each text run must come from the same admitted, current,
+attached native window/scene. The producer must check actual root/fixture/host
+attachment and capture retirement before publishing the coherent native UI-thread
+batch. An API name or a JSON declaration alone does not prove that admission.
+Apple remains unavailable until its actual admission barrier exists.
+
+Normalize native physical pixels once with the observed view density, or retain
+actual native points. Keep truthful DPR/fontScale. Then use
+`nativeWindowRectToRoot(hostWindowRect, rootWindowRect)` for each box and text run.
+This subtracts only the observed physical window root; it performs no scaling,
+rounding, inset subtraction, frame alignment or ShadowTree correction. Native
+animation transforms may differ from Fabric/ShadowTree coordinates. Do not assume
+a constant root offset, require those two sources to agree, or mix their boxes.
+
+The root qualifies as full viewport only when
+`nativeWindowCoversViewport(rootWindowRect, viewport, measurement)` returns true:
+its actual native window origin is strictly zero and its actual size matches the
+observed viewport using the existing exact/float32 extent relation. The canonical
+root's relative zero origin is not this proof. Old false files stay false.
+
+Retain curated raw provenance (all rectangles are already in declared dp/pt):
+
+```js
+diagnostics: {
+  fontScale: actualFontScale, // optional; remains unscored
+  nativeCoordinates: {
+    basis: 'attached-native-window',
+    windowAPI: actualPublicNativeAPIIdentifier,
+    rootWindow: actualNativeRootWindowRect,
+    publicRoot: {api: 'bounding-client-rect', rect: actualFabricRootRect}, // optional
+    publicRootReadback: {api: 'measure-in-window', rect: actualPublicReadback} // optional
+  }
+}
+// On each actual host, retaining existing flattenedStyle diagnostics if present:
+node.diagnostics.nativeWindowRect = actualNativeHostWindowRect;
+node.diagnostics.publicMeasurement = {api: actualPublicAPI, rect: actualPublicRect}; // optional
+node.diagnostics.nativeWindowTextRects = actualNativeWindowRuns; // only when observed
+```
+
+API identifiers contain only bounded identifier characters, never URLs, paths,
+props, assets or authentication data. Public measurement APIs are exactly
+`bounding-client-rect` or `measure-in-window`. Public readbacks are diagnostics,
+never scoring facts or fallbacks. The validator rederives every supplied box/run
+from its raw native window pair without a new tolerance. Unavailable native host
+bounds use `box:null` plus a declared `box` unavailable fact; they cannot fall
+back to public layout or fabricated zero rectangles. Missing runs remain
+unavailable, never host rectangles; input glyph runs are forbidden. These gaps
+keep the verdict withheld. All font/paint/visibility admission rules below remain
+unchanged, including unknown font family and unsupported background/shadow facts.
+
 Comparison reports include `assessment`: coverage has separate declared facts,
 emitted unavailable measurements, missing observed font/paint properties, invalid
 input, calibration and state failures. `findings` counts measured, missing,

@@ -13,6 +13,9 @@ export const diagnosticStyleProperties = Object.freeze([
 ]);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const rect = value => value && ['x', 'y', 'width', 'height'].every(key => finite(value[key])) && value.width >= 0 && value.height >= 0;
+const only = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));
+const rawRect = value => only(value, ['x', 'y', 'width', 'height']) && rect(value);
+const publicMeasurement = value => only(value, ['api', 'rect']) && ['bounding-client-rect', 'measure-in-window'].includes(value.api) && rawRect(value.rect);
 export function usesLogicalCoordinates(screen) {
   const value = screen?.measurement;
   return value?.renderer === 'dom' && value.coordinateUnit === 'css-px' || value?.renderer === 'react-native' &&
@@ -28,6 +31,25 @@ export function sameLogicalExtent(left, right, measurement) {
     (left === Math.fround(right) || right === Math.fround(left));
 }
 
+/** Both inputs must already be observed in the same attached native window and
+ * logical unit. This is an origin translation only; no scaling or rounding. */
+export function nativeWindowRectToRoot(windowRect, rootWindow) {
+  if (!rawRect(windowRect) || !rawRect(rootWindow)) throw new Error('Observed native window rectangles required');
+  return {x: windowRect.x - rootWindow.x, y: windowRect.y - rootWindow.y, width: windowRect.width, height: windowRect.height};
+}
+
+export function nativeWindowCoversViewport(rootWindow, viewport, measurement) {
+  return measurement?.renderer === 'react-native' && usesLogicalCoordinates({measurement}) && rawRect(rootWindow) &&
+    rootWindow.x === 0 && rootWindow.y === 0 && rootWindow.width > 0 && rootWindow.height > 0 &&
+    sameLogicalExtent(rootWindow.width, viewport?.width, measurement) && sameLogicalExtent(rootWindow.height, viewport?.height, measurement);
+}
+
+const sameRect = (left, right) => rect(left) && rect(right) && ['x', 'y', 'width', 'height'].every(key => left[key] === right[key]);
+const nativeCoordinates = value => only(value, ['basis', 'windowAPI', 'rootWindow', 'publicRoot', 'publicRootReadback']) &&
+  value.basis === 'attached-native-window' && typeof value.windowAPI === 'string' && /^[A-Za-z][A-Za-z0-9_.+:-]{0,159}$/.test(value.windowAPI) && !/^(?:https?|file|data):/i.test(value.windowAPI) &&
+  rawRect(value.rootWindow) && (value.publicRoot === undefined || publicMeasurement(value.publicRoot)) &&
+  (value.publicRootReadback === undefined || publicMeasurement(value.publicRootReadback));
+
 export function componentFitsViewport(screen) {
   const box = screen?.componentPresentation?.windowBounds, viewport = screen?.viewport;
   return rect(box) && box.x >= 0 && box.y >= 0 && finite(viewport?.width) && finite(viewport?.height) &&
@@ -42,6 +64,15 @@ export function validateMeasurement(screen, {reference = false} = {}) {
   need(rect(screen?.root), 'root');
   const referenceFrame = screen?.measurement?.sourceRole === 'reference-frame';
   const component = screen?.scope === 'component', referenceComponent = screen?.measurement?.sourceRole === 'reference-component';
+  const physicalWindow = screen?.measurement?.geometrySource === 'native-window';
+  const coordinates = screen?.diagnostics?.nativeCoordinates;
+  need(screen?.measurement?.geometrySource === undefined || physicalWindow, 'measurement.geometrySource');
+  if (physicalWindow) {
+    need(!reference && !component && screen?.measurement?.renderer === 'react-native' && usesLogicalCoordinates(screen), 'measurement.geometrySource');
+    need(nativeCoordinates(coordinates), 'diagnostics.nativeCoordinates');
+    need(nativeWindowCoversViewport(coordinates?.rootWindow, screen?.viewport, screen?.measurement), 'nativeWindow.fullViewport');
+    need(screen?.root?.width === coordinates?.rootWindow?.width && screen?.root?.height === coordinates?.rootWindow?.height, 'nativeWindow.root');
+  } else need(coordinates === undefined, 'diagnostics.nativeCoordinates.geometrySource');
   need(screen?.measurement?.sourceRole === undefined || referenceFrame || referenceComponent, 'measurement.sourceRole');
   need(screen?.fullViewport === true || reference && referenceFrame && screen?.fullViewport === false || component && screen?.fullViewport === false, 'fullViewport');
   if (referenceComponent) need(reference && component && screen.viewport?.deviceScaleFactor === 1, 'measurement.sourceRole');
@@ -71,7 +102,7 @@ export function validateMeasurement(screen, {reference = false} = {}) {
   need(Array.isArray(screen?.strings), 'strings');
   need(Array.isArray(screen?.anchorIssues), 'anchorIssues');
   need(Array.isArray(screen?.repeatedLists), 'repeatedLists');
-  if (screen?.diagnostics !== undefined) need(screen.diagnostics && typeof screen.diagnostics === 'object' && !Array.isArray(screen.diagnostics) && Object.keys(screen.diagnostics).every(key => key === 'fontScale') && (screen.diagnostics.fontScale === undefined || finite(screen.diagnostics.fontScale) && screen.diagnostics.fontScale > 0), 'diagnostics.fontScale');
+  if (screen?.diagnostics !== undefined) need(only(screen.diagnostics, ['fontScale', 'nativeCoordinates']) && (screen.diagnostics.fontScale === undefined || finite(screen.diagnostics.fontScale) && screen.diagnostics.fontScale > 0), 'diagnostics.fontScale');
   if (screen?.unavailable !== undefined) need(Array.isArray(screen.unavailable) && screen.unavailable.every(fact => typeof fact?.property === 'string' && typeof fact.reason === 'string' && fact.reason.length > 0 && (fact.element === undefined || typeof fact.element === 'string')), 'unavailable');
   const ids = new Set();
   for (const [index, node] of (Array.isArray(screen?.elements) ? screen.elements : []).entries()) {
@@ -79,13 +110,22 @@ export function validateMeasurement(screen, {reference = false} = {}) {
     const declared = property => Array.isArray(screen.unavailable) && screen.unavailable.some(fact => fact.element === node.id && fact.property === property && typeof fact.reason === 'string' && fact.reason.length > 0);
     need(typeof node.id === 'string' && !ids.has(node.id), path + '.id'); ids.add(node.id);
     if (node.diagnostics !== undefined) {
-      need(node.diagnostics && typeof node.diagnostics === 'object' && !Array.isArray(node.diagnostics) && Object.keys(node.diagnostics).every(key => key === 'flattenedStyle'), path + '.diagnostics');
+      need(only(node.diagnostics, physicalWindow ? ['flattenedStyle', 'nativeWindowRect', 'nativeWindowTextRects', 'publicMeasurement'] : ['flattenedStyle']), path + '.diagnostics');
       const style = node.diagnostics?.flattenedStyle;
       if (style !== undefined) need(style && typeof style === 'object' && !Array.isArray(style) && Object.entries(style).every(([key, value]) => diagnosticStyleProperties.includes(key) && (finite(value) || typeof value === 'string' && !/url\s*\(|(?:https?|file|data):/i.test(value))), path + '.diagnostics.flattenedStyle');
     }
     // Pseudo-elements have no separate box or semantic focus target.
     if (node.tag?.startsWith('::')) continue;
-    need(rect(node.box), path + '.box');
+    need(rect(node.box) || physicalWindow && node.box == null && declared('box'), path + '.box');
+    if (physicalWindow) {
+      const raw = node.diagnostics?.nativeWindowRect;
+      if (node.box != null) need(rawRect(raw) && rawRect(coordinates?.rootWindow) && sameRect(node.box, nativeWindowRectToRoot(raw, coordinates.rootWindow)), path + '.nativeWindow.box');
+      else need(raw === undefined, path + '.nativeWindow.box');
+      if (node.diagnostics?.publicMeasurement !== undefined) need(publicMeasurement(node.diagnostics.publicMeasurement), path + '.diagnostics.publicMeasurement');
+      const runs = node.diagnostics?.nativeWindowTextRects;
+      if (node.textRects?.length || runs !== undefined) need(!node.input && Array.isArray(runs) && runs.length > 0 && runs.every(rawRect) && rawRect(coordinates?.rootWindow) &&
+        Array.isArray(node.textRects) && runs.length === node.textRects.length && runs.every((run, index) => sameRect(node.textRects[index], nativeWindowRectToRoot(run, coordinates.rootWindow))), path + '.nativeWindow.textRects');
+    }
     need((typeof node.ownText === 'string' || node.ownText == null && declared('ownText')) && (typeof node.normalizedText === 'string' || node.normalizedText == null && declared('normalizedText')), path + '.text');
     need(typeof node.focused === 'boolean' || node.focused == null && declared('focused'), path + '.focused');
     need(node.style && typeof node.style === 'object', path + '.style');
