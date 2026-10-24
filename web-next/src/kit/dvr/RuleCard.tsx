@@ -4,7 +4,7 @@ import styles from './rules.module.css';
 export type RuleTone = 'documentary' | 'news' | 'sport';
 /** A full keyboard-operable rule card; its action affordance opens the same editor. */
 export function RuleCard({title, glyph, tone, selected, paused, options, next, conflict, state, upcoming, actionsLabel, onOpen, buttonRef}: {
-  title: string; glyph: string; tone: RuleTone; selected: boolean; paused: boolean; options: readonly string[]; next: string; conflict?: boolean;
+  title: string; glyph: string; tone?: RuleTone; selected: boolean; paused: boolean; options: readonly string[]; next: string; conflict?: boolean;
   state: string; upcoming?: string; actionsLabel: string; onOpen: () => void; buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return <article className={styles.rule} data-tone={tone} data-selected={selected || undefined} data-paused={paused || undefined}
@@ -16,6 +16,6 @@ export function RuleCard({title, glyph, tone, selected, paused, options, next, c
   </article>;
 }
 /** Framed editor decoration and form rows share the channel palette with cards. */
-export function RuleDecoration({glyph, tone}: {glyph: string; tone: RuleTone}) { return <div className={styles.decoration} data-tone={tone} aria-hidden="true"><div className={styles.glow}/><span className={styles.glyph}>{glyph}</span></div>; }
+export function RuleDecoration({glyph, tone}: {glyph: string; tone?: RuleTone}) { return <div className={styles.decoration} data-tone={tone} aria-hidden="true"><div className={styles.glow}/><span className={styles.glyph}>{glyph}</span></div>; }
 export function RuleField({label, children}: {label: string; children: ReactNode}) { return <div className={styles.field}><span>{label}</span>{children}</div>; }
 export function RuleGap() { return <i className={styles.gap} aria-hidden="true"/>; }

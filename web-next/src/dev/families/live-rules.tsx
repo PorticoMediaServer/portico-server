@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {defineGalleryFamily} from '../gallery-registry';
 import {SeriesRules} from '../../screens/live/SeriesRules';
@@ -21,5 +22,10 @@ function GalleryNavigation() {
     </div>
   </nav>;
 }
-function RulesFrame() { return <SeriesRules view={seriesRulesFixture} navigation={<GalleryNavigation/>}/>; }
+function RulesFrame() {
+  const [view, setView] = useState(seriesRulesFixture);
+  return <SeriesRules view={view} navigation={<GalleryNavigation/>}
+    onSave={async (rule, settings) => {setView(previous => ({...previous, selectedRuleId: undefined, rules: previous.rules.map(value => value.id === rule.id ? {...value, settings} : value)}));return true;}}
+    onDelete={async rule => {setView(previous => ({...previous, selectedRuleId: undefined, rules: previous.rules.filter(value => value.id !== rule.id)}));return true;}}/>;
+}
 export default defineGalleryFamily({id: 'live-rules', labelKey: 'recordings.rules', cases: [{id: 'editor', labelKey: 'next.live.seriesRule', width: 1440, height: 950, render: RulesFrame}]});
