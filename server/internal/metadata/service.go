@@ -74,6 +74,7 @@ type Service struct {
 	compactionMu     sync.Mutex
 	compactionEdge   int
 	compactionCursor string
+	compactionDone   bool
 	missingMu        sync.Mutex
 	missingArtwork   map[missingArtwork]struct{}
 	missingWake      worker.Broadcast

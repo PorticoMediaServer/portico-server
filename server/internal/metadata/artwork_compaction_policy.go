@@ -26,6 +26,7 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 	if policy.edge == artworkLargeEdge {
 		s.compactionMu.Lock()
 		s.compactionEdge, s.compactionCursor = policy.edge, ""
+		s.compactionDone = false
 		s.compactionMu.Unlock()
 		var old string
 		err := s.db.QueryRowContext(ctx, `SELECT o.digest FROM artwork_objects o INDEXED BY artwork_objects_compaction WHERE o.status='ready' AND (o.bytes>500000 OR o.width>1920 OR o.height>1920) AND NOT EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) ORDER BY o.bytes DESC,o.digest LIMIT 1`).Scan(&old)
@@ -35,6 +36,13 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 	defer s.compactionMu.Unlock()
 	if s.compactionEdge != policy.edge {
 		s.compactionEdge, s.compactionCursor = policy.edge, ""
+		s.compactionDone = false
+	}
+	// New acquisitions already capture this policy; immutable objects cannot
+	// grow behind the completed walk. Restart only for a changed size or a new
+	// Service after restore, rather than rescanning on unrelated commit wakes.
+	if s.compactionDone {
+		return "", sql.ErrNoRows
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT o.digest,o.width,o.height,o.bytes,o.status,EXISTS(SELECT 1 FROM artwork_compaction_failures f WHERE f.digest=o.digest) FROM artwork_objects o WHERE o.digest>? ORDER BY o.digest LIMIT 64`, s.compactionCursor)
 	if err != nil {
@@ -61,6 +69,7 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 	}
 	if len(page) == 0 {
 		s.compactionCursor = ""
+		s.compactionDone = true
 		return "", sql.ErrNoRows
 	}
 	for _, o := range page {
@@ -88,5 +97,5 @@ func (s *Service) nextArtworkCompaction(ctx context.Context, policy artworkEncod
 func (s *Service) artworkCompactionHasBacklog() bool {
 	s.compactionMu.Lock()
 	defer s.compactionMu.Unlock()
-	return s.compactionEdge != artworkLargeEdge && s.compactionCursor != ""
+	return !s.compactionDone && s.compactionEdge != artworkLargeEdge && s.compactionCursor != ""
 }

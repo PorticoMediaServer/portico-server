@@ -129,6 +129,9 @@ func (s *Service) compactArtworkObject(ctx context.Context, old string) error {
 	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) SELECT ?,width,CASE WHEN digest=? THEN ? ELSE digest END FROM artwork_variants WHERE source_digest=? ON CONFLICT(source_digest,width) DO NOTHING`, installed.digest, old, installed.digest, old); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE artwork_uploads SET width=?,height=? WHERE digest=?`, w, h, old); err != nil {
+		return err
+	}
 	// Closed registry: every relational reference and both undo snapshots must
 	// switch in the same transaction. Unknown future FK references fail closed.
 	for _, ref := range []struct{ table, column string }{

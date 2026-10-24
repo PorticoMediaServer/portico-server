@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"image"
+	"math/rand"
 	"testing"
 
 	"portico.local/server/internal/dbwork"
@@ -43,6 +45,43 @@ func TestArtworkCompactionShrinksSelectedUploadAndPreservesVariantReferences(t *
 	rows.Close()
 	if err != nil || violations != 0 {
 		t.Fatal("compaction left broken references", violations, err)
+	}
+}
+
+func TestArtworkCompactionHonoursLargerCeilingWithoutReencodingValidObjects(t *testing.T) {
+	s, db, _ := repairFixture(t)
+	ctx := context.Background()
+	setArtworkPolicy(t, s, 2560)
+	encoded, _, err := s.CaptureArtworkContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := image.NewNRGBA(image.Rect(0, 0, 1600, 1000))
+	random := rand.New(rand.NewSource(88))
+	for i := 0; i < len(picture.Pix); i += 4 {
+		picture.Pix[i], picture.Pix[i+1], picture.Pix[i+2], picture.Pix[i+3] = byte(random.Intn(256)), byte(random.Intn(256)), byte(random.Intn(256)), 255
+	}
+	raw, w, h, err := encodeDisplayArtworkContext(encoded, picture, artworkLargeEdge, true)
+	if err != nil || len(raw) <= 500000 || len(raw) > 888888 {
+		t.Fatal("fixture did not exercise the Larger ceiling", len(raw), err)
+	}
+	installed, err := s.installArtworkContext(encoded, raw, w, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		return recordArtworkObject(ctx, tx, installed, "2020-01-01T00:00:00Z")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 3; n++ {
+		if err = s.CompactArtworkStep(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stored int
+	if err = db.QueryRow(`SELECT bytes FROM artwork_objects WHERE digest=?`, installed.digest).Scan(&stored); err != nil || stored != len(raw) || s.artworkCompactionHasBacklog() {
+		t.Fatal("valid Larger object was rewritten or the sweep did not idle", stored, err)
 	}
 }
 
