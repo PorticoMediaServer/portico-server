@@ -84,11 +84,11 @@ function contentPage(view: 'watchlist' | 'favorites', shape: 'posters' | 'square
 const historyEntries = [
   {id: 'h-tlou', updatedAt: '2026-10-24T15:12:00.000Z', positionMs: 1_082_400, completed: false, media: posters[2]},
   {id: 'h-dreams', updatedAt: '2026-10-24T14:40:00.000Z', positionMs: 0, completed: true, media: card('dreams', 'song', 'Dreams', art('albums/rumours', 'albums/rumours'), {artist: {id: 'fleetwood-mac', name: 'Fleetwood Mac'}, album: {id: 'rumours', name: 'Rumours'}, durationMs: 257_000})},
-  {id: 'h-rick', updatedAt: '2026-10-24T13:05:00.000Z', positionMs: 1_320_000, completed: false, media: card('rick-and-morty-s1e2', 'episode', 'Lawnmower Dog', art('tv/rick-and-morty', 'tv/rick-and-morty--bd'), {show: {id: 'rick-and-morty', name: 'Rick and Morty'}, seasonNumber: 1, episodeNumber: 2, durationMs: 1_380_000})},
-  {id: 'h-inside-out', updatedAt: '2026-10-23T21:48:00.000Z', positionMs: 570_000, completed: false, media: card('inside-out', 'movie', 'Inside Out', art('movies/inside-out', 'movies/inside-out--bd'), {year: 2015, durationMs: 5_700_000})},
+  {id: 'h-rick', updatedAt: '2026-10-24T13:05:00.000Z', positionMs: 768_600, completed: false, media: card('rick-and-morty-s1e2', 'episode', 'Lawnmower Dog', art('tv/rick-and-morty', 'tv/rick-and-morty--bd'), {show: {id: 'rick-and-morty', name: 'Rick and Morty'}, seasonNumber: 1, episodeNumber: 2, durationMs: 1_260_000})},
+  {id: 'h-inside-out', updatedAt: '2026-10-23T21:48:00.000Z', positionMs: 600_000, completed: false, media: card('inside-out', 'movie', 'Inside Out', art('movies/inside-out', 'movies/inside-out--bd'), {year: 2015, durationMs: 5_760_000})},
   {id: 'h-martian', updatedAt: '2026-10-23T20:15:00.000Z', positionMs: 3_120_000, completed: false, media: card('the-martian', 'audiobook_file', 'The Martian (Unabridged)', art('books/the-martian-unabridged', 'books/the-martian-unabridged'), {author: 'Andy Weir', durationMs: 36_240_000})},
-  {id: 'h-solo', updatedAt: '2026-10-23T19:30:00.000Z', positionMs: 1_000_000, completed: false, media: card('solo-leveling-s1e1', 'episode', 'I’m Used to It', art('anime/solo-leveling', 'anime/solo-leveling--bd'), {show: {id: 'solo-leveling', name: 'Solo Leveling'}, seasonNumber: 1, episodeNumber: 1, durationMs: 1_440_000})},
-  {id: 'h-spirited', updatedAt: '2026-10-20T22:20:00.000Z', positionMs: 0, completed: true, media: posters[3]},
+  {id: 'h-solo', updatedAt: '2026-10-23T19:30:00.000Z', positionMs: 607_000, completed: false, media: card('solo-leveling-s1e1', 'episode', 'I’m Used to It', art('anime/solo-leveling', 'anime/solo-leveling--bd'), {show: {id: 'solo-leveling', name: 'Solo Leveling'}, seasonNumber: 1, episodeNumber: 1, durationMs: 1_380_000})},
+  {id: 'h-spirited', updatedAt: '2026-10-19T22:20:00.000Z', positionMs: 0, completed: true, media: posters[3]},
 ];
 
 const api: SavedApi = {
