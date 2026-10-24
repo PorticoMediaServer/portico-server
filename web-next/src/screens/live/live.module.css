@@ -30,7 +30,7 @@
 .guideSource strong { color: var(--color-text-secondary); font-weight: var(--type-row-heading-weight); }
 .guideTabs { margin-top: 26px; }
 .guideTabList { padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
-.guideTabs .guideTabList button { font-size: var(--type-tab-size); }
+.guideTabs .guideTabList button { font-size: var(--type-tab-size); line-height: calc(1.36 * 1em); }
 .guideTabNote { margin-left: 10px; font-size: var(--type-caption-size); font-weight: var(--type-row-heading-weight); color: var(--color-record); }
 .guideChips { position: relative; display: flex; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; overflow-x: auto; scrollbar-width: none; }
 .guideChips::-webkit-scrollbar { display: none; }
