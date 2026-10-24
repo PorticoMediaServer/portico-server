@@ -5,6 +5,8 @@ parser.add_argument('job',type=pathlib.Path)
 for name in ['build-tools','rust-tools','cargo-home','dependency-prefix','pkg-config','pkg-config-dir','mpv-archive']:
  parser.add_argument('--'+name,required=True,type=pathlib.Path)
 args=parser.parse_args()
+for interrupted in [signal.SIGTERM,signal.SIGHUP]:
+ signal.signal(interrupted,lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
 if sys.platform!="darwin":parser.error("requires the actual macOS SDK")
 if any(not value.is_absolute() for value in vars(args).values()):parser.error("all build inputs must use absolute paths")
 job=args.job.resolve();root=pathlib.Path.home()/"PorticoBuild/desktop-r29"
@@ -99,7 +101,7 @@ try:
  prepared=job/'ffmpeg-source';run([python,contract/'scripts/prepare-ffmpeg-source.py',prepared,'--archive',raw])
  receipt=prepared/'portico-source-receipt.json';assert sha(receipt)=='a47f4c8e3dadc47e0fd564d47f7b4c3f2a9b1f7680c4765f0750e562efb6a71f'
  ffbuild=job/'build/ffmpeg';ffbuild.mkdir()
- run([prepared/'configure','--prefix='+str(prefix),'--cc='+compiler,'--cxx='+cxx,'--pkg-config='+pkg,'--arch=arm64','--target-os=darwin','--enable-shared','--disable-static','--disable-programs','--disable-doc','--disable-debug','--enable-gpl','--enable-version3','--disable-autodetect','--enable-network','--enable-securetransport','--enable-libsoxr','--enable-libass','--enable-videotoolbox','--enable-audiotoolbox','--enable-zlib','--disable-protocols','--enable-protocol=file,pipe,http,https,tcp,tls,data','--optflags=-O2','--extra-cflags=-I'+str(prefix/'include'),'--extra-ldflags=-L'+str(prefix/'lib'])],cwd=ffbuild)
+ run([prepared/'configure','--prefix='+str(prefix),'--cc='+compiler,'--cxx='+cxx,'--pkg-config='+pkg,'--arch=arm64','--target-os=darwin','--enable-shared','--disable-static','--disable-programs','--disable-doc','--disable-debug','--enable-gpl','--enable-version3','--disable-autodetect','--enable-network','--enable-securetransport','--enable-libsoxr','--enable-libass','--enable-videotoolbox','--enable-audiotoolbox','--enable-zlib','--disable-protocols','--enable-protocol=file,pipe,http,https,tcp,tls,data','--optflags=-O2','--extra-cflags=-I'+str(prefix/'include'),'--extra-ldflags=-L'+str(prefix/'lib')],cwd=ffbuild)
  run(['/usr/bin/make','-s','-j1'],cwd=ffbuild);run(['/usr/bin/make','-s','install'],cwd=ffbuild)
  print('FFMPEG_SHARED_102_BUILD_PASS',flush=True)
  mpv_archive=args.mpv_archive;assert sha(mpv_archive)=='ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209'
