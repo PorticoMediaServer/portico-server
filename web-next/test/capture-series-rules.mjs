@@ -38,7 +38,7 @@ try {
   const css = source.match(/<style>([\s\S]*?)<\/style>/)[1];
   const frame = source.slice(source.indexOf('<div class="screen" id="live-rules"'), source.indexOf('<p class="cap"><b>Watching live'));
   const sprite = [...source.matchAll(/<svg width="0" height="0" style="position:absolute">[\s\S]*?<\/svg>/g)].map(match => match[0]).join('');
-  const referenceHtml = `<!doctype html><html><head><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nbody{margin:0;padding:0}</style></head><body class="p">${sprite}${frame.replace('assets/wordmark.svg', origin + '/src/shell/wordmark.svg')}</body></html>`;
+  const referenceHtml = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nbody{margin:0;padding:0}</style></head><body class="p">${sprite}${frame.replace('assets/wordmark.svg', origin + '/src/shell/wordmark.svg')}</body></html>`;
   await page.route('**/__series-rules-reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
   await page.goto(`${origin}/__series-rules-reference__`);
   await page.evaluate(() => document.fonts.ready);
