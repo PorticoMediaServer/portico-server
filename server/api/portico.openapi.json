@@ -35434,6 +35434,9 @@
                 "providerReleaseId": {
                   "type": "string"
                 },
+                "role": {
+                  "type": "string"
+                },
                 "title": {
                   "type": "string"
                 },
@@ -218541,6 +218544,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -219054,6 +219060,9 @@
                 },
                 "permissions": {
                   "properties": {
+                    "canClaimHost": {
+                      "type": "boolean"
+                    },
                     "canControl": {
                       "type": "boolean"
                     },
@@ -220544,6 +220553,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -221056,6 +221068,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -221582,6 +221597,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -222176,6 +222194,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -222976,6 +222997,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -223707,6 +223731,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -224235,6 +224262,9 @@
               },
               "permissions": {
                 "properties": {
+                  "canClaimHost": {
+                    "type": "boolean"
+                  },
                   "canControl": {
                     "type": "boolean"
                   },
@@ -280115,6 +280145,9 @@
                           "providerReleaseId": {
                             "type": "string"
                           },
+                          "role": {
+                            "type": "string"
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -315146,6 +315179,9 @@
                           },
                           "permissions": {
                             "properties": {
+                              "canClaimHost": {
+                                "type": "boolean"
+                              },
                               "canControl": {
                                 "type": "boolean"
                               },
@@ -315778,6 +315814,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -316408,6 +316447,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -317023,6 +317065,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -317659,6 +317704,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -318431,6 +318479,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -319071,6 +319122,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -319994,6 +320048,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },
@@ -321371,6 +321428,9 @@
                         },
                         "permissions": {
                           "properties": {
+                            "canClaimHost": {
+                              "type": "boolean"
+                            },
                             "canControl": {
                               "type": "boolean"
                             },

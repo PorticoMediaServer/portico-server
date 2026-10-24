@@ -33162,6 +33162,9 @@ export const schemas = {
             "providerReleaseId": {
               "type": "string"
             },
+            "role": {
+              "type": "string"
+            },
             "title": {
               "type": "string"
             },
@@ -199649,6 +199652,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -200114,6 +200120,9 @@ export const schemas = {
             },
             "permissions": {
               "properties": {
+                "canClaimHost": {
+                  "type": "boolean"
+                },
                 "canControl": {
                   "type": "boolean"
                 },
@@ -201520,6 +201529,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -201984,6 +201996,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -202462,6 +202477,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -203008,6 +203026,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -203748,6 +203769,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -204419,6 +204443,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
@@ -204899,6 +204926,9 @@ export const schemas = {
           },
           "permissions": {
             "properties": {
+              "canClaimHost": {
+                "type": "boolean"
+              },
               "canControl": {
                 "type": "boolean"
               },
