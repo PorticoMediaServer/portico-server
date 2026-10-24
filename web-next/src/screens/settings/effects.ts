@@ -29,6 +29,11 @@ const preferenceEffects = new Set([
   // The server's delivery policy reads both saved quality defaults for the network class it
   // decided (preference lane home/remote); the client sends no quality on a plain start.
   'quality.home', 'quality.remote',
+  /* Account Privacy: the server applies all four in the profile's own session. personal_activity.go
+     pauses watch history and decides what counts in Popular; recommendation_engine.go and
+     rec_title.go gate activity sharing; social/privacy.go hides Watch Together membership; and
+     catalog/search_history.go stops keeping recent searches. */
+  'privacy.pauseWatchHistory', 'privacy.showActivityToMembers', 'privacy.includeInWatchTogether', 'search.rememberHistory',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;

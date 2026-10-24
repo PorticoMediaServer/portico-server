@@ -84,4 +84,10 @@ export const settingsMessages = {
   'next.settings.audioSubtitles.noMatch': 'No language matches that.',
   'next.settings.audioSubtitles.allAdded': 'Every language is already in the list.',
   'next.settings.audioSubtitles.previewLabel': 'Preview of a subtitle on a still frame: {text}',
+  'next.settings.privacy.historyCleared': 'History cleared.',
+  'next.settings.privacy.searchesCleared': 'Recent searches cleared.',
+  'next.settings.privacy.recommendationsReset': 'Recommendations reset.',
+  'next.settings.privacy.historyFailed': 'History couldn’t be cleared. Try again.',
+  'next.settings.privacy.searchesFailed': 'Recent searches couldn’t be cleared. Try again.',
+  'next.settings.privacy.recommendationsFailed': 'Recommendations couldn’t be reset. Try again.',
 } as const;
