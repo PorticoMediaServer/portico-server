@@ -155,14 +155,14 @@
 }
 
 .folderName {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--type-synopsis-size);
+  font-weight: calc(var(--type-body-strong-weight) + 50);
 }
 
 .folderPath {
   grid-column: 1;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-micro-weight);
   color: var(--color-text-tertiary);
   overflow-wrap: anywhere;
 }
@@ -173,11 +173,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--type-label-size);
   color: var(--color-text-secondary);
 }
 
 .folderUnavailable {
   color: var(--color-record);
-  font-weight: 650;
+  font-weight: calc(var(--type-body-strong-weight) + 50);
 }
