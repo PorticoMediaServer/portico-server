@@ -152,7 +152,7 @@ const rows: readonly HomeRow[] = [
       members: collectionMembers, backdropUrl: photo('bd-toystory.jpg'), firstYear: 1995, lastTitle: 'Toy Story 5'},
   }),
   row('on_now', 'next.home.onNow', 'On now', 'landscape', [], {
-    subtitleText: {code: 'next.home.videoKinds', fallback: 'Synthetic Live TV'}, priority: 50, privacySensitivity: 'personal',
+    subtitleText: {code: 'next.home.sourceName', params: {source: 'Synthetic Live TV'}, fallback: 'Synthetic Live TV'}, priority: 50, privacySensitivity: 'personal',
     seeAll: {type: 'guide'}, live,
   }),
   row('community_watching', 'next.home.mostWatched', 'Most watched on this server', 'poster', mostWatched, {

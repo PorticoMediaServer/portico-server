@@ -68,7 +68,9 @@ const buildOrigin = await serve(vite);
 
 const profile = join(process.env.TMPDIR ?? '/tmp', `ds-web-home-r46-browser-${process.pid}`);
 const browser = spawn(chromiumPath, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--hide-scrollbars', '--no-first-run',
-  '--no-default-browser-check', '--force-device-scale-factor=1', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
+  '--no-default-browser-check', '--force-device-scale-factor=1',
+  '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
+  '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
   `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe']});
 let browserLog = '';
 browser.stderr.on('data', bytes => browserLog += bytes);
@@ -152,12 +154,12 @@ async function open(url, ready) {
 }
 async function settle() {
   let previous = -1, stable = 0;
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < 80; attempt++) {
     const state = await evaluate(`(()=>{const images=[...document.images];return [images.length, images.filter(image=>image.complete&&image.naturalWidth>0).length, performance.getEntriesByType('resource').length]})()`);
     const key = state.join(':');
     stable = key === previous ? stable + 1 : 0;
     previous = key;
-    if (stable >= 5 && state[0] === state[1]) return state;
+    if (stable >= 5 && state[0] === state[1] && (state[0] >= 30 || attempt > 60)) return state;
     await wait(300);
   }
   return 'unsettled';
@@ -190,7 +192,8 @@ if (only !== 'actual') {
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('.all')?.textContent??null, linkOpacity:head?.querySelector('.all')?getComputedStyle(head.querySelector('.all')).opacity:null}})`.replace(/\n/g, ' '));
   report.reference.collection = await evaluate(`(()=>{const el=document.querySelector('#home .banner');if(!el)return null;const r=el.getBoundingClientRect();
     const copy=el.querySelector('.in'),minis=el.querySelector('.minis');
-    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null}})()`);
+    const action=el.querySelector('.in .btn');
+    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null,action:action?.getBoundingClientRect().toJSON()??null}})()`);
   report.reference.poster = await evaluate(`(()=>{const card=document.querySelector('#home .rows > .row:nth-child(2) .track .card');if(!card)return null;
     const art=card.querySelector('.art'),title=card.querySelector('.t'),sub=card.querySelector('.s');
     return {card:card.getBoundingClientRect().toJSON(),art:art?.getBoundingClientRect().toJSON()??null,title:title?.getBoundingClientRect().toJSON()??null,subtitle:sub?.getBoundingClientRect().toJSON()??null}})()`);
@@ -207,7 +210,8 @@ if (only !== 'reference') {
   report.actual.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
   report.actual.collection = await evaluate(`(()=>{const el=document.querySelector('[data-home-document] [data-card-kind="collectionBanner"]');if(!el)return null;const r=el.getBoundingClientRect();
     const copy=el.querySelector('[class*="collectionCopy"]'),minis=el.querySelector('[class*="collectionMinis"]');
-    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null}})()`);
+    const action=el.querySelector('[class*="collectionAction"]');
+    return {rect:r.toJSON(),copy:copy?.getBoundingClientRect().toJSON()??null,minis:minis?.getBoundingClientRect().toJSON()??null,action:action?.getBoundingClientRect().toJSON()??null}})()`);
   report.actual.poster = await evaluate(`(()=>{const card=[...document.querySelectorAll('[data-home-document] [data-card-kind="poster"]')].find(el=>el.closest('section'));
     if(!card)return null;const art=card.querySelector('[class*="art"]'),title=card.querySelector('[class*="title"]'),cap=card.querySelector('[class*="caption"]'),sub=card.querySelector('[class*="subtitle"]');
     return {card:card.getBoundingClientRect().toJSON(),art:art?.getBoundingClientRect().toJSON()??null,title:title?.getBoundingClientRect().toJSON()??null,caption:cap?.getBoundingClientRect().toJSON()??null,subtitle:sub?.getBoundingClientRect().toJSON()??null}})()`);
@@ -222,7 +226,7 @@ if (only !== 'reference') {
 }
 report.vite = viteLog.slice(-400);
 await writeFile(join(output, 'web-home-r46-capture.json'), JSON.stringify(report, null, 2) + '\n');
-console.log('CAPTURE ' + JSON.stringify({reference: report.reference, actual: report.actual, pageErrors}));
+console.log('CAPTURE ' + JSON.stringify(report));
 
 try { await call('Target.closeTarget', {targetId}); } catch {}
 socket.close();
