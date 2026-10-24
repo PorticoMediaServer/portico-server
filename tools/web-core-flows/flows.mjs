@@ -1,0 +1,253 @@
+// Campaign v2 web core-flow walk for Search, Settings, Read and Live.
+// Runs the built web-next bundle against a disposable same-origin server.
+// Environment (all required):
+//   PORTICO_FLOW_BASE      origin serving web-next and /v1
+//   PORTICO_FLOW_CREDS     path to a JSON file written by run.py (never argv)
+//   PORTICO_FLOW_OUTPUT    directory for report.json and screenshots
+//   PORTICO_PLAYWRIGHT_MODULE  file:// URL of a playwright-core entry module
+//   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH  browser executable
+// No credentials are printed. The report holds only step results, visible
+// text excerpts, page errors and failed requests.
+import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+const base = process.env.PORTICO_FLOW_BASE;
+const output = process.env.PORTICO_FLOW_OUTPUT;
+const creds = JSON.parse(await readFile(process.env.PORTICO_FLOW_CREDS, 'utf8'));
+if (!base || !output || !process.env.PORTICO_PLAYWRIGHT_MODULE) throw new Error('missing flow environment');
+await mkdir(output, {recursive: true});
+const {chromium} = await import(pathToFileURL(process.env.PORTICO_PLAYWRIGHT_MODULE).href);
+
+const excerpt = (text, limit = 160) => String(text).replace(/\s+/g, ' ').trim().slice(0, limit);
+const describe = value => {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return value.message ? String(value.message) : JSON.stringify(value);
+  return String(value);
+};
+
+async function walk(page, viewportName) {
+  const steps = [];
+  const consoleErrors = [];
+  const consoleTail = [];
+  const pageErrors = [];
+  const failedRequests = [];
+  const attempted = [];
+  page.on('request', request => { attempted.push(request.url()); if (attempted.length > 400) attempted.shift(); });
+  page.on('console', message => {
+    const line = message.type() + ': ' + excerpt(message.text(), 300);
+    consoleTail.push(line);
+    if (consoleTail.length > 40) consoleTail.shift();
+    if (message.type() === 'error') consoleErrors.push(excerpt(message.text(), 300));
+  });
+  page.on('pageerror', error => pageErrors.push(excerpt(describe(error), 400)));
+  page.on('requestfailed', request => {
+    // A client-aborted navigation is not a server failure.
+    const reason = request.failure()?.errorText ?? '';
+    if (!/ERR_ABORTED/.test(reason)) failedRequests.push(request.method() + ' ' + new URL(request.url()).pathname + ' ' + reason);
+  });
+  const step = async (name, fn) => {
+    const started = Date.now();
+    const before = {page: pageErrors.length, console: consoleErrors.length, failed: failedRequests.length};
+    try {
+      const detail = await fn();
+      steps.push({name, status: 'pass', ms: Date.now() - started, detail: detail ?? null});
+    } catch (error) {
+      steps.push({name, status: 'fail', ms: Date.now() - started, detail: excerpt(String(error?.message ?? error), 400),
+        console: consoleTail.slice(-12)});
+    }
+    steps.at(-1).newErrors = {
+      page: pageErrors.slice(before.page), console: consoleErrors.slice(before.console), failed: failedRequests.slice(before.failed),
+    };
+    return steps.at(-1);
+  };
+  const text = () => page.evaluate(() => document.body.innerText);
+  const settle = async (ms = 350) => page.waitForTimeout(ms);
+  const signIn = async () => {
+    await page.goto(base + '/sign-in', {waitUntil: 'domcontentloaded'});
+    const user = page.locator('input[name=username]');
+    await user.waitFor({timeout: 20000});
+    await user.fill(creds.username);
+    await page.locator('input[name=password]').fill(creds.password);
+    await page.locator('form button[type=submit]').click();
+    await page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000});
+    await settle(1200);
+  };
+  await step('sign-in', async () => { await signIn(); return {path: new URL(page.url()).pathname}; });
+  await step('launch', async () => {
+    const body = await text();
+    if (body.trim().length < 40) throw new Error('shell rendered almost no text');
+    return {path: new URL(page.url()).pathname, text: excerpt(body)};
+  });
+
+  // Search: type, wait for results, open one, return, then the no-match state.
+  await step('search-results', async () => {
+    await page.goto(base + '/search', {waitUntil: 'domcontentloaded'});
+    const field = page.locator('input[type=search]');
+    await field.waitFor({timeout: 20000});
+    await field.fill(creds.searchTerm);
+    await page.locator('[data-group] button, [data-group] a').first().waitFor({timeout: 12000}).catch(() => {});
+    await settle(500);
+    const body = await text();
+    if (body.trim().length < 40) throw new Error('search rendered almost no text');
+    const matches = await page.locator('[data-group] button, a[href^="/item/"]').count();
+    if (matches === 0) throw new Error('no result controls after typing "' + creds.searchTerm + '": ' + excerpt(body, 300));
+    return {text: excerpt(body, 400), controls: matches};
+  });
+  await step('search-open', async () => {
+    const before = page.url();
+    const details = page.getByRole('button', {name: /^details$/i}).first();
+    if (await details.count()) await details.click();
+    else await page.locator('[data-group] button').first().click();
+    await settle(1500);
+    if (page.url() === before) throw new Error('opening a result did not navigate');
+    return {from: new URL(before).pathname, to: new URL(page.url()).pathname};
+  });
+  await step('search-empty', async () => {
+    await page.goto(base + '/search?q=zzzzzzzzzz', {waitUntil: 'domcontentloaded'});
+    await settle(2500);
+    const body = await text();
+    if (body.trim().length < 40) throw new Error('empty search rendered almost no text');
+    return {text: excerpt(body, 400)};
+  });
+
+  // Settings: real sections, the libraries list, and the owner's scan control.
+  await step('settings-sections', async () => {
+    await page.goto(base + '/settings', {waitUntil: 'domcontentloaded'});
+    await settle(1500);
+    const body = await text();
+    if (!/profile|playback|dashboard|libraries/i.test(body)) throw new Error('settings navigation absent: ' + excerpt(body, 300));
+    return {text: excerpt(body, 400)};
+  });
+  await step('settings-libraries', async () => {
+    await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
+    await settle(2000);
+    let body = await text();
+    if (!body.includes(creds.libraryName)) {
+      const entry = page.getByText('Libraries', {exact: true}).first();
+      if (await entry.count()) { await entry.click(); await settle(1800); body = await text(); }
+    }
+    if (!body.includes(creds.libraryName)) throw new Error('libraries section did not list "' + creds.libraryName + '"');
+    return {text: excerpt(body, 500)};
+  });
+  await step('settings-libraries-scan', async () => {
+    const scan = page.getByRole('button', {name: /scan/i}).first();
+    if (!(await scan.count())) return {skipped: 'no scan control in the libraries list'};
+    await scan.click();
+    await settle(2500);
+    return {text: excerpt(await text(), 400)};
+  });
+  await step('settings-account', async () => {
+    await page.goto(base + '/settings?scope=account&section=playback', {waitUntil: 'domcontentloaded'});
+    await settle(1500);
+    const body = await text();
+    if (body.trim().length < 40) throw new Error('account settings rendered almost no text');
+    return {text: excerpt(body, 400)};
+  });
+
+  // Read: the reading library, then opening the book into the reader.
+  await step('read-library', async () => {
+    await page.goto(base + '/library/' + encodeURIComponent(creds.libraryId), {waitUntil: 'domcontentloaded'});
+    await settle(2500);
+    const body = await text();
+    if (!body.includes(creds.bookTitle)) throw new Error('library did not show "' + creds.bookTitle + '": ' + excerpt(body, 200));
+    return {text: excerpt(body, 400)};
+  });
+  await step('read-open', async () => {
+    // Click the EPUB's own card, then its Read control: the first Read button on
+    // a phone-width grid can belong to the other book.
+    await page.getByText(creds.bookTitle, {exact: false}).first().click();
+    await settle(1500);
+    if (!new URL(page.url()).pathname.startsWith('/read/')) {
+      const read = page.getByRole('button', {name: /^read$/i}).first();
+      if (await read.count()) await read.click();
+    }
+    await settle(4500);
+    const path = new URL(page.url()).pathname;
+    if (!path.startsWith('/read/')) throw new Error('reading did not open from the library; at ' + path);
+    const body = await text();
+    if (!body.includes(creds.bookText)) throw new Error('reader did not render the chapter text: ' + excerpt(body, 200));
+    return {path, text: excerpt(body, 400)};
+  });
+
+  await step('read-pdf', async () => {
+    await page.goto(base + '/library/' + encodeURIComponent(creds.libraryId), {waitUntil: 'domcontentloaded'});
+    await settle(2500);
+    const card = page.getByText(creds.pdfTitle, {exact: false}).first();
+    if (!(await card.count())) throw new Error('library did not show the PDF "' + creds.pdfTitle + '"');
+    await card.click();
+    await settle(1500);
+    if (!new URL(page.url()).pathname.startsWith('/read/')) {
+      const read = page.getByRole('button', {name: /^read$/i}).first();
+      if (await read.count()) await read.click();
+    }
+    await settle(4500);
+    const path = new URL(page.url()).pathname;
+    if (!path.startsWith('/read/')) throw new Error('PDF reading did not open; at ' + path);
+    const rendered = await page.evaluate(() => !!document.querySelector('[data-reader-page], canvas'));
+    if (!rendered) throw new Error('PDF reader rendered no page');
+    return {path};
+  });
+
+
+  await step('read-hostile', async () => {
+    const before = attempted.length;
+    await page.goto(base + '/library/' + encodeURIComponent(creds.libraryId), {waitUntil: 'domcontentloaded'});
+    await settle(2000);
+    const card = page.getByText(creds.hostileTitle, {exact: false}).first();
+    if (!(await card.count())) throw new Error('library did not show "' + creds.hostileTitle + '"');
+    await card.click();
+    await settle(1500);
+    if (!new URL(page.url()).pathname.startsWith('/read/')) {
+      const read = page.getByRole('button', {name: /^read$/i}).first();
+      if (await read.count()) await read.click();
+    }
+    await settle(4000);
+    const path = new URL(page.url()).pathname;
+    if (!path.startsWith('/read/')) throw new Error('hostile book did not open; at ' + path);
+    const body = await text();
+    if (!body.includes('only thing a reader may draw')) throw new Error('the hostile book did not draw its plain paragraph');
+    if (body.includes('book script ran')) throw new Error('the book script ran inside the reader');
+    const escapes = attempted.slice(before).filter(url => /portico-epub-egress|127\.0\.0\.1:9/.test(url));
+    if (escapes.length) throw new Error('the book reached the network: ' + escapes.join(', '));
+    const hostFrame = await page.evaluate(() => Array.from(document.querySelectorAll('iframe')).some(frame => {
+      try { return /^https?:/.test(frame.getAttribute('src') ?? '') || /^https?:/.test(frame.src ?? ''); } catch { return false; }
+    }));
+    if (hostFrame) throw new Error('the book created a network iframe');
+    return {path, attemptedDuringStep: attempted.length - before};
+  });
+
+  // Live: with or without a source the screen must render, never blank.
+  await step('live-guide', async () => {
+    await page.goto(base + '/live', {waitUntil: 'domcontentloaded'});
+    await settle(3000);
+    const body = await text();
+    if (body.trim().length < 20) throw new Error('live screen rendered almost no text');
+    const rows = await page.locator('[data-guide-row]').count();
+    return {text: excerpt(body, 400), guideRows: rows, sourcePresent: rows > 0};
+  });
+  await page.screenshot({path: join(output, viewportName + '-last.jpg'), type: 'jpeg', quality: 70, fullPage: false});
+  return {viewport: viewportName, steps, pageErrors, consoleErrors, failedRequests};
+}
+
+const browser = await chromium.launch({executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/chromium',
+  headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage']});
+try {
+  const report = {base, startedAt: new Date().toISOString(), viewports: []};
+  for (const [name, viewport] of [['desktop', {width: 1440, height: 900}], ['phone', {width: 390, height: 844}]]) {
+    const context = await browser.newContext({viewport, deviceScaleFactor: 1, reducedMotion: 'reduce', bypassCSP: process.env.PORTICO_FLOW_BYPASS_CSP === '1'});
+    const page = await context.newPage();
+    try { report.viewports.push(await walk(page, name)); }
+    finally { await context.close(); }
+  }
+  report.finishedAt = new Date().toISOString();
+  await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+  const failed = report.viewports.flatMap(view => view.steps.filter(step => step.status === 'fail').map(step => ({step: view.viewport + ' ' + step.name,
+    detail: step.detail, console: step.console ?? [], errors: step.newErrors ?? {}})));
+  console.log(JSON.stringify({steps: report.viewports.flatMap(view => view.steps.map(step => view.viewport + ' ' + step.name + ' ' + step.status)),
+    pageErrors: report.viewports.flatMap(view => view.pageErrors),
+    failedRequests: report.viewports.flatMap(view => view.failedRequests), failed}, null, 2));
+  process.exitCode = failed.length ? 1 : 0;
+} finally {
+  await browser.close();
+}
