@@ -246,6 +246,7 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 // cursor column, filename guess or private position is stored.
 func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string, budget int) (bool, int, error) {
 	var after *catalog.LocalArtworkCandidateCursor
+	var err error
 	page := []catalog.LocalArtworkCandidateCursor{}
 	index := -1
 	for {
