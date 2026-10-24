@@ -96,7 +96,7 @@ function Specimen() {
           label={t('recordings.storage')} fraction={64 / 476}/>
       </button>
     </div>
-    {view === 'upcoming' ? <UpcomingView context={context} controller={controller} snapshot={snapshot} now={NOW} onResolve={() => {}} details={details}/>
+    {view === 'upcoming' ? <UpcomingView context={context} controller={controller} snapshot={snapshot} now={NOW} onResolve={() => {}} conflictDetails={details}/>
       : <RecordedView context={context} controller={controller} snapshot={snapshot}/>}
   </RecordingsLayout>;
 }

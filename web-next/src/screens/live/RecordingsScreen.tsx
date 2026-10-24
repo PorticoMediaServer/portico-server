@@ -118,21 +118,21 @@ function ConflictDialog({context, recording, controller, onClose}: {context: Scr
   </Dialog>;
 }
 
-export function UpcomingView({context, controller, snapshot, now, onResolve, details}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void; details?: Readonly<Record<string, RecordingDetail>>}) {
+export function UpcomingView({context, controller, snapshot, now, onResolve, conflictDetails}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void; conflictDetails?: Readonly<Record<string, RecordingDetail>>}) {
   const recordings = snapshot.page?.recordings ?? [];
   const conflicted = recordings.filter(recording => recording.state === 'conflicted');
   const active = recordings.filter(recording => activeRecording(recording) && recording.state !== 'conflicted');
   const later = recordings.filter(recording => !activeRecording(recording) && recording.state !== 'conflicted');
-  const [details, setDetails] = useState<Recording>();
+  const [shown, setShown] = useState<Recording>();
   return <div className={styles.recBody}>
-    {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={details?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}
+    {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={conflictDetails?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}
     {active.length > 0 && <section className={styles.recSection}><h2>{t('next.live.recordingNow')}</h2>
       {active.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}}/>)}</section>}
     {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dayOf(later[0]!.start, now)}</span></h2>
-      {later.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setDetails(recording)}/>)}</section>}
+      {later.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}} onDetails={() => setShown(recording)}/>)}</section>}
     {!conflicted.length && !active.length && !later.length && <StateView title={t('recordings.noneScheduled')} body={t('recordings.noneScheduledBody')}/>}
-    <Dialog open={!!details} onOpenChange={open => {if (!open) setDetails(undefined);}} title={details?.programme.title} description={details ? rangeOf(details) : undefined} width={440}
-      footer={<Button variant="glass" onClick={() => setDetails(undefined)}>{t('next.overlays.close')}</Button>}>{details && <p className={styles.dialogText}>{recordingStateLabel(details.state)}{details.reason && <> · {recordingReason(details.reason)}</>}</p>}</Dialog>
+    <Dialog open={!!shown} onOpenChange={open => {if (!open) setShown(undefined);}} title={shown?.programme.title} description={shown ? rangeOf(shown) : undefined} width={440}
+      footer={<Button variant="glass" onClick={() => setShown(undefined)}>{t('next.overlays.close')}</Button>}>{shown && <p className={styles.dialogText}>{recordingStateLabel(shown.state)}{shown.reason && <> · {recordingReason(shown.reason)}</>}</p>}</Dialog>
   </div>;
 }
 
