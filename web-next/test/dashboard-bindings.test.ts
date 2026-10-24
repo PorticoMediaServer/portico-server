@@ -55,10 +55,21 @@ test('Today stays distinct from24h and See full history carries the captured con
   await b.read.plays({period: 'today'}); const url = new URL(paths[0], 'https://server.invalid'); assert.equal(url.searchParams.get('period'), 'today');
   b.effects.openHistory(); assert.equal(carried, b.context); assert.deepEqual(carried, context); assert.equal(Object.isFrozen(b.context), true); b.dispose();
 });
-test('fresh same-context history may include late facts; no immutable count is promised', async () => {
-  let calls = 0;
+test('fresh same-context history may include late facts; no immutable count is promised', async () => {  let calls = 0;
   const bounds = {...interval(), from: '2026-10-01T00:00:00Z', buckets: [{start: '2026-10-01T00:00:00Z', end: context.until, partial: true}]};
   const entry = {id: 'late', user: 'person', accountId: 'actual-account', kind: 'movie', title: 'Late known fact', libraryId: 'library', startedAt: '2026-10-22T11:59:00Z', positionMs: 1000, durationMs: 60000, watchedMs: 1000, completed: false};
   const b = createDashboardBindings(options({api: {...options().api, request: async () => {calls++; return {...bounds, entries: calls === 1 ? [] : [entry], total: calls === 1 ? 0 : 1, nextCursor: ''} as never;}}}));
   assert.equal((await b.read.plays({period: 'all'})).total, 0); assert.equal((await b.read.plays({period: 'all'})).total, 1); assert.equal(calls, 2); assert.equal(b.context.until, context.until); b.dispose();
+});
+const certificate = () => ({configured: false, authorityId: '', config: {enabled: false, publicPort: 443, publicAddress: '', revision: '0'}, state: 'unconfigured', environment: 'staging', tlsReady: false, publiclyTrusted: false, listenerBound: false, listenPort: 0, reachability: 'probe_required'});
+test('the certificate alert retries through the canonical owner route and refuses after authority loss', async () => {
+  const calls: {path: string; method?: string; body?: unknown}[] = [];
+  const b = createDashboardBindings(options({api: {...options().api, request: async (path, method, body) => {calls.push({path, method, body}); return certificate() as never;}}}));
+  await b.effects.retryCertificate!();
+  assert.deepEqual(calls.map(call => [call.path, call.method, call.body]), [['/v1/networking/certificate/retry', 'POST', {}]]);
+  b.dispose();
+  let current = true;
+  const late = createDashboardBindings(options({isCurrent: () => current, api: {...options().api, request: async () => certificate() as never}}));
+  current = false;
+  await assert.rejects(async () => late.effects.retryCertificate!());
 });

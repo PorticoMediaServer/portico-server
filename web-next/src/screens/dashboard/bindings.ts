@@ -13,6 +13,7 @@ import {playbackControlsService} from '@core/playback-controls.ts';
 import {sendTransport} from '@core/server-admin/now-playing.ts';
 import {fetchPlayHistory, type PlayHistoryApi, type PlayHistoryFilters, type PlayHistoryPage} from '@core/play-history.ts';
 import {parseTelemetryReading, type TelemetryReading} from '@core/telemetry.ts';
+import {retryCertificate, type CertificateAction, type CertificateApi} from '@core/certificates.ts';
 import type {ArtworkSource} from '../../kit/artwork/types';
 
 export type DashboardEvents = Readonly<{on(type: string, listener: () => void): () => void; onResync?(listener: () => void): () => void}>;
@@ -42,7 +43,7 @@ export type DashboardBindings = Readonly<{
     stop: (id: string, message?: string) => Promise<void>;
     openHistory: () => void; openHome: () => void; openSettings: (section: string) => void;
     /** Supplied by the action owner; mutation must retain its existing revision/idempotency guard. */
-    alert?: (alert: DashboardAlert) => Promise<void>;
+    retryCertificate?: () => Promise<void>;
     reportError: (error: unknown) => void;
   }>;
   artwork: (itemId: string, kind: 'poster' | 'backdrop' | 'square', revision?: string) => ArtworkSource | undefined;
@@ -50,7 +51,7 @@ export type DashboardBindings = Readonly<{
 }>;
 export type DashboardBindingOptions = Pick<DashboardBindings, 'scope' | 'role' | 'context' | 'isCurrent' | 'isMainProfile' | 'events' | 'artwork' | 'subscribeAuthority'> & {
   api: Pick<HttpLocalApi, 'request' | 'requestRaw'>;
-  effects: Pick<DashboardBindings['effects'], 'openSettings' | 'openHome' | 'reportError' | 'alert'> & {openHistory: (context: ReportContext) => void};
+  effects: Pick<DashboardBindings['effects'], 'openSettings' | 'openHome' | 'reportError'> & {openHistory: (context: ReportContext) => void};
 };
 
 /** Captures one selected-server/main-profile lifetime. All asynchronous reads and writes recheck it. */
@@ -70,6 +71,11 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
   }});
   const data = new DashboardDataClient(api), sessions = new AdminSessionsClient(http), consoleClient = new ConsoleClient(api, options.scope);
   const controls = playbackControlsService(api.request.bind(api));
+  const certificates: CertificateApi = {requestCertificate: <T>(action: CertificateAction, body: unknown, signal: AbortSignal): Promise<T> => {
+    assert();
+    const path = routePath(action === 'status' ? 'get_networking_certificate' : action === 'config' ? 'post_networking_certificate_config' : 'post_networking_certificate_retry');
+    return options.api.request<T>(path, action === 'status' ? 'GET' : 'POST', body, signal ? AbortSignal.any([signal, life.signal]) : life.signal).then(value => {assert(); return value;});
+  }};
   let fence: string | undefined;
   let observed: string | undefined;
   const ownerRead = async <T>(work: () => Promise<T>) => {assert(true); const value = await work(); assert(true); return value;};
@@ -94,7 +100,7 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
       openHome: () => {assert(); options.effects.openHome();},
       transport: async (id, command) => {assert(); await sendTransport(controls, id, command); assert();},
       stop: async (id, message) => {assert(true); await sessions.terminate(id, message); assert(true);},
-      alert: options.effects.alert ? alert => ownerRead(() => options.effects.alert!(alert)) : undefined,
+      retryCertificate: async () => {assert(true); await retryCertificate(certificates, AbortSignal.timeout(15000)); assert(true);},
     },
     dispose: () => {close(); offAuthority?.(); consoleClient.dispose(); listeners.clear();},
   };
