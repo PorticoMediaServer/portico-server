@@ -149,9 +149,11 @@ try {
   await setValue('input[type="password"]', credentials.password);
   await driver.evaluate(`document.querySelector('button[type="submit"]').click()`);
   await driver.waitFor(`!document.querySelector('input[autocomplete="username"]')`, 30000);
-  // The only profile is the owner's primary profile; its name is the account username.
-  await driver.waitFor(`[...document.querySelectorAll('button')].some(button => button.textContent.trim() === ${JSON.stringify(credentials.username)})`, 30000);
-  await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(credentials.username)}).click()`);
+  // One profile may be admitted directly; otherwise its picker tile carries the profile name.
+  await driver.waitFor(`document.querySelector('nav[aria-label="Main"]') || [...document.querySelectorAll('button')].some(button => button.textContent.trim().startsWith(${JSON.stringify(credentials.username)}))`, 30000);
+  if (!(await driver.evaluate(`!!document.querySelector('nav[aria-label="Main"]')`))) {
+    await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim().startsWith(${JSON.stringify(credentials.username)})).click()`);
+  }
   await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
   await driver.navigate(`${base}/settings?scope=account&section=playback`);
   await driver.waitFor(`document.querySelector('h1')?.textContent === 'Playback'`, 30000);
