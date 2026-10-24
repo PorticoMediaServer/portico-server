@@ -574,7 +574,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	}
 	var stillLive bool
 	var grantKind string
-	if err = db.QueryRow(`SELECT NOT f.revoked,g.grant_kind FROM authorization_session_families f JOIN authorization_family_grants g ON g.family_id=f.id WHERE f.id=?`, setup.SessionFamilyID).Scan(&stillLive, &grantKind); err != nil || !stillLive || grantKind != identity.GrantOwnerCompletion {
+	if err = db.QueryRow(`SELECT NOT f.revoked,g.grant_kind FROM authorization_session_families f JOIN authorization_family_grants g ON g.family_id=f.id WHERE f.id=?`, setup.SessionFamilyID).Scan(&stillLive, &grantKind); err != nil || !stillLive || grantKind != identity.GrantOwnerClaimCompletion {
 		t.Fatal("installed owner continuation was not a live narrowed family")
 	}
 	for _, probe := range ownerPairDeniedReads {
