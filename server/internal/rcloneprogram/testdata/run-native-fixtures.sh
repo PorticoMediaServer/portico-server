@@ -56,6 +56,29 @@ python3 -u internal/rcloneprogram/testdata/fetch_locked_rclone.py \
     ../third_party/rclone/bundle.lock.json "$fixture_scratch"
 export PORTICO_RCLONE_TEST_PROGRAM="$fixture_scratch/rclone"
 
+# A direct-origin setup diagnostic must use an actually admitted private
+# endpoint. Give this job its own stable bridge instead of borrowing another
+# fixture's short-lived interface or relaxing the production never-list.
+if test "${PORTICO_PRIVATE_ORIGIN_TEST:-}" = 1; then
+    command -v docker >/dev/null || { echo 'Private origin fixture requires Docker.' >&2; exit 2; }
+    if docker info --format '{{json .SecurityOptions}}' | python3 -c 'import json,sys; sys.exit(0 if "name=rootless" in json.load(sys.stdin) else 1)'; then
+        echo 'Private origin fixture requires rootful Docker routing.' >&2
+        exit 2
+    fi
+    docker_fixture=1
+    export PORTICO_PRIVATE_ORIGIN_TEST_HOST=""
+    for attempt in 1 2 3 4 5 6 7 8; do
+        third=$((1 + (RANDOM % 250)))
+        gateway="192.168.$third.1"
+        if docker network create --internal --label portico=remote-sources-r40 --label "portico.job=$PORTICO_SAMBA_TEST_JOB" \
+            --subnet "192.168.$third.0/24" --gateway "$gateway" "$PORTICO_SAMBA_TEST_JOB-origin" >/dev/null 2>&1; then
+            export PORTICO_PRIVATE_ORIGIN_TEST_HOST="$gateway"
+            break
+        fi
+    done
+    test -n "$PORTICO_PRIVATE_ORIGIN_TEST_HOST" || { echo 'Owned private origin network could not be created.' >&2; exit 2; }
+fi
+
 # Other owned package fixtures use the same locked executable inside this exact
 # cleanup scope, without copying a binary, dependency recipe or owner state.
 if test "${1:-}" = --exec; then
