@@ -63,7 +63,7 @@ test('actual captured sequential facade crosses the bridge into the public publi
   t.after(() => reader.cancel().catch(() => {})); assert.equal(f.opens, 1); assert.equal(f.pulls, 0);
   let total = 0;
   for (;;) {
-    const before = f.pulls, next = await reader.read();
+    const before: number = f.pulls, next = await reader.read();
     assert.equal(f.pulls, before + 1);
     if (next.done) break;
     assert.ok(next.value.length <= 1 << 20); assert.equal(next.value[0], total % 251);
