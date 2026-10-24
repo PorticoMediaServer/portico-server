@@ -7,7 +7,23 @@ const fixture = () => ({version: 1, scope: 'screen', fullViewport: true,
   root: {x: 0, y: 0, width: 390, height: 844}, viewport: {width: 390, height: 844, deviceScaleFactor: 1}, anchorIssues: [], repeatedLists: [], strings: [],
   elements: ['title', 'caption'].map((frame, index) => ({id: String(index), parent: null, frame, tag: 'Text', role: 'text', leaf: true, ownText: frame, normalizedText: frame,
     box: {x: 16, y: 20 + index * 40, width: 200, height: 30}, textRects: [{x: 16, y: 20 + index * 40, width: 100, height: 25}], focused: index === 0,
-    effectiveOpacity: 1, effectiveBackgroundColor: 'rgb(7, 16, 24)', style: {fontFamily: 'Example', fontSize: '24px', fontWeight: '700', color: 'rgb(237, 245, 250)'}}))});
+    effectiveOpacity: 1, effectiveBackgroundColor: 'rgb(7, 16, 24)', style: {fontFamily: 'Example', resolvedFontFamily: 'Example', fontSize: '24px', fontWeight: '700', color: 'rgb(237, 245, 250)'}}))});
+
+test('native font identity uses observed active families, never a forged CSS fallback chain', () => {
+  const reference = fixture(), actual = fixture();
+  actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'dp'};
+  reference.elements[0].style.fontFamily = 'Requested, serif'; delete actual.elements[0].style.fontFamily;
+  assert.equal(compareMeasurements(reference, actual).verdict, 'PASS');
+  actual.elements[0].style.resolvedFontFamily = 'Different observed face';
+  actual.elements[0].style.fontFamily = reference.elements[0].style.fontFamily;
+  assert.ok(compareMeasurements(reference, actual).differences.some(value => value.property === 'resolvedFontFamily' && value.kind === 'measured-difference'));
+  delete actual.elements[0].style.resolvedFontFamily;
+  assert.ok(validateMeasurement(actual).includes('elements.0.style.resolvedFontFamily'));
+  actual.unavailable = [{element: '0', property: 'resolvedFontFamily', reason: 'Native active family is not exposed'}];
+  const result = compareMeasurements(reference, actual);
+  assert.equal(result.assessment.measuredVerdict, 'WITHHELD');
+  assert.ok(result.differences.some(value => value.kind === 'unavailable-measurement' && value.property === 'resolvedFontFamily'));
+});
 
 test('native viewport consistency accepts exact float32 representation without changing raw bounds or geometry policy', () => {
   const reference = fixture(), actual = fixture();

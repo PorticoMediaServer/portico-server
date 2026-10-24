@@ -7,11 +7,12 @@ import {fontReadiness} from './readiness.mjs';
 import {validateMeasurement} from './contract.mjs';
 
 /** Read a verified complete authored viewport without moving or rewriting its DOM. */
-export async function extractReference({url, selector, windowViewport, viewport, anchors = {}, repeats = []}) {
+export async function extractReference({url, selector, windowViewport, viewport, anchors = {}, repeats = [], resolvedFonts = false}) {
   return withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     viewport: windowViewport, allowedOrigins: [new URL(url).origin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
     await browser.navigate(url, selector);
-    const first = await browser.measure(selector, anchors, repeats), second = await browser.measure(selector, anchors, repeats);
+    const measure = async () => {const screen = await browser.measure(selector, anchors, repeats); return resolvedFonts ? browser.observeRenderedFonts(screen, selector) : screen;};
+    const first = await measure(), second = await measure();
     if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('Reference extraction is nondeterministic');
     const readiness = {blocked: browser.blocked, pageErrors: browser.pageErrors, fonts: fontReadiness(first, 'reference')};
     if (readiness.blocked.length || readiness.pageErrors.length || readiness.fonts.length) throw new Error('Reference readiness: ' + JSON.stringify(readiness));

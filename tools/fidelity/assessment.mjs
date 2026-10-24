@@ -1,7 +1,7 @@
 /** Coverage failures are not product defects. Keep both counts visible. */
 export function assessDifferences(differences, {reference, actual} = {}) {
   const count = kinds => differences.filter(value => kinds.includes(value.kind)).length;
-  const observedProperties = /^(?:font|letterSpacing|textTransform|textDecoration|textShadow|color$|effectiveOpacity$|effectiveBackgroundColor$|background|border|boxShadow$|filter$|backdropFilter$|transform|objectFit$)/;
+  const observedProperties = /^(?:font|resolvedFontFamily$|letterSpacing|textTransform|textDecoration|textShadow|color$|effectiveOpacity$|effectiveBackgroundColor$|background|border|boxShadow$|filter$|backdropFilter$|transform|objectFit$)/;
   const missingObservation = value => value.kind === 'measured-difference' && observedProperties.test(value.property ?? '') &&
     (value.expected === undefined || value.actual === undefined);
   const coverage = {

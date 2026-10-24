@@ -76,7 +76,7 @@ export function validateMeasurement(screen, {reference = false} = {}) {
       need(typeof node.effectiveBackgroundColor === 'string' || declared('effectiveBackgroundColor'), path + '.effectiveBackgroundColor');
       if (node.ownText && !node.input) {
         need(Array.isArray(node.textRects) && node.textRects.length > 0 && node.textRects.every(rect) || declared('textRects'), path + '.textRects');
-        for (const property of ['fontFamily', 'fontSize', 'fontWeight', 'color']) need(typeof node.style?.[property] === 'string' || declared(property), path + '.style.' + property);
+        for (const property of ['resolvedFontFamily', 'fontSize', 'fontWeight', 'color']) need(typeof node.style?.[property] === 'string' || declared(property), path + '.style.' + property);
       }
     }
   }

@@ -33,6 +33,13 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
   if (actual.diagnostics?.fontScale !== undefined) diagnostics.push({label: 'screen', property: 'diagnostics.fontScale', actual: actual.diagnostics.fontScale, scored: false, reason: 'Actual system font scale is diagnostic metadata; measured font/run facts are never multiplied, divided or normalized by it.'});
   const unavailable = (screen, node, property) => screen.unavailable?.some(fact => fact.element === node?.id && fact.property === property);
+  const scoredTextStyles = textStyles.map(property => property === 'fontFamily' && actual.measurement?.renderer === 'react-native' ? 'resolvedFontFamily' : property);
+  const observedTextStyle = (screen, node, property, side) => {
+    if (property !== 'resolvedFontFamily' || typeof node.style?.[property] === 'string') return true;
+    if (!unavailable(screen, node, property)) differences.push({kind: 'unavailable-measurement', label: `${side} ${node.id}`, property,
+      reason: 'Active rendered font identity has not been observed; a requested family chain is not a substitute'});
+    return false;
+  };
   const cascadeRoots = {reference: [], actual: []};
   const invalidAnchors = new Set([...(reference.anchorIssues ?? []), ...(actual.anchorIssues ?? [])].map(issue => issue.name));
   for (const name of invalidAnchors) {
@@ -110,7 +117,10 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     const unknownText = [node, other].some((value, index) => ['ownText', 'normalizedText'].some(property => unavailable(index ? actual : reference, value, property)));
     if (!paintOnly && !containsCascade && !unknownText && text(node) !== text(other)) add('text', text(node), text(other));
     if (node.box && other.box) for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(node.box[property] - other.box[property]) > policy.boxPixels) add(`box.${property}`, node.box[property], other.box[property]);
-    if (!paintOnly && (node.ownText || other.ownText)) for (const property of textStyles) if (!unavailable(reference, node, property) && !unavailable(actual, other, property) && node.style?.[property] !== other.style?.[property]) add(property, node.style?.[property], other.style?.[property]);
+    if (!paintOnly && (node.ownText || other.ownText)) for (const property of scoredTextStyles) {
+      const left = observedTextStyle(reference, node, property, 'reference'), right = observedTextStyle(actual, other, property, 'actual');
+      if (left && right && !unavailable(reference, node, property) && !unavailable(actual, other, property) && node.style?.[property] !== other.style?.[property]) add(property, node.style?.[property], other.style?.[property]);
+    }
     if (!paintOnly && !containsCascade && (node.ownText || other.ownText || node.frame && !node.anchoredDescendants)) {
       const a = textRectangles(node), b = textRectangles(other);
       if (a && b) {
@@ -153,7 +163,9 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     if (within(a?.id, cascadeRoots.reference) || within(b?.id, cascadeRoots.actual)) continue;
     if (!a || !b) {differences.push({kind: 'missing-content-slot', label: slot.reference}); continue;}
     if (!b.input?.redacted && text(a) !== text(b)) differences.push({kind: 'measured-difference', label: slot.reference, property: 'text', expected: text(a), actual: text(b)});
-    for (const property of textStyles.filter(property => !slot.nativeInput || property !== 'textShadow')) {
+    for (const property of scoredTextStyles.filter(property => !slot.nativeInput || property !== 'textShadow')) {
+      const left = observedTextStyle(reference, a, property, 'reference'), right = observedTextStyle(actual, b, property, 'actual');
+      if (!left || !right) continue;
       if (unavailable(reference, a, property) || unavailable(actual, b, property)) continue;
       if (a.style[property] !== b.style[property]) differences.push({kind: 'measured-difference', label: slot.reference, property, expected: a.style[property], actual: b.style[property]});
     }

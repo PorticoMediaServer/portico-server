@@ -3,6 +3,7 @@ import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {measureScreen} from './measure-screen.mjs';
+import {observeRenderedFonts} from './resolved-fonts.mjs';
 
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
@@ -68,6 +69,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
       },
       measure: (selector, anchors = {}, repeats = []) => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport, anchors, repeats})})`),
+      observeRenderedFonts: (screen, selector) => observeRenderedFonts(call, screen, selector),
       evaluate,
       call,
       blocked,

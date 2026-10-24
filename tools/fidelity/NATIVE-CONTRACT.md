@@ -48,6 +48,28 @@ The public frontdoor map also binds `<primary-semantic-id>/label` to
 `primary-action-label`. The existing comparison content slot measures its
 actual text/font/run facts separately from the primary focus host's paint/box.
 The reference-only module must never be imported into an application.
+
+Native comparison uses `style.resolvedFontFamily`, the observed active family,
+on both sides. A DOM computed `fontFamily` is a requested CSS fallback chain,
+so it cannot stand in for a native resolved face. DOM-to-DOM comparison keeps
+its existing exact computed-family rule. `extractReference({resolvedFonts:true})`
+reads active rendered families through Chrome's platform-font observer, without
+changing the DOM or emitting font files/URLs. Mixed/unknown families and inputs
+remain unavailable. Native supplies the actual shaped run's typeface identity;
+requested/flattened styles and TextView base defaults are not observations.
+
+Observed sizes/radii/shadows use existing CSS-style scalar strings in the
+declared logical coordinate unit (dp/pt), not physical pixel values. Convert a
+physical getter once using the actual view density; never divide out fontScale.
+Font size/weight/color must describe actual shaped-run paint. Colors use actual
+RGBA channels. Effective opacity multiplies observed View ancestry through the
+attached Decor root, excluding the OS/window compositor, as DOM ancestry excludes
+the browser-window compositor. A missing ancestor is not assumed opaque/alpha1.
+Effective background uses observed ancestor paint; unknown drawables/composition
+remain unavailable. Border radii and shadow fields require actual resolved
+native observations; elevation alone does not determine a CSS box shadow.
+Observed lineHeight remains diagnostic and never substitutes for window text-run
+rectangles or inferred glyph positions from host bounds.
 Do not divide either producer's logical rectangles by density a second time.
 Only genuinely physical measurements may be converted by their producer using
 its measured physical-to-logical API relationship; never infer that relationship

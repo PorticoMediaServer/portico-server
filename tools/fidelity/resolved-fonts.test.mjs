@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {observeRenderedFonts} from './resolved-fonts.mjs';
+
+const fixture = () => ({measurement: {renderer: 'dom', coordinateUnit: 'css-px'}, elements: [
+  {id: '0.1', ownText: 'Public text', style: {fontFamily: 'Requested, serif'}},
+  {id: '0.2', ownText: '', input: {redacted: true}, style: {fontFamily: 'Requested, serif'}},
+]});
+const observer = fonts => async (method, params) => {
+  if (method === 'DOM.getDocument') return {root: {nodeId: 1}};
+  if (method === 'DOM.querySelector') return {nodeId: params.selector === '#screen' ? 2 : 3};
+  if (method === 'CSS.getPlatformFontsForNode') return {fonts};
+  assert.ok(['DOM.enable', 'CSS.enable'].includes(method)); return {};
+};
+test('active font identity comes only from observed glyph families, preserving requested/raw facts', async () => {
+  const input = fixture(), raw = JSON.stringify(input);
+  const output = await observeRenderedFonts(observer([{familyName: 'Observed face', glyphCount: 3, postScriptName: '/private/font-file'}]), input, '#screen');
+  assert.equal(output.elements[0].style.resolvedFontFamily, 'Observed face');
+  assert.equal(output.elements[0].style.fontFamily, 'Requested, serif');
+  assert.equal(JSON.stringify(input), raw); assert.ok(!JSON.stringify(output).includes('/private/'));
+  assert.equal(output.elements[1].style.resolvedFontFamily, undefined);
+  assert.equal(output.unavailable.length, 1); assert.equal(output.unavailable[0].element, '0.2');
+});
+test('mixed, empty, unsafe or failed observations never become the requested family', async () => {
+  for (const fonts of [[], [{familyName: 'A', glyphCount: 1}, {familyName: 'B', glyphCount: 1}], [{familyName: '/private/font', glyphCount: 1}], [{familyName: 'A', glyphCount: 0}]]) {
+    const output = await observeRenderedFonts(observer(fonts), fixture(), '#screen');
+    assert.equal(output.elements[0].style.resolvedFontFamily, undefined);
+    assert.ok(output.unavailable.some(fact => fact.element === '0.1' && fact.property === 'resolvedFontFamily'));
+  }
+  const stale = fixture(); stale.elements[0].style.resolvedFontFamily = 'Old face';
+  const failed = await observeRenderedFonts(async () => {throw new Error('Unavailable');}, stale, '#screen');
+  assert.equal(failed.elements[0].style.resolvedFontFamily, undefined);
+});
