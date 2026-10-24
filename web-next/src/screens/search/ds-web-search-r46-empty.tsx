@@ -23,12 +23,12 @@ const genres = [
   genre('comedy', 'Comedy', 12), genre('adventure', 'Adventure', 18),
 ];
 const history = ['the last of us', 'spirited away', 'pedro pascal', 'fleetwood mac', 'hail mary', 'toy story', 'severance', 'dune'];
-type ChannelFixture = {id: string; name: string; number: string; title: string; start: string; end: string; subtitle?: string; live?: boolean};
+type ChannelFixture = {id: string; name: string; number: string; title: string; start: string; end: string; subtitle?: string; live?: boolean; mark: {text: string; seed: string}};
 const channels: readonly ChannelFixture[] = [
-  {id: 'northwind', name: 'Northwind News', number: '101', title: 'World Tonight', start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:30:00Z'},
-  {id: 'summit', name: 'Summit Sports', number: '201', title: 'Cycling: Mountain Stage', live: true, start: '2026-10-24T18:00:00Z', end: '2026-10-24T21:30:00Z'},
-  {id: 'pebble', name: 'Pebble Kids', number: '401', title: 'Story Time Island', subtitle: 'Homecoming', start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:30:00Z'},
-  {id: 'atlas', name: 'Atlas Documentaries', number: '501', title: 'How Bridges Stand', subtitle: 'Fault Lines', start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:15:00Z'},
+  {id: 'northwind', name: 'Northwind News', number: '101', title: 'World Tonight', mark: {text: 'NN', seed: 'northwind'}, start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:30:00Z'},
+  {id: 'summit', name: 'Summit Sports', number: '201', title: 'Cycling: Mountain Stage', live: true, mark: {text: 'SS', seed: 'summit'}, start: '2026-10-24T18:00:00Z', end: '2026-10-24T21:30:00Z'},
+  {id: 'pebble', name: 'Pebble Kids', number: '401', title: 'Story Time Island', subtitle: 'Homecoming', mark: {text: 'PK', seed: 'pebble'}, start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:30:00Z'},
+  {id: 'atlas', name: 'Atlas Documentaries', number: '501', title: 'How Bridges Stand', subtitle: 'Fault Lines', mark: {text: 'AD', seed: 'atlas'}, start: '2026-10-24T18:00:00Z', end: '2026-10-24T19:15:00Z'},
 ];
 const source = {id: 'synthetic', name: 'Synthetic Live TV', generation: 'g1', publishedAt: '2026-10-24T12:00:00Z',
   availableStart: '', availableEnd: '', provenance: 'live-source', refreshState: 'ready'};
