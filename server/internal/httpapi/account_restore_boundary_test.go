@@ -48,10 +48,15 @@ func TestAccountRestoreUsesAccountScopeUntilExplicitProfileSelection(t *testing.
 		t.Fatal("sign-in is not a cookie-based authority")
 	}
 	account := *signedIn.Session
+	if w := call("GET", "/v1/direct", "", nil); w.Code != 401 {
+		t.Fatalf("anonymous account snapshot status=%d", w.Code)
+	}
 	assertRestricted := func(token string) {
 		t.Helper()
-		if w := call("GET", "/v1/me", token, nil); w.Code != 401 {
-			t.Fatalf("account-only viewer refusal status=%d", w.Code)
+		for _, path := range []string{"/v1/me", "/v1/bootstrap", "/v1/admin/sign-in"} {
+			if w := call("GET", path, token, nil); w.Code != 401 {
+				t.Fatalf("account-only viewer refusal path=%s status=%d", path, w.Code)
+			}
 		}
 		w := call("GET", "/v1/direct", token, nil)
 		var snapshot identity.DirectSnapshot
@@ -75,5 +80,11 @@ func TestAccountRestoreUsesAccountScopeUntilExplicitProfileSelection(t *testing.
 	}
 	if w := call(http.MethodGet, "/v1/me", selection.Session.AccessToken, nil); w.Code != 200 {
 		t.Fatalf("selected viewer status=%d", w.Code)
+	}
+	if err := d.Identity.LogoutToken(t.Context(), renewed.AccessToken); err != nil {
+		t.Fatal("account family retirement failed")
+	}
+	if w := call("GET", "/v1/direct", renewed.AccessToken, nil); w.Code != 401 {
+		t.Fatalf("retired account snapshot status=%d", w.Code)
 	}
 }
