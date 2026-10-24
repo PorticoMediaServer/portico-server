@@ -20,6 +20,17 @@ type Artist struct {
 	LibraryID string `json:"libraryId"`
 	Name      string `json:"name"`
 }
+
+// AlbumRole is the artist-relative release role published on an artist's albums.
+// It is closed: the artist page's groups and the endpoint cannot disagree on a
+// value outside this set.
+type AlbumRole string
+
+// JSONSchema publishes the closed role set to apigen without redeclaring Album.
+func (AlbumRole) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"album", "ep", "single", "compilation", "appearance"}}
+}
+
 type Album struct {
 	ProviderReleaseID      string `json:"providerReleaseId,omitempty"`
 	ProviderReleaseGroupID string `json:"providerReleaseGroupId,omitempty"`
@@ -34,9 +45,9 @@ type Album struct {
 	Year                   int    `json:"year,omitempty"`
 	ProviderMatchStatus    string `json:"providerMatchStatus"`
 	PosterURL              string `json:"posterUrl,omitempty"`
-	// Role is the artist-relative release role for this artist page: album, ep,
-	// single, compilation, or appearance. Absent from older servers.
-	Role string `json:"role,omitempty"`
+	// Role is the artist-relative release role for this artist page. Absent from
+	// older servers.
+	Role AlbumRole `json:"role,omitempty"`
 }
 type Book struct {
 	ID                  string      `json:"id"`
