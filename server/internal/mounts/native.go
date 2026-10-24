@@ -276,31 +276,6 @@ func (s *Service) approveExecutable(ctx context.Context, executable string) (str
 	return canonical, digest, version, nil
 }
 
-// ValidateConfiguration tests an already private candidate. No database write
-// transaction or mount/service lock is held while the provider is contacted.
-func (s *Service) validateCandidate(ctx context.Context, executable, digest, remote, file string) error {
-	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.work, Password: "", Operation: "stat"})
-	cmd := exec.Command(s.helper, "--portico-rclone-native")
-	cmd.Stdin = bytes.NewReader(data)
-	check, cancel := context.WithTimeout(ctx, 25*time.Second)
-	defer cancel()
-	err := s.validationSupervisor.Run(check, "rclone-configuration", cmd, func(r io.Reader) error {
-		raw, e := io.ReadAll(io.LimitReader(r, 65537))
-		if e != nil || len(raw) > 65536 {
-			return ErrConfigInvalid
-		}
-		var entry NativeEntry
-		if json.Unmarshal(raw, &entry) != nil || !entry.IsDir {
-			return ErrConfigInvalid
-		}
-		return nil
-	})
-	if err != nil {
-		return storage.ErrRemoteCredentials
-	}
-	return nil
-}
-
 func (s *Service) candidateFile(raw []byte) (string, error) {
 	// Plain rclone config format: folder permissions are the protection.
 	f, err := os.OpenFile(filepath.Join(s.work, identity.Token()+".candidate"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)

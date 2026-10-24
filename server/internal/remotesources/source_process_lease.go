@@ -70,7 +70,7 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 	if s.serveLeases == nil {
 		s.serveLeases = make(map[string]*sourceProcessLease)
 	}
-	if s.serveLeases[source] != nil {
+	if s.serveLeases[source] != nil || s.sourceTests[source] != nil {
 		return nil, storage.ErrBusy
 	}
 	life, cancel := context.WithCancel(ctx)
@@ -129,6 +129,7 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		return storage.ErrRemoteChanged
 	}
 	var native *nativeSourceAuthority
+	var imported *importedSourceConfiguration
 	if l.networkFingerprint != "" {
 		network, e := l.service.sourceNetworkTx(ctx, snapshot.Tx(), l.source, l.root)
 		sequential, se := sourceSequentialTx(ctx, snapshot.Tx(), l.source, l.root)
@@ -140,6 +141,7 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 			return storage.ErrRemoteChanged
 		}
 		native = network.Native
+		imported = network.Imported
 	}
 	// DNS/provider checks happen outside the snapshot. A reconnect is admitted
 	// only against this source's saved native approval; the hidden rclone dial
@@ -148,6 +150,15 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 	if native != nil {
 		_, err = (remotemedia.Policy{Resolver: l.service.resolver}).CheckNativeEndpoint(ctx, native.endpoint, native.config.Approval)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			l.cancel()
+			return err
+		}
+	}
+	if imported != nil {
+		if err = l.service.checkImportedApprovals(ctx, *imported); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
