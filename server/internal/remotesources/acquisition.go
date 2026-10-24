@@ -46,6 +46,9 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 	if !ok || b.Removed || relative == "" {
 		return nil, storage.ErrRemoteOffline
 	}
+	if err := s.requireWebDAVRandom(ctx, b.ID); err != nil {
+		return nil, err
+	}
 	pool := s.playback
 	if lane == "analysis" {
 		pool = s.inventory
@@ -242,6 +245,10 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 		return nil, err
 	}
 	if err = o.service.check(ctx, o.binding, o.generation); err != nil {
+		release()
+		return nil, err
+	}
+	if err = o.service.requireWebDAVRandom(ctx, o.binding.ID); err != nil {
 		release()
 		return nil, err
 	}

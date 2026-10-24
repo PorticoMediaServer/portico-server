@@ -398,6 +398,12 @@ func (l *SourceReadLease) OpenRange(ctx context.Context) (*SourceRange, error) {
 		return nil, err
 	}
 	if l.binding.Sequential {
+		if err := l.Check(ctx); err != nil {
+			return nil, err
+		}
+		if err := l.service.requireWebDAVRandom(ctx, l.binding.Observation.SourceID); err != nil {
+			return nil, err
+		}
 		return nil, storage.ErrRemoteRange
 	}
 	call, release := l.bound(ctx)

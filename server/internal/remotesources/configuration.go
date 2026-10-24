@@ -197,10 +197,10 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 		return zero, err
 	}
 	if id == "" {
-		_, err = tx.Exec(`INSERT INTO remote_sources(id,kind,name,root,generation,config,state,range_support,origin,insecure,credential_present) VALUES(?,'webdav',?,?,1,?,'ready',?,?,?,?)`, source.ID, source.Name, source.RootPath, sealed, source.RangeSupport, source.Origin, source.InsecureLocal, source.CredentialPresent)
+		_, err = tx.Exec(`INSERT INTO remote_sources(id,kind,name,root,generation,config,state,range_support,origin,insecure,credential_present,webdav_leaf_count) VALUES(?,'webdav',?,?,1,?,'ready',?,?,?,?,1)`, source.ID, source.Name, source.RootPath, sealed, source.RangeSupport, source.Origin, source.InsecureLocal, source.CredentialPresent)
 	} else {
 		var result sql.Result
-		result, err = tx.Exec(`UPDATE remote_sources SET name=?,generation=generation+1,config=?,state='ready',error_code='',range_support=?,origin=?,insecure=?,credential_present=? WHERE id=? AND generation=? AND removed=0`, source.Name, sealed, source.RangeSupport, source.Origin, source.InsecureLocal, source.CredentialPresent, id, in.ExpectedGeneration)
+		result, err = tx.Exec(`UPDATE remote_sources SET name=?,generation=generation+1,config=?,state='ready',error_code='',range_support=?,origin=?,insecure=?,credential_present=?,webdav_leaf_count=1 WHERE id=? AND generation=? AND removed=0`, source.Name, sealed, source.RangeSupport, source.Origin, source.InsecureLocal, source.CredentialPresent, id, in.ExpectedGeneration)
 		if err == nil {
 			n, _ := result.RowsAffected()
 			if n != 1 {
