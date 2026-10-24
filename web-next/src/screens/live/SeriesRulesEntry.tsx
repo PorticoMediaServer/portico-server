@@ -26,7 +26,7 @@ function MoreRules({binding, cursor}: {binding: SeriesRulesBindings; cursor: str
   return <div ref={element}><Skeleton width="100%" height={114}/></div>;
 }
 
-function BoundRules({binding, context}: {binding: SeriesRulesBindings; context: ScreenContext}) {
+function BoundRules({binding, context, onView}: {binding: SeriesRulesBindings; context: ScreenContext; onView?: (view: 'upcoming' | 'recorded' | 'rules' | 'history' | 'storage') => void}) {
   const state = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const search = parseLiveScreenSearch(useSearch({from: '/live'}));
   const [deleting, setDeleting] = useState<Readonly<{rule: SeriesRule; resolve: (success: boolean) => void}>>(), [future, setFuture] = useState<'keep' | 'cancel'>('keep');
@@ -50,6 +50,7 @@ function BoundRules({binding, context}: {binding: SeriesRulesBindings; context: 
   const closeDelete = () => {if (!busy) {deleting?.resolve(false);deleteResolve.current = undefined;setDeleting(undefined);}};
   return <><SeriesRules view={state.view} onGuide={onGuide} busy={busy} onSave={onSave} onDraft={onDraft}
     onDelete={rule => new Promise<boolean>(resolve => {deleteResolve.current?.(false);deleteResolve.current = resolve;setDeleting({rule, resolve});setFuture('keep');})} preview={state.preview}
+    {...(onView ? {onView} : {})}
     error={state.error || state.previewError ? dvrMessage(state.error ?? state.previewError) : undefined}
     tail={<>{state.nextCursor && !state.error && <MoreRules binding={binding} cursor={state.nextCursor}/>}
       {state.error !== undefined && <Banner action={{label: t('next.states.tryAgain'), onAction: () => {void binding.load().catch(() => {});}}}>{dvrMessage(state.error)}</Banner>}
@@ -65,7 +66,7 @@ function BoundRules({binding, context}: {binding: SeriesRulesBindings; context: 
 
 /** No fixture imports or independent transport. This is mounted only by the
  * authenticated Live route and retires every DVR request with that scope. */
-export function SeriesRulesEntry({captured}: {captured: ProtectedLibraryScreen}) {
+export function SeriesRulesEntry({captured, onView}: {captured: ProtectedLibraryScreen; onView?: (view: 'upcoming' | 'recorded' | 'rules' | 'history' | 'storage') => void}) {
   const context = useLibraryScreenContext(captured);
   const [owner, setOwner] = useState<Readonly<{context: ScreenContext; binding: SeriesRulesBindings}>>();
   useEffect(() => {
@@ -74,5 +75,5 @@ export function SeriesRulesEntry({captured}: {captured: ProtectedLibraryScreen})
     setOwner({context, binding});void binding.load().catch(() => {});
     return () => binding.dispose();
   }, [context]);
-  return owner && owner.context === context ? <BoundRules binding={owner.binding} context={context}/> : <Skeleton width="100%" height={114}/>;
+  return owner && owner.context === context ? <BoundRules binding={owner.binding} context={context} {...(onView ? {onView} : {})}/> : <Skeleton width="100%" height={114}/>;
 }

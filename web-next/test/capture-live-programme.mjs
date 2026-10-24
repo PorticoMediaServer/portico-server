@@ -43,13 +43,13 @@ try {
   const shot = (url, file) => {
     const result = spawnSync(chromium, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars',
       '--run-all-compositor-stages-before-draw', '--virtual-time-budget=8000', '--window-size=1440,1230', `--screenshot=${file}`, url],
-      {encoding: 'utf8', timeout: 60_000});
+      {encoding: 'utf8', timeout: 60_000, env: {...process.env, TZ: 'America/Halifax'}});
     if (result.status !== 0) throw new Error(`Chromium failed for ${url}: ${result.stderr?.slice(-2000) ?? ''}`);
   };
   shot(`${origin}/src/dev/entries/live-guide.html?panel=1`, `${output}/implementation.png`);
   shot(`${referenceOrigin}/index.html`, `${output}/frame.png`);
   const pair = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', `${output}/implementation.png`, '-i', `${output}/frame.png`,
-    '-filter_complex', 'hstack=inputs=2', `${output}/comparison.jpg`], {encoding: 'utf8', timeout: 60_000});
+    '-filter_complex', 'hstack=inputs=2', `${output}/comparison.jpg`], {encoding: 'utf8', timeout: 60_000, env: {...process.env, TZ: 'America/Halifax'}});
   if (pair.status !== 0) throw new Error(`ffmpeg failed: ${pair.stderr?.slice(-1000) ?? ''}`);
   await writeFile(`${output}/capture.log`, JSON.stringify({origin, referenceOrigin, htmlBytes: html.length, implementation: '1440x1230', frame: '1440x1230'}, null, 2));
   console.log('LIVE_PANEL_CAPTURE_OK');

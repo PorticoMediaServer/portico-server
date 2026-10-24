@@ -17,6 +17,7 @@ import {useScreenAppearance} from '../browse/screen-preferences';
 import {SeriesRulesEntry} from './SeriesRulesEntry';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {ProgrammePanel} from './ProgrammePanel';
+import {RecordingsScreen} from './RecordingsScreen';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveProgramWindow} from './program-window';
@@ -127,7 +128,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const onChanged = useCallback(() => { owner.store.invalidate(); setAttempt(value => value + 1); }, [owner]);
   const openRecordings = useCallback(() => {
     setSelected(undefined);
-    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), tab: 'recordings'}, replace: true, resetScroll: false}).catch(context.effects.reportError);
+    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), tab: 'recordings', dvr: 'upcoming'}, replace: true, resetScroll: false}).catch(context.effects.reportError);
   }, [context, searchKey]);
   if (authorityFailure) return <ScreenProblem context={context} error={authorityFailure} retry={() => setAttempt(value => value + 1)}/>;
   return <>
@@ -165,6 +166,14 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
 function LiveRouteScreen() {
   const captured = useProtectedWebScreenContext();
   const search = parseLiveScreenSearch(useSearch({from: '/live'}));
-  return captured ? search.tab === 'recordings' ? <SeriesRulesEntry captured={captured}/> : <BoundLive captured={captured}/> : null;
+  const openView = (dvr: 'upcoming' | 'recorded' | 'rules' | 'history' | 'storage') => {
+    if (captured) void router.navigate({to: '/live', search: {...search, tab: 'recordings', dvr}, replace: true, resetScroll: false}).catch(() => {});
+  };
+  const openGuide = () => {if (captured) void router.navigate({to: '/live', search: {...search, tab: 'guide'}, replace: true, resetScroll: false}).catch(() => {});};
+  if (!captured) return null;
+  if (search.tab !== 'recordings') return <BoundLive captured={captured}/>;
+  const view = search.dvr ?? 'upcoming';
+  if (view === 'rules') return <SeriesRulesEntry captured={captured} onView={openView}/>;
+  return <RecordingsScreen captured={captured} view={view === 'recorded' || view === 'history' || view === 'storage' ? view : 'upcoming'} onView={openView} onGuide={openGuide}/>;
 }
 export default defineWebScreen({id: 'live', component: LiveRouteScreen, validateSearch: parseLiveScreenSearch});
