@@ -22704,6 +22704,11 @@ export const schemas = {
           "name": {
             "type": "string"
           },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -22791,6 +22796,7 @@ export const schemas = {
           }
         },
         "required": [
+          "position",
           "filesSkipped",
           "id",
           "name",
@@ -23079,6 +23085,11 @@ export const schemas = {
             "name": {
               "type": "string"
             },
+            "position": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "revision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -23166,6 +23177,7 @@ export const schemas = {
             }
           },
           "required": [
+            "position",
             "filesSkipped",
             "id",
             "name",
@@ -105858,6 +105870,12 @@ export const schemas = {
   },
   "GetLibrarySettingsResponse": {
     "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "analysisMatrix": {
         "properties": {
           "costClasses": {
@@ -105947,6 +105965,23 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "audience": {
+        "properties": {
+          "accounts": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "everyone": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "everyone",
+          "accounts"
+        ],
+        "type": "object"
+      },
       "availableProviders": {
         "items": {
           "properties": {
@@ -105984,42 +106019,32 @@ export const schemas = {
         },
         "type": "array"
       },
-      "digest": {
-        "type": "string"
-      },
-      "enumerations": {
-        "additionalProperties": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "type": "object"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "libraryKind": {
-        "type": "string"
-      },
-      "libraryName": {
-        "type": "string"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "settings": {
+      "defaults": {
         "properties": {
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
           "allowMediaDeletion": {
             "type": "boolean"
           },
           "analysis": {
             "items": {
+              "enum": [
+                "probe",
+                "local_metadata",
+                "subtitle_discovery",
+                "loudness",
+                "audio_fingerprint",
+                "trickplay",
+                "chapter_images",
+                "checksum",
+                "waveform"
+              ],
               "type": "string"
             },
-            "type": "array"
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
           },
           "continueWatching": {
             "properties": {
@@ -106054,6 +106079,34 @@ export const schemas = {
               "videoCompletion"
             ],
             "type": "object"
+          },
+          "episodeNumbering": {
+            "enum": [
+              "season",
+              "absolute"
+            ],
+            "type": "string"
+          },
+          "findExtras": {
+            "type": "boolean"
+          },
+          "groupCollections": {
+            "type": "boolean"
+          },
+          "localTags": {
+            "enum": [
+              "prefer",
+              "supplement",
+              "off"
+            ],
+            "type": "string"
+          },
+          "lyricsSource": {
+            "enum": [
+              "files",
+              "lrclib"
+            ],
+            "type": "string"
           },
           "monitorChanges": {
             "type": "boolean"
@@ -106131,11 +106184,307 @@ export const schemas = {
             },
             "type": "array"
           },
+          "refreshMode": {
+            "enum": [
+              "replace_unlocked",
+              "fill_missing"
+            ],
+            "type": "string"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
           "segmentDetection": {
+            "enum": [
+              "server",
+              "off",
+              "standard",
+              "thorough"
+            ],
+            "type": "string"
+          },
+          "sortIgnoreArticles": {
+            "type": "boolean"
+          },
+          "titleSource": {
+            "enum": [
+              "tags",
+              "names"
+            ],
             "type": "string"
           }
         },
         "required": [
+          "scanDepth",
+          "groupCollections",
+          "localTags",
+          "lyricsSource",
+          "titleSource",
+          "episodeNumbering",
+          "findExtras",
+          "sortIgnoreArticles",
+          "refreshMode",
+          "acoustidEnabled",
+          "monitorChanges",
+          "allowMediaDeletion",
+          "continueWatching",
+          "providers",
+          "analysis",
+          "navigation",
+          "segmentDetection"
+        ],
+        "type": "object"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "eligibleControls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "enumerations": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "object"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "libraryName": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "settings": {
+        "properties": {
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
+          "allowMediaDeletion": {
+            "type": "boolean"
+          },
+          "analysis": {
+            "items": {
+              "enum": [
+                "probe",
+                "local_metadata",
+                "subtitle_discovery",
+                "loudness",
+                "audio_fingerprint",
+                "trickplay",
+                "chapter_images",
+                "checksum",
+                "waveform"
+              ],
+              "type": "string"
+            },
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "continueWatching": {
+            "properties": {
+              "includeSeasonPremieres": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "maximumItems": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCompletion": {
+                "type": "string"
+              },
+              "videoPlayedThreshold": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "weeks": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "weeks",
+              "maximumItems",
+              "includeSeasonPremieres",
+              "videoPlayedThreshold",
+              "videoCompletion"
+            ],
+            "type": "object"
+          },
+          "episodeNumbering": {
+            "enum": [
+              "season",
+              "absolute"
+            ],
+            "type": "string"
+          },
+          "findExtras": {
+            "type": "boolean"
+          },
+          "groupCollections": {
+            "type": "boolean"
+          },
+          "localTags": {
+            "enum": [
+              "prefer",
+              "supplement",
+              "off"
+            ],
+            "type": "string"
+          },
+          "lyricsSource": {
+            "enum": [
+              "files",
+              "lrclib"
+            ],
+            "type": "string"
+          },
+          "monitorChanges": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "chapterThumbnailMode": {
+                "type": "string"
+              },
+              "trickplayIntervalMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayMaxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayTileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoPreviewEnabled": {
+                "type": "boolean"
+              },
+              "videoPreviewMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trickplayIntervalMs",
+              "trickplayTileWidth",
+              "trickplayMaxTiles",
+              "chapterThumbnailMode",
+              "videoPreviewEnabled",
+              "videoPreviewMs"
+            ],
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "apiKey": {
+                  "type": "string"
+                },
+                "apiKeySet": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "mediaKind": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mediaKind",
+                "provider",
+                "apiKey",
+                "apiKeySet",
+                "language",
+                "region"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "refreshMode": {
+            "enum": [
+              "replace_unlocked",
+              "fill_missing"
+            ],
+            "type": "string"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "segmentDetection": {
+            "enum": [
+              "server",
+              "off",
+              "standard",
+              "thorough"
+            ],
+            "type": "string"
+          },
+          "sortIgnoreArticles": {
+            "type": "boolean"
+          },
+          "titleSource": {
+            "enum": [
+              "tags",
+              "names"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanDepth",
+          "groupCollections",
+          "localTags",
+          "lyricsSource",
+          "titleSource",
+          "episodeNumbering",
+          "findExtras",
+          "sortIgnoreArticles",
+          "refreshMode",
+          "acoustidEnabled",
           "monitorChanges",
           "allowMediaDeletion",
           "continueWatching",
@@ -106155,22 +106504,70 @@ export const schemas = {
             "enabled": {
               "type": "boolean"
             },
+            "followSymlinks": {
+              "type": "boolean"
+            },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "health": {
+              "type": "string"
+            },
             "id": {
+              "type": "string"
+            },
+            "identityConfirmed": {
+              "type": "boolean"
+            },
+            "intervalMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastCompleteAt": {
+              "type": "string"
+            },
+            "lastProgressAt": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "name": {
               "type": "string"
             },
-            "root": {
+            "nextScanAt": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "resolvedPath": {
               "type": "string"
             }
           },
           "required": [
+            "identityConfirmed",
             "id",
+            "libraryId",
+            "kind",
             "name",
-            "root",
+            "path",
+            "resolvedPath",
             "classification",
-            "enabled"
+            "generation",
+            "health",
+            "enabled",
+            "followSymlinks",
+            "intervalMs",
+            "nextScanAt",
+            "lastCompleteAt",
+            "lastProgressAt"
           ],
           "type": "object"
         },
@@ -106178,16 +106575,20 @@ export const schemas = {
       }
     },
     "required": [
+      "eligibleControls",
       "libraryId",
       "libraryName",
       "libraryKind",
       "revision",
       "digest",
       "settings",
+      "defaults",
       "analysisMatrix",
       "availableProviders",
       "enumerations",
-      "sources"
+      "sources",
+      "audience",
+      "actions"
     ],
     "type": "object"
   },
@@ -146373,6 +146774,11 @@ export const schemas = {
           "name": {
             "type": "string"
           },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -146460,6 +146866,7 @@ export const schemas = {
           }
         },
         "required": [
+          "position",
           "filesSkipped",
           "id",
           "name",
@@ -182678,14 +183085,30 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
           "allowMediaDeletion": {
             "type": "boolean"
           },
           "analysis": {
             "items": {
+              "enum": [
+                "probe",
+                "local_metadata",
+                "subtitle_discovery",
+                "loudness",
+                "audio_fingerprint",
+                "trickplay",
+                "chapter_images",
+                "checksum",
+                "waveform"
+              ],
               "type": "string"
             },
-            "type": "array"
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
           },
           "continueWatching": {
             "properties": {
@@ -182720,6 +183143,34 @@ export const schemas = {
               "videoCompletion"
             ],
             "type": "object"
+          },
+          "episodeNumbering": {
+            "enum": [
+              "season",
+              "absolute"
+            ],
+            "type": "string"
+          },
+          "findExtras": {
+            "type": "boolean"
+          },
+          "groupCollections": {
+            "type": "boolean"
+          },
+          "localTags": {
+            "enum": [
+              "prefer",
+              "supplement",
+              "off"
+            ],
+            "type": "string"
+          },
+          "lyricsSource": {
+            "enum": [
+              "files",
+              "lrclib"
+            ],
+            "type": "string"
           },
           "monitorChanges": {
             "type": "boolean"
@@ -182797,11 +183248,53 @@ export const schemas = {
             },
             "type": "array"
           },
+          "refreshMode": {
+            "enum": [
+              "replace_unlocked",
+              "fill_missing"
+            ],
+            "type": "string"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
           "segmentDetection": {
+            "enum": [
+              "server",
+              "off",
+              "standard",
+              "thorough"
+            ],
+            "type": "string"
+          },
+          "sortIgnoreArticles": {
+            "type": "boolean"
+          },
+          "titleSource": {
+            "enum": [
+              "tags",
+              "names"
+            ],
             "type": "string"
           }
         },
         "required": [
+          "scanDepth",
+          "groupCollections",
+          "localTags",
+          "lyricsSource",
+          "titleSource",
+          "episodeNumbering",
+          "findExtras",
+          "sortIgnoreArticles",
+          "refreshMode",
+          "acoustidEnabled",
           "monitorChanges",
           "allowMediaDeletion",
           "continueWatching",
@@ -182822,6 +183315,12 @@ export const schemas = {
   },
   "PutLibrarySettingsResponse": {
     "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "analysisMatrix": {
         "properties": {
           "costClasses": {
@@ -182911,6 +183410,23 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "audience": {
+        "properties": {
+          "accounts": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "everyone": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "everyone",
+          "accounts"
+        ],
+        "type": "object"
+      },
       "availableProviders": {
         "items": {
           "properties": {
@@ -182948,42 +183464,32 @@ export const schemas = {
         },
         "type": "array"
       },
-      "digest": {
-        "type": "string"
-      },
-      "enumerations": {
-        "additionalProperties": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "type": "object"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "libraryKind": {
-        "type": "string"
-      },
-      "libraryName": {
-        "type": "string"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "settings": {
+      "defaults": {
         "properties": {
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
           "allowMediaDeletion": {
             "type": "boolean"
           },
           "analysis": {
             "items": {
+              "enum": [
+                "probe",
+                "local_metadata",
+                "subtitle_discovery",
+                "loudness",
+                "audio_fingerprint",
+                "trickplay",
+                "chapter_images",
+                "checksum",
+                "waveform"
+              ],
               "type": "string"
             },
-            "type": "array"
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
           },
           "continueWatching": {
             "properties": {
@@ -183018,6 +183524,34 @@ export const schemas = {
               "videoCompletion"
             ],
             "type": "object"
+          },
+          "episodeNumbering": {
+            "enum": [
+              "season",
+              "absolute"
+            ],
+            "type": "string"
+          },
+          "findExtras": {
+            "type": "boolean"
+          },
+          "groupCollections": {
+            "type": "boolean"
+          },
+          "localTags": {
+            "enum": [
+              "prefer",
+              "supplement",
+              "off"
+            ],
+            "type": "string"
+          },
+          "lyricsSource": {
+            "enum": [
+              "files",
+              "lrclib"
+            ],
+            "type": "string"
           },
           "monitorChanges": {
             "type": "boolean"
@@ -183095,11 +183629,307 @@ export const schemas = {
             },
             "type": "array"
           },
+          "refreshMode": {
+            "enum": [
+              "replace_unlocked",
+              "fill_missing"
+            ],
+            "type": "string"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
           "segmentDetection": {
+            "enum": [
+              "server",
+              "off",
+              "standard",
+              "thorough"
+            ],
+            "type": "string"
+          },
+          "sortIgnoreArticles": {
+            "type": "boolean"
+          },
+          "titleSource": {
+            "enum": [
+              "tags",
+              "names"
+            ],
             "type": "string"
           }
         },
         "required": [
+          "scanDepth",
+          "groupCollections",
+          "localTags",
+          "lyricsSource",
+          "titleSource",
+          "episodeNumbering",
+          "findExtras",
+          "sortIgnoreArticles",
+          "refreshMode",
+          "acoustidEnabled",
+          "monitorChanges",
+          "allowMediaDeletion",
+          "continueWatching",
+          "providers",
+          "analysis",
+          "navigation",
+          "segmentDetection"
+        ],
+        "type": "object"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "eligibleControls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "enumerations": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "object"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "libraryName": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "settings": {
+        "properties": {
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
+          "allowMediaDeletion": {
+            "type": "boolean"
+          },
+          "analysis": {
+            "items": {
+              "enum": [
+                "probe",
+                "local_metadata",
+                "subtitle_discovery",
+                "loudness",
+                "audio_fingerprint",
+                "trickplay",
+                "chapter_images",
+                "checksum",
+                "waveform"
+              ],
+              "type": "string"
+            },
+            "maxItems": 9,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "continueWatching": {
+            "properties": {
+              "includeSeasonPremieres": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "maximumItems": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCompletion": {
+                "type": "string"
+              },
+              "videoPlayedThreshold": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "weeks": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "weeks",
+              "maximumItems",
+              "includeSeasonPremieres",
+              "videoPlayedThreshold",
+              "videoCompletion"
+            ],
+            "type": "object"
+          },
+          "episodeNumbering": {
+            "enum": [
+              "season",
+              "absolute"
+            ],
+            "type": "string"
+          },
+          "findExtras": {
+            "type": "boolean"
+          },
+          "groupCollections": {
+            "type": "boolean"
+          },
+          "localTags": {
+            "enum": [
+              "prefer",
+              "supplement",
+              "off"
+            ],
+            "type": "string"
+          },
+          "lyricsSource": {
+            "enum": [
+              "files",
+              "lrclib"
+            ],
+            "type": "string"
+          },
+          "monitorChanges": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "chapterThumbnailMode": {
+                "type": "string"
+              },
+              "trickplayIntervalMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayMaxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayTileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoPreviewEnabled": {
+                "type": "boolean"
+              },
+              "videoPreviewMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trickplayIntervalMs",
+              "trickplayTileWidth",
+              "trickplayMaxTiles",
+              "chapterThumbnailMode",
+              "videoPreviewEnabled",
+              "videoPreviewMs"
+            ],
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "apiKey": {
+                  "type": "string"
+                },
+                "apiKeySet": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "mediaKind": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mediaKind",
+                "provider",
+                "apiKey",
+                "apiKeySet",
+                "language",
+                "region"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "refreshMode": {
+            "enum": [
+              "replace_unlocked",
+              "fill_missing"
+            ],
+            "type": "string"
+          },
+          "scanDepth": {
+            "enum": [
+              "file_list_only",
+              "basic",
+              "complete",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "segmentDetection": {
+            "enum": [
+              "server",
+              "off",
+              "standard",
+              "thorough"
+            ],
+            "type": "string"
+          },
+          "sortIgnoreArticles": {
+            "type": "boolean"
+          },
+          "titleSource": {
+            "enum": [
+              "tags",
+              "names"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanDepth",
+          "groupCollections",
+          "localTags",
+          "lyricsSource",
+          "titleSource",
+          "episodeNumbering",
+          "findExtras",
+          "sortIgnoreArticles",
+          "refreshMode",
+          "acoustidEnabled",
           "monitorChanges",
           "allowMediaDeletion",
           "continueWatching",
@@ -183119,22 +183949,70 @@ export const schemas = {
             "enabled": {
               "type": "boolean"
             },
+            "followSymlinks": {
+              "type": "boolean"
+            },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "health": {
+              "type": "string"
+            },
             "id": {
+              "type": "string"
+            },
+            "identityConfirmed": {
+              "type": "boolean"
+            },
+            "intervalMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastCompleteAt": {
+              "type": "string"
+            },
+            "lastProgressAt": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "name": {
               "type": "string"
             },
-            "root": {
+            "nextScanAt": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "resolvedPath": {
               "type": "string"
             }
           },
           "required": [
+            "identityConfirmed",
             "id",
+            "libraryId",
+            "kind",
             "name",
-            "root",
+            "path",
+            "resolvedPath",
             "classification",
-            "enabled"
+            "generation",
+            "health",
+            "enabled",
+            "followSymlinks",
+            "intervalMs",
+            "nextScanAt",
+            "lastCompleteAt",
+            "lastProgressAt"
           ],
           "type": "object"
         },
@@ -183142,16 +184020,20 @@ export const schemas = {
       }
     },
     "required": [
+      "eligibleControls",
       "libraryId",
       "libraryName",
       "libraryKind",
       "revision",
       "digest",
       "settings",
+      "defaults",
       "analysisMatrix",
       "availableProviders",
       "enumerations",
-      "sources"
+      "sources",
+      "audience",
+      "actions"
     ],
     "type": "object"
   },

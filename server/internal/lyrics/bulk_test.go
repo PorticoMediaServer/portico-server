@@ -21,6 +21,9 @@ func bulkFixture(t *testing.T) (*catalogtest.Catalog, *Bulk, catalogtest.Names) 
 		"song-b": c.Song(album, 2, "/synthetic/b.flac", "Beta"),
 	}
 	c.Drain()
+	// These worker tests explicitly choose provider acquisition; new libraries
+	// otherwise keep the approved files-only default.
+	c.Exec(`INSERT INTO library_preferences(library_id,lyrics_source) VALUES('library','lrclib')`)
 	c.Exec(`UPDATE configuration SET value='true' WHERE key='lyrics_lrclib_enabled'`)
 	// A configured provider with a stubbed client: no network, no origin policy.
 	service := &Service{DB: c.DB, Provider: &LRCLIB{}}
