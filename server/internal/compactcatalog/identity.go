@@ -392,7 +392,7 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 			return 0, false, err
 		}
 		if created && c.Kind == Show && c.SourceEdition != "" {
-			if err = SetFactsTx(ctx, tx, id, map[string]any{"source_edition": c.SourceEdition}); err != nil {
+			if err = SetFactsTx(ctx, tx, id, map[string]any{"source_edition": c.SourceEdition, "local_key": primary}); err != nil {
 				return 0, false, err
 			}
 		}
