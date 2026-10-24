@@ -8,6 +8,8 @@ import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {rebaseDraft} from './freshness-actions.ts';
 export type RemoteSource=Readonly<{id:string;kind:'rclone'|'webdav'|'sftp'|'smb';name:string;rootPath:string;generation:number;state:string;errorCode?:string;rangeSupport:'unknown'|'conditional'|'unsupported'|'sequential';origin?:string;insecureLocal:boolean;credentialPresent:boolean;mountId?:string}>;
 export type DAVConfiguration=Readonly<{name:string;root:string;username:string;password:string;keepPassword:boolean;keepConnection:boolean;insecureLocal:boolean;expectedGeneration?:number}>;
+export type DAVConnectionInput=Pick<DAVConfiguration,'name'|'root'|'username'|'password'|'insecureLocal'>;
+export type DAVConnectionResult=Readonly<{origin:string;rangeSupport:'unknown'|'conditional'|'unsupported'}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:number;effective?:boolean;scanTier?:string}>;
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
@@ -78,6 +80,28 @@ export class RemoteSourceService{
  async revalidate(){if(this.disposed||this.state.busy||this.state.ambiguous||this.state.loading)return;const epoch=this.epoch,sequence=++this.read;const next=await this.readSources(epoch,sequence);if(next&&!this.state.busy)this.publish({...next,error:''});}
  async load(){const epoch=this.epoch,sequence=++this.read;this.publish({loading:true,error:''});try{const next=await this.readSources(epoch,sequence);if(!next)return;this.publish(next);}catch(e){if(epoch===this.epoch&&sequence===this.read)this.publish({error:safeError(e),sources:[],receipt:null,mountSupported:false});}finally{if(epoch===this.epoch&&sequence===this.read)this.publish({loading:false});}}
  private parseReceipt(raw:unknown,op:string):RemoteReceipt{this.fence(raw);if(!record(raw)||!record(raw.receipt)||raw.receipt.operationId!==op||raw.receipt.accepted!==true||typeof raw.receipt.removed!=='boolean')invalid();return Object.freeze({operationId:op,accepted:true,removed:raw.receipt.removed,source:source(raw.receipt.source)});}
+ /** A new-source test uses one explicit in-flight credential request. It saves no source or retry receipt. */
+ async testConnection(input:DAVConnectionInput):Promise<DAVConnectionResult>{
+  if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password)||typeof input.insecureLocal!=='boolean')throw new Error('Invalid connection fields.');
+  const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:''});
+  try{
+   const raw=await this.request(routePath('test_storage_source_webdav'),'POST',routeBody('test_storage_source_webdav',{name:input.name,root:input.root,username:input.username,password:input.password,insecureLocal:input.insecureLocal}));
+   if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+   this.fence(raw);
+   if(!record(raw)||!record(raw.result))invalid();
+   const result=raw.result;
+   if(!text(result.origin)||!sourceOrigin(result.origin,'webdav')||!['unknown','conditional','unsupported'].includes(String(result.rangeSupport))||['password','username','config','root'].some(key=>result[key]!==undefined))invalid();
+   return Object.freeze({origin:result.origin,rangeSupport:result.rangeSupport as DAVConnectionResult['rangeSupport']});
+  }catch(error){
+   if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');
+   const rawCode=record(error)&&typeof error.code==='string'?error.code:'';
+   const code=['unauthorized','not_permitted','invalid_request','source_credentials_required','internal'].includes(rawCode)?rawCode:'internal';
+   const aliases:Record<string,string>={not_permitted:'forbidden',invalid_request:'remote_invalid_configuration',source_credentials_required:'remote_credentials_required'};
+   const message=safeError({code:aliases[code]??(code==='internal'?'remote_invalid_configuration':code)});
+   this.publish({error:message,errorCode:code});throw Object.assign(new Error(message),{code});
+  }finally{if(epoch===this.epoch&&!this.disposed)this.publish({busy:false});}
+ }
  /**
   * Adds a share (`id` null) or changes one. `base` is the share as the edit started from it: when
   * someone else changed the share meanwhile, it is read again and the edit, carried onto it field by
