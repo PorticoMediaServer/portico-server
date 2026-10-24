@@ -2,11 +2,12 @@ import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore}
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
-import type {SavedIntent} from '@core/saved.ts';
+import type {HistoryPeriod, SavedIntent} from '@core/saved.ts';
 import {historyPeriods} from '@core/saved.ts';
+import {durationText} from '@portico/client-core/kit-model';
 import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
-import {Button, Select, Switch} from '../../kit/controls';
+import {Button, Chip, Select, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
 import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
@@ -139,22 +140,36 @@ function PersonalRows({bindings, entries, onMore}: {bindings: SavedViewBindings;
   }} /></div>{bindings.runtime.personal.getSnapshot().nextCursor && <Button size="small" className={styles.showMore} loading={bindings.runtime.personal.getSnapshot().loading} onClick={() => { void bindings.runtime.personal.next(); }}>{t('action.showMore')}</Button>}</div>;
 }
 
+const periodLabel = (period: HistoryPeriod) => period === '24h' ? t('web.live.today') : period === '7d' ? t('web.saved.thisWeek') : period === '30d' || period === '90d' ? t('web.saved.days', {count: Number.parseInt(period)}) : t('web.saved.allTime');
+const weekdayName = new Intl.DateTimeFormat(defaultI18n.region.uiLocale, {weekday: 'long'});
+/** The drawn timeline heads each day by its morning: Today, Yesterday, then the day's name. */
+function historyDayLabel(date: Date): string {
+  const today = new Date(), start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((start.getTime() - day.getTime()) / 86_400_000);
+  return days <= 0 ? t('saved.today') : days === 1 ? t('relative.yesterday') : weekdayName.format(day);
+}
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
-  const groups = new Map<string, PersonalResourceEntry[]>();
+  const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
+  const groups = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
   for (const entry of snapshot.entries) {
     if (!entry.updatedAt) continue;
     const date = new Date(entry.updatedAt); if (!Number.isFinite(date.getTime())) continue;
-    const key = date.toDateString(); let rows = groups.get(key); if (!rows) { rows = []; groups.set(key, rows); } rows.push(entry);
+    const key = date.toDateString(); let group = groups.get(key); if (!group) { group = {day: date, entries: []}; groups.set(key, group); } group.entries.push(entry);
   }
   return <>
-    <div className={styles.toolbar}><Select aria-label={t('web.saved.period')} value={bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d'} options={historyPeriods.map(period => ({value: period, label: period === 'all' ? t('web.saved.allTime') : period === '24h' ? t('server.plays.period.24h') : t('web.saved.days', {count: Number.parseInt(period)})}))}
-      onValueChange={period => bindings.effects.selectRoute({view: 'history', period: period as typeof historyPeriods[number]})} /><div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div></div>
+    <div className={styles.toolbar}>
+      <div className={styles.periodChips} role="group" aria-label={t('web.saved.period')}>
+        {historyPeriods.map(value => <Chip key={value} variant="toolbar" selected={period === value} onClick={() => bindings.effects.selectRoute({view: 'history', period: value})}>{periodLabel(value)}</Chip>)}
+      </div>
+      <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
+    </div>
     {snapshot.error && !snapshot.entries.length && <StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
     {!snapshot.loading && !snapshot.error && !snapshot.entries.length && <StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} />}
-    {[...groups].map(([key, entries]) => <section className={styles.historyDay} key={key}><h2>{key === new Date().toDateString() ? t('saved.today') : defaultI18n.date(entries[0].updatedAt!, 'dayMonth')}</h2>
-      {entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
+    {[...groups.values()].map(group => <section className={styles.historyDay} key={group.day.toDateString()}><h2>{historyDayLabel(group.day)}</h2>
+      {group.entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
     </section>)}
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
@@ -164,12 +179,31 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
 }
+/** The drawn row names what was played: an episode leads with its code and title,
+ * a song with its artist and album, a film with its kind and year, a book with its author. */
+function historySubtitle(media: ContentEntry): readonly string[] {
+  if (media.kind === 'episode' && media.episodeNumber !== undefined) return [t('next.kit.episodeCode', {season: media.seasonNumber ?? 1, episode: media.episodeNumber}), media.displayTitle ?? media.title];
+  if (media.kind === 'song' || media.kind === 'album') return [media.artist?.name, media.album?.name].filter((part): part is string => !!part);
+  if (media.kind === 'book' || media.kind === 'audiobook_file') return media.author ? [media.author] : [];
+  if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
+  return media.year === undefined ? [] : [String(media.year)];
+}
 function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
-  const title = media.displayTitle ?? media.title, position = entry.positionSeconds ?? 0, duration = media.duration, progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
-  return <div className={styles.historyRow}>
-    <button className={styles.historyArt} onClick={() => bindings.effects.openEntry(media)} aria-label={title}><Artwork source={bindings.artwork.foreground(media.backdropUrl ?? media.posterUrl, 320, 16 / 9)} alt="" /></button>
-    <div><b>{title}</b><small>{media.show?.name ?? media.artist?.name ?? media.author}</small></div>
-    <div>{progress !== undefined && <span className={styles.progress} aria-hidden="true"><span style={{width: `${progress * 100}%`}} /></span>}<small>{entry.completed ? t('web.saved.finished') : defaultI18n.clock(position)}</small></div>
+  // The row names the show for an episode, the title itself otherwise.
+  const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
+  const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
+  const progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
+  const remaining = !entry.completed && duration !== undefined && duration > position ? durationText(duration - position, t) : undefined;
+  const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
+  return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
+    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
+      {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
+    </button>
+    <div className={styles.historyCopy}><b>{title}</b>{subtitles.length ? <small>{subtitles.map((part, index) => <span key={`${index}:${part}`}>{part}</span>)}</small> : null}</div>
+    <div className={styles.historyState}>
+      {entry.completed ? <small>{t(media.kind === 'song' || media.kind === 'album' ? 'next.kit.browse.played' : 'next.cards.finished')}</small>
+        : progress !== undefined && remaining ? <><span className={styles.progress} aria-hidden="true"><span style={{width: `${progress * 100}%`}} /></span><small>{t('next.kit.remaining', {time: remaining})}</small></> : null}
+    </div>
     <time dateTime={entry.updatedAt}>{entry.updatedAt && defaultI18n.time(entry.updatedAt)}</time>
   </div>;
 }
