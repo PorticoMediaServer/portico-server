@@ -149,6 +149,7 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
     const paintSlot = paintSlots.find(slot => slot.reference === node.frame);
     const paintTargets = paintSlot ? actual.elements.filter(value => value.frame === paintSlot.actual) : [other];
     const paint = paintTargets.length === 1 ? paintTargets[0] : other;
+    const paintSource = property => paintSlot && (!paintSlot.properties || paintSlot.properties.includes(property)) ? paint : other;
     if (paintSlot && paintTargets.length !== 1) differences.push({kind: 'missing-paint-slot', label, expected: paintSlot.actual, actual: paintTargets.length});
     if (node.frame || node.repeat) anchoredMatches.set(node.id, other.id);
     if (node.repeat && !node.repeat.part) itemMatches.set(node.repeat.item, other.repeat.item);
@@ -170,7 +171,7 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
       }
     }
     for (const property of paintStyles) {
-      const paintNode = ['transform', 'transformOrigin', 'objectFit'].includes(property) ? other : paint;
+      const paintNode = ['transform', 'transformOrigin', 'objectFit'].includes(property) ? other : paintSource(property);
       if (property === 'transformOrigin' && node.style?.transform !== undefined && other.style?.transform !== undefined && identityTransform(node.style.transform) && identityTransform(other.style.transform)) continue;
       if (unavailable(reference, node, property) || unavailable(actual, paintNode, property)) continue;
       if (['transform', 'transformOrigin'].includes(property) && identityTransform(node.style?.transform) && identityTransform(other.style?.transform)) continue;
@@ -180,10 +181,11 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
       if (!samePaint(node.style?.[property], paintNode.style?.[property])) add(property, node.style?.[property], paintNode.style?.[property]);
     }
     if (!unavailable(reference, node, 'effectiveOpacity') && !unavailable(actual, other, 'effectiveOpacity') && Math.abs(Number(node.effectiveOpacity ?? node.style?.opacity ?? 1) - Number(other.effectiveOpacity ?? other.style?.opacity ?? 1)) > policy.opacity) add('effectiveOpacity', node.effectiveOpacity ?? node.style?.opacity, other.effectiveOpacity ?? other.style?.opacity);
-    const backgroundA = node.effectiveBackgroundColor ?? node.style?.backgroundColor, backgroundB = paint.effectiveBackgroundColor ?? paint.style?.backgroundColor;
-    if (!unavailable(reference, node, 'effectiveBackgroundColor') && !unavailable(actual, paint, 'effectiveBackgroundColor') && backgroundA !== backgroundB) {const difference = colorDifference(backgroundA, backgroundB); if (!difference || difference.deltaE2000 > policy.deltaE2000 || difference.alpha > policy.colorAlpha) add('effectiveBackgroundColor', backgroundA, backgroundB, difference);}
+    const backgroundNode = paintSource('effectiveBackgroundColor');
+    const backgroundA = node.effectiveBackgroundColor ?? node.style?.backgroundColor, backgroundB = backgroundNode.effectiveBackgroundColor ?? backgroundNode.style?.backgroundColor;
+    if (!unavailable(reference, node, 'effectiveBackgroundColor') && !unavailable(actual, backgroundNode, 'effectiveBackgroundColor') && backgroundA !== backgroundB) {const difference = colorDifference(backgroundA, backgroundB); if (!difference || difference.deltaE2000 > policy.deltaE2000 || difference.alpha > policy.colorAlpha) add('effectiveBackgroundColor', backgroundA, backgroundB, difference);}
     for (const property of colors) {
-      const colorNode = property.startsWith('border') ? paint : other;
+      const colorNode = property.startsWith('border') ? paintSource(property) : other;
       if (unavailable(reference, node, property) || unavailable(actual, colorNode, property)) continue;
       if (property === 'color' && (paintOnly || !(node.ownText || other.ownText || node.image?.kind === 'icon'))) continue;
       if (property.startsWith('border') && property.endsWith('Color') && !(parseFloat(node.style?.[property.replace('Color', 'Width')]) > 0 || parseFloat(other.style?.[property.replace('Color', 'Width')]) > 0)) continue;

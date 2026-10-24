@@ -4,6 +4,7 @@ import {normalizeDeclaredColor, normalizeNativeDeclaredStyle, normalizeNativeDec
 import {validateMeasurement} from './contract.mjs';
 import {compareMeasurements} from './compare-files.mjs';
 import {assessDifferences} from './assessment.mjs';
+import {compareScreens} from './compare.mjs';
 
 const node = (id, parent, flattenedStyle = {}) => ({id, parent, tag: 'View', role: 'view', leaf: true, ownText: '', normalizedText: '', focused: false,
   box: {x: 0, y: 0, width: 390, height: 844}, effectiveOpacity: null, effectiveBackgroundColor: null, style: {},
@@ -85,4 +86,19 @@ test('coverage does not hide independently known differences; complete PASS stil
   assert.equal(result.actionableVerdict, 'FAIL'); assert.equal(result.measuredVerdict, 'WITHHELD');
   const invalid = assessDifferences([{kind: 'invalid-measurement'}, {kind: 'measured-difference', property: 'box.x', expected: 0, actual: 8}]);
   assert.equal(invalid.actionableFindingsReady, false);
+});
+test('a mapped child supplies only explicitly selected paint while host geometry and radius stay scored', () => {
+  const reference = screen([node('r', null)]), actual = screen([node('a', null), node('fill', 'a')]);
+  reference.elements[0].frame = actual.elements[0].frame = 'action'; actual.elements[1].frame = 'face';
+  for (const value of [reference, actual]) {delete value.measurement; value.unavailable = []; for (const el of value.elements) {
+    delete el.diagnostics; el.effectiveOpacity = 1; el.style = {borderTopLeftRadius: '10px'};
+    el.effectiveBackgroundColor = 'rgb(255, 255, 255)';
+  }}
+  actual.elements[0].effectiveBackgroundColor = 'transparent'; actual.elements[1].style.borderTopLeftRadius = '0px';
+  const recipe = {actualContentOnly: ['face'], paintSlots: [{reference: 'action', actual: 'face', properties: ['effectiveBackgroundColor']}]};
+  assert.equal(compareScreens(reference, actual, recipe).differences.length, 0);
+  actual.elements[0].box.x = 8;
+  assert.ok(compareScreens(reference, actual, recipe).differences.some(value => value.property === 'box.x'));
+  actual.elements.pop();
+  assert.ok(compareScreens(reference, actual, recipe).differences.some(value => value.kind === 'missing-paint-slot'));
 });
