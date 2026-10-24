@@ -113141,6 +113141,16 @@
       },
       "GetMetadataSettingsResponse": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "includeAdult": {
             "type": "boolean"
           },
@@ -113223,6 +113233,7 @@
           "revision",
           "localArtworkLimitBytes",
           "includeAdult",
+          "artworkMaxEdge",
           "tmdbCredentialConfigured",
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
@@ -203899,6 +203910,16 @@
       },
       "PutMetadataSettingsRequest": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -203937,6 +203958,16 @@
       },
       "PutMetadataSettingsResponse": {
         "properties": {
+          "artworkMaxEdge": {
+            "enum": [
+              1280,
+              1920,
+              2560
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "includeAdult": {
             "type": "boolean"
           },
@@ -204019,6 +204050,7 @@
           "revision",
           "localArtworkLimitBytes",
           "includeAdult",
+          "artworkMaxEdge",
           "tmdbCredentialConfigured",
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
@@ -258940,6 +258972,16 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkMaxEdge": {
+                      "enum": [
+                        1280,
+                        1920,
+                        2560
+                      ],
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "includeAdult": {
                       "type": "boolean"
                     },
@@ -259022,6 +259064,7 @@
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
+                    "artworkMaxEdge",
                     "tmdbCredentialConfigured",
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
@@ -259087,6 +259130,16 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "artworkMaxEdge": {
+                    "enum": [
+                      1280,
+                      1920,
+                      2560
+                    ],
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -259133,6 +259186,16 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkMaxEdge": {
+                      "enum": [
+                        1280,
+                        1920,
+                        2560
+                      ],
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "includeAdult": {
                       "type": "boolean"
                     },
@@ -259215,6 +259278,7 @@
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
+                    "artworkMaxEdge",
                     "tmdbCredentialConfigured",
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
