@@ -19,12 +19,14 @@ const text = (value: unknown, max: number): value is string => typeof value === 
 function invalid(): never { throw new Error(unreadableServerResponse); }
 
 function art(value: {kind: string; id: string; path: string}, role: 'backdrop' | 'poster'): SearchGenreArt {
-  if ((value.kind !== 'item' && value.kind !== 'show') || !/^[a-z0-9_-]{1,256}$/i.test(value.id) || !text(value.path, 2048) || !value.path.startsWith('/v1/metadata/')) invalid();
+  if ((value.kind !== 'item' && value.kind !== 'show') || !/^[a-z0-9_-]{1,256}$/i.test(value.id) || !text(value.path, 2048)) invalid();
+  const expected = routePath('get_metadata_kind_id_art_role', {kind: value.kind, id: value.id, role});
+  if (!value.path.startsWith(`${expected}?`)) invalid();
   // Only the selected-art route for this exact title and slot can be returned.
   // A URL, provider locator, different subject, fragment or extra query is not
   // an art reference. The query width requests a variant; it is not geometry.
   const parsed = new URL(value.path, 'https://metadata.invalid');
-  if (parsed.origin !== 'https://metadata.invalid' || parsed.pathname !== `/v1/metadata/${value.kind}/${value.id}/art/${role}` || parsed.hash || parsed.searchParams.size !== 2 || !/^[a-f0-9]{64}$/.test(parsed.searchParams.get('v') ?? '') || parsed.searchParams.get('w') !== (role === 'backdrop' ? '1920' : '400')) invalid();
+  if (parsed.origin !== 'https://metadata.invalid' || parsed.pathname !== expected || parsed.hash || parsed.searchParams.size !== 2 || !/^[a-f0-9]{64}$/.test(parsed.searchParams.get('v') ?? '') || parsed.searchParams.get('w') !== (role === 'backdrop' ? '1920' : '400')) invalid();
   return Object.freeze({kind: value.kind, id: value.id, path: value.path});
 }
 

@@ -15,11 +15,13 @@ import (
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitlevideo"
+	"portico.local/server/internal/workpolicy"
 )
 
 // The optional selected-pair gate exercises the actual confined local source,
@@ -49,8 +51,14 @@ func TestEpisodeActualLocalDecodeAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"off", "provider", "provider_then_made"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, invocation := range []string{"off", "provider", "provider_then_made", "automatic"} {
+		t.Run(invocation, func(t *testing.T) {
+			automatic := invocation == "automatic"
+			mode := invocation
+			tier := "file_list_only"
+			if automatic {
+				mode, tier = "provider_then_made", "complete"
+			}
 			c := catalogtest.Open(t)
 			local := storage.New(helper)
 			managed, err := mounts.New(c.DB, t.TempDir(), "", helper, local)
@@ -101,9 +109,13 @@ func TestEpisodeActualLocalDecodeAndPublication(t *testing.T) {
 					return err
 				}
 				// Explicit generation is permitted independently of this automatic tier.
-				return catalog.ApplyScanPolicyTx(ctx, tx, "episodes", catalog.ScanPolicy{Tier: "file_list_only"})
+				return catalog.ApplyScanPolicyTx(ctx, tx, "episodes", catalog.ScanPolicy{Tier: tier})
 			}); err != nil {
 				t.Fatal(err)
+			}
+			if automatic {
+				c.Exec(`INSERT INTO library_metadata_agents(library_id,agent) VALUES('episodes','local') ON CONFLICT(library_id) DO UPDATE SET agent='local'`)
+				c.Exec(`UPDATE inventory_objects SET analysis_revision=? WHERE id='object'`, revision)
 			}
 			c.Drain()
 			meta := metadata.New(c.DB, "")
@@ -116,6 +128,7 @@ func TestEpisodeActualLocalDecodeAndPublication(t *testing.T) {
 			}
 			defer inputs.Close()
 			meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, sources, identities, local, inputs)
+			meta.Admission = (workpolicy.Service{DB: c.DB}).Admit
 			authorize := func(tx *sql.Tx) error {
 				current, err := identities.PrincipalByDigestTx(ctx, tx, owner.Hash)
 				if err != nil {
@@ -131,10 +144,43 @@ func TestEpisodeActualLocalDecodeAndPublication(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := meta.MakeEpisodeThumbnail(ctx, target, metadata.RepairCommand{Action: "make_episode_thumbnail", ExpectedRevision: before.Revision}, owner, authorize)
-			if err != nil {
-				t.Fatal("actual decode/publication", err)
+
+			var result metadata.RepairState
+			if automatic {
+				scanner := ingestion.New(c.DB, catalog.New(c.DB), assets.Probe{Binary: ffprobe})
+				job, err := scanner.QueueContext(ctx, "episodes", "episodes", authorize)
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.Exec(`UPDATE jobs SET status='running' WHERE id=?`, job.ID)
+				policy, err := catalog.New(c.DB).ScanPolicy(ctx, "episodes")
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.Exec(`INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,'object',?,?,'pending')`, job.ID, revision, policy.Revision)
+				done, warning, err := meta.ScanEpisodeThumbnails(ctx, job.ID, "episodes", "object", revision, policy.Revision)
+				if err != nil || done || warning != "" {
+					t.Fatal("actual automatic decode quantum", done, warning, err)
+				}
+				done, warning, err = meta.ScanEpisodeThumbnails(ctx, job.ID, "episodes", "object", revision, policy.Revision)
+				if err != nil || !done || warning != "" {
+					t.Fatal("automatic stage did not settle", done, warning, err)
+				}
+				var stage string
+				if err := c.DB.QueryRow(`SELECT state FROM analysis_stage_runs WHERE job_id=? AND object_id='object' AND stage='episode_thumbnail'`, job.ID).Scan(&stage); err != nil || stage != "complete" {
+					t.Fatal(stage, err)
+				}
+				result, err = meta.RepairState(ctx, target, authorize)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				result, err = meta.MakeEpisodeThumbnail(ctx, target, metadata.RepairCommand{Action: "make_episode_thumbnail", ExpectedRevision: before.Revision}, owner, authorize)
+				if err != nil {
+					t.Fatal("actual decode/publication", err)
+				}
 			}
+
 			if result.Revision == before.Revision {
 				t.Fatal("decoded frame did not change publication")
 			}
@@ -147,16 +193,16 @@ func TestEpisodeActualLocalDecodeAndPublication(t *testing.T) {
 			if err != nil || mime != "image/jpeg" || dimensions.Width != 320 || dimensions.Height != 180 {
 				t.Fatal("actual selected picture", dimensions, mime, err)
 			}
-			var provider, storedMode, tier string
+			var provider, storedMode, storedTier string
 			var locked bool
 			if err := c.DB.QueryRow(`SELECT candidate.provider,selection.locked FROM artwork_selections selection JOIN artwork_candidates candidate ON candidate.id=selection.candidate_id WHERE selection.kind='item' AND selection.entity_id=? AND selection.role='still'`, episode.ID).Scan(&provider, &locked); err != nil {
 				t.Fatal(err)
 			}
-			if err := c.DB.QueryRow(`SELECT episode_thumbnail_mode,tier FROM library_scan_policies WHERE library_id='episodes'`).Scan(&storedMode, &tier); err != nil {
+			if err := c.DB.QueryRow(`SELECT episode_thumbnail_mode,tier FROM library_scan_policies WHERE library_id='episodes'`).Scan(&storedMode, &storedTier); err != nil {
 				t.Fatal(err)
 			}
-			if provider != "generated" || !locked || storedMode != mode || tier != "file_list_only" {
-				t.Fatal("publication fabricated a provider or changed automatic policy", provider, locked, storedMode, tier)
+			if provider != "generated" || locked == automatic || storedMode != mode || storedTier != tier {
+				t.Fatal("publication fabricated a provider or changed automatic policy", provider, locked, storedMode, storedTier)
 			}
 		})
 	}

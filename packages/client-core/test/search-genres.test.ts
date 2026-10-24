@@ -40,12 +40,16 @@ test('refuses unsupported/null art, invalid counts, duplicate genres and unbound
 test('accepts only the exact selected-art kind, subject, role and bounded relative route', () => {
   for (const path of [
     'https://provider.invalid/art?token=private', '//provider.invalid/art', '/private/file.jpg',
+    `https://metadata.invalid${artwork('film-a', 'backdrop').path}`, `//metadata.invalid${artwork('film-a', 'backdrop').path}`,
     artwork('another-title', 'backdrop').path,
     artwork('film-a', 'poster').path,
     artwork('film-a', 'backdrop', 'show').path,
     `${artwork('film-a', 'backdrop').path}&token=private`,
     `${artwork('film-a', 'backdrop').path}#fragment`,
     artwork('film-a', 'backdrop').path.replace('v=', 'subject=someone&v='),
+    artwork('film-a', 'backdrop').path.replace('a'.repeat(64), 'A'.repeat(64)),
+    artwork('film-a', 'backdrop').path.replace('w=1920', 'w=400'),
+    `${artwork('film-a', 'backdrop').path}&v=${'b'.repeat(64)}`,
   ]) {const raw = answer(); raw.genres[0].backdrop!.path = path; assert.throws(() => parseSearchGenres(raw), path);}
   const raw: any = answer();
   raw.token = 'private'; raw.genres[0].providerURL = 'https://private.invalid'; raw.genres[0].backdrop.token = 'secret';
