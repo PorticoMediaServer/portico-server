@@ -128,10 +128,32 @@ pub fn bounds(webview:&tauri::webview::PlatformWebview,bounds:crate::boundary::S
 
 /// Called on GTK's thread while the native client is retained by the close worker.
 pub fn retire(webview:&tauri::webview::PlatformWebview)->Result<()>{
-    let overlay=webview.inner().parent().ok_or(Error::Unsupported)?.downcast::<gtk::Overlay>().map_err(|_|Error::Unsupported)?;
+    retire_parent(webview.inner().parent().ok_or(Error::Unsupported)?)
+}
+fn retire_parent(parent:gtk::Widget)->Result<()>{
+    // A failed native-library/engine initialization leaves Wry's original Box
+    // intact. There is no owned GL surface to retire in that case.
+    if parent.is::<gtk::Box>(){return Ok(())}
+    let overlay=parent.downcast::<gtk::Overlay>().map_err(|_|Error::Unsupported)?;
     let fixed=overlay.child().ok_or(Error::Unsupported)?.downcast::<gtk::Fixed>().map_err(|_|Error::Unsupported)?;
     if let Some(area)=fixed.children().into_iter().find(|w|w.widget_name()=="portico-native-video"){
         area.unrealize();fixed.remove(&area);
     }
     Ok(())
+}
+
+#[cfg(test)]mod tests{
+    use super::*;
+    #[test]fn retirement_preserves_unattached_webview_parent_and_removes_only_owned_area(){
+        gtk::init().expect("requires an explicit owned headless GTK display");
+        let original=gtk::Box::new(gtk::Orientation::Vertical,0);
+        let child=gtk::Label::new(Some("public fixture"));original.add(&child);
+        assert_eq!(retire_parent(original.clone().upcast()),Ok(()));assert_eq!(original.children().len(),1);
+        let overlay=gtk::Overlay::new();let fixed=gtk::Fixed::new();overlay.add(&fixed);
+        let owned=gtk::GLArea::new();owned.set_widget_name("portico-native-video");fixed.put(&owned,0,0);
+        let foreign=gtk::GLArea::new();foreign.set_widget_name("foreign-area");fixed.put(&foreign,0,0);
+        assert_eq!(retire_parent(overlay.clone().upcast()),Ok(()));assert!(owned.parent().is_none());assert_eq!(foreign.parent(),Some(fixed.clone().upcast()));
+        assert_eq!(retire_parent(overlay.upcast()),Ok(()));assert_eq!(fixed.children().len(),1);
+        assert_eq!(retire_parent(gtk::Overlay::new().upcast()),Err(Error::Unsupported));
+    }
 }
