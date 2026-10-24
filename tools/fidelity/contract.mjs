@@ -5,7 +5,7 @@ export const contractVersion = 1;
 export const diagnosticStyleProperties = Object.freeze([
   'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'textAlign', 'textTransform',
   'color', 'backgroundColor', 'opacity', 'borderRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius',
-  'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
+  'borderWidth', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderStyle', 'borderColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
   'shadowColor', 'shadowOpacity', 'shadowRadius', 'shadowOffsetX', 'shadowOffsetY',
   'textDecorationLine', 'textShadowColor', 'textShadowRadius', 'textShadowOffsetX', 'textShadowOffsetY',
   'elevation', 'overflow', 'display', 'position', 'zIndex',
