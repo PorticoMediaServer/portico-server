@@ -37,7 +37,7 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
   createRef.current = createOperationId;
   const issuer = useMemo(() => new ShortCodeIssuer(createRef.current), []);
   const state = useSyncExternalStore(issuer.subscribe, issuer.getSnapshot, issuer.getSnapshot);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false), [copyError, setCopyError] = useState<unknown>();
   const alive = useRef(true), openRef = useRef(open), requestRef = useRef(request), runRef = useRef<ShortCodeRun>(() => Promise.reject(new Error('invitation_operation_unavailable')));
   const autoIssued = useRef<string | undefined>(undefined);
   openRef.current = open; requestRef.current = request;
@@ -48,18 +48,28 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
     return () => {alive.current = false;issuer.dispose();};
   }, [issuer]);
   useEffect(() => {
-    if (!open) {issuer.reset();setCopied(false);return;}
+    if (!open) {issuer.reset();setCopied(false);setCopyError(undefined);return;}
     if (!issueOnOpen || autoIssued.current === identity) return;
     autoIssued.current = identity;
     void issuer.issue(true, runRef.current);
   }, [open, identity, issueOnOpen, issuer]);
-  useEffect(() => {if (state.phase !== 'ready') setCopied(false);}, [state.phase]);
+  useEffect(() => {if (state.phase !== 'ready') {setCopied(false);setCopyError(undefined);}}, [state.phase]);
 
   const busy = state.phase === 'issuing';
-  const copy = () => {
-    if (state.phase !== 'ready') return;
-    if (!navigator.clipboard) {setCopied(false);return;}
-    void navigator.clipboard.writeText(state.code).then(() => {if (alive.current && openRef.current) setCopied(true);});
+  const copy = async () => {
+    if (!alive.current || !openRef.current) return;
+    const snapshot = issuer.getSnapshot();
+    if (snapshot.phase !== 'ready') return;
+    const code = snapshot.code, operationId = snapshot.operationId;
+    if (!navigator.clipboard) {setCopyError(new Error('clipboard_unavailable'));return;}
+    try {
+      await navigator.clipboard.writeText(code);
+      if (!alive.current || !openRef.current) return;
+      const latest = issuer.getSnapshot();
+      if (latest.phase === 'ready' && latest.operationId === operationId && latest.code === code) setCopied(true);
+    } catch (error) {
+      if (alive.current && openRef.current) setCopyError(error);
+    }
   };
   const expiry = state.phase === 'ready' || state.phase === 'unavailable'
     ? new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}).format(new Date(state.expiresAt)) : undefined;
@@ -76,8 +86,9 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
           <p className={styles.help}>{t('web.access.shortCodeHelp')}</p>}
       </div>
       {expiry && <p className={styles.expiry}>{t('api.credential.expires', {when: expiry})}</p>}
+      {copyError && <AuthError error={copyError} />}
       <div className={styles.actions}>
-        {state.phase === 'ready' && <Button variant="glass" icon={copied ? 'i-check' : 'i-copy'} onClick={copy} disabled={busy}>{t(copied ? 'web.together.copied' : 'web.access.copyShortCode')}</Button>}
+        {state.phase === 'ready' && <Button variant="glass" icon={copied ? 'i-check' : 'i-copy'} onClick={() => void copy()} disabled={busy}>{t(copied ? 'web.together.copied' : 'web.access.copyShortCode')}</Button>}
         {state.phase === 'failed' && <Button variant="glass" onClick={() => void issuer.retry(runRef.current)} disabled={busy}>{t('action.tryAgain')}</Button>}
         {!busy && <Button variant="glass" icon="i-plus" onClick={() => void issuer.issue(true, runRef.current)}>{t('web.access.newShortCode')}</Button>}
       </div>

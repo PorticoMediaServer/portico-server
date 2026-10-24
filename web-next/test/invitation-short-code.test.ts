@@ -74,3 +74,17 @@ test('a missing cryptographic id source fails closed without a request or a fabr
     assert.equal(issuer.getSnapshot().phase, 'failed');
   } finally {issuer.dispose();}
 });
+
+test('dispose drops a ready code without emitting a stale state', async () => {
+  const issuer = new ShortCodeIssuer(() => 'dispose-operation');
+  try {
+    await issuer.issue(true, async () => ({serverId, expiresAt, shortCode: '008J4CT4ANK7F24S'}));
+    assert.equal(issuer.getSnapshot().phase, 'ready');
+    let notified = 0;
+    const off = issuer.subscribe(() => {notified++;});
+    issuer.dispose();
+    assert.deepEqual(issuer.getSnapshot(), {phase: 'idle'});
+    assert.equal(notified, 0);
+    off();
+  } finally {issuer.dispose();}
+});

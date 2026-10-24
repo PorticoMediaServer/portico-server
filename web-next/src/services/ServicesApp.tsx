@@ -13,7 +13,7 @@ import {ServicesAuthForm} from './AuthForm';
 import {DevicePage} from './DevicePage';
 import {ResetPage, VerifyPage} from './LinkPages';
 import {AccountPage} from './AccountPage';
-import {JoinPage} from './JoinPage';
+import {JoinPage, ShortJoinPage} from './JoinPage';
 import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
 import {captureHostedSignIn, type SignInCapture} from './sign-in';
@@ -22,7 +22,7 @@ import {OwnerApprovalPage} from './OwnerApprovalPage';
 import {SetupApprovalPage} from './SetupApprovalPage';
 import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
 
-type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
+type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink; plainShortJoin?: boolean};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
@@ -41,7 +41,7 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, signIn, owner}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture} = {}) {
   const [value] = useState(() => {
     const signedCapture = signIn ?? captureHostedSignIn(location, history, location.origin);
     const ownerCapture = owner ?? captureHostedOwnerClaim(location, history, location.origin);
@@ -49,7 +49,7 @@ export function ServicesApp({capture, invalidContinuation, join, signIn, owner}:
     const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signedCapture},
       location.pathname === '/claim' ? {origin: location.origin, capture: ownerCapture} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join})};
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join, plainShortJoin})};
   });
   useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
   return <><IconSprite /><RouterProvider router={value.router} /></>;
@@ -99,8 +99,9 @@ function VerifyRoute() {
   return <VerifyPage account={account} token={link?.kind === 'verify-email' ? link.value : undefined} />;
 }
 function JoinRoute() {
-  const {account, join} = root.useRouteContext<ServicesRouter>();
-  return join ? <JoinPage account={account} link={join} onBack={() => location.assign('/')} /> : <InvalidLink />;
+  const {account, join, plainShortJoin} = root.useRouteContext<ServicesRouter>();
+  return join ? <JoinPage account={account} link={join} onBack={() => location.assign('/')} />
+    : plainShortJoin ? <ShortJoinPage account={account} onBack={() => location.assign('/')} /> : <InvalidLink />;
 }
 function InvalidLink() {
   const {t} = servicesI18n();
