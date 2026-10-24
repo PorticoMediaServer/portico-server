@@ -106,21 +106,22 @@ export class ShellBootstrap {
   private controller?: AbortController;
   private retire?: () => void;
   private running?: Promise<void>;
+  private disposed = false;
   constructor(private readonly assemble: ShellAssembler, private readonly environment: {
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
     actions?: () => BrowserAppSessionActions;
   } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {}
   getSnapshot = () => this.state;
-  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private publish(next: ShellBootstrapSnapshot) { this.state = Object.freeze(next); for (const listener of this.listeners) listener(); }
+  subscribe = (listener: () => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  private publish(next: ShellBootstrapSnapshot) { if (this.disposed && next.phase !== 'signed-out') return; this.state = Object.freeze(next); for (const listener of this.listeners) listener(); }
   private fence() {
     ++this.epoch; this.controller?.abort(); this.controller = undefined;
     this.retire?.(); this.retire = undefined;
   }
   /** Suspend only the mounted runtime. Durable sessions stay until an explicit
    * admission/sign-out decides their fate. */
-  suspendForAccountEntry = () => {this.fence();this.publish({phase: 'signed-out', entry: true});};
+  suspendForAccountEntry = () => {if (this.disposed) return;this.fence();this.publish({phase: 'signed-out', entry: true});};
   resumeAfterAccountEntry = async () => {
     const expected = this.epoch;
     await this.running;
@@ -133,6 +134,7 @@ export class ShellBootstrap {
     void Promise.resolve(pending).then(() => { if (this.epoch === expected && this.state.phase === 'restoring') return this.start(); });
   };
   start = (): Promise<void> => {
+    if (this.disposed) return Promise.resolve();
     if (this.running) return this.running;
     this.fence(); this.publish({phase: 'restoring'});
     const epoch = this.epoch, controller = this.controller = new AbortController();
@@ -155,7 +157,7 @@ export class ShellBootstrap {
     if (session.viewer.role === 'account') { this.publish({phase: 'signed-out'}); api.getRouteConnection()?.dispose(); return; }
     trackBrowserConnection(api);
     const cleanups: (() => void)[] = [];
-    const close = () => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); };
+    const close = () => { for (const cleanup of cleanups.splice(0).reverse()) { try { cleanup(); } catch { /* Retire every other captured owner too. */ } } };
     this.retire = close;
     let signingOut = false;
     cleanups.push(() => { if (!signingOut) api.getRouteConnection()?.dispose(); });
@@ -240,6 +242,6 @@ export class ShellBootstrap {
     void home.load();
     publishBinding();
   }
-  selectServer = async (serverId:string) => {this.fence();this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);await this.start();}catch(error){this.publish({phase:'error',error});}};
-  dispose = () => { this.fence(); this.publish({phase: 'signed-out'}); };
+  selectServer = async (serverId:string) => {if(this.disposed)return;this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};
+  dispose = () => { if (this.disposed) return; this.disposed = true; this.fence(); this.publish({phase: 'signed-out'}); this.listeners.clear(); };
 }
