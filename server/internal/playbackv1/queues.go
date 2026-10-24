@@ -238,14 +238,15 @@ func (g segment) live() int64 { return g.count - g.removed }
 // read once per request (a queue has few segments) and answers position ↔
 // entry in O(segments + removals), independent of queue length.
 type layout struct {
-	spans    []orderSpan
-	q        queueRow
-	segments []segment
-	removals map[string][]int64 // snapshot → sorted ordinals
-	chunks   map[string][]byte  // snapshot/chunk → keys (per request)
-	building []segment          // segments of snapshots still building
-	tx       *sql.Tx
-	ctx      context.Context
+	sonicWindows map[int64]sonicWindowCapture
+	spans        []orderSpan
+	q            queueRow
+	segments     []segment
+	removals     map[string][]int64 // snapshot → sorted ordinals
+	chunks       map[string][]byte  // snapshot/chunk → keys (per request)
+	building     []segment          // segments of snapshots still building
+	tx           *sql.Tx
+	ctx          context.Context
 }
 
 func (s *Service) readLayout(ctx context.Context, tx *sql.Tx, q queueRow) (*layout, error) {

@@ -112,7 +112,7 @@ func (l *layout) saveOrder(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 }
-func (l *layout) baseOrderToSource(p int64) int64 {
+func (l *layout) ordinaryOrderToSource(p int64) int64 {
 	sh := l.shuffle()
 	if sh == nil || p >= l.q.domain {
 		return p
@@ -128,7 +128,7 @@ func (l *layout) baseOrderToSource(p int64) int64 {
 	at, _ := sh.At(k)
 	return int64(at)
 }
-func (l *layout) baseSourceToOrder(src int64) int64 {
+func (l *layout) ordinarySourceToOrder(src int64) int64 {
 	sh := l.shuffle()
 	if sh == nil || src >= l.q.domain {
 		return src
