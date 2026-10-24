@@ -52,3 +52,5 @@
 
 .matchSearch { display: flex; align-items: flex-end; gap: 10px; }
 .matchSearch > :first-child { flex: 1; }
+
+.creditNew { display: flex; flex-direction: column; gap: 8px; flex: 1; }
