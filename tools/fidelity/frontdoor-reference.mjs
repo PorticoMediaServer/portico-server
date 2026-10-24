@@ -12,7 +12,7 @@ export const frontdoorReferences = {
     selector: '.frame[data-f="40"] > .screen.tv',
     windowViewport: {width: 1920, height: 1080, deviceScaleFactor: 1},
     viewport: {width: 1920, height: 1080, deviceScaleFactor: 1},
-    anchors: {title: 'h1', 'primary-action': '.btns .btn.play', 'secondary-action': '.btns .btn.glass'},
+    anchors: {screen: '$root', title: 'h1', 'primary-action': '.btns .btn.play', 'secondary-action': '.btns .btn.glass'},
   },
 };
 
@@ -22,7 +22,7 @@ export const frontdoorStateAdapters = {
     'accounts-welcome-local': 'secondary-action', 'accounts-welcome-local/label': 'secondary-action-label'},
     comparison: {textHandledBySlots: ['primary-action', 'secondary-action'], actualContentOnly: ['primary-action-label', 'secondary-action-label'],
       contentSlots: ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-label'}))}},
-  androidTV: {anchors: {'tv-front-door-title': 'title', 'tv-front-door-portico': 'primary-action', 'tv-front-door-portico/label': 'primary-action-label',
+  androidTV: {anchors: {'tv-front-door': 'screen', 'tv-front-door-title': 'title', 'tv-front-door-portico': 'primary-action', 'tv-front-door-portico/label': 'primary-action-label',
     'tv-front-door-local': 'secondary-action', 'tv-front-door-local/label': 'secondary-action-label'},
     comparison: {focus: {frame: 'primary-action'}, textHandledBySlots: ['primary-action', 'secondary-action'], actualContentOnly: ['primary-action-label', 'secondary-action-label'],
       contentSlots: ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-label'}))}},
@@ -39,6 +39,8 @@ export function annotateFrontdoorReference(measured, platform) {
   const predicates = {title: node => node.tag === 'h1',
     'primary-action': node => node.classes?.includes('btn') && node.classes.includes('play'),
     'secondary-action': node => node.classes?.includes('btn') && node.classes.includes('glass')};
+  if (platform === 'androidTV') predicates.screen = node => node.parent == null && node.box?.x === 0 && node.box?.y === 0 &&
+    node.box?.width === spec.viewport.width && node.box?.height === spec.viewport.height;
   for (const [frame, predicate] of Object.entries(predicates)) {
     const nodes = result.elements.filter(predicate);
     if (nodes.length !== 1 || nodes[0].frame && nodes[0].frame !== frame) throw new Error('Cached frontdoor anchor must be unique: ' + frame);
