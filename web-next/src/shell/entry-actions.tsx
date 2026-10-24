@@ -15,8 +15,7 @@ function errorText(state: EntryDeleteSnapshot): string | undefined {
 /** Mounted once by the shell. It renders nothing until a screen effect opens a surface. */
 export function EntryActionHost() {
   const open = useSyncExternalStore(entryActions.subscribe, entryActions.getSnapshot, () => null);
-  const producer = useRef<EntryDeleteProducer | null>(null);
-  if (!producer.current) producer.current = new EntryDeleteProducer();
+  const producer = useRef(new EntryDeleteProducer());
   const state = useSyncExternalStore(producer.current.subscribe, producer.current.getSnapshot, producer.current.getSnapshot);
   const anchor = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -27,11 +26,11 @@ export function EntryActionHost() {
     return () => current.close();
   }, [open]);
   if (!open) return null;
-  const deleteNow = () => { if (!producer.current) return; void (state.phase === 'uncertain' ? producer.current.retry() : producer.current.confirm()); };
+  const deleteNow = () => { void (state.phase === 'uncertain' ? producer.current.retry() : producer.current.confirm()); };
   return <DeleteMediaDialog owner open onOpenChange={value => { if (!value && state.phase !== 'deleting') entryActions.close(); }}
     returnFocusRef={anchor} selectionCount={1} preview={state.preview ?? null}
-    confirmation={state.confirmation} onConfirmationChange={value => producer.current?.setConfirmation(value)}
-    removeFiles={state.removeFiles} onRemoveFilesChange={value => producer.current?.setRemoveFiles(value)}
+    confirmation={state.confirmation} onConfirmationChange={value => producer.current.setConfirmation(value)}
+    removeFiles={state.removeFiles} onRemoveFilesChange={value => producer.current.setRemoveFiles(value)}
     onDelete={deleteNow} busy={state.phase === 'loading' || state.phase === 'deleting'}
     error={errorText(state)} result={state.result}
     ownerTag={<span>{t('next.selection.owner')}</span>} />;
