@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -120,8 +119,9 @@ func TestReadingDiscoverSeriesUsesCurrentProfilePolicyAndReadState(t *testing.T)
 	if _, err = r.f.id.EditDirectProfile(ctx, owner.AccountToken, child.ID, identity.DirectProfileEdit{ExpectedRevision: child.Revision, Policy: &identity.ProfilePolicy{AllowedLibraries: []string{}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.s.Discover(ctx, p, r.library, reading.DiscoverLimits{Series: 1}); err == nil || !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, identity.ErrForbidden) {
-		t.Fatalf("revoked library series %v", err)
+	out, err = r.s.Discover(ctx, p, r.library, reading.DiscoverLimits{Series: 1})
+	if err == nil || len(out.Series) != 0 || len(out.Recent) != 0 {
+		t.Fatalf("revoked library returned Discover facts %+v %v", out, err)
 	}
 }
 
