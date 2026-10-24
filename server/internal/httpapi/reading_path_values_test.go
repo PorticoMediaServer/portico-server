@@ -169,3 +169,95 @@ func TestReadingPrivatePathComicFolderReclassification(t *testing.T) {
 		t.Fatal("missing sibling did not refresh available title", v)
 	}
 }
+
+func TestReadingPrivatePathCandidatesAndCurrentAssociation(t *testing.T) {
+	r := newReadingFixture(t, "book", "pdf")
+	ctx := context.Background()
+	name := readingTreeFile(t, r, "Attribution/Work.pdf")
+	readingScan(t, r.f, r.library)
+	id := readingPathItem(t, r, name)
+	var item, asset int64
+	var object, revision string
+	if err := r.f.db.QueryRow(`SELECT v.item_id,v.asset_id,v.inventory_object_id,v.source_revision FROM reading_source_values v JOIN catalog_entities e ON e.id=v.item_id WHERE e.public_id=pid_blob(?) AND v.field='author' AND v.source='folder'`, id).Scan(&item, &asset, &object, &revision); err != nil {
+		t.Fatal("real ingest did not publish provenance", err)
+	}
+	automatic := func() compactcatalog.ReadingValues {
+		t.Helper()
+		g, err := dbwork.BeginSnapshot(ctx, r.f.db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer g.Rollback()
+		v, err := compactcatalog.ReadingAutomaticFieldsTx(ctx, g.Tx(), item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	// A canonical accepted candidate fixture tests precedence, not a grant to
+	// read embedded archive metadata (that future producer is not implemented).
+	if _, err := r.f.db.Exec(`INSERT INTO reading_source_values(item_id,asset_id,field,text_value,source,inventory_object_id,source_revision) VALUES(?,?,'author','Embedded attribution','file-metadata',?,?)`, item, asset, object, revision); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.f.db.Exec(`UPDATE reading_source_values SET text_value='Previous path guess' WHERE item_id=? AND field='author' AND source='folder'`, item); err != nil {
+		t.Fatal(err)
+	}
+	readingTreeFile(t, r, "Attribution/Another.pdf")
+	readingScan(t, r.f, r.library)
+	v := automatic()
+	if v.Author == nil || v.Author.Value != "Embedded attribution" || v.Author.Source != compactcatalog.ReadingFileMetadata {
+		t.Fatal("path refresh overwrote higher source", v)
+	}
+	var pathValue string
+	if err := r.f.db.QueryRow(`SELECT text_value FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='folder'`, item, asset).Scan(&pathValue); err != nil || pathValue != "Attribution" {
+		t.Fatal("real path refresh did not run", pathValue, err)
+	}
+	if _, err := r.f.db.Exec(`INSERT INTO metadata_owner_fields(kind,entity_id,field,value,automatic_value,locked,actor,observed_at) VALUES('item',?,'author','A & B','Embedded attribution',1,'fixture-owner',datetime('now'))`, item); err != nil {
+		t.Fatal(err)
+	}
+	session, document, err := r.s.Prepare(ctx, r.p, id, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Metadata.Author != "A & B" {
+		t.Fatal("manifest revived archive/path identity over actual owner", document.Metadata.Author)
+	}
+	if err = r.s.CloseSession(r.p, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.f.db.Exec(`UPDATE metadata_owner_fields SET value='',locked=0 WHERE kind='item' AND entity_id=? AND field='author'`, item); err != nil {
+		t.Fatal(err)
+	}
+	list, err := r.s.List(ctx, r.p, r.library, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := false
+	for _, row := range list.Items {
+		if row.ID == id {
+			matched = row.Author != nil && row.Author.Value == "Embedded attribution" && row.Author.Source == compactcatalog.ReadingFileMetadata
+		}
+	}
+	if !matched {
+		t.Fatal("clear did not restore genuine automatic value/source")
+	}
+	if _, err = r.f.db.Exec(`DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata'`, item, asset); err != nil {
+		t.Fatal(err)
+	}
+	v = automatic()
+	if v.Author == nil || v.Author.Value != "Attribution" || v.Author.Source != compactcatalog.ReadingFolder {
+		t.Fatal("path fallback lost", v)
+	}
+	if _, err = r.f.db.Exec(`UPDATE reading_source_values SET source_revision='stale-source-revision' WHERE item_id=? AND asset_id=?`, item, asset); err != nil {
+		t.Fatal(err)
+	}
+	if v = automatic(); v.Author != nil {
+		t.Fatal("stale revision accepted", v)
+	}
+	if _, err = r.f.db.Exec(`UPDATE reading_source_values SET inventory_object_id=(SELECT o.id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1),source_revision=(SELECT o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.path=? LIMIT 1) WHERE item_id=? AND asset_id=?`, r.path, r.path, item, asset); err != nil {
+		t.Fatal(err)
+	}
+	if v = automatic(); v.Author != nil {
+		t.Fatal("foreign object with genuine current revision accepted", v)
+	}
+}

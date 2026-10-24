@@ -5,6 +5,8 @@ import (
 	"database/sql"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 )
 
 // Metadata-only projection for rows already selected by the real library/title
@@ -31,4 +33,21 @@ func readingAttributionProjectionTx(ctx context.Context, tx *sql.Tx, items []Lib
 		}
 	}
 	return nil
+}
+
+func (s *Service) publicationAttributions(ctx context.Context, p identity.Principal, selected Selection) (compactcatalog.ReadingValues, error) {
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return compactcatalog.ReadingValues{}, err
+	}
+	defer g.Rollback()
+	current, err := s.selectTx(ctx, g.Tx(), p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return compactcatalog.ReadingValues{}, err
+	}
+	if current.Revision != selected.Revision {
+		return compactcatalog.ReadingValues{}, ErrChanged
+	}
+	values, err := compactcatalog.ReadingAcceptedValuesTx(ctx, g.Tx(), []int64{selected.Entity})
+	return values[selected.Entity], err
 }
