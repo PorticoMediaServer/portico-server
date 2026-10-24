@@ -446,7 +446,7 @@ func AdoptProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p co
 	}
 	// A title the owner separated is never joined again by identity alone.
 	others, err := scanInt64s(tx.QueryContext(ctx, `SELECT other.id FROM catalog_entities me CROSS JOIN catalog_external_ids x INDEXED BY catalog_external_ids_lookup ON x.provider=?2 AND x.provider_kind=?3 AND x.provider_id=?4
- JOIN catalog_entities other ON other.id=x.entity_id AND other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id
+ CROSS JOIN catalog_entities other ON other.id=x.entity_id AND other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id
  WHERE me.id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart k WHERE k.entity_id IN(me.id,other.id))
  AND (me.kind<>?5 OR EXISTS(SELECT 1 FROM catalog_shows mine JOIN catalog_shows theirs ON theirs.source_edition=mine.source_edition WHERE mine.entity_id=me.id AND theirs.entity_id=other.id))
  ORDER BY other.id LIMIT 16`, entity, p.Provider, p.Kind, p.ID, int(compactcatalog.Show)))
