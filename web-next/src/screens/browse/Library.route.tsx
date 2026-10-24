@@ -19,6 +19,7 @@ import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
 import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
+import {NeedsAttention} from '../metadata/NeedsAttention';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
 import {useScreenAppearance} from './screen-preferences';
@@ -44,7 +45,7 @@ function LibraryShow({context, libraryId, search}: {context: ScreenContext; libr
 }
 function BoundLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const tabs = libraryTabs(library.kind), requested = tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  const tabs = libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
@@ -89,6 +90,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
     artwork: context.artwork, libraryMenu: undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
+      if (tab.shows === 'unmatched') {navigate({unmatched: true});return;}
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
   const empty = <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
@@ -104,7 +106,13 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
     selection: {actions: member => actions(member.entry), playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
-  return <>{view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
+  const unmatched = requested?.shows === 'unmatched';
+  const openAttention = (entry: {kind: string; itemKind: string; entityId: string; parentId: string}) => {
+    if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
+    else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
+  };
+  return <>{unmatched ? <NeedsAttention libraryId={library.id} api={resources.life.api} onOpen={openAttention}/>
+    : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
       actions={(_section, entry) => actions(entry)} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}

@@ -1,0 +1,130 @@
+import {useCallback, useEffect, useMemo, useRef, useState, type FormEvent} from 'react';
+import {defaultI18n} from '@i18n';
+import {metadataAttentionService, type AttentionCommand, type AttentionEntry, type AttentionPage} from '@core/metadata-attention.ts';
+import {attentionOffers, attentionReason, attentionInProgress, candidateFacts, candidateLine, providerName, typedProviderId} from '@core/server-admin/attention-words.ts';
+import {Button, TextField} from '../../kit/controls';
+import {Dialog} from '../../kit/overlays';
+import {Icon} from '../../kit/Icon';
+import {HostedError} from '../../kit/accounts/ServicesAuth';
+import styles from './metadata.module.css';
+
+const t = defaultI18n.t, has = (id: string) => defaultI18n.has(id);
+type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown) => Promise<T>}>;
+const PROVIDERS = ['tmdb', 'tvdb', 'anilist'] as const;
+
+/**
+ * owner-metadata frames 2-4: the titles Portico could not match with confidence, each with
+ * why, up to three closest matches, and only the actions the server names for it. The list is
+ * the library's own; the server stays the authority on what each row offers.
+ */
+export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api: Api; onOpen?: (entry: AttentionEntry) => void}) {
+  const service = useMemo(() => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId), [api, libraryId]);
+  const [page, setPage] = useState<AttentionPage>(), [cursors, setCursors] = useState<readonly string[]>([]), [cursor, setCursor] = useState('');
+  const [loading, setLoading] = useState(true), [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState<string>(), [notice, setNotice] = useState<string>();
+  const [searching, setSearching] = useState<AttentionEntry>(), [identifying, setIdentifying] = useState<AttentionEntry>();
+  const [query, setQuery] = useState(''), [typed, setTyped] = useState(''), [provider, setProvider] = useState<(typeof PROVIDERS)[number]>('tmdb');
+  const generation = useRef(0);
+  const load = useCallback(async (next: string) => {
+    const current = ++generation.current;
+    setLoading(true); setError(undefined);
+    try {
+      const value = await service.list(next, 25, false);
+      if (current === generation.current) {setPage(value); setCursor(next);}
+    } catch (value) {if (current === generation.current) setError(value);}
+    finally {if (current === generation.current) setLoading(false);}
+  }, [service]);
+  useEffect(() => {void load(''); return () => {generation.current++;};}, [load]);
+  // A search or a match settles on the server; the list reloads until it does.
+  const settling = !!page?.entries.some(entry => attentionInProgress(entry.reason));
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setInterval(() => void load(cursor), 2000);
+    return () => clearInterval(timer);
+  }, [settling, load, cursor]);
+  const send = async (entry: AttentionEntry, command: Omit<AttentionCommand, 'kind' | 'entityId' | 'expectedRevision'>, done: string) => {
+    if (busy) return false;
+    setBusy(entry.entityId); setNotice(undefined); setError(undefined);
+    try {
+      await service.act({kind: entry.kind, entityId: entry.entityId, expectedRevision: entry.revision, ...command});
+      setNotice(done); setSearching(undefined); setIdentifying(undefined);
+      await load(cursor);
+      return true;
+    } catch (value) {setError(value); return false;}
+    finally {setBusy(undefined);}
+  };
+  const older = () => {if (!page?.nextCursor) return; setCursors([...cursors, cursor]); void load(page.nextCursor);};
+  const newer = () => {const next = cursors.at(-1); if (next === undefined) return; setCursors(cursors.slice(0, -1)); void load(next);};
+  const id = typedProviderId(typed), bare = !!id && /^\d+$/.test(id);
+  return <section className={styles.attention}>
+    {error ? <HostedError error={error} /> : null}
+    {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
+    {page?.entries.map(entry => <Row key={entry.entityId} entry={entry} busy={busy === entry.entityId}
+      onUse={(candidateKey, order) => void send(entry, {action: 'accept', candidateKey, ...(order ? {order} : {})}, t('server.attention.matched', {title: entry.candidates.find(value => value.key === candidateKey)?.title ?? entry.title}))}
+      onSearch={() => {setQuery(entry.title); setSearching(entry);}}
+      onIdentify={() => {setTyped(''); setProvider('tmdb'); setIdentifying(entry);}}
+      onRetry={() => void send(entry, {action: 'retry'}, t('server.attention.lookingUp'))}
+      onKeep={() => void send(entry, {action: 'dismiss'}, t('metadata.attention.kept'))}
+      onOpen={onOpen ? () => onOpen(entry) : undefined} />)}
+    {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
+      <b><Icon name="i-check" size={18} />{t('metadata.attention.empty')}</b><p>{t('metadata.attention.emptyBody')}</p>
+    </div> : null}
+    {(cursors.length > 0 || page?.nextCursor) ? <div className={styles.pager}>
+      <Button size="small" disabled={loading || !cursors.length} onClick={newer}>{t('web.hostedAccount.newer')}</Button>
+      <Button size="small" disabled={loading || !page?.nextCursor} onClick={older}>{t('web.hostedAccount.older')}</Button>
+    </div> : null}
+    <Dialog open={Boolean(searching)} onOpenChange={open => {if (!open && !busy) setSearching(undefined);}} title={t('server.attention.searchTitle')} description={t('server.attention.searchBody')}
+      footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setSearching(undefined)}>{t('action.cancel')}</Button>
+        <Button size="small" variant="primary" loading={Boolean(busy)} disabled={query.trim().length < 2} onClick={() => {if (searching) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}>{t('web.search.title')}</Button></>}>
+      <form onSubmit={(event: FormEvent) => {event.preventDefault(); if (searching && query.trim().length >= 2 && !busy) void send(searching, {action: 'search', query: query.trim()}, t('server.attention.searchStarted'));}}>
+        <TextField label={t('server.attention.searchFor')} value={query} onChange={event => setQuery(event.currentTarget.value)} maxLength={200} />
+      </form>
+    </Dialog>
+    <Dialog open={Boolean(identifying)} onOpenChange={open => {if (!open && !busy) setIdentifying(undefined);}} title={t('metadata.attention.enterProviderId')} description={identifying?.title}
+      footer={<><Button size="small" disabled={Boolean(busy)} onClick={() => setIdentifying(undefined)}>{t('action.cancel')}</Button>
+        <Button size="small" variant="primary" loading={Boolean(busy)} disabled={!id} onClick={() => {if (identifying && id) void send(identifying, {action: 'id', providerId: id, ...(bare ? {provider} : {})}, t('server.attention.idSaved'));}}>{t('server.attention.useId')}</Button></>}>
+      <TextField label={t('server.attention.idLabel')} description={t('server.attention.idHelp')} value={typed} onChange={event => setTyped(event.currentTarget.value)} maxLength={2048} />
+      {bare ? <div className={styles.picker} role="group" aria-label={t('server.attention.idProvider')}>
+        <span>{t('server.attention.idProvider')}</span>
+        {PROVIDERS.map(item => <Button key={item} size="small" aria-pressed={provider === item} variant={provider === item ? 'primary' : 'glass'} onClick={() => setProvider(item)}>{providerName(item)}</Button>)}
+      </div> : null}
+    </Dialog>
+  </section>;
+}
+
+function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}: {
+  entry: AttentionEntry; busy: boolean; onUse: (candidateKey: string, order?: string) => void;
+  onSearch: () => void; onIdentify: () => void; onRetry: () => void; onKeep: () => void; onOpen?: () => void;
+}) {
+  const [order, setOrder] = useState<string>();
+  const candidates = attentionOffers(entry, 'accept') ? entry.candidates : [];
+  const subtitle = entry.parentTitle ?? entry.parentArtist;
+  const working = busy || attentionInProgress(entry.reason);
+  return <article className={styles.row} data-busy={working || undefined}>
+    <header>
+      <h3>{onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}</h3>
+      {subtitle ? <small>{subtitle}</small> : null}
+      <p>{attentionReason(t, has, entry.reason, entry.kind)}</p>
+    </header>
+    {working ? <p className={styles.working}>{t(entry.reason.includes('search') ? 'metadata.attention.rowSearching' : 'metadata.attention.rowMatching')}</p> : <>
+      {candidates.map(candidate => {
+        const facts = candidateFacts(t, has, candidate);
+        const selected = order ?? candidate.orders[0]?.id;
+        return <div key={candidate.key} className={styles.candidate}>
+          <div><b>{candidateLine(candidate)}</b>{facts.length ? <small>{facts.join(' · ')}</small> : null}
+            {candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
+              <select value={selected} onChange={event => setOrder(event.currentTarget.value)}>
+                {candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select></label> : null}</div>
+          <Button size="small" disabled={busy} onClick={() => onUse(candidate.key, candidate.orders.length ? selected : undefined)}>{t('metadata.attention.useMatch')}</Button>
+        </div>;
+      })}
+      <div className={styles.actions}>
+        {attentionOffers(entry, 'search') ? <Button size="small" disabled={busy} onClick={onSearch}>{t('metadata.attention.searchByHand')}</Button> : null}
+        {attentionOffers(entry, 'id') ? <Button size="small" disabled={busy} onClick={onIdentify}>{t('metadata.attention.enterProviderId')}</Button> : null}
+        {attentionOffers(entry, 'retry') ? <Button size="small" disabled={busy} onClick={onRetry}>{t('server.attention.lookUpAgain')}</Button> : null}
+        {attentionOffers(entry, 'dismiss') ? <Button size="small" disabled={busy} onClick={onKeep}>{t('metadata.attention.keepAsIs')}</Button> : null}
+      </div>
+    </>}
+  </article>;
+}

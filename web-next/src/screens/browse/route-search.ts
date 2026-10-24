@@ -8,7 +8,7 @@ function text(value: unknown, max = 256): string | undefined {
   if (typeof value !== 'string' || !value || value.length > max || /[\x00-\x1f\x7f]/.test(value)) invalid();
   return value;
 }
-export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; unmatched?: boolean; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
 /** A malformed owned predicate must not silently broaden the destination. */
 export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryScreenSearch {
   const view = raw.view === undefined ? undefined : views.find(view => view === raw.view);
@@ -25,6 +25,7 @@ export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryS
       return {field, direction: row.direction, ...(row.seed === undefined ? {} : {seed: row.seed})};
     });
   }
-  return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(category ? {category} : {}), ...(pivot ? {pivot} : {}),
+  const unmatched = raw.unmatched === true || undefined;
+  return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(category ? {category} : {}), ...(pivot ? {pivot} : {}), ...(unmatched ? {unmatched: true} : {}),
     ...(query ? {query} : {}), ...(sort ? {sort} : {}), ...(q ? {q} : {})};
 }

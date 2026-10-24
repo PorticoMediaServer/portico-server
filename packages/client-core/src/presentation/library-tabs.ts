@@ -18,7 +18,7 @@ export type LibraryTab = Readonly<{
   /** The browse pivot the tab reads; Discover and Playlists have none. */
   pivot?: string;
   /** How the tab is drawn: Discover's rows, a browsable grid (or the list table), the songs table, genre cards, or the viewer's playlists. */
-  shows: 'rows' | 'titles' | 'tracks' | 'genres' | 'playlists';
+  shows: 'rows' | 'titles' | 'tracks' | 'genres' | 'playlists' | 'unmatched';
   /** The order the tab opens in (Recently aired: the latest episode first). A starting point only: the viewer may choose any sort the server offers, and the choice is remembered for the tab. */
   defaultSort?: LibraryTabSort;
   /** Conditions the tab always applies (Unmatched). */
@@ -54,9 +54,15 @@ const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
 const unmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', pivot: 'albums', shows: 'titles', fixedFilter: [{field: 'match', operator: 'equals', value: 'unmatched'}]};
 
 /** The tabs of a library of this kind, in order. Anime has television's. */
+const ownerUnmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', shows: 'unmatched'};
+
 export function libraryTabs(kind: string, options: Readonly<{owner?: boolean; /** True only from the current public albums capability; absent/offline/local-only is false. */ unmatched?: boolean}> = {}): readonly LibraryTab[] {
   const tabs = TABS[kind === 'anime' ? 'tv' : kind] ?? [discover];
-  return kind === 'music' && options.unmatched===true ? [...tabs, unmatched] : tabs;
+  const withPublicUnmatched = kind === 'music' && options.unmatched===true ? [...tabs, unmatched] : tabs;
+  // The owner's own list is the library's Unmatched items tab; Music reaches the same list
+  // through its pivot, so it never grows a second tab with the same name.
+  const owner = options.owner === true && kind !== 'music' && ['movie', 'tv', 'anime', 'audiobook'].includes(kind);
+  return owner ? [...withPublicUnmatched, ownerUnmatched] : withPublicUnmatched;
 }
 
 /** Derive the tab offer from an actual current public browse vocabulary.
