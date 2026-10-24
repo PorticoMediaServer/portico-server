@@ -177,7 +177,12 @@ export function SettingsEntry() {
     };
     setFailure(false);setOwned({context, settings, dashboard});
     return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
-  }, [context, retry, route.section, reportTimeZone]);
+  // The captured identity decides which sections exist (main profile, manageServer,
+  // role). It can be replaced without the assembly context object changing, so
+  // every fact the gate reads is a dependency: a newer identity must rebuild the
+  // controller instead of leaving the old section set on screen.
+  }, [context, retry, route.section, reportTimeZone, identity.primaryProfile, identity.capabilities?.manageServer,
+    identity.capabilities?.managePeople, identity.capabilities?.manageSignIn, identity.signIn, role, viewer.serverId, viewer.profileId]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
   const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
