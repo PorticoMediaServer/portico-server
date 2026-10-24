@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +18,22 @@ import (
 
 func privateSetupServer(t *testing.T, handler http.Handler) *httptest.Server {
 	t.Helper()
+	if host := os.Getenv("PORTICO_PRIVATE_ORIGIN_TEST_HOST"); host != "" {
+		ip, err := netip.ParseAddr(host)
+		if err != nil || !ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			t.Fatal("invalid owned private fixture endpoint")
+		}
+		listener, err := net.Listen("tcp4", net.JoinHostPort(ip.String(), "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := httptest.NewUnstartedServer(handler)
+		server.Listener.Close()
+		server.Listener = listener
+		server.Start()
+		t.Cleanup(server.Close)
+		return server
+	}
 	addresses, err := net.InterfaceAddrs()
 	if err != nil {
 		t.Fatal(err)
