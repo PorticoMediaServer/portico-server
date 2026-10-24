@@ -42,7 +42,7 @@ export function ShowScreen({binding, target}: ShowScreenProps) {
 export function seasonMenuDescription(season: WorkspaceSeason): string | undefined {
   const year = (value?: string) => { if (!value) return undefined; const date = new Date(value); return Number.isFinite(date.getTime()) ? date.getUTCFullYear() : undefined; };
   const first = year(season.firstAired), last = year(season.lastAired), progress = seasonProgress(season.watchedCount, season.unwatchedCount);
-  const years = first === undefined ? undefined : last !== undefined && last !== first ? `${first}–${last}` : String(first);
+  const years = first === undefined ? undefined : t('next.detail.seasonYears', {first, last: last ?? first});
   const parts = [years, season.episodeCount !== undefined ? t('count.episodes', {count: season.episodeCount}) : undefined,
     progress ? t('title.seasonProgress', {watched: progress.watched, total: progress.total}) : undefined];
   const value = parts.filter(Boolean).join(' · ');
