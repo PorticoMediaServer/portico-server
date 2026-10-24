@@ -180,17 +180,26 @@ try {
       await settle(page, {quiet: 2500});
       await snapshot('07-after-approve');
     }
-    // 6. Return to the server once it reports installed.
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const back = await page.locator('button,[role=button],a[href]').filter({hasText: /Return to|Back to|Go to your server|Continue to your server/i}).first();
-      if (await back.count()) {
-        await snapshot('08-before-return');
-        await back.click({timeout: 10000});
-        await page.waitForTimeout(4000);
-        await settle(page, {quiet: 2500});
-        break;
+    // 6. Return performs exactly ONE protected lookup. If the managed route is not bound yet the
+    // Hosted page stays approved and returns no location; that is a hold, not a failure, and this
+    // run must not reload, reinitialize or retry it.
+    const back = await page.locator('button,[role=button],a[href]').filter({hasText: /Return to|Back to|Go to your server|Continue to your server/i}).first();
+    if (await back.count()) {
+      await snapshot('08-before-return');
+      await back.click({timeout: 10000});
+      await page.waitForTimeout(6000);
+      await settle(page, {quiet: 2500});
+      if (/web\.getportico\.tv/.test(page.url())) {
+        const held = await snapshot('09-return-not-ready');
+        writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, timings, result: 'RETURN-NOT-READY',
+          note: 'Return performed one lookup and no location was issued; the route binding is not ready. Profile retained, nothing reloaded.',
+          url: held.state.url}, null, 2));
+        console.log('\nRETURN-NOT-READY: one lookup, no navigation. Holding; profile kept, nothing reloaded.');
+        result = 'RETURN-NOT-READY';
+        // Deliberately no navigation from here.
+        await context.close();
+        process.exit(3);
       }
-      await page.waitForTimeout(1500);
     }
   }
 
@@ -223,7 +232,10 @@ try {
     }
   }
 
-  // 9. Post-completion: the setup route must no longer be required.
+  // 9. Post-completion: reached only after a real return to the server.
+  if (!/:8443/.test(page.url())) {
+    throw new Error(`the tab is not on the server after the return (${page.url()})`);
+  }
   await page.goto(origin + '/setup', {waitUntil: 'domcontentloaded'});
   await settle(page, {quiet: 2500});
   await snapshot('14-setup-again');
