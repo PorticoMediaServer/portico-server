@@ -66,14 +66,14 @@ function RecordingRow({recording, now, onCancel, onDetails}: {recording: Recordi
   </div>;
 }
 
-function ConflictBox({context, recording, onResolve}: {context: ScreenContext; recording: Recording; onResolve: (detail?: RecordingDetail) => void}) {
-  const [detail, setDetail] = useState<RecordingDetail>();
+function ConflictBox({context, recording, detail: supplied, onResolve}: {context: ScreenContext; recording: Recording; detail?: RecordingDetail; onResolve: (detail?: RecordingDetail) => void}) {
+  const [detail, setDetail] = useState<RecordingDetail | undefined>(supplied);
   useEffect(() => {
-    if (!context.isCurrent()) return;
+    if (supplied || !context.isCurrent()) return;
     const abort = new AbortController();
     void readRecordingDetail(context, recording.id, abort.signal).then(value => {if (!abort.signal.aborted && context.isCurrent()) setDetail(value);}, () => {});
     return () => abort.abort();
-  }, [context, recording.id]);
+  }, [context, recording.id, supplied]);
   const tuners = detail?.capacity.known ? detail.capacity.effective : recording.conflicts[0]?.capacity;
   return <div className={styles.conflictBox}>
     <div className={styles.conflictHead}><Icon name="i-warn" size={22}/><div>
@@ -118,14 +118,14 @@ function ConflictDialog({context, recording, controller, onClose}: {context: Scr
   </Dialog>;
 }
 
-function UpcomingView({context, controller, snapshot, now, onResolve}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void}) {
+export function UpcomingView({context, controller, snapshot, now, onResolve, details}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>; now: number; onResolve: (recording: Recording, detail?: RecordingDetail) => void; details?: Readonly<Record<string, RecordingDetail>>}) {
   const recordings = snapshot.page?.recordings ?? [];
   const conflicted = recordings.filter(recording => recording.state === 'conflicted');
   const active = recordings.filter(recording => activeRecording(recording) && recording.state !== 'conflicted');
   const later = recordings.filter(recording => !activeRecording(recording) && recording.state !== 'conflicted');
   const [details, setDetails] = useState<Recording>();
   return <div className={styles.recBody}>
-    {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} onResolve={detail => onResolve(recording, detail)}/>)}
+    {conflicted.map(recording => <ConflictBox key={recording.id} context={context} recording={recording} detail={details?.[recording.id]} onResolve={detail => onResolve(recording, detail)}/>)}
     {active.length > 0 && <section className={styles.recSection}><h2>{t('next.live.recordingNow')}</h2>
       {active.map(recording => <RecordingRow key={recording.id} recording={recording} now={now} onCancel={() => {void controller.cancel(recording);}}/>)}</section>}
     {later.length > 0 && <section className={styles.recSection}><h2>{t('next.live.laterToday')}<span>{dayOf(later[0]!.start, now)}</span></h2>
@@ -136,7 +136,7 @@ function UpcomingView({context, controller, snapshot, now, onResolve}: {context:
   </div>;
 }
 
-function RecordedView({context, controller, snapshot}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>}) {
+export function RecordedView({context, controller, snapshot}: {context: ScreenContext; controller: RecordingsController; snapshot: ReturnType<RecordingsController['getSnapshot']>}) {
   const [open, setOpen] = useState<{key: string; title: string}>();
   const sort = (snapshot.groupsSort ?? 'recent') as RecordingsSort;
   const groups = snapshot.groups?.groups ?? [];
