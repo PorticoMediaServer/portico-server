@@ -1,0 +1,240 @@
+// Remote-only comparison harness for the Account Settings Playback screen.
+// It starts the exact built app against a fresh disposable server, signs in with
+// throwaway credentials, and captures the approved read-only Settings mock at
+// the same 1440x1000 logical viewport and state. No reference bytes are written
+// to the repository; only this browser session and its own output directory.
+//
+// Run on the external runner:
+//   PORTICO_RUNNER_OUTPUT=/abs/out PORTICO_RUNNER_SECONDARY_SOURCE=/abs/portico-internal \
+//   PORTICO_SERVER_BIN=/abs/dist/portico-server PORTICO_CHROMIUM=/usr/bin/chromium \
+//   node web-next/src/screens/settings/ds-web-settings-r46-capture.mjs
+import {spawn} from 'node:child_process';
+import {createServer} from 'node:http';
+import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {extname, join, resolve} from 'node:path';
+import {randomBytes, randomUUID} from 'node:crypto';
+import net from 'node:net';
+
+const output = process.env.PORTICO_RUNNER_OUTPUT;
+const secondary = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
+const binary = process.env.PORTICO_SERVER_BIN;
+const chromium = process.env.PORTICO_CHROMIUM || '/usr/bin/chromium';
+if (!output || !secondary || !binary) throw new Error('PORTICO_RUNNER_OUTPUT, PORTICO_RUNNER_SECONDARY_SOURCE and PORTICO_SERVER_BIN are required');
+const root = process.cwd();
+const design = resolve(secondary, 'design/ui-v1');
+await mkdir(output, {recursive: true});
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const freePort = async () => { const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; };
+const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.woff2': 'font/woff2', '.json': 'application/json'};
+
+function staticServer(directory) {
+  return createServer(async (request, response) => {
+    try {
+      const path = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
+      const file = resolve(directory, path === '/' ? 'index.html' : path.slice(1));
+      if (!file.startsWith(directory + '/')) throw new Error('outside');
+      const body = await readFile(file);
+      response.writeHead(200, {'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store'});
+      response.end(body);
+    } catch { response.writeHead(404); response.end('not found'); }
+  });
+}
+
+/** Minimal dependency-free CDP client (same protocol Chrome exposes to the smoke harness). */
+class Driver {
+  static async connect(port) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+        const target = targets.find(item => item.type === 'page');
+        if (target) return new Driver(target.webSocketDebuggerUrl);
+      } catch {}
+      await sleep(100);
+    }
+    throw new Error('Chromium did not expose a page target');
+  }
+  constructor(url) {
+    this.sequence = 0; this.pending = new Map();
+    this.socket = new WebSocket(url);
+    this.ready = new Promise((resolve, reject) => {this.socket.onopen = resolve; this.socket.onerror = reject;});
+    this.socket.onmessage = event => {
+      const message = JSON.parse(event.data);
+      if (!message.id) return;
+      const task = this.pending.get(message.id); if (!task) return;
+      this.pending.delete(message.id); clearTimeout(task.timer);
+      if (message.error) task.reject(new Error(`${message.error.code}: ${message.error.message}`)); else task.resolve(message.result);
+    };
+  }
+  send(method, params = {}) {
+    const id = ++this.sequence;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {this.pending.delete(id); reject(new Error('CDP timeout: ' + method));}, 20000);
+      this.pending.set(id, {resolve, reject, timer});
+      this.socket.send(JSON.stringify({id, method, params}));
+    });
+  }
+  async evaluate(expression) {
+    const result = await this.send('Runtime.evaluate', {expression, awaitPromise: true, returnByValue: true});
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || 'evaluation failed');
+    return result.result.value;
+  }
+  async navigate(url) {const result = await this.send('Page.navigate', {url}); if (result.errorText) throw new Error(result.errorText);}
+  async waitFor(expression, timeout = 20000) {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      try {if (await this.evaluate(`!!(${expression})`)) return true;} catch {}
+      await sleep(120);
+    }
+    throw new Error('Timed out waiting for ' + expression);
+  }
+  async viewport(width, height) {await this.send('Emulation.setDeviceMetricsOverride', {width, height, screenWidth: width, screenHeight: height, deviceScaleFactor: 1, mobile: false});}
+  async screenshot(file) {const {data} = await this.send('Page.captureScreenshot', {format: 'png', fromSurface: true, captureBeyondViewport: false}); await writeFile(file, Buffer.from(data, 'base64'));}
+}
+
+const appPort = await freePort(), designPort = await freePort(), chromePort = await freePort();
+const state = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-state-'));
+const profile = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-chrome-'));
+const credentials = {username: 'demo', password: 'Test-' + randomBytes(12).toString('base64url') + '9x'};
+const referenceScreens = resolve(design, 'settings.html');
+let app, reference, browser, driver;
+const log = [];
+const note = value => {log.push(value); console.log(value);};
+
+try {
+  if (!(await readFile(referenceScreens)).length) throw new Error('reference mock is missing');
+  reference = staticServer(design);
+  await new Promise(resolve => reference.listen(designPort, '127.0.0.1', resolve));
+  app = spawn(binary, [], {cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: {...process.env,
+    PORTICO_DATA_DIR: state, PORTICO_WEB_DIR: resolve(root, 'web-next/dist'), PORTICO_BIND: `127.0.0.1:${appPort}`,
+    PORTICO_DISCOVERY: '0', PORTICO_FFMPEG: process.env.PORTICO_FFMPEG || '/usr/bin/ffmpeg', PORTICO_FFPROBE: process.env.PORTICO_FFPROBE || '/usr/bin/ffprobe',
+    HTTP_PROXY: 'http://127.0.0.1:9', HTTPS_PROXY: 'http://127.0.0.1:9', ALL_PROXY: 'http://127.0.0.1:9', NO_PROXY: '127.0.0.1,localhost'}});
+  let appLog = ''; app.stdout.on('data', bytes => {appLog += bytes;}); app.stderr.on('data', bytes => {appLog += bytes;});
+  const base = `http://127.0.0.1:${appPort}`;
+  for (let attempt = 0; ; attempt++) {
+    try {const response = await fetch(base + '/v1/system'); if (response.ok) break;} catch {}
+    if (attempt > 160 || app.exitCode !== null) throw new Error('server did not start\n' + appLog.split('\n').slice(-12).join('\n'));
+    await sleep(150);
+  }
+  const json = async (route, options = {}) => {
+    const headers = {Accept: 'application/json'}; if (options.body !== undefined) headers['Content-Type'] = 'application/json'; if (options.origin) headers.Origin = options.origin;
+    const response = await fetch(base + route, {...options, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body)});
+    const text = await response.text(); return {status: response.status, body: text ? JSON.parse(text) : null};
+  };
+  const system = await json('/v1/system');
+  if (!system.body.setupRequired) throw new Error('disposable server was not fresh');
+  const token = await json('/v1/setup/browser', {method: 'POST', body: {}, origin: base});
+  if (token.status !== 200) throw new Error('setup token refused: ' + JSON.stringify(token.body));
+  const created = await json('/v1/setup', {method: 'POST', origin: base, body: {requestId: randomUUID(), setupToken: token.body.setupToken,
+    username: credentials.username, password: credentials.password, name: 'Portico demo', authMode: 'local', recoverySaved: true, interactive: true}});
+  if (created.status !== 201) throw new Error('owner creation refused: ' + JSON.stringify(created.body));
+  note('setup ok: local owner, name "Portico demo"');
+
+  browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking',
+    '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check',
+    '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1', '--remote-debugging-address=127.0.0.1',
+    `--remote-debugging-port=${chromePort}`, `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe']});
+  browser.stderr.on('data', () => {});
+  driver = await Driver.connect(chromePort);
+  await driver.send('Page.enable'); await driver.send('Runtime.enable');
+  await driver.viewport(1440, 1000);
+  await driver.navigate(base);
+  await driver.waitFor(`document.querySelector('input[autocomplete="username"]')`, 30000);
+  const setValue = async (selector, value) => driver.evaluate(`(() => {const element = document.querySelector(${JSON.stringify(selector)});
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(element, ${JSON.stringify(value)});
+    element.dispatchEvent(new Event('input', {bubbles: true})); return true;})()`);
+  await setValue('input[autocomplete="username"]', credentials.username);
+  await setValue('input[type="password"]', credentials.password);
+  await driver.evaluate(`document.querySelector('button[type="submit"]').click()`);
+  await driver.waitFor(`!document.querySelector('input[autocomplete="username"]')`, 30000);
+  // The only profile is the owner's primary profile; its name is the account username.
+  await driver.waitFor(`[...document.querySelectorAll('button')].some(button => button.textContent.trim() === ${JSON.stringify(credentials.username)})`, 30000);
+  await driver.evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(credentials.username)}).click()`);
+  await driver.waitFor(`document.querySelector('nav[aria-label="Main"]')`, 30000);
+  await driver.navigate(`${base}/settings?scope=account&section=playback`);
+  await driver.waitFor(`document.querySelector('h1')?.textContent === 'Playback'`, 30000);
+  await driver.waitFor(`document.querySelector('#playback\\.skipping')`, 30000);
+  await sleep(350);
+  // Frame state: Recaps changed to Skip automatically, so the row offers Reset and Saved is visible.
+  await driver.evaluate(`(() => {const field = [...document.querySelectorAll('fieldset')].find(item => item.querySelector('legend')?.textContent === 'Recaps');
+    const choice = field?.querySelector('input[value="auto"]'); if (!choice) throw new Error('Recaps auto missing'); choice.click(); return true;})()`);
+  await driver.waitFor(`[...document.querySelectorAll('[role="status"]')].some(node => node.textContent.trim() === 'Saved')`, 12000);
+  await driver.evaluate(`document.fonts.ready`);
+  await driver.evaluate(`new Promise(resolve => {const settled = document.getAnimations().map(animation => animation.finished.catch(() => {})); Promise.allSettled(settled).then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));})`);
+  await sleep(350);
+  const buildShot = resolve(output, 'build.png');
+  await driver.screenshot(buildShot);
+  const buildFacts = await driver.evaluate(`(() => {
+    const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
+    const main = document.querySelector('main');
+    return {url: location.href, viewport: {width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight},
+      headings: [...document.querySelectorAll('main h1, main h2, main h3')].map(element => ({text: element.textContent, box: box(element)})),
+      groups: [...document.querySelectorAll('main section')].map(element => ({title: element.querySelector('h3')?.textContent ?? '', box: box(element)})),
+      rows: [...document.querySelectorAll('main [id^="playback."]')].map(element => ({id: element.id, text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
+      nav: [...document.querySelectorAll('nav[aria-label] button')].map(element => ({text: element.textContent.trim(), current: element.getAttribute('aria-current'), box: box(element)})),
+      saved: [...document.querySelectorAll('[role="status"]')].map(element => element.textContent.trim()).filter(Boolean),
+      bodyText: document.body.innerText.split('\\n').map(line => line.trim()).filter(Boolean)};
+  })()`);
+  note(`build captured: ${buildFacts.headings.map(heading => heading.text).join(' / ')}`);
+
+  // Approved read-only mock at the same viewport and state.
+  await driver.navigate(`http://127.0.0.1:${designPort}/settings.html?demo=clean,saved#account/playback`);
+  await driver.waitFor(`document.querySelector('#page .pg-h h2')?.textContent === 'Playback'`, 30000);
+  await driver.waitFor(`document.querySelector('.mx')`, 30000);
+  await driver.evaluate(`document.fonts.ready`);
+  await sleep(450);
+  await driver.evaluate(`(() => {const groups = [...document.querySelectorAll('.mx [role="radiogroup"]')];
+    const group = groups.find(item => item.querySelector('.lab')?.textContent.trim().startsWith('Recaps')); if (!group) throw new Error('Recaps group missing');
+    group.querySelectorAll('button')[1].click(); return true;})()`);
+  await driver.waitFor(`[...document.querySelectorAll('.saved')].some(node => node.textContent.trim().endsWith('Saved'))`, 8000);
+  await driver.evaluate(`new Promise(resolve => {const settled = document.getAnimations().map(animation => animation.finished.catch(() => {})); Promise.allSettled(settled).then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));})`);
+  await sleep(300);
+  const referenceShot = resolve(output, 'reference.png');
+  await driver.screenshot(referenceShot);
+  const referenceFacts = await driver.evaluate(`(() => {
+    const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
+    return {url: location.href, viewport: {width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight},
+      headings: [...document.querySelectorAll('#page .pg-h h2, #page .sec-h h3')].map(element => ({text: element.textContent, box: box(element)})),
+      groups: [...document.querySelectorAll('#page .sec')].map(element => ({title: element.querySelector('h3')?.textContent ?? '', box: box(element)})),
+      rows: [...document.querySelectorAll('#page .r')].map(element => ({text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
+      nav: [...document.querySelectorAll('#aside .it')].map(element => ({text: element.textContent.trim(), current: element.getAttribute('aria-current'), box: box(element)})),
+      saved: [...document.querySelectorAll('.saved')].map(element => element.textContent.trim()).filter(Boolean),
+      bodyText: document.body.innerText.split('\\n').map(line => line.trim()).filter(Boolean)};
+  })()`);
+  note(`reference captured: ${referenceFacts.headings.map(heading => heading.text).join(' / ')}`);
+
+  // Raster difference for the human pair; anti-aliasing is reported, not chased.
+  const buildBytes = (await readFile(buildShot)).toString('base64'), referenceBytes = (await readFile(referenceShot)).toString('base64');
+  const diff = await driver.evaluate(`(async () => {
+    const load = source => new Promise((resolve, reject) => {const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = 'data:image/png;base64,' + source;});
+    const [left, right] = await Promise.all([load(${JSON.stringify(buildBytes)}), load(${JSON.stringify(referenceBytes)})]);
+    const canvas = document.createElement('canvas'); canvas.width = 1440; canvas.height = 1000; const context = canvas.getContext('2d', {willReadFrequently: true});
+    context.drawImage(left, 0, 0); const a = context.getImageData(0, 0, 1440, 1000).data;
+    context.clearRect(0, 0, 1440, 1000); context.drawImage(right, 0, 0); const b = context.getImageData(0, 0, 1440, 1000).data;
+    let changed = 0, strong = 0, minX = 1440, minY = 1000, maxX = 0, maxY = 0; const bands = {};
+    for (let y = 0; y < 1000; y++) for (let x = 0; x < 1440; x++) {
+      const i = (y * 1440 + x) * 4; const delta = Math.max(Math.abs(a[i]-b[i]), Math.abs(a[i+1]-b[i+1]), Math.abs(a[i+2]-b[i+2]), Math.abs(a[i+3]-b[i+3]));
+      if (delta > 8) {changed++; if (delta > 40) strong++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+        const band = Math.floor(y / 50) * 50; bands[band] = (bands[band] || 0) + 1;}
+    }
+    const pair = document.createElement('canvas'); pair.width = 2880; pair.height = 1000; const p = pair.getContext('2d'); p.fillStyle = '#000'; p.fillRect(0, 0, 2880, 1000);
+    p.drawImage(left, 0, 0); p.drawImage(right, 1440, 0);
+    return {format: pair.toDataURL('image/jpeg', 0.9), changed, strong, percent: Math.round(changed / 14400) / 100,
+      bounds: changed ? {minX, minY, maxX, maxY} : null, bands: Object.entries(bands).sort((a, b) => Number(a[0]) - Number(b[0])).map(([y, count]) => ({y: Number(y), count}))};
+  })()`);
+  const pairBytes = Buffer.from(diff.format.split(',')[1], 'base64');
+  await writeFile(resolve(output, 'pair.jpg'), pairBytes);
+  const summary = {state: 'account/playback, Recaps = Skip automatically, Saved shown', viewport: {width: 1440, height: 1000},
+    build: buildFacts, reference: referenceFacts, raster: {changed: diff.changed, strong: diff.strong, percent: diff.percent, bounds: diff.bounds, bands: diff.bands}};
+  await writeFile(resolve(output, 'facts.log'), JSON.stringify(summary, null, 2));
+  note(`raster changed=${diff.changed} (${diff.percent}%) strong=${diff.strong} bounds=${JSON.stringify(diff.bounds)}`);
+  note('done');
+} finally {
+  try {driver?.socket.close();} catch {}
+  try {browser?.kill('SIGTERM');} catch {}
+  try {app?.kill('SIGTERM');} catch {}
+  try {reference?.close();} catch {}
+  await rm(state, {recursive: true, force: true});
+  await rm(profile, {recursive: true, force: true});
+  await writeFile(resolve(output, 'capture.log'), log.join('\n') + '\n').catch(() => {});
+}
