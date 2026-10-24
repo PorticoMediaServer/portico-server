@@ -222,7 +222,7 @@ func rewriteSegment(ctx context.Context, tx *sql.Tx, segment string) error {
 		if len(out) == 0 {
 			return nil
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, fresh, no, encodeChunk(out))
+		err := writeQueueChunkTx(ctx, tx, fresh, no, encodeChunk(out), false)
 		no++
 		out = out[:0]
 		return err
@@ -241,7 +241,7 @@ func rewriteSegment(ctx context.Context, tx *sql.Tx, segment string) error {
 		blobs = append(blobs, b)
 	}
 	chunks.Close()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,built) VALUES(?,?,?,?,?,0,0,0)`, fresh, queue, kind, selector, label); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,built,music_only) VALUES(?,?,?,?,?,0,0,0,1)`, fresh, queue, kind, selector, label); err != nil {
 		return err
 	}
 	for _, b := range blobs {
@@ -1059,10 +1059,10 @@ func (s *Service) MoveEntry(ctx context.Context, c Caller, id, ifMatch, entry st
 			}
 		}
 		snap := newShortID("s")
-		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width) VALUES(?,?,'items',?,'1 item',1,0)`, snap, l.q.id, jsonList([]string{item})); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,'items',?,'1 item',1,0,1)`, snap, l.q.id, jsonList([]string{item})); err != nil {
 			return false, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,0,?)`, snap, encodeChunk([]string{item})); err != nil {
+		if err = writeQueueChunkTx(ctx, tx, snap, 0, encodeChunk([]string{item}), false); err != nil {
 			return false, err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_segments(id,queue_id,sort_key,snapshot_id,first_ordinal,count) VALUES(?,?,?,?,0,1)`, newShortID("g"), l.q.id, key, snap); err != nil {

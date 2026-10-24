@@ -1240,6 +1240,7 @@ table queue_v1_removals
 table queue_v1_saves
 table queue_v1_segments
 table queue_v1_snapshots
+table queue_v1_sonic_windows
 table queues_v1
 table quick_connect_v1
 table reading_progress
@@ -2345,6 +2346,7 @@ trigger progress_observation_update
 trigger progress_replay_membership
 trigger queue_v1_container_counts_retention_delete
 trigger queue_v1_container_counts_retention_insert
+trigger queue_v1_sonic_windows_immutable
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete
