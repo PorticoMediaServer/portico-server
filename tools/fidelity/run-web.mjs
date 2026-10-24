@@ -14,6 +14,7 @@ import {applyControlledState, checkControlledState} from './controlled-state.mjs
 import {calibrateFrame} from './calibration.mjs';
 import {fontReadiness} from './readiness.mjs';
 import {controlledEntry, verifyGalleryEntry, settleMotion} from './gallery-entry.mjs';
+import {extractReference} from './extract-reference.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -22,6 +23,11 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
   const {referenceSelector, entry, actualSelector, viewport} = adapter;
   if (!process.env.TMPDIR || !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) throw new Error('Owned runner scratch and explicit Chromium required');
   controlledEntry(entry);
+  // Contact-sheet frames are measured at their natural size in a large enough
+  // window. The shared extractor rejects scaled roots; no DOM/CSS is rewritten.
+  const authoredReference = adapter.referenceWindowViewport ? await extractReference({url: referenceURL,
+    selector: referenceSelector, windowViewport: adapter.referenceWindowViewport, viewport,
+    anchors: adapter.reference, repeats: adapter.repeats?.reference}) : undefined;
   const vite = await createServer({root: join(root, 'web-next'), configFile: join(root, 'web-next/vite.config.ts'),
     cacheDir: join(process.env.TMPDIR, 'fidelity-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   try {
@@ -29,9 +35,9 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     const actualOrigin = `http://127.0.0.1:${vite.httpServer.address().port}`, actualURL = actualOrigin + entry;
     return await withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       viewport, allowedOrigins: [new URL(referenceURL).origin, actualOrigin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
-      await browser.navigate(referenceURL, referenceSelector);
-      const reference = await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
-      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
+      if (!authoredReference) await browser.navigate(referenceURL, referenceSelector);
+      const reference = authoredReference ?? await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
+      const deterministicReference = !!authoredReference || JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
       await browser.navigate(actualURL, adapter.readySelector ?? actualSelector);
       await verifyGalleryEntry(browser, entry, viewport);
       await applyControlledState(browser, adapter.stateSteps);
