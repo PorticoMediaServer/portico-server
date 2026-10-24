@@ -215,6 +215,9 @@ func (s *Service) readingFacetPage(viewer Viewer, request FacetRequest, r *readi
 			break
 		}
 		value.Label = value.Value
+		if field == "series" {
+			value.SeriesID = ReadingFacetSeriesID(compactcatalog.ReadingSeriesID(request.Library, value.Value))
+		}
 		out.Values = append(out.Values, value)
 	}
 	if err == nil {
