@@ -34,8 +34,8 @@ try {
  await page.locator('form button[type="submit"]').click();
  await page.waitForFunction(()=>location.pathname==='/' || location.pathname==='/profiles');
  if(new URL(page.url()).pathname==='/profiles'){await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/justin/i}).first().click();}
- const trigger=page.getByRole('button',{name:/Switch profile or server/});await trigger.waitFor();
- await page.getByRole('link',{name:'Home',exact:true}).waitFor();await page.locator('[data-home-document]').waitFor();if(new URL(page.url()).pathname!=='/')throw Error('home-route');
+ step='owner-home-account-control';const trigger=page.getByRole('button',{name:/^Switch profile or server(?:,|$)|, account menu$/});await trigger.waitFor();
+ step='owner-home-navigation';await page.getByRole('link',{name:'Home',exact:true}).waitFor();step='owner-home-document';await page.locator('[data-home-document]').waitFor();if(new URL(page.url()).pathname!=='/')throw Error('home-route');
  await page.screenshot({path:out+'/owner-home.png'});console.log('PASS owner sign-in -> Home');console.log(JSON.stringify({event:'owner sign-in -> Home',utc:new Date().toISOString(),origin,commit}));
  step='second-profile';const profileDocument=await page.goto(origin+'/profiles',{waitUntil:'networkidle'});if(profileDocument.status()!==200 || !profileDocument.headers()['content-type'].includes('text/html'))throw Error('profile-document');await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/Review/}).first().click();await page.locator('[data-home-document]').waitFor();
  await trigger.waitFor();await trigger.click();await page.getByRole('menuitem',{name:/justin/i}).waitFor();

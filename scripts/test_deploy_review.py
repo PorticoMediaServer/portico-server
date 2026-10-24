@@ -144,6 +144,13 @@ class ReviewDeployment(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 build.require_current_main(Path('/checkout'), 'a' * 40, frozen=True)
 
+    def test_activation_retry_preserves_the_same_state_and_separate_backup(self):
+        args = ['deploy-review.py', 'a' * 40, '/artifact', '--cycle', 'review-test', '--activate-only', '--attempt', 'controls', '--browser-repo', '/repo', '--runner', '/runner', '--private-review', '/private', '--smoke-output', '/output']
+        with patch('sys.argv', args), patch.object(deploy, 'remote') as remote, patch.object(deploy.subprocess, 'run'):
+            deploy.main()
+            self.assertEqual(remote.call_args.args[2], '/var/lib/portico-review-test')
+            self.assertEqual(remote.call_args.args[-1], 'review-test-controls')
+
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
         value = build.public_root(pem)

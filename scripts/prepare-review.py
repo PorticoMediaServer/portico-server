@@ -97,8 +97,10 @@ def main():
     state['session'] = session
     document = call('GET', '/v1/admin/console/settings')['data']
     values = document['requested']
-    values['conversionMode'] = 'never'
-    changed = call('PATCH', '/v1/admin/console/settings', {'expectedRevision': document['revision'], 'idempotencyKey': str(uuid.uuid4()), 'values': values})['data']
+    changed = document
+    if values['conversionMode'] != 'never' or document['effective']['conversionMode'] != 'never':
+        values['conversionMode'] = 'never'
+        changed = call('PATCH', '/v1/admin/console/settings', {'expectedRevision': document['revision'], 'idempotencyKey': str(uuid.uuid4()), 'values': values})['data']
     assert changed['requested']['conversionMode'] == changed['effective']['conversionMode'] == 'never'
     state['conversionMode'] = 'never'
     system = call('GET', '/v1/system')
