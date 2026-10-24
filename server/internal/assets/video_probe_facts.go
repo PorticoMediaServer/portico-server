@@ -26,3 +26,18 @@ func VideoProbeInterlace(fieldOrder string) (bool, string) {
 		return false, ""
 	}
 }
+
+// VideoProbeFrameRate preserves the measured rational alongside the normalized
+// rate. The real-rate fallback supplies a fact only when the probe reports it;
+// neither an absent nor a malformed rate establishes a frame-rate assertion.
+func VideoProbeFrameRate(average, real string) (float64, int, int) {
+	numerator, denominator := exactProbeRate(average)
+	if numerator == 0 {
+		numerator, denominator = exactProbeRate(real)
+	}
+	rate := probeRate(average)
+	if rate == 0 {
+		rate = probeRate(real)
+	}
+	return rate, numerator, denominator
+}

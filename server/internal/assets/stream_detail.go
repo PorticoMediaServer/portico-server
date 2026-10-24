@@ -196,17 +196,10 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 	case "video":
 		d.PixelFormat = streamText(s.PixelFormat, 32)
 		d.ChromaSubsampling = chromaSubsampling(s.PixelFormat)
-		d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.AvgFrameRate)
-		if d.FrameRateNumerator == 0 {
-			d.FrameRateNumerator, d.FrameRateDenominator = exactProbeRate(s.RealFrameRate)
-		}
+		d.FrameRate, d.FrameRateNumerator, d.FrameRateDenominator = VideoProbeFrameRate(s.AvgFrameRate, s.RealFrameRate)
 		d.BitDepth = VideoProbeBitDepth(s.BitsRaw, s.PixelFormat)
 		if width > 0 && height > 0 && width <= 65536 && height <= 65536 {
 			d.Width, d.Height = width, height
-		}
-		d.FrameRate = probeRate(s.AvgFrameRate)
-		if d.FrameRate == 0 {
-			d.FrameRate = probeRate(s.RealFrameRate)
 		}
 		d.Interlaced, d.InterlaceAnalysis = VideoProbeInterlace(s.FieldOrder)
 		if len(s.SampleAspect) <= 24 {
