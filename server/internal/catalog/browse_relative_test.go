@@ -212,14 +212,11 @@ func TestBrowseRelativeSavedViewAndHomeStayCurrent(t *testing.T) {
 	}
 	rowID := homeViewPrefix + made.ResourceID
 	home := HomeRequest{Viewer: viewer, RowOrder: []string{rowID}}
-	if specs := s.homeViewSpecs(home); len(specs) != 1 || specs[0].CacheTTL != 30 {
-		t.Fatalf("relative Home freshness: %+v", specs)
-	}
 	first, e := s.HomeSingleRow(home, rowID, HomeRowPage{Limit: 1})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if first.Total != 3 || len(first.Entries) != 1 || first.Entries[0].ID != names["m1"].Public || first.NextCursor == "" {
+	if first.CacheTTLMs != 30000 || first.Total != 3 || len(first.Entries) != 1 || first.Entries[0].ID != names["m1"].Public || first.NextCursor == "" {
 		t.Fatalf("Home before: %+v", first)
 	}
 	now = now.Add(61 * time.Second)
