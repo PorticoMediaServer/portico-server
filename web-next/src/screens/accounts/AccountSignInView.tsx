@@ -30,7 +30,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   }, [entry, form, takeReturn, takeMove, pageOrigin, initialize]);
   useEffect(() => {
     if (initializing || entry.getSnapshot() !== state || input.factor || input.busy) return;
-    if (state.phase === 'ready') void router.navigate({to: '/', replace: true});
+    if (state.phase === 'ready') void router.navigate({to: state.setupCompleted ? '/setup' : '/', replace: true});
     else if (state.phase === 'profiles' && state.snapshot && !state.snapshot.twoStepSetupRequired) void router.navigate({to: '/profiles', replace: true});
     else if (state.phase === 'two-step-setup' && state.origin) {
       form.setUsername(state.snapshot?.account.username ?? input.username);
