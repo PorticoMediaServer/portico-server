@@ -310,6 +310,11 @@ func linkArtworkBuckets(ctx context.Context, tx *sql.Tx, full, thumbnail artwork
 		width  int
 		digest string
 	}{{400, thumbnail.digest}, {1920, full.digest}} {
+		if bucket.width == 1920 && max(full.width, full.height) > 1920 {
+			// A Larger original is not a 1920 representation. That fixed bucket
+			// is generated lazily from the same selected immutable source.
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO artwork_variants(source_digest,width,digest) VALUES(?,?,?) ON CONFLICT(source_digest,width) DO NOTHING`, full.digest, bucket.width, bucket.digest); err != nil {
 			return err
 		}
