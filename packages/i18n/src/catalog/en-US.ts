@@ -751,6 +751,7 @@ export const enUS = {
   'library.tab.genres': 'Genres',
   'library.tab.playlists': 'Playlists',
   'library.tab.books': 'Books',
+  'library.tab.volumesAndIssues': 'Volumes and issues',
   'library.tab.authors': 'Authors',
   'library.tab.series': 'Series',
   'library.tab.unmatched': 'Unmatched',

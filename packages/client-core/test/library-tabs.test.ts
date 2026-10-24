@@ -46,13 +46,15 @@ test('a category this app does not know is left to the server', () => {
   assert.equal(categoryDestination('movie', 'nothing'), undefined);
 });
 
-test('a reading library offers Discover and the bounded Books list, never empty facet tabs', () => {
+test('a book library offers Discover and the bounded Books list, a comic library Volumes and issues', () => {
+  assert.deepEqual(libraryTabs('book').map(tab => tab.id), ['discover', 'browse']);
+  assert.equal(libraryTab('book', 'browse').label, 'library.tab.books');
+  assert.deepEqual(libraryTabs('comic').map(tab => tab.id), ['discover', 'browse']);
+  assert.equal(libraryTab('comic', 'browse').label, 'library.tab.volumesAndIssues');
   for (const kind of ['book', 'comic']) {
-    assert.deepEqual(libraryTabs(kind).map(tab => tab.id), ['discover', 'browse']);
-    assert.equal(libraryTab(kind, 'browse').label, 'library.tab.books');
-    // Books reads the bounded Reading list, not the generic browse pivots.
+    // The base grid reads the bounded Reading list, not a generic browse pivot.
     assert.equal('pivot' in libraryTab(kind, 'browse'), false);
-    // Magazines, Newspapers, Authors and Series stay absent until their facts and routes exist.
-    assert.deepEqual(libraryTabs(kind).map(tab => tab.id), ['discover', 'browse']);
+    // Magazines, Newspapers, Series and Authors stay absent until their facts and routes exist.
+    assert.ok(!libraryTabs(kind).some(tab => ['authors', 'series'].includes(tab.id)));
   }
 });
