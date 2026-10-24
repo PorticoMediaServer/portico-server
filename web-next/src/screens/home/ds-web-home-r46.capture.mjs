@@ -29,7 +29,7 @@ const options = Object.fromEntries(process.argv.slice(2).reduce((list, value, in
 const chromiumPath = options.chromium ?? process.env.PORTICO_CHROMIUM ??
   ['/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/snap/bin/chromium'].find(existsSync);
 if (!chromiumPath) throw new Error('No Chromium executable found; pass --chromium');
-const only = options.only;
+const only = options.only, slide = Number(options.slide ?? 0);
 const viewportWidth = 1440;
 const fontFile = join(root, 'web-next/src/kit/fonts/manrope-var-latin.woff2');
 
@@ -176,11 +176,21 @@ async function shot(name, selector, pageWidth, url, ready) {
   await settle();
   rect = await rectOf(selector);
   if (!rect) throw new Error(`Element not found after reload: ${selector}`);
+  if (slide > 1) {
+    // A drawn hero state: choose the nth up-next tab with a real click, as a reader would.
+    const point = await evaluate(`(()=>{const tab=document.querySelectorAll('[role="tab"]')[${slide - 1}];if(!tab)return null;const r=tab.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    if (!point) throw new Error(`Hero tab ${slide} is missing`);
+    await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: point.x, y: point.y, button: 'none'}, sessionId);
+    await call('Input.dispatchMouseEvent', {type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1}, sessionId);
+    await call('Input.dispatchMouseEvent', {type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1}, sessionId);
+    await wait(1200);
+    await settle();
+  }
   await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 4, y: 4, button: 'none'}, sessionId);
   await wait(300);
   const {data} = await call('Page.captureScreenshot', {format: 'png', fromSurface: true, captureBeyondViewport: true,
     clip: {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1}}, sessionId);
-  await writeFile(join(output, `${name}.png`), Buffer.from(data, 'base64'));
+  await writeFile(join(output, `${name}${slide > 1 ? `-slide${slide}` : ''}.png`), Buffer.from(data, 'base64'));
   return rect;
 }
 
