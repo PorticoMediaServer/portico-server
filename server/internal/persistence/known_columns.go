@@ -4476,6 +4476,14 @@ reading_progress.source_revision
 reading_publications.asset_id
 reading_publications.format
 reading_publications.item_id
+reading_source_values.asset_id
+reading_source_values.field
+reading_source_values.inventory_object_id
+reading_source_values.item_id
+reading_source_values.number_value
+reading_source_values.source
+reading_source_values.source_revision
+reading_source_values.text_value
 rec_data_revision.id
 rec_data_revision.revision
 rec_profile_jobs.profile_id
