@@ -2,7 +2,7 @@ import {RouterProvider} from '@tanstack/react-router';
 import {useEffect, useSyncExternalStore} from 'react';
 import {IconSprite} from './kit/Icon';
 import {FreshnessProvider} from './platform/freshness';
-import {EntryActionHost} from './shell/entry-actions';
+import {EntryActionHost} from './shell/entry-actions.tsx';
 import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
