@@ -23,6 +23,7 @@ import {systemMessages} from './en-US/system.ts';
 import {accountMessages} from './en-US/accounts.ts';
 import {secureConnectionMessages} from './en-US/secure-connection.ts';
 import {servicesMessages} from './en-US/services.ts';
+import {savedViewSummaryMessages} from './en-US/saved-view.ts';
 
 export const enUS = {
   ...systemMessages,
@@ -2190,6 +2191,7 @@ export const enUS = {
   ...connectionTrustMessages,
   ...secureConnectionMessages,
   ...servicesMessages,
+  ...savedViewSummaryMessages,
   ...nextMessages,
 } as const satisfies Record<string, string>;
 

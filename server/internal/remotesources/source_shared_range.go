@@ -113,7 +113,16 @@ func (s *Service) readSharedSourceRange(ctx context.Context, reader *SourceRange
 		}
 		return 0, shared.err
 	}
-	if err := reader.session.Check(ctx); err != nil {
+	// The leader's RangeSession.ReadAt already surrounded this transfer with
+	// fresh observations. Recheck its current DB authority at this final copy
+	// boundary; a follower must still obtain its own fresh session observation.
+	var err error
+	if leader {
+		err = reader.lease.Check(ctx)
+	} else {
+		err = reader.session.Check(ctx)
+	}
+	if err != nil {
 		return 0, err
 	}
 	if err := ctx.Err(); err != nil {

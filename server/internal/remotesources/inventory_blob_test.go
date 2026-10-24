@@ -94,6 +94,8 @@ func TestInventoryBlobFencesActualJobMediaTargetAndSeparateCandidate(t *testing.
 		{"queue-revision", `UPDATE inventory_analysis_queue SET revision='new-media'`},
 		{"queue-complete", `UPDATE inventory_analysis_queue SET state='complete'`},
 		{"candidate-aba", `UPDATE remote_scan_observations SET revision=revision+2 WHERE relative_path='film.nfo'`},
+		{"media-observation-aba", `UPDATE remote_scan_observations SET revision=revision+2 WHERE relative_path='film.mkv'`},
+		{"media-observation-facts", `UPDATE remote_scan_observations SET modified_ns=modified_ns+1 WHERE relative_path='film.mkv'`},
 		{"profile-revision", `UPDATE remote_source_read_profiles SET revision=revision+1`},
 		{"source-generation", `UPDATE remote_sources SET generation=generation+1`},
 	} {
@@ -132,6 +134,7 @@ func TestInventoryBlobRejectsUnknownOrCrossPurposeFactsBeforeIO(t *testing.T) {
 		func(_ *storage.InventoryRequest, a *storage.InventoryBlobAdmission) { a.ListingID = "borrowed" },
 		func(r *storage.InventoryRequest, _ *storage.InventoryBlobAdmission) { r.RelativePath = "../escape.nfo" },
 		func(r *storage.InventoryRequest, _ *storage.InventoryBlobAdmission) { r.RelativePath = "film.mkv" },
+		func(r *storage.InventoryRequest, _ *storage.InventoryBlobAdmission) { r.RelativePath = "other.mkv" },
 		func(_ *storage.InventoryRequest, a *storage.InventoryBlobAdmission) {
 			a.Purpose = storage.InventoryBlobIgnore
 		},
@@ -159,5 +162,25 @@ func TestInventoryBlobRejectsUnknownOrCrossPurposeFactsBeforeIO(t *testing.T) {
 	defer view.Rollback()
 	if _, err = f.s.captureInventoryBlobTx(ctx, view.Tx(), f.library, request, a, 1024); err == nil {
 		t.Fatal("missing profile granted automatic basic work")
+	}
+}
+
+func TestInventorySidecarFormatsDoNotGrantOtherMediaReads(t *testing.T) {
+	for operation, files := range map[string][]string{
+		"local_metadata": {"movie.nfo", "metadata.opf", "book.cue", "cover.JPG", "folder.webp", "book.mp3.portico.json", "metadata.json", "desc.txt", "reader.txt"},
+		"subtitles":      {"movie.en.srt", "movie.sup", "movie.idx", "movie.sub", "movie.ttml"},
+	} {
+		for _, file := range files {
+			if !inventorySidecarCandidate(operation, file) {
+				t.Fatal("existing metadata input refused", operation, file)
+			}
+		}
+	}
+	for _, operation := range []string{"probe", "local_metadata", "subtitles", "decode", ""} {
+		for _, file := range []string{"other.mkv", "other.mp3", "book.epub", "document.pdf", "comic.cbz", "config.json", "private.txt"} {
+			if inventorySidecarCandidate(operation, file) {
+				t.Fatal("metadata operation granted a different content input", operation, file)
+			}
+		}
 	}
 }
