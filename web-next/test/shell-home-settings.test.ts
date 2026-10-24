@@ -16,7 +16,7 @@ test('the actual server resolves the network quality lane while video and audiob
   assert.equal(settings.defaultQuality, undefined);
   assert.equal(settings.videoSpeed(), 1.25); assert.equal(settings.audiobookSpeed(), 1.75);
   assert.deepEqual(settings.skipModes(), {intro: 'auto', credits: 'ask', recap: 'off'});
-  assert.deepEqual(settings.audioEffects(), {gapless: true, crossfadeSeconds: 3, normalization: 'album'});
+  assert.deepEqual(settings.audioEffects(), {neverBoost: false, smoothTransitions: true, gapless: true, crossfadeSeconds: 3, normalization: 'album'});
   assert.deepEqual(settings.musicDefaults?.(), {shuffle: true, repeat: 'all'});
   assert.equal(settings.webVolume(), true);
 });
