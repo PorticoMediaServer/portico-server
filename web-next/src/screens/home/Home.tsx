@@ -149,7 +149,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
     {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={appearance?.reducedMotion ?? reducedMotion}
       renderReason={slide => slide.reason}
       renderMetadata={slide => <HeroFacts parts={slide.facts} platform={platform} />}
-      renderArtwork={(slide, context) => appearance?.showBackdrops === false ? <ColourBackdrop shape="side" fill/> : <AmbientArt source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
+      renderArtwork={(slide, context) => appearance?.showBackdrops === false ? <ColourBackdrop shape="side" fill/> : <AmbientArt className={platform === 'desktop' ? styles.heroAmbient : undefined} source={artwork.ambient(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, {group: 'home-hero', order: context.index, priority: 'high'})}
         foreground={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, heroPixels, 16 / 9, {group: 'home-hero', order: context.index, priority: 'high', large: true})}
         treatment={platform === 'desktop' ? 'hero' : 'phone'} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
       renderThumbnail={(slide, context) => <Artwork source={artwork.foreground(slide.artwork.backdropUrl ?? slide.artwork.posterUrl, 132 * devicePixelRatio, 16 / 9, {group: 'home-thumbnails', order: context.index})} alt="" visible={context.visible} />}
@@ -219,7 +219,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
 function VisibleCollection({row, rowIndex, artwork, effects, selection, time, appearance}: HomePresentation & {row: HomeRow; rowIndex: number}) {
   const interest = useVisible(), collection = row.collection!;
   const open = () => effects.openSeeAll({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId});
-  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: []}} description={homeCollectionCaption(collection, {t, locale: time.locale})[0]?.text} kindLabel={t('next.home.collection')}
+  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: []}} description={homeCollectionCaption(collection, {t, locale: time.locale})[0]?.text} kindLabel={t('next.home.collection')} position="60% 30%"
     visible={interest.visible}
     selection={selection.collection(row)}
     artwork={appearance?.showBackdrops === false ? undefined : artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
@@ -241,9 +241,7 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
   // The drawn ranked card carries the number and the title only (mock.html#home).
   const ranked = row.id === 'community_watching' && !!row.period;
-  // The frame's square cards are the row buttons themselves, so a shorter card centres
-  // inside the line set by the drawn continuation card; the kit article fills that line.
-  const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%', ...(square ? {height: '100%'} : {})},
+  const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
     ambient: square && appearance?.showBackdrops !== false ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,

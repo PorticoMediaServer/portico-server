@@ -1,4 +1,7 @@
 .home { min-height: 100dvh; }
+/* The frame's hero wash is the full-height blurred backdrop; the shared treatment fades it
+   below 30%, which darkens the drawn lower hero. Desktop Home restores the drawn wash. */
+.heroAmbient [class*='washLayer'] { -webkit-mask-image: none; mask-image: none; }
 .rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
 .rows[data-with-hero='true'] { margin-top: -40px; }
 .rowSlot + .rowSlot { margin-top: 44px; }
