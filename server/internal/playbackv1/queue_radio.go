@@ -134,7 +134,7 @@ func (s *Service) appendRadioTx(ctx context.Context, tx *sql.Tx, l *layout, p id
 		}
 	}
 	var seedAllowed bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities item JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id WHERE ((?=7 AND item.public_id=pid_blob(?)) OR (?=6 AND song.album_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))) OR (?=5 AND album.artist_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)))) AND `+predicate+`)`, append([]any{kind, refill.seed, kind, refill.seed, kind, refill.seed}, args...)...).Scan(&seedAllowed); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities item JOIN catalog_songs song ON song.entity_id=item.id JOIN catalog_albums album ON album.entity_id=song.album_id WHERE ((?=7 AND item.public_id=pid_blob(?)) OR (?=6 AND song.album_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))) OR (?=5 AND (album.artist_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) OR EXISTS(SELECT 1 FROM catalog_song_artists credit JOIN catalog_entities artist ON artist.id=credit.artist_id WHERE credit.song_id=item.id AND artist.public_id=pid_blob(?))))) AND `+predicate+`)`, append([]any{kind, refill.seed, kind, refill.seed, kind, refill.seed, refill.seed}, args...)...).Scan(&seedAllowed); err != nil {
 		return err
 	}
 	if !seedAllowed {

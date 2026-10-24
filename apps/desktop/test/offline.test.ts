@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {DesktopOfflineCoordinator} from '../src/offline.ts';
+import {DesktopOfflineCoordinator,type DesktopOfflineTransport} from '../src/offline.ts';
 import {DesktopDownloadStore,type NativeDownloadsBridge} from '../src/downloads.ts';
 import type {DownloadPreparation,DownloadGrant,DownloadBundle} from '../../../packages/client-core/src/downloads.ts';
 import type {DownloadsApi} from '../../../packages/client-core/src/downloads-service.ts';
@@ -17,7 +17,7 @@ const id='b'.repeat(64),lease='a'.repeat(64);
 const claims={kind:'portico.download-receipt',version:'1',receiptId:'receipt',keyId:'key',viewer:{authority:'local',serverId:'server',accountId:'account',profileId:'profile'},itemId:'item',preparationId:'prep',quality:'original',qualityLabel:'Original',artifact:{sha256:artifact.sha256,bytes:artifact.bytes},issuedAt:'2026-10-23T10:00:00Z',expiresAt:'2026-11-23T10:00:00Z'};
 const receipt={receiptId:'receipt',keyId:'key',algorithm:'ed25519',payload:Buffer.from(JSON.stringify(claims)).toString('base64url'),signature:Buffer.alloc(64).toString('base64url'),revision:1,claims};
 
-async function harness(){
+async function harness(published:Partial<Pick<DesktopOfflineTransport,'resolvePublishedPath'|'isPublishedOrigin'>>={}){
   let current=true,cost:'unmetered'|'metered'|'unknown'='unmetered';
   let row={id,revision:0,preparationId:'prep',itemId:'item',quality:'original',sha256:artifact.sha256,bytes:artifact.bytes,bytesDone:0,state:'queued',held:false,addedMs:1,receiptExpiresMs:null,offlineAccess:'needsCheckIn',title:{...titleFields,durationMs:durationSeconds*1000}};
   const costListeners=new Set<()=>void>();
@@ -45,7 +45,7 @@ async function harness(){
     return (path.endsWith('receipt-keys')?{keys:[{id:'key',algorithm:'ed25519',publicKey:Buffer.alloc(32).toString('base64url'),createdAt:'2026-10-23T10:00:00Z'}]}:receiptResult) as T;
   }};
   let giveGrant=async()=>grant,fetcher:typeof fetch=async()=>new Response(new Uint8Array(artifact.bytes),{headers:{'content-length':String(artifact.bytes)}});
-  const coordinator=new DesktopOfflineCoordinator({store,downloads:{grant:()=>giveGrant(),async bundle(){return bundle}},api,resolvePublishedPath:path=>'https://actual.test'+path,serverOrigin:'https://actual.test',fetcher:(...args)=>fetcher(...args),networkCost:()=>cost,subscribeNetworkCost:listener=>{costListeners.add(listener);return()=>{costListeners.delete(listener)}}});
+  const coordinator=new DesktopOfflineCoordinator({store,downloads:{grant:()=>giveGrant(),async bundle(){return bundle}},api,resolvePublishedPath:path=>'https://actual.test'+path,serverOrigin:'https://actual.test',...published,fetcher:(...args)=>fetcher(...args),networkCost:()=>cost,subscribeNetworkCost:listener=>{costListeners.add(listener);return()=>{costListeners.delete(listener)}}});
   return {store,coordinator,operations,requests,row:()=>row,setRow:(patch:Partial<typeof row>)=>{row={...row,...patch}},setCost:(value:typeof cost)=>{cost=value;for(const listener of [...costListeners])listener();},retire:()=>{current=false},setGrant:(fn:typeof giveGrant)=>{giveGrant=fn},setFetcher:(fn:typeof fetcher)=>{fetcher=fn},setAfterAppend:(fn:()=>void)=>{afterAppend=fn},setReceipt:(value:unknown)=>{receiptResult=value},setApi:(fn:NonNullable<typeof apiReply>)=>{apiReply=fn},dispose(){coordinator.dispose();store.dispose();}};
 }
 
@@ -142,4 +142,22 @@ test('real HTTP transfer aborts on metered observation and acknowledges only dur
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address==='object');
  h.setFetcher(async(_url,init)=>fetch(`http://127.0.0.1:${address.port}/actual`,init));h.setAfterAppend(()=>h.setCost('metered'));
  try{await h.coordinator.saveReadyPreparation(preparation,new AbortController().signal);await closed;assert.equal(h.row().state,'queued');assert.ok(h.row().bytesDone>0);assert.equal(h.operations.some(v=>v.action==='seal'||v.action==='receipt'),false);}finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));h.dispose();}
+});
+
+
+test('only the captured published route can admit a different physical origin; replacement never widens egress',async()=>{
+ for(const allowed of [true,false]){
+  const h=await harness({resolvePublishedPath:path=>'https://proved.test'+path,isPublishedOrigin:origin=>allowed&&origin==='https://proved.test'});let fetched=0;
+  h.setFetcher(async input=>{fetched++;assert.equal(String(input),'https://proved.test'+grant.url);return new Response(new Uint8Array(artifact.bytes));});
+  try{const pending=h.coordinator.saveReadyPreparation(preparation,new AbortController().signal);if(allowed)await pending;else await assert.rejects(pending,/invalid_command/);assert.equal(fetched,allowed?1:0);}
+  finally{h.dispose();}
+ }
+});
+
+test('published route admission cannot authorize credentials, fragments or a non-HTTP protocol',async()=>{
+ for(const address of ['https://user:secret@proved.test/file','https://proved.test/file#hidden','file:///private/file']){
+  const h=await harness({resolvePublishedPath:()=>address,isPublishedOrigin:()=>true});let fetched=false;h.setFetcher(async()=>{fetched=true;throw new Error('must not fetch')});
+  try{await assert.rejects(h.coordinator.saveReadyPreparation(preparation,new AbortController().signal),/invalid_command/);assert.equal(fetched,false);}
+  finally{h.dispose();}
+ }
 });
