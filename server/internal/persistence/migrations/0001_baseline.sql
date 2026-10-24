@@ -240,6 +240,7 @@ CREATE TABLE retained_reading_progress(
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,
+ source_edition TEXT NOT NULL DEFAULT '',
  provider_match_status TEXT NOT NULL DEFAULT 'unmatched',
  original_title TEXT NOT NULL DEFAULT '',
  tagline TEXT NOT NULL DEFAULT '',

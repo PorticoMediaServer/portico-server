@@ -35,9 +35,17 @@ export function comicInfo(bytes:Uint8Array):Readonly<{title?:string;author?:stri
   if(bytes.length>128*1024)throw new ComicInputError('archive_limit');
   let xml:string;try{xml=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{throw new ComicInputError('archive_invalid');}
   if(/<!DOCTYPE|<!ENTITY/i.test(xml)||!/<ComicInfo(?:\s|>)/.test(xml))throw new ComicInputError('archive_invalid');
+  const named:Record<string,string>={'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"};
+  // XML 1.0 §4.1 character references; only §2.2 Char values decode.
+  const legalChar=(code:number)=>code===0x9||code===0xa||code===0xd||(code>=0x20&&code<=0xd7ff)||(code>=0xe000&&code<=0xfffd)||(code>=0x10000&&code<=0x10ffff);
+  const reference=(ref:string)=>{
+    if(named[ref])return named[ref]!;
+    const hex=ref[2]==='x',code=Number.parseInt(ref.slice(hex?3:2,-1),hex?16:10);
+    return legalChar(code)?String.fromCodePoint(code):ref;
+  };
   const value=(name:string):string|undefined=>{
     const match=xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([^<]{0,2048})</${name}>`));
-    return match?.[1].replace(/&(?:amp|lt|gt|quot|apos);/g,s=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"}[s]!)).trim()||undefined;
+    return match?.[1].replace(/&(?:amp|lt|gt|quot|apos);|&#(?:x[0-9a-fA-F]+|[0-9]+);/g,reference).trim()||undefined;
   };
   const title=value('Title')??value('Series'),author=value('Writer'),manga=value('Manga');
   // Anansi ComicInfo: Manga=Yes alone keeps the default; only YesAndRightToLeft defines RTL.
