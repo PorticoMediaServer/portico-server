@@ -5,6 +5,7 @@ import {createArtworkRuntime} from '../../kit/artwork/source';
 import type {ArtworkImage} from '../../kit/artwork/types';
 import {SearchScreen} from './Search';
 import {createSearchBindings} from './bindings';
+import {IconSprite} from '../../kit/Icon';
 import type {ScreenContext} from '../detail/context';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
@@ -92,8 +93,8 @@ const context = {
 const binding = createSearchBindings(context);
 
 function Specimen() {
-  return <FreshnessProvider api={api as unknown as HttpLocalApi} viewerId="profile" serverId={serverId} events={null}>
+  return <><IconSprite /><FreshnessProvider api={api as unknown as HttpLocalApi} viewerId="profile" serverId={serverId} events={null}>
     <SearchScreen binding={binding} onOpenLive={() => {}} />
-  </FreshnessProvider>;
+  </FreshnessProvider></>;
 }
 createRoot(document.getElementById('root')!).render(<Specimen />);
