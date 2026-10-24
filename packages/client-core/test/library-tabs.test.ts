@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, libraryTabs} from '../src/presentation/library-tabs.ts';
+import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, libraryTabs, readingTabModel} from '../src/presentation/library-tabs.ts';
 
 test('Recently aired opens latest episode first and leaves the order to the viewer', () => {
   const aired = libraryTab('tv', 'aired');
@@ -57,4 +57,49 @@ test('a book library offers Discover and the bounded Books list, a comic library
     // Magazines, Newspapers, Series and Authors stay absent until their facts and routes exist.
     assert.ok(!libraryTabs(kind).some(tab => ['authors', 'series'].includes(tab.id)));
   }
+});
+
+const readingCapabilities = (kind: string, pivots: ReadonlyArray<{id: string; browsable?: boolean; members?: boolean; facetSource?: {endpoint: string; field: 'author' | 'series'}}>) => ({
+  library: {id: 'lib-reading', name: 'Books', kind, defaultView: 'discover', pinned: false},
+  pivots: pivots.map(pivot => ({id: pivot.id, labelKey: `library.tab.${pivot.id}`, entityKinds: [], defaultSort: [], supportedViews: ['list'],
+    browsable: pivot.browsable === true, ...(pivot.members ? {members: true} : {}), ...(pivot.facetSource ? {facetSource: pivot.facetSource} : {})})),
+  fields: [], sorts: [], quickFilters: [],
+  queryLimits: {maximumDepth: 4, maximumClauses: 8, maximumBytes: 4096, maximumSorts: 2, defaultLimit: 50, maximumLimit: 200, cursorTtlMs: 60000},
+}) as unknown as import('../src/browse.ts').BrowseCapabilities;
+
+const facet = (field: 'author' | 'series') => ({endpoint: '/v1/libraries/{id}/facets', field});
+
+test('a book library takes its published pivots in order: Books, then the Authors and Series facets', () => {
+  const tabs = readingTabModel(readingCapabilities('book', [
+    {id: 'books', browsable: true}, {id: 'authors', facetSource: facet('author')}, {id: 'series', facetSource: facet('series')},
+  ]))!;
+  assert.deepEqual(tabs.map(tab => tab.id), ['discover', 'browse', 'authors', 'series']);
+  assert.equal(tabs[1]!.label, 'library.tab.books');
+  assert.equal(tabs[1]!.pivot, 'books');
+  assert.equal(tabs[2]!.shows, 'facet');
+  assert.deepEqual(tabs[2]!.facetSource, facet('author'));
+  assert.deepEqual(tabs[3]!.facetSource, facet('series'));
+});
+
+test('a comic library keeps the drawn order: Series, Volumes and issues, Authors', () => {
+  const tabs = readingTabModel(readingCapabilities('comic', [
+    {id: 'series', facetSource: facet('series')}, {id: 'comics', browsable: true}, {id: 'authors', facetSource: facet('author')},
+  ]))!;
+  assert.deepEqual(tabs.map(tab => tab.id), ['discover', 'series', 'browse', 'authors']);
+  assert.equal(tabs[2]!.label, 'library.tab.volumesAndIssues');
+  assert.equal(tabs[2]!.pivot, 'comics');
+});
+
+test('a server without facet sources offers no Authors or Series, and no other kind is affected', () => {
+  const tabs = readingTabModel(readingCapabilities('book', [{id: 'books', browsable: true}, {id: 'authors'}, {id: 'series'}]))!;
+  assert.deepEqual(tabs.map(tab => tab.id), ['discover', 'browse']);
+  assert.equal(readingTabModel(readingCapabilities('movie', [{id: 'movies', browsable: true}])), undefined);
+  assert.equal(readingTabModel(undefined), undefined);
+});
+
+test('a member pivot never becomes a reading tab', () => {
+  const tabs = readingTabModel(readingCapabilities('book', [
+    {id: 'books', browsable: true}, {id: 'authors', members: true, facetSource: facet('author')},
+  ]))!;
+  assert.deepEqual(tabs.map(tab => tab.id), ['discover', 'browse']);
 });
