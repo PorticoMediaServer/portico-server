@@ -3,6 +3,7 @@ import {once} from 'node:events';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {measureScreen} from './measure-screen.mjs';
+import {decodePNG} from './png.mjs';
 
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
@@ -68,6 +69,15 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
       },
       measure: selector => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport})})`),
+      async raster(selector, {referenceFrame = false} = {}) {
+        const rect = await evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(selector)});if(!root)throw new Error('Missing screen');const r=root.getBoundingClientRect();return{x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,viewportX:r.x,viewportY:r.y}})()`);
+        if (rect.width !== viewport.width || rect.height !== viewport.height || (!referenceFrame && (rect.viewportX !== 0 || rect.viewportY !== 0))) throw new Error('Only the complete declared screen can be compared');
+        const result = await call('Page.captureScreenshot', {format: 'png', captureBeyondViewport: referenceFrame, fromSurface: true,
+          clip: {x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1}});
+        const pixels = decodePNG(Buffer.from(result.data, 'base64'));
+        if (pixels.width !== viewport.width * viewport.deviceScaleFactor || pixels.height !== viewport.height * viewport.deviceScaleFactor) throw new Error('Raster does not match declared viewport and DPR');
+        return pixels;
+      },
       evaluate,
       call,
       blocked,
