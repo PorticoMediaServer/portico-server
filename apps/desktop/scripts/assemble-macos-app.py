@@ -234,7 +234,7 @@ def zip_entries(archive):
             if info.flag_bits & 0x1:
                 raise ValueError("the web archive contains an encrypted entry: " + name)
             mode = info.external_attr >> 16
-            if stat.S_ISLNK(mode) or (mode and not stat.S_ISREG(mode)):
+            if stat.S_IFMT(mode) not in (0, stat.S_IFREG):
                 raise ValueError("the web archive contains a non-regular entry: " + name)
             seen.add(name)
             entries.append((name, info))
