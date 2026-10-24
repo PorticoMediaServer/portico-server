@@ -25,8 +25,9 @@ const rows: readonly MobileChooserRow[] = [
   {id: 'lake-house', label: 'Lake house', signIn: 'portico', selected: false, status: {kind: 'never'}},
 ];
 const noop = () => {};
+const frameSeen = (iso: string) => new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso));
 function props(overrides: Partial<MobileChooserProps> = {}): MobileChooserProps {
-  return {rows, initial: 'N', onChoose: noop, onRefresh: noop, onLocal: noop, onDifferentAccount: noop, onCheckNow: noop, onOther: noop, ...overrides};
+  return {rows, initial: 'N', formatSeen: frameSeen, onChoose: noop, onRefresh: noop, onLocal: noop, onDifferentAccount: noop, onCheckNow: noop, onOther: noop, ...overrides};
 }
 function render(overrides: Partial<MobileChooserProps> = {}) {
   return renderToStaticMarkup(createElement(MobileServerChooser, props(overrides)));

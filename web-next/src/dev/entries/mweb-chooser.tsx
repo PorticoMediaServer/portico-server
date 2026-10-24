@@ -15,6 +15,8 @@ const rows: readonly MobileChooserRow[] = [
   {id: 'lake-house', label: 'Lake house', signIn: 'portico', selected: false, status: {kind: 'never'}},
 ];
 const record = (kind: string, value?: string) => {document.documentElement.dataset.chooserAction = JSON.stringify({kind, value});};
+// The frame was drawn with day-month dates; the DEV specimen shows that same authored state.
+const frameSeen = (iso: string) => new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso));
 function specimen() {
   const params = new URLSearchParams(location.search), frame = params.get('frame'), choice = params.get('state') ?? frame;
   if (choice === '6b' || choice === 'waiting') return {attempt: {kind: 'waiting', row: rows[1]!, seconds: 20, total: 20} as MobileChooserAttempt};
@@ -25,6 +27,6 @@ function specimen() {
   return {attempt: undefined};
 }
 const {attempt} = specimen();
-createRoot(document.getElementById('root')!).render(<><IconSprite /><MobileServerChooser rows={rows} initial="N" attempt={attempt}
+createRoot(document.getElementById('root')!).render(<><IconSprite /><MobileServerChooser rows={rows} initial="N" attempt={attempt} formatSeen={frameSeen}
   onChoose={row => record('choose', row.id)} onRefresh={() => record('refresh')} onLocal={() => record('local')}
   onDifferentAccount={() => record('different-account')} onCheckNow={() => record('check-now')} onOther={() => record('other-server')} /></>);

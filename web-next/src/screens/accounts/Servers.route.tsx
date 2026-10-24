@@ -47,6 +47,8 @@ export type MobileChooserProps = Readonly<{
   attempt?: MobileChooserAttempt;
   busy?: boolean;
   notice?: string;
+  /** The frame was drawn with day-month dates; production keeps the app's locale formatter. */
+  formatSeen?: (iso: string) => string;
   onChoose: (row: MobileChooserRow) => void;
   onRefresh: () => void;
   onLocal: () => void;
@@ -55,14 +57,15 @@ export type MobileChooserProps = Readonly<{
   onOther: () => void;
 }>;
 
-function statusText(row: MobileChooserRow): Readonly<{text: string; online?: boolean}> {
+const formatSeenDate = (iso: string) => defaultI18n.date(iso, 'dayMonth');
+function statusText(row: MobileChooserRow, formatSeen: (iso: string) => string): Readonly<{text: string; online?: boolean}> {
   if (!row.status) return {text: t(row.signIn === 'local' ? 'accounts.session.local' : 'accounts.session.portico')};
   if (row.status.kind === 'online') return {text: t('web.servers.online'), online: true};
   if (row.status.kind === 'never') return {text: t('web.chooser.neverSeen')};
-  return {text: t('web.chooser.lastSeen', {date: defaultI18n.date(row.status.at, 'dayMonth')})};
+  return {text: t('web.chooser.lastSeen', {date: formatSeen(row.status.at)})};
 }
-function unreachableText(row: MobileChooserRow): string {
-  if (row.status?.kind === 'seen') return t('web.chooser.unreachableBody', {date: defaultI18n.date(row.status.at, 'dayMonth')});
+function unreachableText(row: MobileChooserRow, formatSeen: (iso: string) => string): string {
+  if (row.status?.kind === 'seen') return t('web.chooser.unreachableBody', {date: formatSeen(row.status.at)});
   if (row.status?.kind === 'never') return t('web.chooser.unreachableBodyNever');
   // The saved-session runtime has no presence clock; the honest sentence names the server.
   return t('web.signIn.error.unreachable', {server: row.label});
@@ -75,7 +78,7 @@ function ChooserHeader({initial}: {initial?: string}) {
 }
 /** connect.html frame 6 at the authored mobile-web viewport: the list, opening, waiting,
  * can't-reach, loading and list-failed states. It has no browser chrome of its own. */
-export function MobileServerChooser({rows, initial, attempt, busy = false, notice, onChoose, onRefresh, onLocal, onDifferentAccount, onCheckNow, onOther}: MobileChooserProps) {
+export function MobileServerChooser({rows, initial, attempt, busy = false, notice, formatSeen = formatSeenDate, onChoose, onRefresh, onLocal, onDifferentAccount, onCheckNow, onOther}: MobileChooserProps) {
   const showPortico = rows.some(row => row.signIn === 'portico');
   if (attempt) {
     const state = attempt.kind === 'loading' ? 'loading' : attempt.kind === 'loadFailed' ? 'loadFailed' : attempt.kind === 'opening' ? 'opening' : attempt.kind;
@@ -85,7 +88,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
       : state === 'waiting' ? t('web.chooser.waitingTitle', {server: row!.label})
       : t('web.chooser.unreachableTitle', {server: row!.label});
     const body = state === 'loadFailed' ? notice : state === 'waiting' ? t('web.chooser.waitingBody')
-      : state === 'unreachable' ? unreachableText(row!) : undefined;
+      : state === 'unreachable' ? unreachableText(row!, formatSeen) : undefined;
     const primaryLabel = state === 'waiting' ? t('web.chooser.checkNow') : state === 'unreachable' ? t('web.chooser.tryAgain') : state === 'loadFailed' ? t('web.chooser.tryAgain') : undefined;
     const onPrimary = state === 'loadFailed' ? onRefresh : onCheckNow;
     return <section className={styles.page} data-mweb-server-chooser data-state={state}>
@@ -116,7 +119,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
       {presented && <p className={styles.notice} role="alert"><Icon name="i-warn" size={20} />{presented}</p>}
       <div className={styles.group} aria-busy={busy || undefined}>
         {rows.map(row => {
-          const status = statusText(row);
+          const status = statusText(row, formatSeen);
           return <button key={row.id} type="button" className={styles.row} data-row={row.id} data-off={row.status && row.status.kind !== 'online' || undefined}
             disabled={busy} onClick={() => onChoose(row)}>
             <span className={styles.rowIcon} data-online={status.online || undefined}><Icon name="i-server" size={18} /></span>
