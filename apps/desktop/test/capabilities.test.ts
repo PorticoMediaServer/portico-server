@@ -12,3 +12,14 @@ test('native decoder inventory never grants browser, hardware, HDR, object audio
 test('native missing, malformed or unreported inventory cannot become a declared fallback',()=>{
  for(const value of [null,{},[],{version:'mpv 0.41.0',decoders:[]},{version:'mpv /private',decoders:['aac']},{version:'mpv 0.41.0',decoders:['../aac'] }])assert.throws(()=>desktopCapabilities(value,'macos','0.1.0'),/engine_unavailable/);
 });
+test('original WavPack requires the actual decoder; it supplies no losslessness or output/hardware facts',()=>{
+ for(const present of [false,true]){
+  const profile=desktopCapabilities({version:'mpv 0.41.0',decoders:['flac',...(present?['wavpack']:[])]},'linux','0.1.0');
+  const native=profile.engines.native;
+  assert.equal(native.audio?.some(a=>a.codec==='wavpack'),present);
+  assert.equal(native.transports?.[0]?.containers?.includes('wv'),present);
+  assert.equal(native.transports?.[0]?.audio?.includes('wavpack'),present);
+  assert.equal(profile.audioOutput,undefined);
+  assert.doesNotMatch(JSON.stringify(native.audio?.find(a=>a.codec==='wavpack')??{}),/lossless|bitPerfect|sampleRate|output|passthrough|objectAudio/);
+ }
+});
