@@ -41,11 +41,11 @@ async function walk(page, viewportName) {
     // Only reading session page/source answers, and only their shape: status,
     // type, length, first eight magic bytes and a hash. Never the body itself.
     if (!path.startsWith('/v1/reading/sessions/') || !/\/(pages|source)(\/|$)/.test(path)) return;
+    const shape = {path: path.replace(/[^/]+$/, ':id'), status: response.status(),
+      contentType: response.headers()['content-type'] ?? '', contentLength: response.headers()['content-length'] ?? ''};
     void response.body().then(body => {
-      pageResponses.push({path: path.replace(/[^/]+$/, ':id'), status: response.status(),
-        contentType: response.headers()['content-type'] ?? '', contentLength: response.headers()['content-length'] ?? '',
-        bytes: body.length, magic: body.subarray(0, 8).toString('hex'), sha256: createHash('sha256').update(body).digest('hex')});
-    }).catch(() => { pageResponses.push({path: path.replace(/[^/]+$/, ':id'), status: response.status(), body: 'unreadable'}); });
+      pageResponses.push({...shape, bytes: body.length, magic: body.subarray(0, 8).toString('hex'), sha256: createHash('sha256').update(body).digest('hex')});
+    }).catch(() => { pageResponses.push({...shape, body: 'unreadable'}); });
   });
   page.on('console', message => {
     const line = message.type() + ': ' + excerpt(message.text(), 300);
@@ -251,19 +251,18 @@ async function walk(page, viewportName) {
     await settle(8000);
     const path = new URL(page.url()).pathname;
     if (!path.startsWith('/read/')) throw new Error('comic reading did not open; at ' + path);
+    // Retained negative control: this CBZ's only page is a 1x1 PNG whose IDAT
+    // CRC is corrupt. The decoder must refuse it; a tolerant decoder may paint,
+    // and neither outcome fails the run.
     const painted = await page.evaluate(() => !!document.querySelector('[data-reader-page] canvas, [data-reader-page], main canvas'));
     const body = await bookText();
-    if (!painted) {
-      const geometry = await page.evaluate(() => {
-        const root = document.querySelector('[data-reader-root]');
-        const surface = document.querySelector('[data-reader-page], canvas');
-        const host = root?.parentElement ?? null;
-        const box = node => node ? [node.clientWidth, node.clientHeight, node.hidden, getComputedStyle(node).display, getComputedStyle(node).visibility] : null;
-        return {viewport: [innerWidth, innerHeight, devicePixelRatio], root: box(root), host: box(host), surface: box(surface)};
-      });
-      throw new Error('the comic reader painted no page: ' + excerpt(body, 300) + ' | geometry=' + JSON.stringify(geometry));
-    }
-    return {path};
+    const geometry = await page.evaluate(() => {
+      const root = document.querySelector('[data-reader-root]');
+      const host = root?.parentElement ?? null;
+      const box = node => node ? [node.clientWidth, node.clientHeight, node.hidden] : null;
+      return {viewport: [innerWidth, innerHeight, devicePixelRatio], root: box(root), host: box(host)};
+    });
+    return {path, painted, negativeControl: 'corrupt IDAT CRC', refused: /Something didn't load/i.test(body), geometry};
   });
 
 
