@@ -95,6 +95,7 @@ class Driver {
 
 const appPort = await freePort(), designPort = await freePort(), chromePort = await freePort();
 const state = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-state-'));
+const media = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-media-'));
 const profile = await mkdtemp(join(process.env.TMPDIR || '/tmp', 'settings-chrome-'));
 const credentials = {username: 'demo', password: 'Test-' + randomBytes(12).toString('base64url') + '9x'};
 const referenceScreens = resolve(design, 'settings.html');
@@ -134,7 +135,7 @@ try {
   // The frame's top bar is data-derived. Create the same five empty libraries so
   // the shell's drawn destinations exist; no scan or media is claimed.
   for (const [kind, name] of [['movie', 'Movies'], ['tv', 'TV Shows'], ['anime', 'Anime'], ['music', 'Music'], ['audiobook', 'Audiobooks']]) {
-    const directory = join(state, 'media', kind); await mkdir(directory, {recursive: true});
+    const directory = join(media, kind); await mkdir(directory, {recursive: true});
     const response = await fetch(base + '/v1/libraries', {method: 'POST', headers: {Authorization: 'Bearer ' + created.body.accessToken, 'Content-Type': 'application/json'},
       body: JSON.stringify({kind, name, path: directory, metadataAgent: 'local'})});
     if (response.status !== 201) note(`library ${name} refused: ${response.status} ${(await response.text()).slice(0, 160)}`);
@@ -260,6 +261,7 @@ try {
   if (app) await Promise.race([new Promise(resolve => app.once('exit', resolve)), sleep(3000)]).catch(() => {});
   try {reference?.close();} catch {}
   await rm(state, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
+  await rm(media, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
   await rm(profile, {recursive: true, force: true, maxRetries: 5, retryDelay: 200}).catch(() => {});
   await writeFile(resolve(output, 'capture.log'), log.join('\n') + '\n').catch(() => {});
   if (failure) process.exitCode = 1;
