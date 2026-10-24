@@ -58,6 +58,7 @@ const writing: DetailFixtureId = 'next.detail.fixture.writingDepartment';
 
 const duneCredits: readonly FixtureCredit[] = [
   credit('denis-villeneuve', 'next.detail.fixture.director', 'next.detail.fixture.directorRole', directing),
+  credit('denis-villeneuve-writer', 'next.detail.fixture.director', 'next.detail.fixture.screenplayRole', writing),
   credit('timothee-chalamet', 'next.detail.fixture.timothee', 'next.detail.fixture.paulRole', acting),
   credit('zendaya', 'next.detail.fixture.zendaya', 'next.detail.fixture.chaniRole', acting),
   credit('rebecca-ferguson', 'next.detail.fixture.rebecca', 'next.detail.fixture.jessicaRole', acting),
