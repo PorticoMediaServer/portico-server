@@ -20,6 +20,7 @@ export class SettingsBackupSource {
     throw error;
   }
   load = (): Promise<void> => {
+    if (this.lifetime.signal.aborted) return Promise.reject(new DOMException('The backup scope ended.', 'AbortError'));
     if (!this.current() || this.state.busy) return Promise.resolve();
     if (this.loading) return this.loading;
     const task = Promise.all([getBackupSettings(this.api, this.serverId, this.lifetime.signal), getBackups(this.api, this.serverId, this.lifetime.signal)]).then(([settings, document]) => {

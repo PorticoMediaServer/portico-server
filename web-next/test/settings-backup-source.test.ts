@@ -112,7 +112,7 @@ test('an owner refusal clears retained facts and closes all later commands immed
       const pending = operation === 'load' ? f.source.load() : operation === 'save' ? f.source.save({includeArtwork: false}) : operation === 'inspect' ? f.source.inspect({backupId: 'listed'}, new AbortController().signal) : f.source.backupNow();
       await assert.rejects(pending, failure);
       assert.deepEqual(f.source.getSnapshot(), {busy: false});
-      const count = f.calls.length;await f.source.load();assert.equal(await f.source.save({includeArtwork: true}), false);assert.equal(await f.source.backupNow(), false);
+      const count = f.calls.length;await assert.rejects(f.source.load(), {name: 'AbortError'});assert.equal(await f.source.save({includeArtwork: true}), false);assert.equal(await f.source.backupNow(), false);
       assert.equal(f.calls.length, count);
     } finally {f.source.dispose();}
   }
