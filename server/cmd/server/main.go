@@ -997,8 +997,7 @@ func run() (runErr error) {
 	// asks the database nothing, and a busy one runs them sooner than a minute
 	// rather than later.
 	supervise.Supervise(ctx, "cmd.minute-cleanup", func(ctx context.Context) {
-		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnCommit(wake)
+		wake, unregister := minuteCleanupWake()
 		defer unregister()
 		lastArtwork := time.Time{}
 		lastMissing := time.Time{}
