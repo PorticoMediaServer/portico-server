@@ -70,6 +70,14 @@ func TestDiscISOProbeUsesActualConfinedInventoryInput(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, expected) || reads != 1 {
 		t.Fatal("actual confined ISO probe", got, reads, err)
 	}
+	selected := expected.OrderedTitles()[0]
+	if selected.Playlist == nil {
+		t.Fatal("checked Blu-ray title has no playlist")
+	}
+	seek, err := (Tool{Binary: binary}).SeekLocal(ctx, path, *selected.Playlist, 37500)
+	if err != nil || seek.ByteOffset != 1346304 || seek.TitleTimeMs != 37000 || reads != 2 {
+		t.Fatal("confined cross-clip entry point", seek, reads, err)
+	}
 	revoked := errors.New("inventory invocation revoked")
 	ctx = storage.WithScanReadGuard(ctx, func(context.Context, string) error { return revoked })
 	if _, err = (Tool{Binary: binary}).ProbeLocal(ctx, path); !errors.Is(err, revoked) {
