@@ -45,6 +45,10 @@ func TestInventoryBlobStorageDelegatesExactFactsWithoutPoolFallback(t *testing.T
 		t.Fatal("inventory escaped retained producer", string(data), err, calls, remote.acquired)
 	}
 	missing := WithScanInput(context.Background(), client, "folder", InventoryRequest{Root: root})
+	missing = WithScanReadGuard(missing, func(context.Context, string) error {
+		t.Fatal("missing invocation entered an I/O-bearing read guard")
+		return nil
+	})
 	if _, err = client.ReadSmall(missing, "folder", path, 64); !errors.Is(err, ErrRemoteConfig) || calls != 1 || remote.acquired {
 		t.Fatal("missing facts fell back to a pool", err, calls, remote.acquired)
 	}
