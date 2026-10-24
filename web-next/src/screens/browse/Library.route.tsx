@@ -17,6 +17,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
+import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {NeedsAttention} from '../metadata/NeedsAttention';
@@ -76,6 +77,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
       playback: runtime?.cataloguePlayback()});
   }, [captured.context, context, resources, runtime, href, state.queryRevision]);
   useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
+  const selectionSurface = useMemo(() => createLibrarySelection({playSelection, reportError: context.effects.reportError}), [playSelection, context]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
@@ -106,7 +108,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
-    selection: {actions: member => actions(member.entry), playSelection},
+    selection: {toolbar: selectionSurface.toolbar, actions: (member, index) => ({...actions(member.entry), ...selectionSurface.entry(member, index)}), registerWindow: selectionSurface.registerWindow, playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   const unmatched = requested?.shows === 'unmatched';
