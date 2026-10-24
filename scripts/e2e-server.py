@@ -217,7 +217,7 @@ class Exercise:
         out=a.post('/v1/setup',{'setupToken':bootstrap['setupToken'],'username':'owner','password':self.password,'name':'Local test','authMode':'local','interactive':True},(201,))
         a.token=out['accessToken']
         state=a.get('/v1/setup/state')
-        a.post('/v1/setup/finish',{'revision':state['revision'],'enabled':False,'warningConfirmed':False})
+        a.post('/v1/setup/finish',{'revision':state['revision']})
         signed=a.post('/v1/direct/sign-in',{'username':'owner','password':self.password})
         a.token=signed['session']['accessToken']
         self.owner=signed
