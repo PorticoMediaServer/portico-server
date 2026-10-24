@@ -32,7 +32,13 @@ function dayOf(value: string, now: number) {
     : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', month: 'short', day: 'numeric'}).format(at);
 }
 function dateOf(value: string) { return new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', month: 'long', day: 'numeric'}).format(Date.parse(value)); }
-function rangeOf(recording: Recording) { return t('guide.cellTime', {start: timeOf(recording.start), end: timeOf(recording.end)}); }
+function timeRange(start: string, end: string) {
+  const from = timeOf(start), to = timeOf(end);
+  const meridiem = from.match(/ (AM|PM)$/i)?.[1];
+  const same = meridiem !== undefined && meridiem === to.match(/ (AM|PM)$/i)?.[1];
+  return t('guide.cellTime', {start: same ? from.slice(0, -(meridiem.length + 1)) : from, end: to});
+}
+function rangeOf(recording: Recording) { return timeRange(recording.start, recording.end); }
 function episodeOf(recording: Recording) {
   const info = recording.programme.episode;
   const number = info?.number ?? (info as {number?: number; episode?: number} | undefined)?.episode;
@@ -74,7 +80,7 @@ function RecordingRow({recording, now, onCancel, onDetails}: {recording: Recordi
     <div className={styles.recWhen}><b>{recording.state === 'recording' ? t('guide.now') : timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
     <RecordingArt recording={recording} now={now}/>
     <RecordingCopy recording={recording}/>
-    <div className={styles.recRight}><StatePill recording={recording}/>
+    <div className={styles.recRight}>{recording.state !== 'scheduled' && <StatePill recording={recording}/>}
       {items.length > 0 && <Menu open={menuOpen} onOpenChange={open => setMenuOpen(open)} title={t('web.dvr.actionsFor', {title: recording.programme.title})}
         trigger={<Button className={styles.recMore} variant="ghost" size="small" iconOnly icon="i-more" aria-label={t('web.dvr.actionsFor', {title: recording.programme.title})}/>} items={items}/>}
     </div>
@@ -98,7 +104,7 @@ function ConflictBox({context, recording, detail: supplied, onResolve, onCancel,
   return <div className={styles.conflictBox}>
     <div className={styles.conflictHead}><Icon name="i-warn" size={22}/><div>
       <h3>{t('recordings.conflictTitle', {title: recording.programme.title})}</h3>
-      {tuners !== undefined && <p>{t('next.live.conflictBody', {count: tuners, start: window ? timeOf(window.start) : timeOf(recording.start), end: window ? timeOf(window.end) : timeOf(recording.end)})}</p>}
+      {tuners !== undefined && <p>{t('next.live.conflictBody', {count: tuners, range: window ? timeRange(window.start, window.end) : rangeOf(recording)})}</p>}
     </div></div>
     <div className={styles.conflictRow}>
       <div className={styles.recWhen}><b>{timeOf(recording.start)}</b><small>{rangeOf(recording)}</small></div>
@@ -142,7 +148,7 @@ function ConflictDialog({context, recording, controller, onClose}: {context: Scr
     title={t('recordings.conflictTitle', {title: recording.programme.title})} description={t('recordings.conflictsBody')}
     footer={<><Button variant="primary" loading={busy === 'raise'} disabled={!!busy} onClick={() => {void run('raise');}}>{t('web.dvr.recordThis')}</Button>
       <Button variant="glass" loading={busy === 'skip'} disabled={!!busy} onClick={() => {void run('skip');}}>{t('web.dvr.skipThis')}</Button></>}>
-    {error ? <Banner>{error}</Banner> : <p className={styles.dialogText}>{detail?.capacity.known ? t('recordings.conflictBodyTuners', {count: detail.capacity.effective}) : t('recordings.conflictsBody')}</p>}
+    {error ? <Banner>{error}</Banner> : <p className={styles.dialogText}>{detail?.capacity.known ? t('next.live.conflictBody', {count: detail.capacity.effective, range: rangeOf(recording)}) : t('recordings.conflictsBody')}</p>}
   </Dialog>;
 }
 
@@ -171,7 +177,7 @@ export function RecordedView({context, controller, snapshot}: {context: ScreenCo
   const groups = snapshot.groups?.groups ?? [];
   const change = (value: string) => {if (value === 'recent' || value === 'title' || value === 'oldest') void controller.readGroups(value).catch(() => {});};
   return <div className={styles.recBody}>
-    <div className={styles.recordedHead}><p>{t('next.live.recordedHead', {shows: groups.length, recordings: snapshot.summary?.recorded ?? 0, unwatched: snapshot.summary?.unwatched ?? 0})}</p>
+    <div className={styles.recordedHead}><p>{t('next.live.recordedHead', {shows: snapshot.summary?.groups ?? groups.length, recordings: snapshot.summary?.recorded ?? 0, unwatched: snapshot.summary?.unwatched ?? 0})}</p>
       <span className={styles.recordedSortLabel}>{t('channels.sort')}</span><Select className={styles.recordedSort} aria-label={t('channels.sort')} value={sort} options={[{value: 'recent', label: t('next.live.sortRecent')}, {value: 'title', label: t('next.live.sortTitle')}, {value: 'oldest', label: t('next.live.sortOldest')}]} onValueChange={change}/></div>
     {groups.length > 0 ? <div className={styles.recordedGrid}>{groups.map(group => <button type="button" className={styles.recordedCard} key={group.key} onClick={() => setOpen({key: group.key, title: group.title})}>
       <RecordingArt recording={group.recording} large={true} badges={<>{group.unwatched > 0 && <em className={styles.recArtCount}>{group.unwatched}</em>}{group.kept > 0 && <em>{t('recordings.kept')}</em>}{group.exceptions > 0 && <em>{t('dvr.state.incomplete')}</em>}</>}/>
