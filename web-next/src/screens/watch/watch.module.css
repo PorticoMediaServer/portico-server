@@ -20,9 +20,9 @@
 @media (prefers-reduced-motion: reduce) { .tapFeedback { animation-duration: var(--motion-reduced); animation-timing-function: linear; } }
 .shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, color-mix(in srgb, var(--color-dim) 84%, transparent) 0, color-mix(in srgb, var(--color-dim) 38%, transparent) 130px, transparent 240px), linear-gradient(0deg, color-mix(in srgb, var(--color-dim) 94%, transparent) 0, color-mix(in srgb, var(--color-dim) 62%, transparent) 150px, transparent 340px); }
 .top { position: absolute; inset: 0 0 auto; display: flex; align-items: flex-start; gap: 18px; padding: 30px 40px; }
-.identity { min-width: 0; flex: 0 1 auto; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-shadow) 45%, transparent); }
+.identity { min-width: 0; flex: 0 1 auto; }
 .identity h2, .identity p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.identity h2 { margin: 0 0 5px; font-size: var(--watch-title-size); line-height: var(--watch-title-line); font-weight: var(--watch-title-weight); letter-spacing: var(--watch-title-tracking); }
+.identity h2 { margin: 0 0 5px; font-size: var(--watch-title-size); line-height: var(--watch-title-line); font-weight: var(--watch-title-weight); letter-spacing: var(--watch-title-tracking); text-shadow: 0 2px 24px color-mix(in srgb, var(--color-shadow) 45%, transparent); }
 .identity p { font-size: var(--watch-subtitle-size); font-weight: var(--watch-subtitle-weight); margin: 0; color: var(--color-text-secondary); }
 .identity [data-fact='episode-label'] { color: var(--color-text); font-weight: var(--type-button-weight); }
 .gap { display: inline-block; width: 10px; }
@@ -34,6 +34,7 @@
 .control:disabled { color: var(--color-text-tertiary); cursor: default; }
 .control[data-large] { background: color-mix(in srgb, var(--color-text) 10%, transparent); backdrop-filter: blur(20px); }
 .control[data-large]:hover { background: color-mix(in srgb, var(--color-text) 20%, transparent); }
+.control[data-large][aria-pressed='true'] { background: color-mix(in srgb, var(--color-text) 22%, transparent); }
 .control[data-main] { width: 62px; height: 62px; background: var(--color-text); color: var(--color-ink); }
 .control[data-main]:hover { background: var(--color-white); }
 .control small { font-size: var(--watch-skip-size); font-weight: var(--watch-skip-weight); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -40%); }
@@ -41,8 +42,13 @@
 .bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 40px 24px; }
 .seek { position: relative; height: 22px; display: flex; align-items: center; }
 .rail { position: relative; flex: 1; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 16%, transparent); }
+.seek:hover .rail { height: 8px; border-radius: 4px; }
 .rail > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--color-accent-strong); border-radius: inherit; }
 .rail .marker { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--color-white) 50%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent), inset -2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent); }
+.rail .marker[data-edge='start'] { border-radius: 4px 0 0 4px; box-shadow: inset -2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent); }
+.rail .marker[data-edge='end'] { border-radius: 0 4px 4px 0; box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-dim) 55%, transparent); }
+.rail .marker[data-edge='both'] { border-radius: 4px; box-shadow: none; }
+.hoverLine { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; border-radius: 1px; background: color-mix(in srgb, var(--color-white) 85%, transparent); pointer-events: none; }
 .rail input { position: absolute; left: 0; width: 100%; top: 50%; transform: translateY(-50%); height: 22px; margin: 0; appearance: none; background: transparent; pointer-events: auto; cursor: pointer; }
 .rail input::-webkit-slider-runnable-track { height: 6px; background: transparent; }
 .rail input::-moz-range-track { height: 6px; background: transparent; }
