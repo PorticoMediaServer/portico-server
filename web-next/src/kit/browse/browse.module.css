@@ -65,7 +65,7 @@
 .toolbar[data-platform=phone] .separator { display: none; }
 .phoneCount { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 13px; color: var(--browse-muted); font-weight: 600; }
 .phoneCount .saveView { font-size: 13px; height: 30px; padding: 0; color: var(--color-accent-strong); }
-.phoneView { margin-left: auto; }
+.phoneView { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .phoneView .viewToggle { background: none; padding: 0; gap: 2px; }
 .phoneView button { width: 32px; min-width: 32px; height: 30px; }
 .toolbar[data-platform=phone] .applied { padding: 0 20px 10px; }
