@@ -4,6 +4,8 @@
 set -euo pipefail
 : "${TMPDIR:?Run inside an admitted isolated build job}"
 ulimit -c 0
+cpu="${PORTICO_SONIC_TEST_CPU:-no-avx}"
+case "$cpu" in no-avx|arm64) ;; *) echo "Unsupported conformance CPU" >&2; exit 2 ;; esac
 cd "$(dirname "$0")/.."
 export CI=1 OMP_NUM_THREADS=1 TF_NUM_INTRAOP_THREADS=1 TF_NUM_INTEROP_THREADS=1
 export UV_CACHE_DIR="${PORTICO_SONIC_TEST_CACHE:-$TMPDIR/scoped-cache}/uv"
@@ -33,8 +35,10 @@ PY
 mkdir "$work/qemu-download" "$work/qemu"
 (cd "$work/qemu-download" && apt-get download -qq qemu-user-static qemu-user)
 for package in "$work"/qemu-download/*.deb; do dpkg-deb -x "$package" "$work/qemu"; done
-qemu_binary="$work/qemu/usr/bin/qemu-x86_64-static"
-if ! test -x "$qemu_binary"; then qemu_binary="$work/qemu/usr/bin/qemu-x86_64"; fi
+qemu_arch=x86_64
+if test "$cpu" = arm64; then qemu_arch=aarch64; fi
+qemu_binary="$work/qemu/usr/bin/qemu-$qemu_arch-static"
+if ! test -x "$qemu_binary"; then qemu_binary="$work/qemu/usr/bin/qemu-$qemu_arch"; fi
 "$qemu_binary" --version
 "$work/uv" venv --quiet --python 3.11.11 "$work/venv"
 "$work/uv" pip install --quiet --no-progress --python "$work/venv/bin/python" -r third_party/musicnn/requirements-export.txt
@@ -55,8 +59,42 @@ python3 scripts/prepare-sonic-runtime.py "$work/sdk" --archive "$work/runtime.tg
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -fno-fast-math -ffp-contract=off \
   -I"$work/sdk/include" third_party/portico-sonic/main.cpp -L"$work/sdk/lib" \
   -Wl,-rpath,"$work/sdk/lib" -lonnxruntime -o "$work/portico-sonic"
-python3 scripts/check-sonic-cpu-baseline.py --helper "$work/portico-sonic" \
-  --model "$work/model/model.onnx" --qemu "$qemu_binary"
+if test "$cpu" = arm64; then
+  python3 - <<'PYARM'
+import json, os, pathlib, urllib.request
+root = pathlib.Path(os.environ["PORTICO_SONIC_TEST_WORK"])
+record = json.load(open("third_party/portico-sonic/runtime.lock.json"))["packages"]["linux-aarch64"]
+with urllib.request.urlopen(record["url"], timeout=90) as response:
+    data = response.read((100 << 20)+1)
+assert len(data) == record["bytes"]
+(root / "arm-runtime.tgz").write_bytes(data)
+PYARM
+  python3 scripts/prepare-sonic-runtime.py "$work/arm-sdk" --archive "$work/arm-runtime.tgz" --target linux-aarch64
+  mkdir "$work/cross-download" "$work/cross"
+  # Use the distribution's selected cross compiler, extracted only into this
+  # admitted job. No package is installed and no host configuration changes.
+  major=$(apt-cache depends g++-aarch64-linux-gnu | sed -nE 's/.*Depends: g\+\+-([0-9]+)-aarch64-linux-gnu$/\1/p' | head -n 1)
+  test -n "$major"
+  (cd "$work/cross-download" && apt-get download -qq \
+    "g++-$major-aarch64-linux-gnu" "gcc-$major-aarch64-linux-gnu" "cpp-$major-aarch64-linux-gnu" \
+    "libgcc-$major-dev-arm64-cross" "libstdc++-$major-dev-arm64-cross" \
+    binutils-aarch64-linux-gnu libc6-dev-arm64-cross libc6-arm64-cross \
+    libstdc++6-arm64-cross libgcc-s1-arm64-cross linux-libc-dev-arm64-cross)
+  for package in "$work"/cross-download/*.deb; do dpkg-deb -x "$package" "$work/cross"; done
+  "$work/cross/usr/bin/aarch64-linux-gnu-g++-$major" --sysroot="$work/cross" \
+    -B"$work/cross/usr/lib/gcc-cross/aarch64-linux-gnu/$major/" -B"$work/cross/usr/bin/" \
+    -isystem "$work/cross/usr/aarch64-linux-gnu/include" \
+    -std=c++17 -O2 -Wall -Wextra -Werror -fno-fast-math -ffp-contract=off \
+    -I"$work/arm-sdk/include" third_party/portico-sonic/main.cpp \
+    -L"$work/cross/usr/aarch64-linux-gnu/lib" -L"$work/arm-sdk/lib" \
+    -Wl,-rpath,"$work/arm-sdk/lib" -lonnxruntime -o "$work/portico-sonic-arm64"
+  python3 scripts/check-sonic-cpu-baseline.py --helper "$work/portico-sonic" \
+    --model "$work/model/model.onnx" --qemu "$qemu_binary" \
+    --arm-helper "$work/portico-sonic-arm64" --sysroot "$work/cross/usr/aarch64-linux-gnu"
+else
+  python3 scripts/check-sonic-cpu-baseline.py --helper "$work/portico-sonic" \
+    --model "$work/model/model.onnx" --qemu "$qemu_binary"
+fi
 python3 -m unittest discover -s scripts -p test_prepare_sonic_runtime.py
 
 # Exercise the actual server aggregation/normalization and cancellation boundary.
