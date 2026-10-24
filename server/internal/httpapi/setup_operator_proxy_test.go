@@ -114,6 +114,7 @@ func TestOperatorProxySetupUsesPersistentRealTransportConfiguration(t *testing.T
 				if d.setupRequestAllowed(r) {
 					t.Fatal("unapproved browser authority admitted")
 				}
+				return // A valid trusted TLS scheme is not the independent authority allow-list.
 			}
 			if d.ownerSwitchWebOrigin(r) != "" {
 				t.Fatal("invalid transport granted a secure setup claim origin")
