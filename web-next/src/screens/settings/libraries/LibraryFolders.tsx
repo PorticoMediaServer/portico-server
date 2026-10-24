@@ -82,7 +82,7 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
     if (source) { setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); return; }
     if (initialPath) { const parts = initialPath.split('/').filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
   }, [source, initialPath]);
-  return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settings.libraries.editFolder')}
+  return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
     footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" loading={busy} disabled={!name.trim() || !path.trim()} onClick={() => {
         onSave({name: name.trim(), path: path.trim(), classification: source?.classification ?? 'local',

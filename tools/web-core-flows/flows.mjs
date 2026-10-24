@@ -201,6 +201,47 @@ async function walk(page, viewportName) {
     return {added: 'Added Library'};
   });
 
+
+  await step('settings-library-folder-lifecycle', async () => {
+    await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
+    await settle(1800);
+    if (!(await page.getByRole('button', {name: /^Actions$/i}).count())) {
+      const entry = page.getByRole('button', {name: /^Libraries$/i}).first();
+      if (await entry.count()) { await entry.click(); await settle(2000); }
+    }
+    await page.getByRole('button', {name: /^Actions$/i}).first().click();
+    await page.getByText('Edit', {exact: true}).first().click();
+    const foldersTab = page.getByRole('tab', {name: /^Folders$/i}).first();
+    await foldersTab.waitFor({timeout: 15000});
+    await foldersTab.click();
+    await settle(2500);
+    // Add folder: the drawn explorer, then the folder's own name and interval.
+    await page.getByRole('button', {name: /^Add folder$/i}).first().click();
+    const picker = page.getByRole('dialog').first();
+    await picker.waitFor({timeout: 10000});
+    await picker.getByLabel('Folder path').fill(creds.addPath);
+    await picker.getByRole('button', {name: /^Go$/i}).click();
+    await settle(1500);
+    await picker.getByRole('button', {name: /^Choose this folder$/i}).click();
+    const editor = page.getByRole('dialog').first();
+    await editor.waitFor({timeout: 10000});
+    await editor.getByRole('button', {name: /^Save folder$/i}).click();
+    await settle(3000);
+    let body = await text();
+    if (!body.includes(creds.addPath)) throw new Error('the added folder did not appear: ' + excerpt(body, 300));
+    // Remove that same folder again through the drawn confirmation.
+    const rows = page.locator('[data-folder-row]');
+    const last = rows.last();
+    await last.getByRole('button', {name: /^Actions$/i}).click();
+    await page.getByText('Remove folder', {exact: true}).first().click();
+    const confirm = page.getByRole('dialog').first();
+    await confirm.waitFor({timeout: 10000});
+    await confirm.getByRole('button', {name: /^Remove folder$/i}).click();
+    await settle(3000);
+    body = await text();
+    return {added: creds.addPath, removed: !body.includes(creds.addPath)};
+  });
+
   await step('settings-library-folders', async () => {
     await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
     await settle(1800);
