@@ -867,10 +867,11 @@ const deletePreviewFact = (id: string) => ({recordingId: id, revision: 7, bytes:
 const rowId = (call: Call) => pathname(call).split('/')[4];
 
 test('delete is offered only by the actual page and its returned preview is the one confirmed', async () => {
+  const deleteReply = held<unknown>();
   let served = 0;
   const {api, calls} = fixtureServer(call => {
     const name = pathname(call);
-    if (call.method !== 'GET') return commandRecording(rowId(call), {revision: 9, state: 'deleted'});
+    if (call.method !== 'GET') return deleteReply.promise;
     if (name.endsWith('/delete-preview')) return deletePreviewFact(rowId(call));
     if (name.startsWith('/v1/dvr/recordings/')) return detailFact(rowId(call));
     served++;
@@ -900,6 +901,7 @@ test('delete is offered only by the actual page and its returned preview is the 
     assert.equal((command.body as {expectedRevision: number}).expectedRevision, 7, 'the preview revision is sent, not the row revision');
     assert.equal(controller.getSnapshot().page?.recordings.length, 2, 'nothing is removed before the ACK');
     assert.equal(controller.getSnapshot().mutating, true);
+    deleteReply.resolve(commandRecording(hex(64, '1'), {revision: 9, state: 'deleted'}));
 
     assert.deepEqual(await held, {committed: true, refreshed: true, busy: false});
     assert.equal(controller.getSnapshot().page?.recordings.length, 0, 'the genuine reload removes the row');
@@ -927,12 +929,12 @@ test('a cross-row, rebound or stale preview can never be confirmed', async () =>
     assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
 
     await controller.load({view: 'recorded'});
-    const reread = controller.getSnapshot().page!.recordings[1];
+    const [freshScheduled, reread] = controller.getSnapshot().page!.recordings;
     await assert.rejects(controller.confirmDelete(reread), /recordings-delete-preview-stale/,
       'a page reload ends the preview generation');
 
     await controller.deletePreview(reread);
-    await assert.rejects(controller.confirmDelete(scheduled), /recordings-delete-preview-stale/);
+    await assert.rejects(controller.confirmDelete(freshScheduled), /recordings-delete-preview-stale/);
     assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
   } finally { controller.dispose(); }
 });
