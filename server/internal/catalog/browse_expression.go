@@ -178,6 +178,9 @@ func parseBrowsePredicate(object map[string]any, path string, clauses *int) (*Br
 }
 
 func validateBrowseValue(field browseField, operator string, value any, path string) (any, error) {
+	if operator == "within-last-days" {
+		return validateBrowseDays(value, path)
+	}
 	if operator == "is-present" || operator == "is-missing" {
 		if value != nil {
 			return nil, browseIssue(path, "must be null for a presence operator")
@@ -298,6 +301,7 @@ func containsString(values []string, target string) bool {
 // the entity row or an EXISTS over the entity's member items, so the join
 // surface stays bounded no matter how deep the expression is.
 type browseCompiler struct {
+	now          time.Time
 	restrictions identity.ContentRestrictions
 	profile      string
 	args         []any
@@ -537,6 +541,18 @@ func (c *browseCompiler) from(target string, bound browseDateBound) string {
 // the operand's period, and an inclusive bound includes all of it.
 func (c *browseCompiler) dateComparison(expression, operator string, value any) (string, bool, error) {
 	target := "(" + expression + ")"
+	if operator == "within-last-days" {
+		days, err := validateBrowseDays(value, "query.value")
+		if err != nil {
+			return "", true, err
+		}
+		if c.now.IsZero() {
+			return "", true, fmt.Errorf("relative browse requires an evaluation instant")
+		}
+		// Date columns store UTC calendar dates or RFC3339 timestamps. Reuse
+		// precision-preserving bounds; +1ns makes the upper instant inclusive.
+		return "(" + c.from(target, newBrowseDateBound(c.now.Add(-time.Duration(days)*24*time.Hour))) + " AND " + c.before(target, newBrowseDateBound(c.now.Add(time.Nanosecond))) + ")", true, nil
+	}
 	if operator == "between" {
 		values, _ := value.([]any)
 		if len(values) != 2 {
@@ -989,10 +1005,28 @@ func BrowseNodePersonal(node *BrowseNode) bool {
 func (BrowseNode) JSONSchema() map[string]any {
 	child := map[string]any{"type": "object", "required": []string{}, "properties": map[string]any{}, "additionalProperties": map[string]any{}}
 	group := map[string]any{"type": "array", "minItems": 1, "maxItems": BrowseMaximumClauses, "items": child}
-	return map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{
-		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string"}, "value": map[string]any{},
+	operators := []string{}
+	dates := []string{}
+	for _, field := range browseFields {
+		if field.Type == valueDate {
+			dates = append(dates, field.ID)
+		}
+		for _, op := range field.Operators {
+			if op != "within-last-days" && !containsString(operators, op) {
+				operators = append(operators, op)
+			}
+		}
+	}
+	relative := map[string]any{"type": "object", "required": []string{"field", "operator", "value"}, "additionalProperties": false, "properties": map[string]any{
+		"field":    map[string]any{"type": "string", "enum": dates},
+		"operator": map[string]any{"type": "string", "enum": []string{"within-last-days"}},
+		"value":    map[string]any{"type": "integer", "minimum": 1, "maximum": 36500},
+	}, "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant."}
+	other := map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{
+		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string", "enum": operators}, "value": map[string]any{},
 		"all": group, "any": group, "not": child,
-	}, "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds."}
+	}}
+	return map[string]any{"oneOf": []any{relative, other}, "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds."}
 }
 
 // Subtitle languages come from current file evidence and the viewer's own or
