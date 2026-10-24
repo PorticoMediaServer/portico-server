@@ -24,6 +24,8 @@ type PlaybackPictureFacts struct {
 	DynamicRange               string                     `json:"dynamicRange,omitempty"`
 	DolbyVisionProfile         int                        `json:"dolbyVisionProfile,omitempty"`
 	DolbyVisionCompatibility   int                        `json:"dolbyVisionCompatibility,omitempty"`
+	DolbyVisionRPU             *bool                      `json:"dolbyVisionRpu,omitempty"`
+	DolbyVisionBaseLayer       *bool                      `json:"dolbyVisionBaseLayer,omitempty"`
 	DolbyVisionEnhancementType string                     `json:"dolbyVisionEnhancementType,omitempty"`
 	DolbyVisionCMVersion       string                     `json:"dolbyVisionCmVersion,omitempty"`
 	HDR10Plus                  *bool                      `json:"hdr10Plus,omitempty"`
@@ -149,7 +151,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 	}
 	repackaged := p.Strategy != DeliveryOriginal
 	if v := p.Trace.Video; v != nil {
-		src := PlaybackPictureFacts{Container: p.Trace.Container, Codec: v.Codec, Profile: v.Profile, BitDepth: v.BitDepth, Width: v.Width, Height: v.Height, FrameRate: v.FrameRate, FrameRateNumerator: v.FrameRateNumerator, FrameRateDenominator: v.FrameRateDenominator, FrameRateMode: v.FrameRateMode, Interlaced: copiedBool(v.Interlaced), ChromaSubsampling: v.ChromaSubsampling, DynamicRange: v.DynamicRange, DolbyVisionProfile: v.DolbyVisionProfile, DolbyVisionCompatibility: v.DolbyVisionCompatibility, DolbyVisionEnhancementType: v.DolbyVisionEnhancementType, DolbyVisionCMVersion: v.DolbyVisionCMVersion, MasterDisplay: v.MasterDisplay, MaxCLL: v.MaxCLL}
+		src := PlaybackPictureFacts{Container: p.Trace.Container, Codec: v.Codec, Profile: v.Profile, BitDepth: v.BitDepth, Width: v.Width, Height: v.Height, FrameRate: v.FrameRate, FrameRateNumerator: v.FrameRateNumerator, FrameRateDenominator: v.FrameRateDenominator, FrameRateMode: v.FrameRateMode, Interlaced: copiedBool(v.Interlaced), ChromaSubsampling: v.ChromaSubsampling, DynamicRange: v.DynamicRange, DolbyVisionProfile: v.DolbyVisionProfile, DolbyVisionCompatibility: v.DolbyVisionCompatibility, DolbyVisionEnhancementType: v.DolbyVisionEnhancementType, DolbyVisionCMVersion: v.DolbyVisionCMVersion, DolbyVisionRPU: copiedBool(v.DolbyVisionRPU), DolbyVisionBaseLayer: copiedBool(v.DolbyVisionBaseLayer), MasterDisplay: v.MasterDisplay, MaxCLL: v.MaxCLL}
 		if v.HDR10Plus {
 			value := true
 			src.HDR10Plus = &value
@@ -158,6 +160,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		dst := src
 		dst.Interlaced = copiedBool(src.Interlaced)
 		dst.HDR10Plus = copiedBool(src.HDR10Plus)
+		dst.DolbyVisionRPU, dst.DolbyVisionBaseLayer = copiedBool(src.DolbyVisionRPU), copiedBool(src.DolbyVisionBaseLayer)
 		if p.OutputContainer != "" {
 			dst.Container = p.OutputContainer
 		}
@@ -188,6 +191,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 				dst.MasterDisplay, dst.MaxCLL = target.MasterDisplay, target.MaxCLL
 			}
 			dst.DolbyVisionProfile, dst.DolbyVisionCompatibility = 0, 0
+			dst.DolbyVisionRPU, dst.DolbyVisionBaseLayer = nil, nil
 			dst.DolbyVisionEnhancementType, dst.DolbyVisionCMVersion = "", ""
 		} else if p.VideoAction == "copy" {
 			if v.OutputRange != "" {
@@ -209,6 +213,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		}
 		if dst.DynamicRange != "" && dst.DynamicRange != assets.RangeDolbyVision {
 			dst.DolbyVisionProfile, dst.DolbyVisionCompatibility = 0, 0
+			dst.DolbyVisionRPU, dst.DolbyVisionBaseLayer = nil, nil
 			dst.DolbyVisionEnhancementType, dst.DolbyVisionCMVersion = "", ""
 		}
 		if dst.DynamicRange == assets.RangeSDR {

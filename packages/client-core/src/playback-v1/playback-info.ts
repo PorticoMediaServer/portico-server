@@ -6,7 +6,7 @@ export type PlaybackPictureFacts = Readonly<{
   frameRate?:number; frameRateNumerator?:number; frameRateDenominator?:number; frameRateMode?:string;
   interlaced?:boolean; chromaSubsampling?:string; dynamicRange?:string;
   dolbyVisionProfile?:number; dolbyVisionCompatibility?:number; dolbyVisionEnhancementType?:string;
-  dolbyVisionCmVersion?:string; hdr10Plus?:boolean; masterDisplay?:string; maxCll?:string;
+  dolbyVisionCmVersion?:string; dolbyVisionRpu?:boolean; dolbyVisionBaseLayer?:boolean; hdr10Plus?:boolean; masterDisplay?:string; maxCll?:string;
   conversion?:Readonly<{kind:'profile7_to_81';sourceDolbyVisionProfile:number;sourceEnhancementType?:string;enhancementDiscarded:boolean;felResidualDiscarded:boolean}>;
 }>;
 export type PlaybackSoundFacts = Readonly<{codec:string;profile?:string;variant?:string;objectAudio?:string;channels?:number;layout?:string;sampleRate?:number;bitDepth?:number}>;
@@ -35,7 +35,7 @@ const routeValues=['original','repackaged','converted'] as const;
 function picture(value:unknown):PlaybackPictureFacts {
   const v=record(value);let conversion:PlaybackPictureFacts['conversion'];
   if(v.conversion!==undefined){const c=record(v.conversion);const n=numbers(c,{sourceDolbyVisionProfile:255});if(n.sourceDolbyVisionProfile===undefined||typeof c.enhancementDiscarded!=='boolean'||typeof c.felResidualDiscarded!=='boolean')throw new Error('invalid picture conversion');conversion=Object.freeze({kind:choice(c.kind,['profile7_to_81']),sourceDolbyVisionProfile:n.sourceDolbyVisionProfile,...strings(c,['sourceEnhancementType']),enhancementDiscarded:c.enhancementDiscarded,felResidualDiscarded:c.felResidualDiscarded});}
-  return Object.freeze({codec:text(v.codec),...strings(v,['container','profile','frameRateMode','chromaSubsampling','dynamicRange','dolbyVisionEnhancementType','dolbyVisionCmVersion','masterDisplay','maxCll']),...numbers(v,{bitDepth:32,width:32768,height:32768,frameRateNumerator:2147483647,frameRateDenominator:2147483647,dolbyVisionProfile:255,dolbyVisionCompatibility:15}),...numbers(v,{frameRate:1000},true),...booleans(v,['interlaced','hdr10Plus']),...(conversion?{conversion}:{})});
+  return Object.freeze({codec:text(v.codec),...strings(v,['container','profile','frameRateMode','chromaSubsampling','dynamicRange','dolbyVisionEnhancementType','dolbyVisionCmVersion','masterDisplay','maxCll']),...numbers(v,{bitDepth:32,width:32768,height:32768,frameRateNumerator:2147483647,frameRateDenominator:2147483647,dolbyVisionProfile:255,dolbyVisionCompatibility:15}),...numbers(v,{frameRate:1000},true),...booleans(v,['interlaced','hdr10Plus','dolbyVisionRpu','dolbyVisionBaseLayer']),...(conversion?{conversion}:{})});
 }
 function sound(value:unknown):PlaybackSoundFacts { const v=record(value);return Object.freeze({codec:text(v.codec),...strings(v,['profile','variant','objectAudio','layout']),...numbers(v,{channels:128,sampleRate:1536000,bitDepth:64})}); }
 function subtitle(value:unknown):PlaybackSubtitleFacts { const v=record(value);return Object.freeze({...strings(v,['format','language','title','origin']),...(v.rendering!==undefined?{rendering:choice(v.rendering,['drawnByDevice','externalText','burnedIn','off'])}:{})}); }
