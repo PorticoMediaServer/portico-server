@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/testtier"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,7 +28,8 @@ type idleBudgetReport struct {
 // The default mode catches accidentally restored subsecond polling in a real
 // server. PORTICO_FULL_IDLE=1 observes six complete minutes, including fallback
 // maintenance timers. Both modes use a fresh local state with no provider,
-// Hosted, DNS, remote-source, or discovery configuration.
+// Hosted, DNS, remote-source, or discovery configuration, and both wait for
+// one-time startup work to finish before the first window.
 func TestServerIdleStatementBudget(t *testing.T) {
 	if os.Getenv("PORTICO_IDLE_HELPER") == "1" {
 		t.Skip("parent only")
@@ -83,8 +85,11 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 	done := make(chan error, 1)
 	ready := make(chan struct{})
 	maintenanceDone := make(chan struct{})
+	listeningDone := make(chan struct{})
+	var listeningOnce sync.Once
 	serverReadyHook = func() { close(ready) }
 	deferredMaintenanceDoneHook = func() { close(maintenanceDone) }
+	listeningGroupsStartupDoneHook = func() { listeningOnce.Do(func() { close(listeningDone) }) }
 	go func() {
 		// The router and deferred one-shot maintenance each publish an explicit
 		// completion signal. The latter may legitimately be library-sized; a
@@ -101,7 +106,16 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 			done <- fmt.Errorf("deferred startup maintenance did not finish")
 			return
 		}
-		// Let commit subscribers finish their first pass after maintenance.
+		// The author/series pass reads the books that already exist once at
+		// startup. Wait for the pass itself instead of assuming a fixed sleep
+		// covers the gap between the router going live and that first pass.
+		select {
+		case <-listeningDone:
+		case <-time.After(2 * time.Minute):
+			done <- fmt.Errorf("listening-group startup pass did not finish")
+			return
+		}
+		// Let the remaining commit subscribers finish their first pass.
 		time.Sleep(2 * time.Second)
 		window, windows := time.Minute, 1
 		if os.Getenv("PORTICO_FULL_IDLE") == "1" {

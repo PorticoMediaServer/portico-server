@@ -126,6 +126,11 @@ type switchableHandler struct {
 var serverReadyHook = func() {}
 var deferredMaintenanceDoneHook = func() {}
 
+// listeningGroupsStartupDoneHook is replaced only by the isolated idle-budget
+// test process. It marks the completed one-time pass over books that already
+// exist, before that worker settles into waiting for the next book commit.
+var listeningGroupsStartupDoneHook = func() {}
+
 func newSwitchableHandler(initial http.Handler) *switchableHandler {
 	s := &switchableHandler{}
 	s.set(initial)

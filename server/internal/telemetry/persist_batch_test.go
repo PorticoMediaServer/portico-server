@@ -2,15 +2,30 @@ package telemetry
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/persistence"
 )
 
+// openProfiledTelemetryDatabase uses the server's observed driver, because the
+// statement profile sees only statements issued through it.
+func openProfiledTelemetryDatabase(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
 func TestTelemetryPersistsOneBoundedSampleWithoutPerMetricStatements(t *testing.T) {
-	db := openTelemetryDatabase(t)
+	db := openProfiledTelemetryDatabase(t)
 	clock := time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)
 	c := New(Options{Sampler: &fakeSampler{gpu: true}, DB: db, Now: func() time.Time { return clock }})
 	ctx := context.Background()
