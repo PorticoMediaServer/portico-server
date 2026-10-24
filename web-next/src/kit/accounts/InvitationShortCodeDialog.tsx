@@ -86,7 +86,7 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
           <p className={styles.help}>{t('web.access.shortCodeHelp')}</p>}
       </div>
       {expiry && <p className={styles.expiry}>{t('api.credential.expires', {when: expiry})}</p>}
-      {copyError && <AuthError error={copyError} />}
+      {copyError !== undefined && <AuthError error={copyError} />}
       <div className={styles.actions}>
         {state.phase === 'ready' && <Button variant="glass" icon={copied ? 'i-check' : 'i-copy'} onClick={() => void copy()} disabled={busy}>{t(copied ? 'web.together.copied' : 'web.access.copyShortCode')}</Button>}
         {state.phase === 'failed' && <Button variant="glass" onClick={() => void issuer.retry(runRef.current)} disabled={busy}>{t('action.tryAgain')}</Button>}
