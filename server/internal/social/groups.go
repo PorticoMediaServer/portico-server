@@ -520,7 +520,11 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 			return &Fault{Code: "revision_conflict", Status: 409, Message: "The group changed.", Detail: map[string]any{"currentRevision": counter(g.governanceRevision)}}
 		}
 		// Either the sitting host hands authority over, or the named member is
-		// the caller claiming a host that has passed the pause boundary.
+		// the caller claiming a host that has passed the pause boundary. A
+		// non-host naming someone else is never that caller.
+		if m.role != "host" && req.MemberID != m.id {
+			return errHost
+		}
 		var state, role string
 		var targetAuthority, targetAccount, targetProfile string
 		e := tx.QueryRowContext(ctx, `SELECT state,role,authority,account_id,profile_id FROM social_group_members WHERE id=? AND group_id=?`, req.MemberID, g.id).Scan(&state, &role, &targetAuthority, &targetAccount, &targetProfile)
