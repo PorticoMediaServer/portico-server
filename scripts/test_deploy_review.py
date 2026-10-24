@@ -133,6 +133,17 @@ class ReviewDeployment(unittest.TestCase):
                 deploy.main()
             self.assertEqual([call.args[0] for call in remote.call_args_list], [deploy.ACTIVATE, deploy.ROLLBACK])
 
+    def test_frozen_cutoff_accepts_main_ancestry_when_the_tip_advances(self):
+        cutoff, current = 'a' * 40, 'b' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=current + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run') as run:
+            build.require_current_main(Path('/checkout'), cutoff, frozen=True)
+            run.assert_called_with(['git', '-C', '/checkout', 'merge-base', '--is-ancestor', cutoff, 'origin/main'], check=True)
+
+    def test_frozen_cutoff_never_accepts_a_commit_outside_main(self):
+        with patch.object(build.subprocess, 'check_output', return_value='b' * 40 + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run', side_effect=[None, subprocess.CalledProcessError(1, 'git')]):
+            with self.assertRaises(subprocess.CalledProcessError):
+                build.require_current_main(Path('/checkout'), 'a' * 40, frozen=True)
+
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
         value = build.public_root(pem)
