@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useSyncExternalStore} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import {HomeRowPager} from '@core/home-row-page.ts';
-import {homeRowTitle} from '../../app/home';
+import {homeRowTitle, retryHomeRow} from '../../app/home';
 import {useSession} from '../../app/session';
 import {useLibrariesContext} from '../../app/libraries';
 import {ErrorNotice, ErrorState} from '../../app/errors';
@@ -74,7 +74,7 @@ export function HomeRowPageScreen() {
       <PageHeader title={title || ' '} onBack={back} backLabel={t('action.back')} actions={actions} />
       {state.phase === 'loading' && !state.entries.length ? <LoadingGrid density={row?.artworkShape === 'square' ? 'square' : 'poster'} /> : null}
       {state.phase === 'error' && !row ? <ErrorState error={state.error} context="home" retry={() => void pager.load()} refresh={() => void pager.load()} /> : null}
-      {state.error && row ? <Inset><ErrorNotice error={state.error} context="home" retry={() => void pager.more()} refresh={() => void pager.load()} /></Inset> : null}
+      {state.error && row ? <Inset><ErrorNotice error={state.error} context="home" retry={() => void retryHomeRow(pager, state.nextCursor)} refresh={() => void pager.load()} /></Inset> : null}
       {row && state.entries.length ? <Inset><GroupBar group={group} total={state.total} /></Inset> : null}
       {group.pending ? <LoadingGrid /> : group.active ? <GroupGrid group={group} square={row?.artworkShape === 'square'} /> : row ? (
         <SectionView
