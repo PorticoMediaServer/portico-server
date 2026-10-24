@@ -4,6 +4,7 @@ import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {readdir} from 'node:fs/promises';
 import {withMeasurementBrowser} from './browser.mjs';
+import {compareScreens} from './compare.mjs';
 
 // Public synthetic measurement fixture, never a product screen or approved design.
 const html = `<!doctype html><html><style>
@@ -80,6 +81,15 @@ test('real browser measures the whole viewport and protects source, secret and n
       return screen;
     });
     assert.ok(measured.elements.length > 8);
+    await withMeasurementBrowser({scratch: process.env.TMPDIR, executable,
+      viewport: {width: 800, height: 600, deviceScaleFactor: 2}, allowedOrigins: [origin]}, async browser => {
+      await browser.navigate(origin, 'main');
+      await browser.evaluate('document.querySelector("input[name=password]").focus()');
+      const dense = await browser.measure('main');
+      assert.equal(dense.viewport.deviceScaleFactor, 2, 'actual density is preserved');
+      assert.deepEqual(dense.root, measured.root, 'DOM reports unchanged CSS logical bounds');
+      assert.equal(compareScreens(measured, dense).verdict, 'PASS', 'density alone does not alter logical scoring');
+    });
     assert.ok(!(await readdir(process.env.TMPDIR)).some(name => name.startsWith('fidelity-browser-')), 'owned browser profile removed');
   } finally {server.closeAllConnections(); await new Promise(resolve => server.close(resolve));}
 });
