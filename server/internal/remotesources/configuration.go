@@ -102,7 +102,7 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 	if err := checkOperation(in.OperationID); err != nil {
 		return zero, err
 	}
-	if strings.TrimSpace(in.Name) == "" || len(in.Name) > 100 || len(in.Root) > 8192 || len(in.Username) > 1024 || len(in.Password) > 8192 {
+	if !validDAVFields(in.Name, in.Root, in.Username, in.Password) {
 		return zero, storage.ErrRemoteConfig
 	}
 	if id == "" && in.ExpectedGeneration != 0 || id != "" && in.ExpectedGeneration < 1 {
