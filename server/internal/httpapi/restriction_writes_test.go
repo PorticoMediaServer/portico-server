@@ -506,6 +506,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/optimization-jobs/{id}/cancel":           writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/optimization-jobs/{id}/retry":            writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/playlists":                               writeExempt(reasonOwnObject),
+		"POST /v1/music/mixes/{id}/playlist":               {check: musicMixForbiddenCopyCheck},
 		"POST /v1/playlists/{id}/entries": writeProbes(func(m *restrictionEnv) []idProbe {
 			return perHidden("POST", "/v1/playlists/"+m.playlist+"/entries", `{"operationId":"OP","expectedRevision":0,"itemIds":["ID"]}`, "item").probes(m)
 		}),

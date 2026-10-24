@@ -25,5 +25,5 @@ function snapshot(value:unknown):WindowSnapshot {
 export const nativeWindowBridge:WindowBridge={
   read:()=>invoke<unknown>('desktop_window_state').then(snapshot),
   chrome:chrome=>invoke<void>('desktop_window_chrome',{chrome}),
-  action:action=>invoke<void>('desktop_window_action',{action}),
+  action:action=>action==='close'?invoke<void>('desktop_app_close'):invoke<void>('desktop_window_action',{action}),
 };

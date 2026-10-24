@@ -27,6 +27,7 @@ import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
 export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 export * from './music-signal.ts';
+export * from './music-mixes.ts';
 import {sessionEndMessage} from './session-end.ts';
 import {serviceText} from './presentation/service-text.ts';
 import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';

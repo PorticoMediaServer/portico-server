@@ -89,6 +89,18 @@ type selectorKeys struct {
 // its key query (see openKeys).
 func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput) (selectorKeys, error) {
 	switch {
+	case in.Source.Container != nil && in.Source.Container.Kind == "mix":
+		if s.MixKeys == nil {
+			return selectorKeys{}, ErrUnsupportedSelector
+		}
+		ids, err := s.MixKeys(ctx, tx, p, in.Source.Container.ID)
+		if err != nil {
+			return selectorKeys{}, err
+		}
+		if !validRadioBatch(ids, catalog.MaxPlaylistEntries) {
+			return selectorKeys{}, ErrNotFound
+		}
+		return selectorKeys{query: `SELECT value FROM json_each(?) ORDER BY CAST(key AS INTEGER)`, args: []any{jsonList(ids)}, kind: "selector", revision: in.Source.Container.ID}, nil
 	case isRadioSource(in.Source):
 		if s.RadioKeys == nil {
 			return selectorKeys{}, ErrUnsupportedSelector

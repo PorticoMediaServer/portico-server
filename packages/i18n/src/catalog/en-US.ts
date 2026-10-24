@@ -10,6 +10,7 @@
  * by adding a new ID, not by editing the old one (A11Y-12.10).
  */
 import {nextMessages} from './en-US/next/index.ts';
+import {musicMixMessages} from './en-US/music-mixes.ts';
 import {webMessages} from './en-US/web.ts';
 import {channelMessages} from './en-US/channels.ts';
 import {preferenceMessages} from './en-US/preferences.ts';
@@ -2193,6 +2194,7 @@ export const enUS = {
   ...servicesMessages,
   ...savedViewSummaryMessages,
   ...nextMessages,
+  ...musicMixMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;

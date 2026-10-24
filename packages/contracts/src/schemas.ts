@@ -112013,6 +112013,186 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetMusicMixesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMusicMixesResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "mixes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "artists": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "album": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "posterUrl": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "album",
+                      "posterUrl"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "more": {
+                  "type": "boolean"
+                },
+                "nameSource": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "style",
+                          "type": "string"
+                        },
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "tag": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "version": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "tag",
+                        "model",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artistId": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "artist",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "artistId"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "songCount": {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "tint": {
+                  "pattern": "^#[0-9a-fA-F]{6}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "nameSource",
+                "tint",
+                "covers",
+                "artists",
+                "more",
+                "songCount"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mixes"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "authority",
+          "accountId",
+          "profileId"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
+    ],
+    "type": "object"
+  },
   "GetNetworkingCertificateRequest": {
     "properties": {},
     "required": [],
@@ -173821,6 +174001,67 @@ export const schemas = {
       "cascades",
       "schema",
       "artworkRoles"
+    ],
+    "type": "object"
+  },
+  "PostMusicMixesIdPlaylistRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "operationId": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name"
+    ],
+    "type": "object"
+  },
+  "PostMusicMixesIdPlaylistResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
     ],
     "type": "object"
   },
