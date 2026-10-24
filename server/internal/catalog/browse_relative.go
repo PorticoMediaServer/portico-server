@@ -87,3 +87,12 @@ func (s *Service) relativeBrowseFence(node *BrowseNode) string {
 	}
 	return "\x00at:" + s.relativeBrowseTime(node)
 }
+
+// Standalone compilers have no Service; callers such as Library Channels
+// supply their composition instant. Existing callers use the system clock.
+func browseSelectionInstant(evaluation []time.Time) time.Time {
+	if len(evaluation) > 0 && !evaluation[0].IsZero() {
+		return evaluation[0]
+	}
+	return time.Now()
+}
