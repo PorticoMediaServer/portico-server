@@ -21,6 +21,8 @@ export const settingsMessages = {
   'next.settings.libraries.localOnly': 'Local files only.',
   'next.settings.libraries.createFailed': 'The library could not be added.',
   'next.settings.libraries.removeFailed': 'The library could not be removed.',
+  'next.settings.libraries.noFolders': 'No folders yet.',
+  'next.settings.libraries.folderUnavailable': 'Unavailable',
   'next.settings.loading': 'Loading…',
   'next.settings.loadMore': 'Show more',
   'next.settings.saved': 'Saved',
