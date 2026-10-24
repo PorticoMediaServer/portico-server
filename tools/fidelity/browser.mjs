@@ -67,7 +67,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
         if (response.errorText) throw new Error('Measurement navigation failed');
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
       },
-      measure: (selector, anchors = {}) => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport, anchors})})`),
+      measure: (selector, anchors = {}, repeats = []) => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport, anchors, repeats})})`),
       evaluate,
       call,
       blocked,

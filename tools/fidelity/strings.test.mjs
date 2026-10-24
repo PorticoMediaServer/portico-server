@@ -45,3 +45,12 @@ test('explicit keys resolve catalogue ambiguity; public data slots are exact and
   assert.ok(result.differences.some(value => value.kind === 'built-string-data-mismatch'));
   assert.ok(result.differences.some(value => value.kind === 'built-string-unmapped' && value.text === 'Undrawn extra'));
 });
+
+test('list cardinality root excludes only that list from derivative copy cascades', () => {
+  const reference = screen([{text: 'First', owner: '0.1.0'}, {text: 'Second', owner: '0.1.1'}]);
+  const actual = screen([{text: 'First', owner: '0.1.0'}]);
+  const roots = {reference: ['0.1'], actual: ['0.1']};
+  assert.deepEqual(compareCatalogueStrings(reference, actual, {one: 'First', two: 'Second'}, {}, roots).differences, []);
+  const outside = screen([{text: 'First', owner: '0.1.0'}, {text: 'Unrelated extra', owner: '0.2'}]);
+  assert.ok(compareCatalogueStrings(reference, outside, {one: 'First', two: 'Second'}, {}, roots).differences.some(value => value.kind === 'built-string-unmapped'));
+});

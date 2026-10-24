@@ -8,18 +8,18 @@ const distance = (left, right) => {
 
 /** Match exact text occurrences; report facts rather than guessing a rendering cause. */
 export function compareTextMetrics(reference, actual) {
-  const candidates = visible(actual), used = new Set(), differences = [], unassessed = [];
+  const candidates = visible(actual), used = new Set(), diagnostics = [], unassessed = [];
   let matched = 0;
   for (const expected of visible(reference)) {
     const observed = candidates.filter(value => value.text === expected.text && !used.has(value.id)).sort((a, b) => distance(expected, a) - distance(expected, b))[0];
     if (!observed) continue;
     matched++; used.add(observed.id);
     const identity = {text: expected.text, referenceElement: expected.id, actualElement: observed.id};
-    if (!expected.rects || !observed.rects) unassessed.push({...identity, fact: 'native-input-glyph-bounds', reason: 'DOM exposes the input host, not its native value glyph rectangles; full-frame raster remains compared.'});
-    else if (JSON.stringify(expected.rects) !== JSON.stringify(observed.rects)) differences.push({...identity, fact: 'text-rectangles', expected: expected.rects, actual: observed.rects});
+    if (!expected.rects || !observed.rects) unassessed.push({...identity, fact: 'native-input-glyph-bounds', reason: 'DOM exposes the input host, not its native value glyph rectangles; native glyph rectangles remain unassessed.'});
+    else if (JSON.stringify(expected.rects) !== JSON.stringify(observed.rects)) diagnostics.push({...identity, fact: 'text-rectangles', expected: expected.rects, actual: observed.rects});
     if (expected.style && observed.style) for (const property of typography) {
-      if (expected.style[property] !== observed.style[property]) differences.push({...identity, fact: property, expected: expected.style[property], actual: observed.style[property]});
+      if (expected.style[property] !== observed.style[property]) diagnostics.push({...identity, fact: property, expected: expected.style[property], actual: observed.style[property]});
     }
   }
-  return {expectedOccurrences: visible(reference).length, matchedOccurrences: matched, differences, unassessed};
+  return {scored: false, expectedOccurrences: visible(reference).length, matchedOccurrences: matched, diagnostics, unassessed};
 }

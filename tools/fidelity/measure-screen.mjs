@@ -1,6 +1,6 @@
 /** Run inside the measured document. Returns measurements, never DOM/source/art bytes.
  * The caller supplies a full-screen root and records its controlled state separately. */
-export async function measureScreen({selector, expectedViewport, anchors = {}} = {}) {
+export async function measureScreen({selector, expectedViewport, anchors = {}, repeats = []} = {}) {
   const root = document.querySelector(selector);
   if (!root) throw new Error('Fidelity screen root is missing');
   await document.fonts.ready;
@@ -36,15 +36,74 @@ export async function measureScreen({selector, expectedViewport, anchors = {}} =
     return true;
   };
   const textValue = (text, computed) => computed.whiteSpace.startsWith('pre') ? text : text.replace(/[\t\n\f\r ]+/g, ' ').trim();
-  const anchorMap = new Map(), anchorIssues = [];
-  for (const [name, query] of Object.entries(anchors)) {
-    const matches = query === '$root' ? [root] : [...root.querySelectorAll(query)];
-    if (matches.length !== 1) anchorIssues.push({name, matches: matches.length});
-    else anchorMap.set(matches[0], name);
-  }
   const paths = new Map();
   const indexPaths = (element, path) => {paths.set(element, path.join('.')); [...element.children].forEach((child, index) => indexPaths(child, [...path, index]));};
   indexPaths(root, [0]);
+  const anchorMap = new Map(), anchorIssues = [], repeatMap = new Map(), repeatedLists = [];
+  for (const [name, query] of Object.entries(anchors)) {
+    const matches = query === '$root' ? [root] : [...root.querySelectorAll(query)];
+    if (matches.length !== 1) anchorIssues.push({name, matches: matches.length, elements: matches.map(element => paths.get(element))});
+    for (const element of matches) anchorMap.set(element, name);
+  }
+  for (const group of repeats) {
+    const container = [...anchorMap].find(([, name]) => name === group.container)?.[0];
+    const items = container ? [...container.querySelectorAll(group.items)] : [];
+    repeatedLists.push({name: group.container, container: container ? paths.get(container) : null, items: items.map(item => paths.get(item)), count: items.length});
+    items.forEach((item, index) => {
+      const frame = `${group.container}-${index}`, id = paths.get(item);
+      anchorMap.set(item, frame); repeatMap.set(item, {list: group.container, item: id, index, role: group.role});
+      for (const [part, query] of Object.entries(group.parts ?? {})) {
+        const matches = [...item.querySelectorAll(query)];
+        if (matches.length !== 1) anchorIssues.push({name: frame + '-' + part, matches: matches.length, elements: matches.map(element => paths.get(element))});
+        for (const element of matches) {anchorMap.set(element, frame + '-' + part); repeatMap.set(element, {list: group.container, item: id, index, part});}
+      }
+    });
+  }
+  const parseRGBA = value => {
+    const srgb = /^color\(srgb ([^)]+)\)$/.exec(value), rgb = /^rgba?\(([^)]+)\)$/.exec(value);
+    if (value === 'transparent') return [0, 0, 0, 0];
+    if (!srgb && !rgb) return null;
+    const values = (srgb?.[1] ?? rgb[1]).replace('/', ' ').split(/[ ,]+/).filter(Boolean).map(Number);
+    if (values.length < 3 || values.some(value => !Number.isFinite(value))) return null;
+    return [values[0] * (srgb ? 255 : 1), values[1] * (srgb ? 255 : 1), values[2] * (srgb ? 255 : 1), values[3] ?? 1];
+  };
+  const effectivePaint = element => {
+    const chain = []; for (let current = element; current; current = current.parentElement) chain.push(current);
+    let result = [0, 0, 0, 0], opacity = 1, resolved = true;
+    for (const layer of chain.reverse()) {
+      const computed = getComputedStyle(layer), color = parseRGBA(computed.backgroundColor);
+      opacity *= Number(computed.opacity);
+      if (!color) {resolved = false; continue;}
+      const alpha = color[3] + result[3] * (1 - color[3]);
+      result = [...[0, 1, 2].map(index => alpha ? (color[index] * color[3] + result[index] * result[3] * (1 - color[3])) / alpha : 0), alpha];
+    }
+    return {effectiveBackgroundColor: resolved ? `rgba(${result.join(', ')})` : null, effectiveOpacity: opacity};
+  };
+  const nativeControl = element => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
+  const secretControl = element => nativeControl(element) && (element.type === 'password' || element.type === 'file' || /password|secret|token|otp|pin/i.test(element.name) || /password|one-time-code/.test(element.autocomplete ?? ''));
+  const controlText = element => {
+    if (element instanceof HTMLInputElement && ['checkbox', 'radio', 'range', 'file', 'color', 'hidden'].includes(element.type)) return '';
+    if (element instanceof HTMLSelectElement) return [...element.selectedOptions].map(option => option.textContent.trim()).join(' ');
+    return secretControl(element) ? '•'.repeat(Math.min(element.value.length, 1000)) : element.value;
+  };
+  const labelText = element => [...element.childNodes].map(child => child.nodeType === Node.TEXT_NODE ? child.textContent : child.nodeType === Node.ELEMENT_NODE && !nativeControl(child) && !['svg', 'img', 'canvas', 'style', 'script'].includes(child.localName) ? labelText(child) : '').join(' ').replace(/\s+/g, ' ').trim();
+  const tokenCache = new Map();
+  const renderedTokens = element => {
+    if (tokenCache.has(element)) return tokenCache.get(element);
+    const tokens = [];
+    if (visible(element) && !['svg', 'img', 'canvas', 'style', 'script'].includes(element.localName)) {
+      if (nativeControl(element)) {
+        const text = controlText(element); if (text) tokens.push({text, rects: []});
+      } else for (const child of element.childNodes) {
+        if (child.nodeType === Node.ELEMENT_NODE) tokens.push(...renderedTokens(child));
+        else if (child.nodeType === Node.TEXT_NODE) {
+          const text = textValue(child.textContent ?? '', getComputedStyle(element));
+          if (text) {const range = document.createRange(); range.selectNodeContents(child); tokens.push({text, rects: [...range.getClientRects()].filter(value => value.width && value.height).map(box)});}
+        }
+      }
+    }
+    tokenCache.set(element, tokens); return tokens;
+  };
   const elements = [], strings = [];
   const visit = async (element, path) => {
     if (!visible(element)) return;
@@ -53,21 +112,24 @@ export async function measureScreen({selector, expectedViewport, anchors = {}} =
     if (rect.width > 0 && rect.height > 0) {
       const aria = Object.fromEntries([...element.attributes].filter(attribute => attribute.name.startsWith('aria-')).sort((a, b) => a.name.localeCompare(b.name)).map(attribute =>
         [attribute.name, ['aria-controls', 'aria-labelledby', 'aria-describedby', 'aria-owns'].includes(attribute.name) ? attribute.value.split(/\s+/).map(target => paths.get(document.getElementById(target)) ?? '[outside-screen]') : attribute.value]));
-      const ownText = [...element.childNodes].filter(child => child.nodeType === Node.TEXT_NODE).map(child => textValue(child.textContent ?? '', computed)).filter(Boolean).join(' ');
+      const ownText = nativeControl(element) ? '' : [...element.childNodes].filter(child => child.nodeType === Node.TEXT_NODE).map(child => textValue(child.textContent ?? '', computed)).filter(Boolean).join(' ');
       const record = {id, parent: paths.get(element.parentElement) ?? null, tag, classes: [...element.classList].sort(),
-        frame: anchorMap.get(element) ?? element.getAttribute('data-frame'), ownText, aria, box: box(rect), style: style(computed),
+        frame: anchorMap.get(element) ?? element.getAttribute('data-frame'), repeat: repeatMap.get(element), ownText, leaf: element.children.length === 0,
+        normalizedText: renderedTokens(element).map(value => value.text).join(' '), descendantTextRects: renderedTokens(element).flatMap(value => value.rects),
+        textRects: [], anchoredDescendants: [...anchorMap.keys()].filter(other => other !== element && element.contains(other)).length,
+        aria, box: box(rect), style: style(computed), ...effectivePaint(element),
         role: element.getAttribute('role'), label: element.getAttribute('aria-label') ?? element.getAttribute('alt'),
         testId: element.getAttribute('data-testid'), focused: element === document.activeElement,
         disabled: 'disabled' in element ? Boolean(element.disabled) : element.getAttribute('aria-disabled') === 'true'};
       if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
-        const secret = element instanceof HTMLInputElement && (element.type === 'password' || /password|secret|token|otp|pin/i.test(element.name) || /password|one-time-code/.test(element.autocomplete));
-        record.input = {type: element.type, name: element.name, value: secret ? null : element.value,
+        const secret = secretControl(element), displayed = controlText(element);
+        record.input = {type: element.type, name: element.name, value: secret ? null : displayed,
           redacted: secret, length: element.value.length, placeholder: element.getAttribute('placeholder'),
-          labels: [...(element.labels ?? [])].map(label => label.innerText)};
+          labels: [...(element.labels ?? [])].map(labelText)};
         if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
           record.input.selectionStart = element.selectionStart; record.input.selectionEnd = element.selectionEnd;
         }
-        if (!secret && element.value) strings.push({id: `${id}:value`, owner: id, frame: record.frame, kind: 'value', text: element.value, box: box(rect), style: style(computed)});
+        if (!secret && displayed) strings.push({id: `${id}:value`, owner: id, frame: record.frame, kind: 'value', text: displayed, box: box(rect), style: style(computed)});
         if (record.input.placeholder) strings.push({id: `${id}:placeholder`, owner: id, frame: record.frame, kind: 'placeholder', text: record.input.placeholder});
       }
       if (element instanceof HTMLImageElement) record.image = {kind: 'image', loaded: element.complete && element.naturalWidth > 0, fit: computed.objectFit};
@@ -79,17 +141,18 @@ export async function measureScreen({selector, expectedViewport, anchors = {}} =
           elements.push({id: id + pseudo, parent: id, tag: pseudo, frame: record.frame ? record.frame + pseudo : null, style: style(value), content: scrubURLs(value.content)});
       }
       let textIndex = 0;
-      for (const child of element.childNodes) {
+      for (const child of nativeControl(element) ? [] : element.childNodes) {
         if (child.nodeType !== Node.TEXT_NODE) continue;
         const text = textValue(child.textContent ?? '', computed);
         if (!text) continue;
         const range = document.createRange(); range.selectNodeContents(child);
         const rects = [...range.getClientRects()].filter(value => value.width > 0 && value.height > 0).map(box);
+        record.textRects.push(...rects);
         if (rects.length) strings.push({id: `${id}:text:${textIndex++}`, owner: id, frame: record.frame, kind: 'text', text, rects, style: style(computed)});
       }
       if (record.label) strings.push({id: `${id}:label`, owner: id, frame: record.frame, kind: 'accessible-label', text: record.label});
     }
-    if (['svg', 'canvas', 'img'].includes(tag)) return;
+    if (nativeControl(element) || ['svg', 'canvas', 'img'].includes(tag)) return;
     for (let index = 0; index < element.children.length; index++) await visit(element.children[index], [...path, index]);
   };
   await visit(root, [0]);
@@ -98,5 +161,5 @@ export async function measureScreen({selector, expectedViewport, anchors = {}} =
     expectedViewport: expectedViewport ?? null,
     fullViewport: bounds.x === 0 && bounds.y === 0 && bounds.width === innerWidth && bounds.height === innerHeight,
     fontStatus: document.fonts.status, fontFaces: [...document.fonts].map(face => ({family: face.family, weight: face.weight, style: face.style, status: face.status})).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
-    documentFocused: document.hasFocus(), anchorIssues, elements, strings};
+    documentFocused: document.hasFocus(), anchorIssues, repeatedLists, elements, strings};
 }

@@ -55,8 +55,9 @@ export function mapScreenStrings(screen, catalogue, {keys = {}, data = {}} = {})
   });
 }
 
-export function compareCatalogueStrings(reference, actual, catalogue, adapter) {
-  const frame = mapScreenStrings(reference, catalogue, adapter), built = mapScreenStrings(actual, catalogue, adapter), differences = [];
+export function compareCatalogueStrings(reference, actual, catalogue, adapter, cascadeRoots = {reference: [], actual: []}) {
+  const keep = (value, roots) => !roots.some(root => value.owner && (value.owner === root || value.owner.startsWith(root + '.')));
+  const frame = mapScreenStrings(reference, catalogue, adapter).filter(value => keep(value, cascadeRoots.reference)), built = mapScreenStrings(actual, catalogue, adapter).filter(value => keep(value, cascadeRoots.actual)), differences = [];
   for (const value of frame) if (['unmapped', 'ambiguous', 'data-mismatch'].includes(value.status)) differences.push({kind: 'frame-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});
   const frameText = new Set(frame.map(value => value.text));
   for (const value of built) if (value.status === 'data-mismatch' || value.status === 'ambiguous' || value.status === 'unmapped' && !frameText.has(value.text)) differences.push({kind: 'built-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});

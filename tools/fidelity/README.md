@@ -23,13 +23,20 @@ is extracted twice and must be deterministic.
 Adapters map semantic part names to reference/built selectors. They add no DOM
 attributes, markup or style to either screen. An existing `data-frame` anchor
 is preferred when present; adapter anchors come next, then deterministic
-role/text/DOM order. Missing, extra and ambiguous elements are failures; order
+role/text/DOM order. Repeated lists anchor their container and match children by
+role, normalized descendant text and order. A list cardinality fault is reported
+once; descendant missing/extra/string cascades are suppressed. Own text is used
+as fallback only on leaves. Missing, extra and ambiguous elements are failures; order
 selection during ambiguity is diagnostic, not a waiver. The complete declared
 screen must match viewport and DPR1; an element crop cannot pass.
 
 Geometry tolerance is **2 CSS px per x/y/width/height**, opacity **0.02**.
-Font family/size/weight and text are exact; line-height/spacing/decoration and
-paint/radius/border/shadow/filter/transform/fit are also compared. Physically
+Font family/size/weight and normalized text are exact. Rendered Range text-run
+rectangles use the same 2px tolerance. Raw textAlign and lineHeight remain
+unscored diagnostics; identical rendered text must not fail for different CSS
+layout recipes. Spacing/decoration and paint/radius/border/shadow/filter/transform/fit
+are compared. Backgrounds are ancestor-composited RGBA, and effective opacity
+is the product of ancestor opacities. Physically
 identical `none` and identity matrices are equivalent, including their unused
 transform origin. Colour uses sRGB D65 to CIELAB and **CIEDE2000 <= 2** with
 alpha checked separately at 0.02. The implementation is checked against
@@ -66,7 +73,10 @@ import this tooling; the original DEV entry remains fail-closed in production.
 
 Run through the existing general browser runner, with declared Node and owned
 TMPDIR. Start the external read-only reference server privately and pass only
-its loopback URL to `run-web.mjs --reference-url ...`. It writes one
-`FIDELITY_SCREEN_JSON` stdout record; decode that record into the private
-harness output directory and format its `differences` as plain text. A measured
+its loopback URL to `run-web.mjs --reference-url ... --output /external/screen.log`.
+It writes the complete JSON outside public source and prints only a short result.
+Collect that private output and format its `differences` as plain text. Calibration
+compares the frame to itself (zero differences), then perturbs exactly one
+measured font-size or caption-opacity fact (one difference each). Raw text metrics
+are explicitly unscored diagnostics. A measured
 FAIL is a useful result. No application styling is changed by this command.

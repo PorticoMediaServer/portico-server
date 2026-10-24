@@ -1,5 +1,7 @@
 import {resolve, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {writeFile, realpath} from 'node:fs/promises';
+import {basename, dirname, sep} from 'node:path';
 import {createServer} from 'vite';
 import {withMeasurementBrowser} from './browser.mjs';
 import {enUS} from '../../packages/i18n/src/catalog/en-US.ts';
@@ -8,6 +10,7 @@ import {compareTextMetrics} from './text-metrics.mjs';
 import {compareScreens} from './compare.mjs';
 import {auth4} from './auth4.mjs';
 import {colorDifference, parseColor} from './color.mjs';
+import {calibrateFrame} from './calibration.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -24,8 +27,8 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     return await withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       viewport, allowedOrigins: [new URL(referenceURL).origin, actualOrigin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
       await browser.navigate(referenceURL, referenceSelector);
-      const reference = await browser.measure(referenceSelector, adapter.reference);
-      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference));
+      const reference = await browser.measure(referenceSelector, adapter.reference, adapter.repeats.reference);
+      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats.reference));
       await browser.navigate(actualURL, actualSelector);
       const point = await browser.evaluate('(()=>{const e=document.querySelector("input[name=password]");const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()');
       await browser.call('Input.dispatchMouseEvent', {type: 'mousePressed', button: 'left', clickCount: 1, ...point});
@@ -33,10 +36,12 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       // Explicit PUBLIC fixture state: match the frame's ten masked characters.
       // The inert existing DEV recorder cannot send this value to an auth API.
       await browser.call('Input.insertText', {text: '0123456789'});
-      const actual = await browser.measure(actualSelector, adapter.actual);
-      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual));
-      const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter), textMetrics = compareTextMetrics(reference, actual);
+      const actual = await browser.measure(actualSelector, adapter.actual, adapter.repeats.actual);
+      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual, adapter.repeats.actual));
+      const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter, comparison.cascadeRoots), textMetrics = compareTextMetrics(reference, actual);
       const differences = [...comparison.differences, ...strings.differences];
+      const calibration = calibrateFrame(reference);
+      if (!calibration.passed) differences.push({kind: 'calibration-failure', label: 'Frame self and single-fact perturbations', calibration});
       for (const [side, screen] of [['reference', reference], ['actual', actual]]) {
         const required = new Map(screen.strings.filter(value => value.style).map(value => [value.style.fontFamily + '|' + value.style.fontWeight, value.style]));
         for (const style of required.values()) {
@@ -49,7 +54,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
         }
       }
       const password = actual.elements.find(node => node.frame === 'password-input');
-      if (!password?.focused || password.input?.length !== 10) differences.push({kind: 'fixture-state', label: 'Real password focus and ten masked characters', focused: password?.focused, length: password?.input?.length});
+      if (!password?.focused || password.input?.length !== 10 || password.input?.type !== 'password') differences.push({kind: 'fixture-state', label: 'Real password focus and ten masked characters', focused: password?.focused, length: password?.input?.length});
       if (!deterministicReference || !deterministicActual) differences.push({kind: 'nondeterministic-extraction', label: 'Same-input determinism', reference: deterministicReference, actual: deterministicActual});
       if (browser.blocked.length || browser.pageErrors.length) differences.push({kind: 'page-readiness', label: 'Blocked or failed runtime resource', blocked: browser.blocked, pageErrors: browser.pageErrors});
       const caretColor = password && colorDifference(password.style.color, password.style.caretColor);
@@ -61,15 +66,15 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
       const classification = {adapter: 0, stateOrReadiness: 0, copyOrCatalogue: 0, geometry: 0, computedStyle: 0, unmatchedElement: 0};
       for (const difference of differences) {
-        if (['anchor-cardinality', 'ambiguous-match', 'missing-content-slot'].includes(difference.kind)) classification.adapter++;
-        else if (['screen-state', 'fixture-state', 'nondeterministic-extraction', 'font-not-loaded', 'page-readiness', 'native-caret-state'].includes(difference.kind)) classification.stateOrReadiness++;
+        if (['anchor-cardinality', 'list-cardinality', 'ambiguous-match', 'missing-content-slot'].includes(difference.kind)) classification.adapter++;
+        else if (['screen-state', 'fixture-state', 'nondeterministic-extraction', 'font-not-loaded', 'page-readiness', 'native-caret-state', 'calibration-failure'].includes(difference.kind)) classification.stateOrReadiness++;
         else if (difference.kind.includes('string') || difference.property === 'text') classification.copyOrCatalogue++;
         else if (difference.property?.startsWith('box.')) classification.geometry++;
         else if (difference.kind === 'measured-difference') classification.computedStyle++;
         else classification.unmatchedElement++;
       }
       return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
-        comparison, strings, textMetrics, nativeCaret, differences, differenceCount: differences.length, classification,
+        comparison, strings, textMetrics, nativeCaret, calibration, differences, differenceCount: differences.length, classification,
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};
@@ -83,7 +88,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!argv[index].startsWith('--') || argv[index + 1] === undefined) throw new Error('Named argument/value pairs required');
     const name = argv[index].slice(2); if (name in args) throw new Error('Duplicate argument'); args[name] = argv[index + 1];
   }
-  if (!args['reference-url'] || Object.keys(args).some(key => key !== 'reference-url')) throw new Error('Usage: run-web.mjs --reference-url EXTERNAL_READ_ONLY_REFERENCE');
+  if (!args['reference-url'] || !args.output || Object.keys(args).some(key => !['reference-url', 'output'].includes(key))) throw new Error('Reference input and external output required');
+  const output = resolve(args.output), parent = await realpath(dirname(output));
+  if (parent === root || parent.startsWith(root + sep)) throw new Error('Reference-derived output must stay outside public source');
   const result = await compareWebScreen({referenceURL: args['reference-url']});
-  console.log('FIDELITY_SCREEN_JSON ' + JSON.stringify(result));
+  await writeFile(join(parent, basename(output)), JSON.stringify(result, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+  console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification}));
 }

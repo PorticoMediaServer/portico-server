@@ -16,7 +16,7 @@ test('measured negative fixture reports type, opacity, geometry, missing and ext
   const actual = spec([node('title', {box: {x: 14, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '34px', fontWeight: '800', opacity: '.6', color: 'rgb(255, 0, 0)'}}), node('added', {ownText: 'Added content'})]);
   const result = compareScreens(reference, actual);
   assert.equal(result.verdict, 'FAIL');
-  for (const property of ['fontSize', 'opacity', 'box.x', 'color']) assert.ok(result.differences.some(value => value.property === property));
+  for (const property of ['fontSize', 'effectiveOpacity', 'box.x', 'color']) assert.ok(result.differences.some(value => value.property === property));
   assert.ok(result.differences.some(value => value.kind === 'missing-element' && value.label === 'all-genres'));
   assert.ok(result.differences.some(value => value.kind === 'extra-element' && value.label === 'added'));
 });
@@ -43,4 +43,23 @@ test('wrapped control label is a separate measured text part without descendant 
   const changed = {...label, style: {...label.style, fontSize: '34px'}};
   assert.ok(compareScreens(spec([button]), spec([shell, changed]), adapter).differences.some(value => value.property === 'fontSize'));
   assert.ok(compareScreens(spec([button]), spec([shell, {...label, ownText: 'Undrawn'}]), adapter).differences.some(value => value.property === 'text'));
+});
+
+test('raw alignment/normal line height and raw background do not replace rendered/composited facts', () => {
+  const a = node('title', {normalizedText: 'Public heading', descendantTextRects: [{x: 10, y: 20, width: 100, height: 20}], effectiveOpacity: .5, effectiveBackgroundColor: 'rgba(7, 16, 24, 1)'});
+  a.style = {...a.style, lineHeight: 'normal', textAlign: 'start', backgroundColor: 'rgba(0, 0, 0, 0)'};
+  const b = {...a, style: {...a.style, lineHeight: '21px', textAlign: 'center', backgroundColor: 'rgb(7, 16, 24)'}};
+  assert.equal(compareScreens(spec([a]), spec([b])).verdict, 'PASS');
+  assert.ok(compareScreens(spec([a]), spec([{...b, descendantTextRects: [{x: 13, y: 20, width: 100, height: 20}]}])).differences.some(value => value.property === 'textRun.0.x'));
+});
+
+test('one repeated-list cardinality failure suppresses its missing/extra and ancestor text cascades', () => {
+  const parent = node('screen', {id: '0', tag: 'div', ownText: '', normalizedText: 'One Two', anchoredDescendants: 3});
+  const list = node('items', {id: '0.1', tag: 'div', ownText: '', normalizedText: 'One Two', anchoredDescendants: 2});
+  const item = (index, text) => node(`items-${index}`, {id: `0.1.${index}`, tag: 'span', ownText: text, normalizedText: text, repeat: {list: 'items', item: `0.1.${index}`, index, role: 'button'}});
+  const reference = {...spec([parent, list, item(0, 'One'), item(1, 'Two')]), repeatedLists: [{name: 'items', container: '0.1', count: 2}]};
+  const actual = {...spec([{...parent, normalizedText: 'One'}, {...list, normalizedText: 'One'}, item(0, 'One')]), repeatedLists: [{name: 'items', container: '0.1', count: 1}]};
+  const result = compareScreens(reference, actual);
+  assert.deepEqual(result.differences, [{kind: 'list-cardinality', label: 'items', expected: 2, actual: 1}]);
+  assert.deepEqual(result.cascadeRoots, {reference: ['0.1'], actual: ['0.1']});
 });
