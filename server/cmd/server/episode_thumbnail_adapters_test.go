@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,9 +14,36 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitlevideo"
 	"portico.local/server/internal/workpolicy"
 )
+
+func TestEpisodeRuntimeDoesNotAdvertiseAnUnconfiguredDecoder(t *testing.T) {
+	c := catalogtest.Open(t)
+	meta := metadata.New(c.DB, "")
+	inputs, err := subtitlevideo.New(subtitlevideo.Options{
+		DB: c.DB, Storage: &storage.Client{}, Directory: filepath.Join(t.TempDir(), "runtime"),
+		FFmpeg: filepath.Join(t.TempDir(), "not-installed-ffmpeg"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inputs.Close()
+	if inputs.AnalysisConfigured() {
+		t.Fatal("unresolved executable became a configured decoder")
+	}
+	meta.EpisodeThumbnails = episodeThumbnailRuntime(meta, &remotesources.Service{}, &identity.Service{}, nil, inputs)
+	if meta.EpisodeThumbnails == nil || meta.EpisodeThumbnails.ArtworkContext == nil || meta.EpisodeThumbnails.Decoder != nil {
+		t.Fatal("unconfigured decoder advertised or genuine artwork policy discarded")
+	}
+	// No source/catalogue lookup is allowed to turn missing runtime tooling
+	// into command availability, even when the other adapters are composed.
+	available, err := meta.CanMakeEpisodeThumbnailTx(context.Background(), nil, metadata.RepairTarget{Kind: "item", ID: "not-consulted"})
+	if err != nil || available {
+		t.Fatal("missing decoder advertised episode generation", available, err)
+	}
+}
 
 func TestEpisodeSourceStateUsesCurrentMetadataAndSinglePolicyWriter(t *testing.T) {
 	c := catalogtest.Open(t)
