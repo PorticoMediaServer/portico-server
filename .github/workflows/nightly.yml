@@ -10,6 +10,8 @@ concurrency:
   # Finish the running MAIN checkpoint and retain only the newest pending one.
   # Source merges continue independently; pull-request supersessions can stop.
   cancel-in-progress: false
+env:
+  PORTICO_TEST_TIER: default
 jobs:
   repository:
     runs-on: ubuntu-latest

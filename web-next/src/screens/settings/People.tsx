@@ -10,6 +10,7 @@ import {SettingsRow as Row} from '../../kit/shell/SettingsSurfaces';
 import {SettingsPageFailure} from '../../kit/settings';
 import {peopleTableRow} from './people-table-row';
 import type {SettingsViewerScope} from '../../platform/settings-platform';
+import type {SettingsInvitations} from './invitations';
 
 const t = defaultI18n.t, section = settingsSpec.find(section => section.scope === 'server' && section.id === 'people')!;
 const table = section.groups![0].rows[0].control, personSpec = section.panels!.person;
@@ -28,7 +29,7 @@ export type PeopleStreamLimits = Readonly<{
 export type PeopleBindings = Readonly<{
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
-  streamLimits?: PeopleStreamLimits; invite?: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
+  streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
