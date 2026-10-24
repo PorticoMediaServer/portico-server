@@ -1,10 +1,14 @@
-.episodes { padding: 28px 64px 82px; }
+.episodes { padding: 28px 64px 140px; }
 
 .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
 
 .progress { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 
 .hide { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+
+.toolbarEnd { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+
+.toolbarEnd .hide { margin-left: 0; }
 
 .tiles { display: grid; grid-template-columns: repeat(var(--episode-columns),minmax(0,1fr)); gap: 28px 16px; align-items: start; }
 
@@ -196,3 +200,51 @@
 .relatedRows { padding: 28px 0 96px; }
 
 .relatedRows > :first-child { margin-top: 0; }
+
+.watchedProgress { display: inline-flex; align-items: center; gap: 10px; font-size: var(--type-starring-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-secondary); }
+
+.mini { width: 64px; height: 4px; border-radius: 4px; background: color-mix(in srgb,var(--color-text) 18%,transparent); overflow: hidden; }
+
+.mini i { display: block; height: 100%; background: var(--color-accent-strong); transform-origin: left; }
+
+.seasonMenu { width: 100%; }
+
+.seasonHead { display: flex; align-items: center; gap: 10px; padding: 4px 6px 10px 10px; }
+
+.seasonHead b { font-size: var(--type-chip-size); font-weight: 800; }
+
+.seasonJump { margin-left: auto; height: 36px; width: 168px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 9px; background: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-tertiary); font-size: var(--type-chip-size); }
+
+.seasonJump input { flex: 1; min-width: 0; border: 0; background: none; color: var(--color-text); font: inherit; outline: none; }
+
+.seasonJump i { font-style: normal; font-size: var(--type-label-size); color: color-mix(in srgb,var(--color-text-tertiary) 60%,transparent); white-space: nowrap; }
+
+.seasonList { position: relative; height: 290px; overflow: auto; scrollbar-width: none; }
+
+.seasonList::-webkit-scrollbar { display: none; }
+
+.seasonRow { width: 100%; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 6px 14px 6px 12px; border: 0; border-radius: 9px; background: none; color: inherit; text-align: left; cursor: pointer; }
+
+.seasonRow:hover { background: color-mix(in srgb,var(--color-text) 6%,transparent); }
+
+.seasonRow[data-selected] { background: color-mix(in srgb,var(--color-accent-strong) 16%,transparent); }
+
+.seasonRow:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: -2px; }
+
+.seasonCopy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.seasonCopy b { font-size: var(--type-wide-title-size); font-weight: 700; color: var(--color-text); }
+
+.seasonCopy small { font-size: var(--type-label-size); font-weight: 600; color: var(--color-text-tertiary); }
+
+.seasonRight { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; font-size: var(--type-label-size); font-weight: 600; color: var(--color-text-tertiary); }
+
+.seasonWatched { display: inline-flex; align-items: center; gap: 4px; color: var(--color-healthy); }
+
+.seasonBar { width: 56px; height: 4px; border-radius: 4px; background: color-mix(in srgb,var(--color-text) 16%,transparent); overflow: hidden; }
+
+.seasonBar i { display: block; height: 100%; background: var(--color-accent-strong); transform-origin: left; }
+
+.seasonSplit { height: 1px; margin: 6px 4px; background: var(--color-line); }
+
+.seasonMore { display: block; padding: 4px 12px 2px; font-size: var(--type-label-size); font-weight: 600; color: var(--color-text-tertiary); }

@@ -30,7 +30,7 @@ import '../../bootstrap.css';
  */
 if (!import.meta.env.DEV) throw new Error('Show specimens require the development server.');
 const frame = new URLSearchParams(location.search).get('frame');
-if (frame !== null && frame !== '4' && frame !== '5' && frame !== '4b') throw new Error('The show specimen measures desktop frames 4, 4b and 5 only.');
+if (frame !== null && !['4', '4b', '5', '6'].includes(frame)) throw new Error('The show specimen measures desktop frames 4, 4b, 5 and 6 only.');
 
 type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
 
@@ -167,6 +167,39 @@ function activityDocument(now: string) {
 const records: SpecimenEvent[] = [];
 const record = (kind: string, value?: unknown) => {records.push(Object.freeze({kind, at: Date.now(), ...(value === undefined ? {} : {value})}));};
 
+const simpsonsId = 'the-simpsons';
+const season3 = [
+  ['Stark Raving Dad', '1991-09-19', true], ['Lisa Goes to Washington', '1991-09-26', true], ['When Flanders Failed', '1991-10-03', true], ['Bart the Murderer', '1991-10-10', true],
+  ['Homer Defined', '1991-10-17', false], ['Like Father, Like Clown', '1991-10-24', false], ['Treehouse of Horror II', '1991-10-31', false], ['Lisa’s Pony', '1991-11-07', false],
+] as const;
+const simpsonsEpisodes = season3.map(([title, airDate, watched], index) => ({id: `simpsons-s3e${index + 1}`, title, airDate, watched}));
+function simpsonsWorkspace() {
+  const revision = {catalog: 1, viewer: 1}, seasons = [];
+  for (let number = 1; number <= 36; number += 1) {
+    const first = 1989 + number - 1, count = number === 1 ? 13 : number === 2 || number === 4 || number === 5 || number === 6 ? 22 : 24;
+    seasons.push({id: `simpsons-s${number}`, showId: simpsonsId, number, title: `Season ${number}`, episodeCount: count, watchedCount: number === 1 ? 13 : number === 2 ? 22 : number === 3 ? 4 : 0, unwatchedCount: number === 3 ? 20 : number <= 2 ? 0 : count, firstAired: `${first}-09-01`, lastAired: `${first + 1}-05-01`});
+  }
+  seasons.push({id: 'simpsons-specials', showId: simpsonsId, number: 0, title: 'Specials', episodeCount: 12, watchedCount: 0, unwatchedCount: 12, firstAired: '1991-01-01', lastAired: '1991-12-01'});
+  const entries = simpsonsEpisodes.map(episode => ({id: episode.id, kind: 'episode', libraryId, title: episode.title, seasonNumber: 3, episodeNumber: Number(episode.id.slice(-1)), airDate: episode.airDate, durationMs: 1380 * 1000, progressMs: 0, watched: episode.watched, overview: 'The Simpsons’ third season.', stillUrl: imageArt('still', episode.id), available: true, navigation: {view: 'item', entityId: episode.id}, playback: {itemId: episode.id}}));
+  const nextUp = entries[4];
+  return {scope: {serverId, libraryId, viewerFence}, revision,
+    show: {id: simpsonsId, libraryId, title: 'The Simpsons', year: 1989, libraryKind: 'tv', providerMatchStatus: 'matched', network: 'FOX', studio: '20th Century Fox Television', contentRating: 'TV-14', status: 'Continuing', firstAired: '1989-12-17', addedAt: '2026-10-17T00:00:00Z', episodeCount: 24, genres: ['Animation', 'Comedy'], overview: 'The satirical adventures of a working-class family in Springfield.'},
+    showCredits: [],
+    seasons, seasonTotalCount: 36, nextSeasonCursor: '', groups: [], selected: {seasonId: 'simpsons-s3'},
+    episodes: {scope: {serverId, libraryId, libraryKind: 'tv', view: 'season', entityId: 'simpsons-s3', viewerFence}, revision, query: {sort: 'episode', direction: 'asc', category: '', q: '', limit: 40, searchMode: 'none'}, sections: [{id: 'episodes', type: 'list', heading: 'Season 3', totalCount: entries.length, nextCursor: '', entries}]},
+    nextUp,
+    settings: {hideSeasons: false, absoluteNumbering: false, ranges: false, newestFirst: false, revision: 1}};
+}
+function simpsonsEpisodeDetail() {
+  const revision = {catalog: 1, viewer: 1}, entry = simpsonsEpisodes[4];
+  return {scope: {serverId, libraryId, itemId: entry.id, viewerFence}, revision,
+    item: {id: entry.id, libraryId, kind: 'episode', title: entry.title, year: 1991, durationMs: 1_380_000, progressMs: 0, available: true, addedAt: '2026-10-17T00:00:00Z', overview: 'Homer saves the power plant from a meltdown by sheer luck and is hailed as a hero.'},
+    personal: {watchlisted: false, favorite: false, rating: null, revision: 1, watched: false, progressMs: 0, lastPlayedAt: '', status: 'current', conflicts: []},
+    actions: [{id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId: entry.id, startMs: 0}}, {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true}],
+    facts: {contentRating: 'TV-14', releaseDate: entry.airDate, network: 'FOX', country: 'United States', originalLanguage: 'en'},
+    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'animation', name: 'Animation', provider: 'specimen'}], credits: [], creditTotals: {cast: 0, crew: 0}},
+    languages: {audio: ['en'], subtitles: []}, collections: [], markers: []};
+}
 const cardRow = (items: readonly (readonly [string, number, string])[]) => items.map(([title, year, kind]) => {
   const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return {id, kind, libraryId: libraryId, title, year, available: true, posterUrl: imageArt('poster', id), navigation: {view: 'item', entityId: id}, playback: {itemId: id}} as const;
@@ -185,10 +218,12 @@ function showRecommendations() {
 const request = async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
   const route = path.split('?')[0];
   record('request', {path: route, method});
-  if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return showWorkspace() as T;
+  if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return (new URLSearchParams(path.split('?')[1] ?? '').get('showId') === simpsonsId ? simpsonsWorkspace() : showWorkspace()) as T;
   if (method === 'GET' && route === `/v1/containers/show/${showId}/personal-state`) return containerState() as T;
+  if (method === 'GET' && route === `/v1/containers/show/${simpsonsId}/personal-state`) return {...containerState(), watchedCount: 4, unwatchedCount: 20} as T;
   if (method === 'GET' && route === `/v1/shows/${showId}/recommendations`) return showRecommendations() as T;
   if (method === 'GET' && /^\/v1\/items\/ep-\d+\/detail$/.test(route)) return episodeDetail(Number(route.split('/')[3].slice(3)) - 1) as T;
+  if (method === 'GET' && route === `/v1/items/${simpsonsEpisodes[4].id}/detail`) return simpsonsEpisodeDetail() as T;
   if (method === 'PUT' && route === `/v1/admin/libraries/${libraryId}/shows/${showId}/settings`) {
     const settings = (body ?? {}) as Record<string, unknown>;
     record('show-settings', settings);
@@ -262,7 +297,7 @@ const binding: ShellBindings = {api, events, scopeKey: 'show-specimen', shell: {
 // The fixture's real command receipts are inspectable from the page; no credentials or server data.
 (window as Window & {__porticoShowSpecimen?: unknown}).__porticoShowSpecimen = {records, show: showWorkspace, container: containerState, detail: episodeDetail};
 
-router.update({history: createMemoryHistory({initialEntries: [`/library/${libraryId}?view=show&entityId=${showId}`]})});
+router.update({history: createMemoryHistory({initialEntries: [frame === '6' ? `/library/${libraryId}?view=show&entityId=${simpsonsId}` : `/library/${libraryId}?view=show&entityId=${showId}`]})});
 createRoot(document.getElementById('root')!).render(
   <WebScreenProvider value={{binding, context: contextBase}}>
     <IconSprite />
@@ -276,6 +311,18 @@ createRoot(document.getElementById('root')!).render(
 let tries = 0;
 const activate = () => {
   if (++tries > 600) return;
+  if (frame === '6') {
+    const trigger = document.querySelector<HTMLElement>('div[class*="toolbar"] button[aria-haspopup]');
+    if (!trigger) { requestAnimationFrame(activate); return; }
+    trigger.click();
+    requestAnimationFrame(() => {
+      const menu = document.querySelector('[class*="seasonMenu"]');
+      if (!menu) { requestAnimationFrame(activate); return; }
+      document.querySelector<HTMLElement>('[data-season-number="4"]')?.focus();
+      document.documentElement.setAttribute('data-show-frame6-ready', 'true');
+    });
+    return;
+  }
   if (frame === '4b') {
     const related = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent?.trim() === defaultI18n.t('next.controls.moreLikeThis'));
     if (!related) { requestAnimationFrame(activate); return; }

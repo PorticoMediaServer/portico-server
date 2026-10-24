@@ -1,5 +1,5 @@
 import {t, locale, environment as env} from './text';
-import {Fragment, useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
 import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceShowCredit} from '@core/show-workspace.ts';
 import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
@@ -8,7 +8,7 @@ import {AmbientArt, Artwork} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
 import {Lockup} from '../../kit/layout';
 import {EpisodeTile} from '../../kit/cards';
-import {Menu, MenuItem, Popover} from '../../kit/overlays';
+import {Popover} from '../../kit/overlays';
 import {OwnerTag, ServerMark} from '../../kit/shell';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
@@ -59,8 +59,11 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   // The pinned bar carries the drawn Resume Sx Ey and My List controls once the hero is gone.
   const pinAction = primary.data?.actions.find(action => action.enabled && action.playback && action.id !== 'start_over'), nextUp = data.nextUp;
   const pinProgress = nextUp?.duration && nextUp.duration > 0 ? Math.min(1, Math.max(0, (nextUp.progressSeconds ?? 0) / nextUp.duration)) : 0;
+  const playNext = () => { const held = primary.data; if (held) void binding.primary.play(held, pinAction.id).catch(binding.context.effects.reportError); };
   const pin = nextUp?.seasonNumber !== undefined && nextUp.episodeNumber !== undefined && primary.data && pinAction
-    ? <ResumeButton size="small" progress={pinProgress} onClick={() => { const held = primary.data; if (held) void binding.primary.play(held, pinAction.id).catch(binding.context.effects.reportError); }}>{t('next.home.resumeEpisode', {season: nextUp.seasonNumber, episode: nextUp.episodeNumber})}</ResumeButton>
+    ? pinProgress > 0
+      ? <ResumeButton size="small" progress={pinProgress} onClick={playNext}>{t('next.home.resumeEpisode', {season: nextUp.seasonNumber, episode: nextUp.episodeNumber})}</ResumeButton>
+      : <Button variant="primary" size="small" icon="i-play" onClick={playNext}>{t('next.home.playEpisode', {season: nextUp.seasonNumber, episode: nextUp.episodeNumber})}</Button>
     : primary.data ? <TitleActions binding={binding.primary} data={primary.data} small /> : null;
   const owner = binding.canManage();
   const facts = titlePageFacts({year: show.year, seasonCount: data.seasonTotalCount, genres: show.genres, contentRating: show.contentRating}, env);
@@ -75,14 +78,15 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
-        <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
-          {data.seasons.map(season => <MenuItem key={season.id} selected={season.id === data.selected.seasonId} description={season.episodeCount !== undefined ? t('count.episodes', {count: season.episodeCount}) : undefined} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectSeason(season.id); })}>{season.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: season.number})}</MenuItem>)}
-          {data.groups.map(group => <MenuItem key={group.id} selected={group.id === data.selected.group} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectGroup(group.id); })}>{group.title}</MenuItem>)}
-          {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousSeasons(); })}>{t('title.earlierSeasons')}</MenuItem>}
-          {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextSeasons(); })}>{t('title.laterSeasons')}</MenuItem>}
-        </Menu>
+        <Popover open={seasonMenu} onOpenChange={setSeasonMenu} placement="bottom-start" sideOffset={18} width={380} title={t('title.seasonMenu')}
+          trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
+          <SeasonMenu binding={binding} data={data} onClose={() => setSeasonMenu(false)} />
+        </Popover>
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
-        <label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => runScreenCommand(binding.context, () => { binding.current(data); const route = snapshot.route; if (route) return binding.select({...route, playState: checked ? 'unplayed' : 'all'}); })} /></label>
+        {selectedSeason?.episodeCount !== undefined && selectedSeason.watchedCount !== undefined && selectedSeason.watchedCount > 0 && <span className={styles.watchedProgress}><span className={styles.mini}><i style={{transform: `scaleX(${selectedSeason.watchedCount / selectedSeason.episodeCount})`}} /></span>{t('title.seasonProgress', {watched: selectedSeason.watchedCount, total: selectedSeason.episodeCount})}</span>}
+        <div className={styles.toolbarEnd}><label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => runScreenCommand(binding.context, () => { binding.current(data); const route = snapshot.route; if (route) return binding.select({...route, playState: checked ? 'unplayed' : 'all'}); })} /></label>
+          {!phone && data.seasonTotalCount > 8 && <Segmented value={layout} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'list' || value === 'grid') binding.view.layout(value); })} aria-label={t('title.episodeLayout')} variant="view" items={[{value: 'list', label: t('title.viewList'), icon: 'i-list'}, {value: 'grid', label: t('title.viewGrid'), icon: 'i-grid'}]} />}
+        </div>
       </div>
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}
@@ -93,7 +97,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
           const subject = entrySubject(episode), model = cardText(subject, 'in-show', env), next = data.nextUp?.id === episode.id;
           const date = subject.episode?.mode !== 'date' && subject.episode?.mode !== 'special' ? episodeLabel({mode: 'date', day: episode.airDate}, 'in-show', env) : undefined;
           const continuing = !episode.watched && (episode.progressSeconds ?? 0) > 0;
-          const status: FactPart[] = continuing ? [{id: 'continue', text: t('title.continueEpisode'), role: 'status'}, ...cardText(subject, 'continuation', env).detail] : next ? [{id: 'up-next', text: t('title.nextUp'), role: 'status'}] : [];
+          const status: FactPart[] = continuing ? [{id: 'continue', text: t('title.continueEpisode'), role: 'status'}, ...cardText(subject, 'continuation', env).detail] : next ? [{id: 'up-next', text: t('next.show.upNext'), role: 'status'}] : [];
           return <Fragment key={episode.id}><EpisodeTile className={styles.episodeRow} model={{...model, caption: [...model.caption, ...status]}} length={model.detail.find(part => part.id === 'duration')?.text} airDate={!continuing && date ? {...date, id: 'air-date'} : undefined} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={next} description={episode.overview}
             onPlay={episode.available === true && episode.playback?.itemId === episode.id ? () => runScreenCommand(binding.context, () => binding.playEpisode(data, episode)) : undefined}
             onNavigate={() => { void binding.expand(data, episode).catch(binding.context.effects.reportError); }} />
@@ -148,6 +152,41 @@ export function EpisodeBody({binding, data}: {binding: ShowBindings; data: ShowW
     facts={<TitleFactsLine parts={facts} />}
     synopsis={episode.item.overview} actions={<TitleActions binding={binding.episode} data={episode} />}
     credits={side} />;
+}
+
+function seasonYears(season: {firstAired?: string; lastAired?: string}): string | undefined {
+  const year = (value?: string) => value && /^\d{4}/.test(value) ? value.slice(0, 4) : undefined;
+  const from = year(season.firstAired), to = year(season.lastAired);
+  return from && to && to !== from ? t('next.show.yearsRange', {from, to}) : from ?? to;
+}
+
+function SeasonRow({season, selected, onSelect}: {season: ShowWorkspaceData['seasons'][number]; selected: boolean; onSelect: () => void}) {
+  const total = season.episodeCount, watched = season.watchedCount;
+  const complete = total !== undefined && total > 0 && watched !== undefined && watched >= total;
+  const partial = total !== undefined && total > 0 && watched !== undefined && watched > 0 && watched < total;
+  const name = season.number === 0 ? t('next.kit.specials') : t('next.kit.season', {number: season.number});
+  return <button type="button" className={styles.seasonRow} data-selected={selected || undefined} data-season-number={season.number} aria-current={selected || undefined} onClick={onSelect}>
+    <span className={styles.seasonCopy}><b>{name}</b>{seasonYears(season) && <small>{seasonYears(season)}</small>}</span>
+    <span className={styles.seasonRight}>{total !== undefined && <span>{t('count.episodes', {count: total})}</span>}{complete ? <span className={styles.seasonWatched}><Icon name="i-check" size={14} />{t('saved.watched')}</span> : partial ? <span className={styles.seasonBar}><i style={{transform: `scaleX(${watched! / total})`}} /></span> : null}</span>
+  </button>;
+}
+
+/** The drawn season menu: every season with its years, count and progress; Specials stay pinned. */
+function SeasonMenu({binding, data, onClose}: {binding: ShowBindings; data: ShowWorkspaceData; onClose: () => void}) {
+  const [jump, setJump] = useState(''), list = useRef<HTMLDivElement>(null);
+  const seasons = [...data.seasons].filter(season => season.number > 0).sort((a, b) => a.number - b.number);
+  const special = data.seasons.find(season => season.number === 0), max = seasons.at(-1)?.number ?? 0;
+  const choose = (seasonId: string) => { binding.current(data); void binding.service.selectSeason(seasonId).then(() => onClose()).catch(binding.context.effects.reportError); };
+  const jumpTo = (value: string) => { setJump(value); const number = Number(value); if (Number.isInteger(number) && number >= 1 && number <= max && list.current) list.current.scrollTop = (number - 1) * 56; };
+  useEffect(() => { const selected = list.current?.querySelector<HTMLElement>('[data-selected]'); if (selected) selected.scrollIntoView?.({block: 'nearest'}); }, [data.selected.seasonId]);
+  return <div className={styles.seasonMenu}>
+    <div className={styles.seasonHead}><b>{t('next.kit.seasons', {count: Math.max(0, data.seasonTotalCount - (special ? 1 : 0))})}</b>
+      {max > 30 && <label className={styles.seasonJump}><input value={jump} onChange={event => jumpTo(event.target.value)} placeholder={t('next.show.jumpSeason')} aria-label={t('next.show.jumpSeason')} inputMode="numeric" /><i>{t('next.show.jumpRange', {max})}</i></label>}
+    </div>
+    <div className={styles.seasonList} ref={list}>{seasons.map(season => <SeasonRow key={season.id} season={season} selected={season.id === data.selected.seasonId} onSelect={() => choose(season.id)} />)}</div>
+    {special && <><div className={styles.seasonSplit} /><SeasonRow season={special} selected={special.id === data.selected.seasonId} onSelect={() => choose(special.id)} /></>}
+    {data.seasonTotalCount > seasons.length + (special ? 1 : 0) && <small className={styles.seasonMore}>{t('title.seasonCount', {count: data.seasonTotalCount})}</small>}
+  </div>;
 }
 
 /** The drawn About column: the show's own stored facts, never a file fact. */

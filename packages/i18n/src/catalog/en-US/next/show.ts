@@ -20,4 +20,8 @@ export const showMessages = {
   'next.show.howListed': 'How episodes are listed on every device.',
   'next.show.change': 'Change',
   'next.show.guestStars': 'Guest stars',
+  'next.show.jumpSeason': 'Season',
+  'next.show.jumpRange': '1 to {max}',
+  'next.show.yearsRange': '{from} to {to}',
+  'next.show.upNext': 'Up next',
 } as const;
