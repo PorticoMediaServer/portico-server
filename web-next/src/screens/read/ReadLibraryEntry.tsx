@@ -37,7 +37,7 @@ const generated = (item: Readonly<{title: string; author?: Readonly<{value: stri
 function resumeRows(resources: Resources, items: readonly ReadingContinueItem[]): readonly ReadResumeItem[] {
   return items.map(row => ({id: row.item.id, card: {
     model: {title: row.item.title, caption: authorFacts(row.item.author), progress: row.progress.location.progression},
-    fallback: generated(row.item), disabled: !row.item.inventoryAvailable, visible: true,
+    fallback: generated(row.item), disabled: !row.item.inventoryAvailable, visible: true, playLabel: t('next.reader.read'),
     onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: row.item.id}}).catch(resources.reportError);},
     onPlay: row.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(row.item.id, row.item.sourceId)).catch(resources.reportError);} : undefined,
   }}));
