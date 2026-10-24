@@ -231,9 +231,12 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 
 // seedLocalArtworkCandidateCall materializes at most one page (eight) of the
 // ordered accepted images for one slot and reports whether that was the rest of
-// the stream. The committed candidate rows are the whole continuation state: a
-// later call (or a restarted process) rederives the first unseeded ordered tuple
-// from them, so no cursor column, filename guess or private position is stored.
+// the stream. It only records candidates: the central ranked-default helper then
+// queues the preferred already-materialized image, so no alternate auto-selects
+// itself and the helper consumes none of the eight-candidate budget. The
+// committed candidate rows are the whole continuation state: a later call (or a
+// restarted process) rederives the first unseeded ordered tuple from them, so no
+// cursor column, filename guess or private position is stored.
 func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string) (bool, int, error) {
 	materialized, err := localArtworkMaterializedKeys(ctx, tx, t, entity, role)
 	if err != nil {
@@ -260,6 +263,9 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 		after = &last
 	}
 	if index < 0 {
+		if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
+			return false, 0, err
+		}
 		return true, 0, nil
 	}
 	remaining := len(page) - index
@@ -269,9 +275,12 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	}
 	for _, candidate := range page[index : index+seed] {
 		origin := "local:" + candidate.Key
-		if err = seedArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
+		if _, err = insertArtworkCandidate(ctx, tx, t, role, "", "local", publicationDigest(origin), origin, "", artworkAttribution("local"), fence, now, 0); err != nil {
 			return false, 0, err
 		}
+	}
+	if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
+		return false, 0, err
 	}
 	return len(page) < localArtworkCandidateLocate && remaining <= localArtworkCandidatePage, seed, nil
 }
