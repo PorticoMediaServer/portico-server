@@ -9,10 +9,10 @@ export type SavedScope = Readonly<{ serverId: string; viewerId: string }>;
 export interface SavedApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type SavedShape = 'posters' | 'squares';
 export type SavedShapeCounts = Readonly<{posters:number;squares:number}>;
-export type SavedListFilter = 'all' | 'unwatched' | 'inProgress';
+export type SavedListFilter = 'all' | 'unwatched' | 'inProgress' | 'watched' | 'favorites';
 export type SavedListSort = 'title' | 'added' | 'updated' | 'year' | 'duration' | 'progress';
 export type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | 'all';
-export const savedListFilters: readonly SavedListFilter[] = ['all', 'unwatched', 'inProgress'];
+export const savedListFilters: readonly SavedListFilter[] = ['all', 'unwatched', 'inProgress', 'watched', 'favorites'];
 /** The groups a list of playlists offers: all of them, the viewer's own, those shared with them, the pinned ones. */
 export type PlaylistListFilter = 'all' | 'mine' | 'shared' | 'pinned';
 export const playlistListFilters: readonly PlaylistListFilter[] = ['all', 'mine', 'shared', 'pinned'];

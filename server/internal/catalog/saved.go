@@ -22,13 +22,16 @@ var savedSorts = map[string]string{
 }
 var savedNumericSorts = map[string]bool{"year": true, "duration": true, "progress": true}
 
-// savedFilters read the viewer's own state only. inProgress means started and
-// not finished; a completed item is never "in progress" because its resume was
-// cleared.
+// savedFilters read the viewer's own state only. watched is the compact watch
+// state, favorites is the saved item's own favorite flag, inProgress means
+// started and not finished; a completed item is never "in progress" because
+// its resume was cleared.
 var savedFilters = map[string]string{
 	"all":        ``,
 	"unwatched":  ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0`,
 	"inProgress": ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0 AND COALESCE((SELECT g.position FROM progress g WHERE g.profile_id=p.profile_id AND g.item_id=i.id),0)>0`,
+	"watched":    ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=1`,
+	"favorites":  ` AND p.favorite=1`,
 }
 
 func savedNavigation() []ContentTab {
@@ -37,8 +40,8 @@ func savedNavigation() []ContentTab {
 func savedSortOptions() []ContentSort {
 	return []ContentSort{{"title", "sort.title", []string{"asc", "desc"}}, {"added", "sort.added", []string{"asc", "desc"}}, {"updated", "sort.updated", []string{"asc", "desc"}}, {"year", "sort.year", []string{"asc", "desc"}}, {"duration", "sort.duration", []string{"asc", "desc"}}, {"progress", "sort.progress", []string{"asc", "desc"}}}
 }
-func savedFilterOptions(all, unwatched, inProgress int) []ContentFilter {
-	return []ContentFilter{{ID: "filter", LabelKey: "saved.filter", Options: []ContentFilterOption{{ID: "all", Label: "All", Count: all}, {ID: "unwatched", Label: "Unwatched", Count: unwatched}, {ID: "inProgress", Label: "In progress", Count: inProgress}}}}
+func savedFilterOptions(all, unwatched, inProgress, watched, favorites int) []ContentFilter {
+	return []ContentFilter{{ID: "filter", LabelKey: "saved.filter", Options: []ContentFilterOption{{ID: "all", Label: "All", Count: all}, {ID: "unwatched", Label: "Unwatched", Count: unwatched}, {ID: "inProgress", Label: "In progress", Count: inProgress}, {ID: "watched", Label: "Watched", Count: watched}, {ID: "favorites", Label: "Favorites", Count: favorites}}}}
 }
 func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
@@ -123,7 +126,7 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		base += ` AND i.kind IN(5,6,7,8,9,13)`
 	}
 
-	var all, unwatched, inProgress int
+	var all, unwatched, inProgress, watched, favorites int
 	if e = s.read().QueryRow(`SELECT count(*)`+base, baseArgs...).Scan(&all); e != nil {
 		return out, e
 	}
@@ -133,8 +136,14 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["inProgress"], baseArgs...).Scan(&inProgress); e != nil {
 		return out, e
 	}
-	out.Filters = savedFilterOptions(all, unwatched, inProgress)
-	count := map[string]int{"all": all, "unwatched": unwatched, "inProgress": inProgress}[r.Filter]
+	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["watched"], baseArgs...).Scan(&watched); e != nil {
+		return out, e
+	}
+	if e = s.read().QueryRow(`SELECT count(*)`+base+savedFilters["favorites"], baseArgs...).Scan(&favorites); e != nil {
+		return out, e
+	}
+	out.Filters = savedFilterOptions(all, unwatched, inProgress, watched, favorites)
+	count := map[string]int{"all": all, "unwatched": unwatched, "inProgress": inProgress, "watched": watched, "favorites": favorites}[r.Filter]
 	where := base + filter
 	args := append([]any{}, baseArgs...)
 	op := ">"
