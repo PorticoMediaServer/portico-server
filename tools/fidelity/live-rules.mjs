@@ -18,6 +18,7 @@ const titles = ['clockmakers', 'world', 'football', 'wild'].map(name => t('next.
 export const liveRules = {
   id: 'live-series-rules', state: 'clockmakers-editor-all-any-keep-all-early2-late-none',
   viewport: {width: 1440, height: 950, deviceScaleFactor: 1},
+  referenceWindowViewport: {width: 1520, height: 1014, deviceScaleFactor: 1},
   referenceSelector: '#live-rules', actualSelector: 'body',
   readySelector: 'body:has([data-gallery-ready="true"]):has([data-live-rules]):has(aside[role="region"][data-state="open"])',
   entry: '/dev/kit?family=live-rules&case=editor&capture=true', motion: 'settled', preferredKeys,
