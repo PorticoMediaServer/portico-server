@@ -112,6 +112,38 @@ class Device:
     def text(self):
         return "\n".join(node["text"] or node["desc"] for node in self.nodes() if node["text"] or node["desc"])
 
+    def wait_text(self, pattern, timeout=30):
+        """The uiautomator dump can lag a tap by a second or two; poll for the expected text."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            current = self.text()
+            if re.search(pattern, current, re.IGNORECASE):
+                return current
+            time.sleep(1.5)
+        return None
+
+    def tap_id(self, resource_id):
+        tree = self.dump()
+        if tree is None:
+            return None
+        for node in tree.iter("node"):
+            if (node.get("resource-id") or "") == resource_id:
+                point = self.center(node.get("bounds") or "")
+                if point:
+                    self.shell("input", "tap", str(point[0]), str(point[1]))
+                    return resource_id
+        return None
+
+    def fields(self):
+        tree = self.dump()
+        if tree is None:
+            return []
+        found = []
+        for node in tree.iter("node"):
+            if (node.get("class") or "").endswith("EditText"):
+                found.append({"bounds": node.get("bounds") or "", "desc": node.get("content-desc") or ""})
+        return found
+
     def playing(self):
         """Real playback evidence, not a 204: the media session must report PLAYING."""
         out, _ = self.shell("dumpsys", "media_session")
@@ -184,27 +216,58 @@ def main():
         return f"{len(text)} chars of visible text", {"screenshot": shot}
 
     def sign_in():
-        text = device.text()
-        if "Sign in" not in text and "Username" not in text:
-            # connect to a server first when the app starts at the server chooser
-            if device.tap_contains("use a local server", "server address", "add server"):
-                time.sleep(2)
-                field = device.tap_contains("server address", "address", "url")
-                assert field, "server screen has no address field"
-                device.type_text(args.server)
-                device.tap_contains("continue", "connect")
-                time.sleep(6)
-        assert device.tap_contains("username", "user name"), "no username field in the sign-in UI"
-        device.type_text(creds["username"])
-        assert device.tap_contains("password"), "no password field"
-        device.type_text(creds["password"])
-        device.tap_contains("sign in", "continue")
-        time.sleep(8)
-        if "Who" in device.text() or "profile" in device.text().lower():
+        entry = device.wait_text(r"Welcome home|Sign in with Portico Account|Use a local server", 40)
+        assert entry is not None, "the app drew no entry screen"
+        # Prefer the drawn local-server control, by resource id when the build exposes one.
+        if not (device.tap_id("accounts-welcome-local") or device.tap_contains("use a local server", "sign in directly to a server")):
+            raise AssertionError("the entry screen draws no local-server option")
+        assert device.wait_text(r"Server address|Use a local server", 20) is not None, "the server screen did not open"
+        fields = device.fields()
+        assert fields, "the server screen drew no address field"
+        point = device.center(fields[0]["bounds"])
+        device.shell("input", "tap", str(point[0]), str(point[1]))
+        device.type_text(args.server)
+        # The primary action under the field carries no text in the dump; tap the first button below it.
+        tree = device.dump()
+        buttons = []
+        if tree is not None:
+            for node in tree.iter("node"):
+                if (node.get("class") or "").endswith("Button"):
+                    box = node.get("bounds") or ""
+                    match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", box)
+                    if match:
+                        buttons.append((int(match.group(2)), box))
+        below = [box for top, box in sorted(buttons) if top > point[1]]
+        assert below, "no primary button below the address field"
+        target = device.center(below[0])
+        device.shell("input", "tap", str(target[0]), str(target[1]))
+        assert device.wait_text(r"Username|Password", 30) is not None, "the local sign-in form did not open"
+        fields = device.fields()
+        assert len(fields) >= 2, f"the local form drew {len(fields)} fields"
+        for index, value in ((0, creds["username"]), (1, creds["password"])):
+            point = device.center(fields[index]["bounds"])
+            device.shell("input", "tap", str(point[0]), str(point[1]))
+            device.type_text(value)
+        tree = device.dump()
+        buttons = []
+        if tree is not None:
+            for node in tree.iter("node"):
+                text = (node.get("text") or "").strip()
+                if (node.get("class") or "").endswith("Button") and text:
+                    buttons.append((text, node.get("bounds") or ""))
+        submit = next((box for text, box in buttons if re.search(r"sign in|continue", text, re.I)), None)
+        assert submit, f"no sign-in button drawn; saw {[text for text, _ in buttons][:6]}"
+        point = device.center(submit)
+        device.shell("input", "tap", str(point[0]), str(point[1]))
+        assert device.wait_text(r"Who|Main profile|Home", 40) is not None, "sign-in did not reach the app"
+        if re.search(r"Who|Main profile", device.text(), re.I):
             device.tap_contains(creds["username"], "main profile")
-            time.sleep(6)
+            time.sleep(5)
+        # A server list may sit between the profile and Home.
+        if device.tap_contains("portico demo") and not device.wait_text(r"Continue Watching|New on|Home", 8):
+            pass
+        assert device.wait_text(r"Home|Continue Watching|New on|Search", 40) is not None, "Home did not draw after sign-in"
         text = device.text()
-        assert "Sign in" not in text or "Home" in text, f"sign-in did not reach the app: {text[:200]}"
         return f"signed in; {len(text)} chars visible", {"screenshot": device.screenshot("after-signin")}
 
     def home():
