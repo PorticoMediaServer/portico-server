@@ -75,25 +75,8 @@ func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.Line
 	if !transportFor(client) && (w.MPVProfile == nil || !transportFor(*w.MPVProfile)) {
 		return plan, engine, channelFault("engine_transport_unavailable", 422)
 	}
-	var sourceVideo *playback.SourceVideo
+	sourceVideo := linearVideoSource(video)
 	var sourceAudio *playback.SourceAudio
-	if video != nil {
-		fps := 0.0
-		parts := strings.Split(video.FrameRate, "/")
-		if len(parts) == 2 {
-			a, _ := strconv.ParseFloat(parts[0], 64)
-			b, _ := strconv.ParseFloat(parts[1], 64)
-			if b > 0 {
-				fps = a / b
-			}
-		}
-		depth := 8
-		if strings.Contains(video.PixelFormat, "10") {
-			depth = 10
-		}
-		bitrate, _ := strconv.ParseInt(video.Bitrate, 10, 64)
-		sourceVideo = &playback.SourceVideo{Codec: video.Codec, StreamDetail: assets.StreamDetail{BitRate: bitrate, Profile: video.Profile, Level: video.Level, Width: video.Width, Height: video.Height, BitDepth: depth, FrameRate: fps, DynamicRange: assets.DynamicRangeOf(video.Transfer, 0), Interlaced: video.FieldOrder != "" && video.FieldOrder != "unknown" && video.FieldOrder != "progressive"}}
-	}
 	if audio != nil {
 		rate, _ := strconv.Atoi(audio.SampleRate)
 		depth, _ := strconv.Atoi(audio.AudioDepth)
@@ -131,4 +114,28 @@ func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.Line
 		plan.Level = plan.Target.VideoLevel
 	}
 	return plan, engine, nil
+}
+
+func linearVideoSource(video *linearProbeStream) *playback.SourceVideo {
+	if video == nil {
+		return nil
+	}
+	fps := 0.0
+	parts := strings.Split(video.FrameRate, "/")
+	if len(parts) == 2 {
+		a, _ := strconv.ParseFloat(parts[0], 64)
+		b, _ := strconv.ParseFloat(parts[1], 64)
+		if b > 0 {
+			fps = a / b
+		}
+	}
+	bitrate, _ := strconv.ParseInt(video.Bitrate, 10, 64)
+	interlaced, analysis := assets.VideoProbeInterlace(video.FieldOrder)
+	return &playback.SourceVideo{Codec: video.Codec, StreamDetail: assets.StreamDetail{
+		BitRate: bitrate, Profile: video.Profile, Level: video.Level,
+		Width: video.Width, Height: video.Height,
+		BitDepth:  assets.VideoProbeBitDepth(video.AudioDepth, video.PixelFormat),
+		FrameRate: fps, DynamicRange: assets.DynamicRangeOf(video.Transfer, 0),
+		Interlaced: interlaced, StreamBreadth: assets.StreamBreadth{InterlaceAnalysis: analysis},
+	}}
 }
