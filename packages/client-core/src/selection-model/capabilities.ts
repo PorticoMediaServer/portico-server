@@ -1,6 +1,6 @@
 import type {
   SelectionActionRule, SelectionActionRules, SelectionCapabilities, SelectionEnvironment,
-  SelectionIdentity, SelectionItem, SelectionKind, SelectionSummary,
+  BrowseSelectionScope, SelectionIdentity, SelectionItem, SelectionKind, SelectionSummary,
 } from './types.ts';
 
 export const selectionKinds: readonly SelectionKind[] = Object.freeze([
@@ -52,6 +52,13 @@ export function selectionKey(scope: {
     ...(item.kind === 'channel' ? [item.kind, item.sourceId, item.channelId]
       : item.kind === 'person' ? [item.kind, item.id] : [item.kind, item.libraryId, item.id]),
   ]);
+}
+
+/** No invented privacy fence: Browse identity stays in its own context domain. */
+export function browseSelectionKey(scope: BrowseSelectionScope, item: SelectionIdentity): string {
+  return JSON.stringify(['browse', scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.viewId,
+    ...(item.kind === 'channel' ? [item.kind, item.sourceId, item.channelId]
+      : item.kind === 'person' ? [item.kind, item.id] : [item.kind, item.libraryId, item.id])]);
 }
 
 /** Cost is proportional to explicit picks, never the size of the catalogue. */
