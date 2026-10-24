@@ -59,8 +59,13 @@ export class BrowserOwnerClaim {
   private async current(record: Pending, operation: ReturnType<BrowserOwnerClaim['operation']>, journal = true) {
     this.ports.journal.assertAvailable();
     if (journal && !same(await this.ports.journal.read(), record)) throw cancelled();
-    const state = await this.ports.sessions.read(), selected = this.selected(state, record.pin), session = selected.session;
-    if (!operation.current() || record.version !== 1 || record.kind !== 'owner' || record.origin !== this.ports.pageOrigin() ||
+    const state = await this.ports.sessions.read();
+    if (!operation.current()) throw cancelled();
+    return this.captured(record, state);
+  }
+  private captured(record: Pending, state: AppSessionRecord) {
+    const selected = this.selected(state, record.pin), session = selected.session;
+    if (record.version !== 1 || record.kind !== 'owner' || record.origin !== this.ports.pageOrigin() ||
       record.installationId !== this.ports.installationId() || state.revision !== record.expectedRevision || session.sessionFamilyId !== record.familyId ||
       session.tokenGeneration !== record.tokenGeneration || session.viewer.accountId !== record.accountId || session.viewer.profileId !== record.profileId ||
       !Number.isSafeInteger(record.createdAt) || record.createdAt < 0 || record.createdAt > this.now() + 60_000 || !Number.isFinite(Date.parse(record.expiresAt)) ||
@@ -135,6 +140,11 @@ export class BrowserOwnerClaim {
   async pendingReturn() {
     this.ports.journal.assertAvailable(); const record = await this.ports.journal.read();
     if (!record || record.kind !== 'owner' || !record.handoff) return;
+    const state = await this.ports.sessions.read();
+    try {this.captured(record, state);} catch {
+      await this.ports.journal.change(old => same(old, record) ? undefined : old); return;
+    }
+    this.attemptId = record.attemptId;
     return {kind: 'owner' as const, transactionId: record.handoff.transactionId};
   }
   private async retire(api: HttpLocalApi, session: LocalSession) {
@@ -148,14 +158,20 @@ export class BrowserOwnerClaim {
   async finish(captured: CapturedPorticoReturn): Promise<Completion> {
     this.ports.journal.assertAvailable(); const operation = this.operation();
     let connected: Awaited<ReturnType<typeof connectPairedServer>> | undefined, bound: Awaited<ReturnType<typeof connectPairedPorticoServer>> | undefined;
-    let grant: DirectSignIn | undefined, adopted = false;
+    let grant: DirectSignIn | undefined, adopted = false, admissionServer: string | undefined;
     try {
       const record = await this.ports.journal.read();
       if (!record?.handoff || !record.expected) throw invalid();
       const handoff = record.handoff, pending = record;
       const callback = dispatchPorticoReturn(captured, {kind: 'owner', transactionId: handoff.transactionId});
       if (new URL(callback.href).origin !== record.origin || record.origin !== this.ports.pageOrigin()) throw invalid();
-      const selected = await this.current(record, operation);
+      // A valid owner-only callback consumes this attempt before any proof,
+      // network or admission await. Malformed/mixed callbacks above preserve
+      // the legitimate pending; a successor can never be consumed here.
+      await this.ports.journal.change(old => {if (!operation.current() || !same(old, pending)) throw cancelled(); return undefined;});
+      this.attemptId = undefined;
+      const current = () => this.current(record, operation, false);
+      const selected = await current();
       const expected = handoff.binding;
       if (expected.origin !== record.origin || expected.hostedOrigin !== record.hostedOrigin || !sameServerPin(expected.pin, record.pin) || expected.state !== record.state ||
         expected.installationId !== record.installationId || expected.codeChallenge !== record.codeChallenge || expected.operationId !== record.expected.operationId ||
@@ -164,10 +180,6 @@ export class BrowserOwnerClaim {
       const digest = routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(record.verifier))));
       routeBytes(record.verifier, 32);
       if (digest !== proof.start.codeChallenge || handoff.expiresAt !== proof.start.expiresAt) throw invalid();
-      await this.current(record, operation);
-      await this.ports.journal.change(old => {if (!operation.current() || !same(old, pending)) throw cancelled(); return undefined;});
-      this.attemptId = undefined;
-      const current = () => this.current(record, operation, false);
       await current();
       const environment = this.ports.environment(record.pin.serverId);
       connected = await (this.ports.connect ?? connectPairedServer)(record.origin, record.pin, environment, operation.signal);
@@ -191,15 +203,23 @@ export class BrowserOwnerClaim {
       bound = await (this.ports.connectPortico ?? connectPairedPorticoServer)(record.origin, record.pin,
         {origin: record.hostedOrigin, accountId, request: async () => {throw invalid();}}, environment, operation.signal);
       await current(); bound.api.setAccessToken(grant.session.accessToken);
+      const admissionCurrent = () => operation.current() && this.now() < Date.parse(record.expiresAt) && record.origin === this.ports.pageOrigin() && record.installationId === this.ports.installationId();
+      admissionServer = record.pin.serverId;
       await (this.ports.remember ?? rememberNativeSession)(bound.api, grant.session,
-        {...environment, storage: this.ports.sessions.connectionStorage(record.pin.serverId, {signIn: 'portico', hostedAccount: bound.hosted, expectedRevision: record.expectedRevision})}, bound.hosted, operation.current);
+        {...environment, storage: this.ports.sessions.connectionStorage(record.pin.serverId, {signIn: 'portico', hostedAccount: bound.hosted, expectedRevision: record.expectedRevision})}, bound.hosted, admissionCurrent);
       const stored = await this.ports.sessions.read(), entry = stored.servers.find(value => value.connection.pin.serverId === stored.selectedServerId);
-      if (!operation.current() || !entry || entry.signIn !== 'portico' || !sameServerPin(entry.connection.pin, record.pin) || entry.connection.session.sessionFamilyId !== grant.session.sessionFamilyId ||
+      if (!admissionCurrent() || !entry || entry.signIn !== 'portico' || !sameServerPin(entry.connection.pin, record.pin) || entry.connection.session.sessionFamilyId !== grant.session.sessionFamilyId ||
         entry.connection.session.viewer.accountId !== record.accountId || entry.connection.hosted?.origin !== record.hostedOrigin || entry.connection.hosted.accountId !== accountId) throw cancelled();
       adopted = true; return {api: bound.api, result: grant};
     } finally {
       this.busy = false;
-      try {if (!adopted && grant?.kind === 'signed-in' && connected) await this.retire(connected.api, grant.session);}
+      try {
+        if (!adopted && grant?.kind === 'signed-in') {
+          const family = grant.session.sessionFamilyId;
+          if (admissionServer) await this.ports.sessions.connectionStorage(admissionServer).change(old => old?.session.sessionFamilyId === family ? undefined : old).catch(() => {});
+          if (connected) await this.retire(connected.api, grant.session);
+        }
+      }
       finally {connected?.connection.dispose(); if (!adopted) bound?.connection.dispose();}
     }
   }

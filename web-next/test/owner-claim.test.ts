@@ -6,6 +6,7 @@ import {BrowserOwnerClaim} from '../src/platform/owner-claim.ts';
 import {HttpLocalApi, transportJSON, type LocalSession} from '@core/index.ts';
 import {AppSessionStore, type AppSessionRecord} from '@core/app-sessions.ts';
 import {setInstallationIdentity} from '@core/installation.ts';
+import {rememberNativeSession} from '@core/server-connections.ts';
 import {routeBase64, routeBytes, webRouteCrypto} from '@core/route-identity.ts';
 
 type Ports = ConstructorParameters<typeof BrowserOwnerClaim>[0];
@@ -89,7 +90,7 @@ async function fixture(t: TestContext, origin = original.address) {
   const flow = new BrowserOwnerClaim(ports), callback = {href: origin + '/auth/portico-return', fragment: '#transaction=' + transactionId};
   return {flow, api, callback, grant, oldSession, nextSession, sent, retired, sessions, expected, registration, ports,
     prepare: () => flow.prepare(api, hostedOrigin), another: () => new BrowserOwnerClaim(ports), pending: () => saved,
-    install: () => {installed = true;}, expire: () => {now += 301000;}, insecure: () => {secure = false;}, lose: () => {lost = true;},
+    install: () => {installed = true;}, expire: () => {now += 301000;}, advance: () => {now += 2000;}, insecure: () => {secure = false;}, lose: () => {lost = true;},
     mutate: (change: (record: NonNullable<Pending>) => Pending) => {saved = change(saved!);},
     hook: (value: typeof hook) => {hook = value;}, failStorage: () => {failStorage = true;}};
 }
@@ -119,6 +120,13 @@ test('literal localhost keeps the original protected context and uses only the g
   await f.another().finish(f.callback);
   assert.equal((await f.sessions.selected())?.connection.logicalOrigin, 'http://localhost:32500');
 });
+test('a later Server challenge keeps its exact signed expiry without extending the earlier private deadline', async t => {
+  const f = await fixture(t); f.hook(async path => {if (path.endsWith('/prepare')) f.advance();});
+  await f.prepare(); const pending = f.pending()!;
+  assert.equal(Date.parse(pending.expiresAt), pending.createdAt + 300000);
+  assert.ok(Date.parse(pending.handoff!.expiresAt) > Date.parse(pending.expiresAt));
+  f.install(); await f.flow.finish(f.callback);
+});
 for (const fragment of ['#transaction=wrong', '#transaction=actual_owner_transaction&transaction=actual_owner_transaction', '#transaction=actual_owner_transaction&state=not-allowed', '#code=src_fake&state=s&transaction=actual_owner_transaction'])
   test('owner callback refuses wrong or mixed fragment ' + fragment.split('&')[0], async t => {
     const f = await fixture(t); await f.prepare(); f.install(); const count = f.sent.length;
@@ -135,6 +143,16 @@ test('idle controller cancellation cannot clear another attempt', async t => {
 });
 test('expired pending refuses before exchange or admission', async t => {
   const f = await fixture(t); await f.prepare(); f.install(); f.expire(); await assert.rejects(f.flow.finish(f.callback)); assert.equal(f.sent.some(value => value.path.endsWith('/exchange')), false);
+  assert.equal(f.pending(), undefined);
+});
+test('return dispatch drops an expired or deselected owner pending without choosing it over an ordinary return', async t => {
+  const f = await fixture(t); await f.prepare(); await f.sessions.select(original.serverId);
+  assert.equal(await f.another().pendingReturn(), undefined); assert.equal(f.pending(), undefined);
+});
+test('post-storage expiry removes only this unexposed admission and retires its exact family', async t => {
+  const f = await fixture(t); await f.prepare(); f.install();
+  const flow = new BrowserOwnerClaim({...f.ports, remember: async (...args) => {await rememberNativeSession(...args); f.expire();}});
+  await assert.rejects(flow.finish(f.callback)); assert.deepEqual(f.retired, [f.nextSession.sessionFamilyId]); assert.equal(await f.sessions.selected(), undefined);
 });
 test('lost response spends only this browser attempt and never retries or issues another claim', async t => {
   const f = await fixture(t); await f.prepare(); f.install(); f.lose(); await assert.rejects(f.flow.finish(f.callback), /lost owner/);
