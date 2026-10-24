@@ -75,6 +75,8 @@ export class SettingsController {
   readonly folders: SettingsLibraryFoldersSource;
   readonly backups: SettingsBackupSource;
   private readonly listeners = new Set<() => void>();
+  private folderObserved = false;
+  private folderLibraryId?: string;
   private readonly lifetime = new AbortController();
   private readonly rowErrors = new Map<string, unknown>();
   private readonly offDevice?: () => void;
@@ -113,7 +115,14 @@ export class SettingsController {
   preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
   serverFacts = () => this.current() ? this.header.facts : [];
-  subscribe = (listener: () => void) => {this.listeners.add(listener); return () => {this.listeners.delete(listener);};};
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    // A headless controller that no screen observes does no folder IO; the captured selection starts on the first observation.
+    this.folderObserved = true;
+    const libraryId = this.folderLibraryId;
+    if (libraryId) void this.folders.select(libraryId);
+    return () => {this.listeners.delete(listener);};
+  };
   private publish(patch: Partial<SettingsPageSnapshot>) {
     if (!this.current()) return;
     this.sectionReads.update(patch);
@@ -138,7 +147,11 @@ export class SettingsController {
   private libraryRow = (context?: SettingsContext) => context?.section.scope === 'server' && context.section.id === 'libraries' && context.panelId === 'library' && !!context.recordId;
   loadContext = (context: SettingsContext) => {
     const libraryId = this.libraryRow(context) && this.sectionVisible(context.section) ? context.recordId : undefined;
-    return Promise.all([this.library.select(libraryId), this.folders.select(libraryId)]).then(() => undefined);
+    const library = this.library.select(libraryId);
+    this.folderLibraryId = libraryId;
+    if (!libraryId) {this.folders.clear();return library;}
+    if (!this.folderObserved) return library;
+    return Promise.all([library, this.folders.select(libraryId)]).then(() => undefined);
   };
   private backupValue(rowId: string): SettingsBindingValue | undefined {
     const settings = this.backups.getSnapshot().settings;

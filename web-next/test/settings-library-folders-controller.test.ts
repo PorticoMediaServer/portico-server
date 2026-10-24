@@ -31,7 +31,8 @@ function fixture(request: LibraryContentApi['request']) {
     environment: {platform: 'web', os: 'browser'}, eligibility: {hasEngine: () => false, library: () => undefined},
     reading: {read: () => {throw new Error('Unexpected Reading read');}, patch: () => {throw new Error('Unexpected Reading write');}},
   });
-  return {controller, reader, calls, retire: () => {current = false;}};
+  const unsubscribe = controller.subscribe(() => {});
+  return {controller, reader, calls, unsubscribe, retire: () => {current = false;}};
 }
 const selected = {section, panelId: 'library', recordId: 'selected'};
 
@@ -50,7 +51,7 @@ test('the controller selects and clears its one folder source with the library p
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.deepEqual(f.controller.folders.getSnapshot().config, undefined);
     assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')).length, 2);
-  } finally {f.controller.dispose();f.reader.dispose();}
+  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
 });
 
 test('a non-library context or a different panel never reads folders', async () => {
@@ -61,7 +62,7 @@ test('a non-library context or a different panel never reads folders', async () 
     await f.controller.loadContext({section: dashboard, panelId: 'library', recordId: 'selected'});
     assert.deepEqual(f.calls.filter(path => path.endsWith('/inventory-config')), []);
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
-  } finally {f.controller.dispose();f.reader.dispose();}
+  } finally {f.unsubscribe();f.controller.dispose();f.reader.dispose();}
 });
 
 test('disposing or retiring the controller suppresses a held folder read', async () => {
@@ -79,6 +80,6 @@ test('disposing or retiring the controller suppresses a held folder read', async
     await pending;
     assert.deepEqual(f.controller.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.equal(f.controller.folders.getSnapshot().libraryId, undefined);
-    f.controller.dispose();f.reader.dispose();
+    f.unsubscribe();f.controller.dispose();f.reader.dispose();
   }
 });
