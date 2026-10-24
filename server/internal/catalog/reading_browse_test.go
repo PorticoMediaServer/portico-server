@@ -71,9 +71,9 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(caps.Pivots) != 3 || caps.Pivots[1].Browsable || caps.Pivots[1].FacetSource == nil || caps.Pivots[2].Browsable {
-				t.Fatalf("facet pivots: %+v", caps.Pivots)
-			}
+			if len(caps.Pivots) != 3 {t.Fatalf("facet pivots: %+v",caps.Pivots)}
+			for _,pivot:=range caps.Pivots {if pivot.ID=="authors"||pivot.ID=="series" {if pivot.Browsable||pivot.FacetSource==nil {t.Fatalf("facet pivot: %+v",pivot)}}}
+			if kind=="comic" && (caps.Pivots[0].ID!="series"||caps.Pivots[1].ID!="comics"||caps.Pivots[1].LabelKey!="library.tab.volumesAndIssues") {t.Fatalf("drawn Comic order: %+v",caps.Pivots)}
 			query := &BrowseNode{All: []BrowseNode{{Field: "author", Operator: "contains", Value: "  café\tAUTHOR  "}, {Field: "series", Operator: "equals", Value: "real series"}}}
 			page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Query: query, Limit: 1})
 			if err != nil {
