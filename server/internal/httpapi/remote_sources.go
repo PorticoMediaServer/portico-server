@@ -36,6 +36,11 @@ func remoteSourceFailure(w http.ResponseWriter, err error) {
 		return
 	}
 	code := remotesources.ErrorCode(err)
+	if errors.Is(err, storage.ErrRemoteRange) {
+		// Unknown qualification uses the existing interactive limitation, while
+		// the producer keeps its distinct diagnostic/source fact unchanged.
+		code = "range_unsupported"
+	}
 	status := 503
 	if code == "invalid_configuration" {
 		status = 400

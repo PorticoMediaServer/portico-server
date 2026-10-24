@@ -28,7 +28,10 @@ func TestImportedSavePublishesOnlyTestedLeafOriginsWithConfigReceipt(t *testing.
 			}
 			if kind == "crypt" {
 				remote = "encrypted:"
-				config = "[encrypted]\ntype=crypt\nremote=network:private\n[network]\ntype=webdav\nurl=https://192.168.42.7:9443/dav\n"
+				// This fixture qualifies owner-save publication, not an actual DAV
+				// request. Its saved option is intentionally unreproducible by the
+				// diagnostic, so it must publish unknown without origin byte I/O.
+				config = "[encrypted]\ntype=crypt\nremote=network:private\n[network]\ntype=webdav\nurl=https://192.168.42.7:9443/dav\npacer_min_sleep=20ms\n"
 				expected = "https://192.168.42.7:9443/"
 			}
 			receipt, err := managed.Command(context.Background(), "actual-owner-fixture", "", mounts.Command{OperationID: nativeSaveOperation(40), Action: "create", Name: "Imported", Executable: binary, Remote: remote, Config: config}, authorize)
@@ -46,6 +49,12 @@ func TestImportedSavePublishesOnlyTestedLeafOriginsWithConfigReceipt(t *testing.
 			}
 			if err = f.s.checkImportedMaterial(context.Background(), saved, []byte(config), remote); err != nil {
 				t.Fatal(err)
+			}
+			if kind == "crypt" {
+				var support, object string
+				if err = f.s.db.QueryRow(`SELECT s.range_support,t.object_path FROM remote_sources s JOIN remote_source_webdav_tests t ON t.source_id=s.id WHERE s.id=?`, receipt.MountID).Scan(&support, &object); err != nil || support != "unknown" || object != "" {
+					t.Fatal("synthetic setup fabricated range qualification", support, object, err)
+				}
 			}
 			if err = f.s.checkImportedMaterial(context.Background(), saved, []byte(config+"#edited\n"), remote); err != storage.ErrRemoteChanged {
 				t.Fatal("edited raw config reused approval", err)

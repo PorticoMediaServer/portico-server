@@ -22,10 +22,11 @@ import (
 )
 
 type sourceNetwork struct {
-	Policy      remotemedia.Policy
-	Fingerprint string
-	Native      *nativeSourceAuthority
-	Imported    *importedSourceConfiguration
+	Policy       remotemedia.Policy
+	Fingerprint  string
+	Native       *nativeSourceAuthority
+	Imported     *importedSourceConfiguration
+	WebDAVLeaves sql.NullInt64
 }
 
 // sourceNetworkTx reuses durable owner network approvals. An absent record is
@@ -35,13 +36,13 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 	out := sourceNetwork{Policy: remotemedia.Policy{Resolver: s.resolver}}
 	var kind string
 	var config []byte
-	if err := tx.QueryRowContext(ctx, `SELECT kind,config FROM remote_sources WHERE id=? AND root=? AND removed=0`, id, root).Scan(&kind, &config); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT kind,config,webdav_leaf_count FROM remote_sources WHERE id=? AND root=? AND removed=0`, id, root).Scan(&kind, &config, &out.WebDAVLeaves); err != nil {
 		return out, err
 	}
 	if len(config) > 64<<10 {
 		return out, storage.ErrRemoteConfig
 	}
-	evidence := []any{kind, hex.EncodeToString(sha256Sum(config))}
+	evidence := []any{kind, hex.EncodeToString(sha256Sum(config)), out.WebDAVLeaves}
 	if kind == "webdav" {
 		c, err := s.privateDAVConfig(config)
 		if err != nil {
@@ -110,16 +111,79 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 }
 func sha256Sum(raw []byte) []byte { h := sha256.Sum256(raw); return h[:] }
 
-func sourceObjectSequentialTx(ctx context.Context, tx *sql.Tx, source, path string) (bool, error) {
-	var sequential bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE path=? AND code='range_unsupported')`, source, path).Scan(&sequential)
-	return sequential, err
+// Unknown WebDAV capability is not permission to trust rclone's loopback206.
+// The leaf count is produced with the saved graph, never inferred from an HTTP
+// approval or a library policy. A missing imported classification fails closed.
+func unqualifiedWebDAVTx(ctx context.Context, tx *sql.Tx, source string) (bool, error) {
+	var kind, support string
+	var leaves sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT kind,range_support,webdav_leaf_count FROM remote_sources WHERE id=? AND removed=0`, source).Scan(&kind, &support, &leaves); err != nil {
+		return false, err
+	}
+	return unqualifiedWebDAV(kind, support, leaves)
 }
 
-func sourceSequentialTx(ctx context.Context, tx *sql.Tx, source, root string) (bool, error) {
+func unqualifiedWebDAV(kind, support string, leaves sql.NullInt64) (bool, error) {
+	switch kind {
+	case "webdav":
+		return support != "conditional", nil
+	case "rclone":
+		if !leaves.Valid || leaves.Int64 < 0 || leaves.Int64 > 32 {
+			return false, storage.ErrRemoteConfig
+		}
+		return leaves.Int64 > 0 && support != "conditional", nil
+	case "sftp", "smb":
+		return false, nil
+	default:
+		return false, storage.ErrRemoteConfig
+	}
+}
+
+type unknownWebDAVRange struct{}
+
+func (*unknownWebDAVRange) Error() string { return storage.ErrRemoteRange.Error() }
+func (*unknownWebDAVRange) Unwrap() error { return storage.ErrRemoteRange }
+
+var errUnknownWebDAVRange error = &unknownWebDAVRange{}
+
+// The existing limitation is shared, but diagnostics must not turn missing
+// qualification into an observed unsupported fact.
+func (s *Service) requireWebDAVRandom(ctx context.Context, source string) error {
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	defer snapshot.Rollback()
+	unqualified, err := unqualifiedWebDAVTx(ctx, snapshot.Tx(), source)
+	if err != nil || !unqualified {
+		return err
+	}
+	var support string
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT range_support FROM remote_sources WHERE id=? AND removed=0`, source).Scan(&support); err != nil {
+		return err
+	}
+	if support == "unsupported" {
+		return storage.ErrRemoteRange
+	}
+	return errUnknownWebDAVRange
+}
+func sourceObjectSequentialTx(ctx context.Context, tx *sql.Tx, source, path string) (bool, error) {
+	unqualified, err := unqualifiedWebDAVTx(ctx, tx, source)
+	if err != nil {
+		return false, err
+	}
 	var sequential bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE code='range_unsupported' AND substr(path,1,length(?)+1)=?||'/')`, source, root, root).Scan(&sequential)
-	return sequential, err
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE path=? AND code='range_unsupported')`, source, path).Scan(&sequential)
+	return unqualified || sequential, err
+}
+func sourceSequentialTx(ctx context.Context, tx *sql.Tx, source, root string) (bool, error) {
+	unqualified, err := unqualifiedWebDAVTx(ctx, tx, source)
+	if err != nil {
+		return false, err
+	}
+	var sequential bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM remote_sources WHERE id=? AND (range_support='unsupported' OR error_code='range_unsupported')) OR EXISTS(SELECT 1 FROM remote_analysis_status WHERE code='range_unsupported' AND substr(path,1,length(?)+1)=?||'/')`, source, root, root).Scan(&sequential)
+	return unqualified || sequential, err
 }
 
 func (s *Service) startReadRuntime(ctx context.Context) error {
@@ -235,6 +299,13 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if network.Imported != nil {
 		if err = s.checkImportedMaterial(ctx, *network.Imported, material.Configuration, material.Remote); err != nil {
 			return nil, err
+		}
+		leaves, err := configuredBackends(material.Configuration, material.Remote)
+		if err != nil {
+			return nil, err
+		}
+		if !network.WebDAVLeaves.Valid || network.WebDAVLeaves.Int64 != int64(webDAVLeafCount(leaves)) {
+			return nil, storage.ErrRemoteChanged
 		}
 	}
 	var proxy *remotemedia.PolicyProxy

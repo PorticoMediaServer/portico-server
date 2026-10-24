@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -134,5 +136,47 @@ func TestPublicDAVRequestStillRefusesSavedSetupHeaders(t *testing.T) {
 	c := &Client{url: "https://source.fixture/", userAgent: "fixture"}
 	if _, err := c.Request(context.Background(), "GET", nil, http.Header{"Authorization": {"private"}}); !errors.Is(err, ErrPolicy) {
 		t.Fatal("public request acquired setup header authority", err)
+	}
+}
+
+func TestRcloneWebDAVSetupSendsExactSavedRequest(t *testing.T) {
+	requests := 0
+	var origin string
+	server := privateSetupServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != "GET" || r.URL.Path != "/dav/cipher/one.bin" || r.Header.Get("Authorization") != "Basic Zml4dHVyZTpwb3RhdG8=" || r.Header.Get("Referer") != origin+"/dav/" || r.UserAgent() != "rclone/fixture" || r.Header.Get("X-Fixture") != "saved" {
+			t.Error("saved request changed")
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		var start, end int64
+		if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end); err != nil || start < 0 || end >= 64 || end-start >= 16 {
+			t.Error("range bound changed")
+			w.WriteHeader(400)
+			return
+		}
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/64", start, end))
+		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, strings.Repeat("x", int(end-start+1)))
+	}))
+	origin = server.URL
+	approval, err := (Policy{}).PrepareEndpointApproval(context.Background(), origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := resolvedWebDAVSetup(map[string]string{"type": "webdav", "url": origin + "/dav/", "user": "fixture", "pass": "YWFhYWFhYWFhYWFhYWFhYXMaGgIlEQ", "headers": "X-Fixture,saved"}, "cipher", Policy{SourceEndpoints: true, Approvals: []Approval{approval}, UserAgent: "rclone/fixture"})
+	if err != nil || d == nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	hold, err := NewOperationBudget(context.Background(), 1).AcquireTest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Close()
+	support, err := d.Diagnose(hold.Context(), DAVEntry{Relative: "one.bin", Size: 64}, hold, 50, 0, func(ctx context.Context) error { return ctx.Err() })
+	if err != nil || support != SetupRangeSupported || requests != 3 {
+		t.Fatal("exact saved request did not qualify", support, requests, err)
 	}
 }
