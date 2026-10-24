@@ -131,14 +131,40 @@ def write_pdf(target):
     target.write_bytes(bytes(out))
 
 
+def stripe_png(width=32, height=48):
+    """A real RGB PNG: IHDR, one zlib-compressed IDAT and IEND, each with a
+    genuine CRC. Horizontal red/green/blue stripes, one pixel per row band."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # filter: none
+        colour = ((255, 0, 0), (0, 255, 0), (0, 0, 255))[(y // 4) % 3]
+        raw.extend(bytes(colour) * width)
+    ihdr = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(bytes(raw), 9)) + chunk(b'IEND', b'')
+
+
 def write_cbz(target):
     """A lawful one-page CBZ: a real 1x1 PNG plus ComicInfo, nothing else."""
     target.parent.mkdir(parents=True, exist_ok=True)
+    # Deliberately retained negative control: this 1x1 PNG has a corrupt IDAT
+    # CRC (verified locally), so the browser decoder must refuse it. Kept as-is.
     png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=')
     info = b'<ComicInfo><Title>Example Comic</Title><Writer>Example Author</Writer></ComicInfo>'
     with zipfile.ZipFile(target, 'w') as comic:
         comic.writestr('page-01.png', png, compress_type=zipfile.ZIP_DEFLATED)
         comic.writestr('ComicInfo.xml', info, compress_type=zipfile.ZIP_DEFLATED)
+    # Positive control: the same CBZ shape with a real 32x48 RGB PNG.
+    stripe = stripe_png()
+    stripe_info = b'<ComicInfo><Title>Stripe Comic</Title><Writer>Example Author</Writer></ComicInfo>'
+    with zipfile.ZipFile(target.parent / 'Stripe Comic.cbz', 'w') as comic:
+        comic.writestr('page-01.png', stripe, compress_type=zipfile.ZIP_DEFLATED)
+        comic.writestr('ComicInfo.xml', stripe_info, compress_type=zipfile.ZIP_DEFLATED)
 
 
 def write_hostile_epub(target):
@@ -328,7 +354,7 @@ def main():
                 raise AssertionError('scanned library did not publish ' + expected + ': ' + repr(titles))
         credentials = run / 'credentials.json'
         credentials.write_text(json.dumps({'username': 'owner', 'password': password, 'libraryName': LIBRARY_NAME,
-                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes', 'addPath': str(media / 'Extra'), 'bookPath': str(media / LIBRARY_NAME), 'comicsLibraryId': comics['id'], 'comicTitle': 'Example Comic',
+                                           'libraryId': library['id'], 'bookTitle': BOOK_TITLE, 'bookText': 'Chapter One', 'pdfTitle': 'Reference Sheet', 'hostileTitle': 'Hostile Notes', 'addPath': str(media / 'Extra'), 'bookPath': str(media / LIBRARY_NAME), 'comicsLibraryId': comics['id'], 'comicTitle': 'Example Comic', 'stripeComicTitle': 'Stripe Comic',
                                            'searchTerm': 'Example'}), encoding='utf-8')
         walk = subprocess.run(['node', str(ROOT / 'tools/web-core-flows/flows.mjs')], cwd=ROOT,
                               env={**os.environ, 'PORTICO_FLOW_BASE': base, 'PORTICO_FLOW_CREDS': str(credentials),

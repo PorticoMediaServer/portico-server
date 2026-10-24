@@ -11,6 +11,7 @@
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
 
 const base = process.env.PORTICO_FLOW_BASE;
 const output = process.env.PORTICO_FLOW_OUTPUT;
@@ -33,7 +34,19 @@ async function walk(page, viewportName) {
   const pageErrors = [];
   const failedRequests = [];
   const attempted = [];
+  const pageResponses = [];
   page.on('request', request => { attempted.push(request.url()); if (attempted.length > 400) attempted.shift(); });
+  page.on('response', response => {
+    const path = new URL(response.url()).pathname;
+    // Only reading session page/source answers, and only their shape: status,
+    // type, length, first eight magic bytes and a hash. Never the body itself.
+    if (!path.startsWith('/v1/reading/sessions/') || !/\/(pages|source)(\/|$)/.test(path)) return;
+    void response.body().then(body => {
+      pageResponses.push({path: path.replace(/[^/]+$/, ':id'), status: response.status(),
+        contentType: response.headers()['content-type'] ?? '', contentLength: response.headers()['content-length'] ?? '',
+        bytes: body.length, magic: body.subarray(0, 8).toString('hex'), sha256: createHash('sha256').update(body).digest('hex')});
+    }).catch(() => { pageResponses.push({path: path.replace(/[^/]+$/, ':id'), status: response.status(), body: 'unreadable'}); });
+  });
   page.on('console', message => {
     const line = message.type() + ': ' + excerpt(message.text(), 300);
     consoleTail.push(line);
@@ -251,6 +264,29 @@ async function walk(page, viewportName) {
       throw new Error('the comic reader painted no page: ' + excerpt(body, 300) + ' | geometry=' + JSON.stringify(geometry));
     }
     return {path};
+  });
+
+
+  await step('read-cbz-valid', async () => {
+    const before = pageResponses.length;
+    await page.goto(base + '/library/' + encodeURIComponent(creds.comicsLibraryId), {waitUntil: 'domcontentloaded'});
+    await settle(2500);
+    await page.getByText(creds.stripeComicTitle, {exact: false}).first().click();
+    await settle(1500);
+    if (!new URL(page.url()).pathname.startsWith('/read/')) {
+      const read = page.getByRole('button', {name: /^read$/i}).first();
+      if (await read.count()) await read.click();
+    }
+    await settle(8000);
+    const path = new URL(page.url()).pathname;
+    if (!path.startsWith('/read/')) throw new Error('the valid comic did not open; at ' + path);
+    const painted = await page.evaluate(title => {
+      const roots = Array.from(document.querySelectorAll('[data-reader-root]'));
+      return roots.some(root => (root.textContent ?? '').includes(title) && !!root.querySelector('[data-reader-page] canvas, [data-reader-page]'));
+    }, creds.stripeComicTitle);
+    const body = await bookText();
+    if (!painted) throw new Error('the valid comic painted no page: ' + excerpt(body, 300));
+    return {path, pages: pageResponses.slice(before)};
   });
 
   await step('read-pdf', async () => {
