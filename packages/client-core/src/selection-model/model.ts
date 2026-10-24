@@ -1,9 +1,9 @@
-import {selectionCapabilityNames, selectionKey, summarizeSelection} from './capabilities.ts';
+import {browseSelectionKey, selectionCapabilityNames, selectionKey, summarizeSelection} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
-import {catalogueID, checkedContext, checkedItem, checkedLimits, checkedQuery, requireSelection, selectionCount} from './validation.ts';
+import {catalogueID, checkedBrowseContext, checkedContext, checkedItem, checkedLimits, checkedQuery, requireSelection, selectionCount, SelectionInputError} from './validation.ts';
 import type {
-  ExplicitSelectionTarget, SelectedItem, SelectionChange, SelectionContext, SelectionLimits,
-  SelectionKind, SelectionOperation, SelectionQuery, SelectionRange, SelectionReadTicket, SelectionRegistration,
+  BrowseSelectionContext, ExplicitSelectionTarget, SelectedItem, SelectionChange, SelectionContext, SelectionLimits,
+  SelectionItem, SelectionKind, SelectionOperation, SelectionQuery, SelectionRange, SelectionReadTicket, SelectionRegistration,
   SelectionSnapshot, SelectionTarget, SelectionWindow,
 } from './types.ts';
 
@@ -31,8 +31,17 @@ const emptyRegistry = (): Registry => ({sections: new Map(), items: new Map(), p
  * selector and authoritative aggregate, never a list of catalogue membership.
  * No request, timer, global store, React dependency or credential is owned here.
  */
-export class SelectionModel {
-  private context: SelectionContext;
+type SelectionContextPolicy<C> = Readonly<{
+  check(input: C): C;
+  key(context: C, item: SelectionItem): string;
+  query(input: SelectionQuery, context: C): SelectionQuery;
+}>;
+
+/** Shared bounded window/pick algorithm. Source-specific context validation
+ * never converts one source's continuity token into another's authority facts. */
+class WindowedSelectionModel<C> {
+  private context: C;
+  private policy: SelectionContextPolicy<C>;
   private limits: SelectionLimits;
   private windows = new Map<string, RegisteredWindow>();
   private queries = new Map<string, SelectionQuery>();
@@ -47,18 +56,19 @@ export class SelectionModel {
   private version = 0;
   private readGeneration = 0;
   private operationGeneration = 0;
-  private readTickets = new WeakMap<SelectionReadTicket, number>();
-  private operations = new WeakMap<SelectionOperation, number>();
+  private readTickets = new WeakMap<SelectionReadTicket<C>, number>();
+  private operations = new WeakMap<SelectionOperation<C>, number>();
   private listeners = new Set<() => void>();
-  private snapshot!: SelectionSnapshot;
+  private snapshot!: SelectionSnapshot<C>;
 
-  constructor(context: SelectionContext, limits: Partial<SelectionLimits> = {}) {
-    this.context = checkedContext(context);
+  constructor(context: C, policy: SelectionContextPolicy<C>, limits: Partial<SelectionLimits> = {}) {
+    this.policy = policy;
+    this.context = policy.check(context);
     this.limits = checkedLimits(limits);
     this.publish();
   }
 
-  getSnapshot = (): SelectionSnapshot => this.snapshot;
+  getSnapshot = (): SelectionSnapshot<C> => this.snapshot;
   subscribe = (listener: () => void): (() => void) => {
     if (this.disposed) return () => {};
     this.listeners.add(listener);
@@ -66,20 +76,20 @@ export class SelectionModel {
   };
 
   /** Capture before an asynchronous read; register its results with this exact ticket. */
-  captureContext(): SelectionReadTicket {
+  captureContext(): SelectionReadTicket<C> {
     const ticket = Object.freeze({context: this.context});
     if (!this.disposed) this.readTickets.set(ticket, this.readGeneration);
     return ticket;
   }
 
-  isContextCurrent(ticket: SelectionReadTicket): boolean {
+  isContextCurrent(ticket: SelectionReadTicket<C>): boolean {
     return !this.disposed && this.readTickets.get(ticket) === this.readGeneration;
   }
 
   /** A route/query/sort, principal, restriction, catalog or viewer revision change ends selection. */
-  setContext(input: SelectionContext): boolean {
+  setContext(input: C): boolean {
     if (this.disposed) return false;
-    const next = checkedContext(input);
+    const next = this.policy.check(input);
     if (same(next, this.context)) return false;
     this.context = next;
     this.readGeneration++;
@@ -90,7 +100,7 @@ export class SelectionModel {
     return true;
   }
 
-  registerWindow(ticket: SelectionReadTicket, input: SelectionWindow): SelectionRegistration {
+  registerWindow(ticket: SelectionReadTicket<C>, input: SelectionWindow): SelectionRegistration {
     if (this.disposed) return fail('disposed');
     if (!this.isContextCurrent(ticket)) return fail('stale-context');
     requireSelection(input && catalogueID(input.id) && catalogueID(input.sectionId)
@@ -102,7 +112,7 @@ export class SelectionModel {
     requireSelection(input.queryId === undefined || this.queries.has(input.queryId), 'invalid-window');
     const items = Object.freeze(input.items.map(item => {
       const value = checkedItem(item);
-      return Object.freeze({key: selectionKey(this.context.scope, value), item: value});
+      return Object.freeze({key: this.policy.key(this.context, value), item: value});
     }));
     const value: SelectionWindow = Object.freeze({
       id: input.id, sectionId: input.sectionId, sectionOrder: input.sectionOrder, start: input.start,
@@ -128,10 +138,10 @@ export class SelectionModel {
     }});
   }
 
-  registerQuery(ticket: SelectionReadTicket, input: SelectionQuery): SelectionRegistration {
+  registerQuery(ticket: SelectionReadTicket<C>, input: SelectionQuery): SelectionRegistration {
     if (this.disposed) return fail('disposed');
     if (!this.isContextCurrent(ticket)) return fail('stale-context');
-    const query = checkedQuery(input, this.context);
+    const query = this.policy.query(input, this.context);
     requireSelection(this.queries.has(query.id) || this.queries.size < this.limits.maxQueries, 'registration-limit');
     const old = this.queries.get(query.id);
     if (old && !same(old, query)) {
@@ -289,14 +299,14 @@ export class SelectionModel {
   }
 
   /** Capture the exact target before awaiting work; check again before applying its result. */
-  captureOperation(): SelectionOperation | null {
+  captureOperation(): SelectionOperation<C> | null {
     if (this.disposed || this.snapshot.target === null) return null;
     const operation = Object.freeze({target: this.snapshot.target});
     this.operations.set(operation, this.operationGeneration);
     return operation;
   }
 
-  isOperationCurrent(operation: SelectionOperation): boolean {
+  isOperationCurrent(operation: SelectionOperation<C>): boolean {
     return !this.disposed && this.operations.get(operation) === this.operationGeneration;
   }
 
@@ -433,7 +443,7 @@ export class SelectionModel {
   }
 
   private publish(): void {
-    let target: SelectionTarget | null = null;
+    let target: SelectionTarget<C> | null = null;
     let summary;
     if (this.whole) {
       const query = this.whole;
@@ -451,7 +461,7 @@ export class SelectionModel {
       if (items.length > 0) {
         const displayItems = Object.freeze([...picks].sort((a, b) => comparePosition(a.position, b.position))
           .map(({key, item}) => Object.freeze({key, item})));
-        const explicit: ExplicitSelectionTarget = Object.freeze({mode: 'explicit', context: this.context, items, displayItems});
+        const explicit: ExplicitSelectionTarget<C> = Object.freeze({mode: 'explicit', context: this.context, items, displayItems});
         target = explicit;
       }
     }
@@ -461,5 +471,22 @@ export class SelectionModel {
       registeredWindowCount: this.windows.size, registeredItemCount: this.registry.itemCount,
     });
     for (const listener of [...this.listeners]) listener();
+  }
+}
+
+/** Existing separate catalog/viewer revision source, retained unchanged. */
+export class SelectionModel extends WindowedSelectionModel<SelectionContext> {
+  constructor(context: SelectionContext, limits: Partial<SelectionLimits> = {}) {
+    super(context, {check: checkedContext, key: (value, item) => selectionKey(value.scope, item), query: checkedQuery}, limits);
+  }
+}
+
+/** Construct only after an actual nonempty Browse pageInfo.revision arrives.
+ * Same-source explicit picks survive window eviction. Caller currentness and
+ * cancellation still fence execution; no server aggregate is inferred here. */
+export class BrowseSelectionModel extends WindowedSelectionModel<BrowseSelectionContext> {
+  constructor(context: BrowseSelectionContext, limits: Partial<SelectionLimits> = {}) {
+    super(context, {check: checkedBrowseContext, key: (value, item) => browseSelectionKey(value.scope, item),
+      query: () => {throw new SelectionInputError('invalid-query');}}, limits);
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded push checks. Full package/application suites belong to nightly CI."""
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -129,20 +130,32 @@ def dependencies(file, known, workspaces):
             base = file.parent / spec
         elif spec.startswith("@core/"):
             base = ROOT / "packages/client-core/src" / spec[6:]
+        elif spec in {"@core", "@design", "@i18n"}:
+            package = {"@core": "client-core", "@design": "design", "@i18n": "i18n"}[spec]
+            base = ROOT / "packages" / package / "src/index.ts"
+        elif spec.startswith("@/") and file.is_relative_to(ROOT / "web-next"):
+            base = ROOT / "web-next/src" / spec[2:]
         else:
             workspace = next((name for name in workspaces if spec == name or spec.startswith(name + "/")), None)
             if not workspace:
                 continue
-            base = workspaces[workspace] / (spec[len(workspace):].lstrip("/") or "src/index")
+            directory = workspaces[workspace]
+            exports = json.loads((directory / "package.json").read_text()).get("exports", {})
+            key = "." + spec[len(workspace):]
+            target = exports if isinstance(exports, str) and key == "." else exports.get(key) if isinstance(exports, dict) else None
+            if isinstance(target, dict):
+                target = target.get("import") or target.get("default") or target.get("types")
+            base = directory / (target if isinstance(target, str) else spec[len(workspace):].lstrip("/") or "src/index")
         base = base.resolve()
         candidates = [base, *(Path(str(base) + ext) for ext in (".ts", ".tsx", ".js", ".mjs", ".cjs")),
                       *(base / ("index" + ext) for ext in (".ts", ".tsx", ".js", ".mjs"))]
+        if base.suffix in {".js", ".jsx"}:
+            candidates.extend([base.with_suffix(".ts"), base.with_suffix(".tsx")])
         result.update(candidate for candidate in candidates if candidate in known)
     return result
 
 
 def js_plan(paths, native=False):
-    import json
     files = {ROOT / name for name in git("ls-files")
              if Path(name).suffix in {".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"}
              and (ROOT / name).is_file()}

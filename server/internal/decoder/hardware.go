@@ -219,9 +219,14 @@ func SoftwareToneMap(algorithm string) string {
 	return "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=" + algorithm + ":desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
 }
 
-// HardwareDetector probes backends once per ffmpeg identity and caches the
-// verdict. The cache key is the ffmpeg binary identity plus backend and device,
-// so replacing ffmpeg re-probes without a restart.
+type hardwareProbeCell struct {
+	backend HardwareBackend
+	device  string
+}
+
+// HardwareDetector caches measured backend/device results by FFmpeg runtime
+// identity. Replacing that runtime or explicitly reproving a cell retires its
+// prior observation without invalidating peer devices.
 type HardwareDetector struct {
 	// Devices supplies physical discovery only; candidates still require probes.
 	Devices func(context.Context) []HardwareDevice
@@ -234,9 +239,10 @@ type HardwareDetector struct {
 	// child directly, because a synthetic clip borrows no source custody.
 	Run func(ctx context.Context, cmd *exec.Cmd) error
 
-	mu      sync.Mutex
-	cache   map[string]HardwareProbe
-	warming map[string]bool
+	mu               sync.Mutex
+	cache            map[string]HardwareProbe
+	warming          map[string]bool
+	probeGenerations map[hardwareProbeCell]uint64
 }
 
 const defaultProbeTimeout = 20 * time.Second
@@ -376,6 +382,35 @@ func (d *HardwareDetector) probeVAAPIFilters(ctx context.Context, executable str
 // encode per native runtime identity. A failed probe is cached too: a host without the
 // hardware must not pay for a subprocess on every session.
 func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend HardwareBackend, device string) HardwareProbe {
+	return d.probe(ctx, executable, backend, device, false, 0)
+}
+
+// Reprobe refreshes exactly one existing backend/device cell. It bypasses that
+// cell's cached result and cooldown, while retiring observations already in
+// flight for it. Peer devices and backend families keep their own verdicts.
+func (d *HardwareDetector) Reprobe(ctx context.Context, executable string, backend HardwareBackend, device string) HardwareProbe {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if ctx.Err() != nil {
+		return HardwareProbe{Backend: backend, Device: device, Reason: ProbeTimedOut}
+	}
+	d.mu.Lock()
+	if d.probeGenerations == nil {
+		d.probeGenerations = map[hardwareProbeCell]uint64{}
+	}
+	cell := hardwareProbeCell{backend, device}
+	d.probeGenerations[cell]++
+	generation := d.probeGenerations[cell]
+	for key, cached := range d.cache {
+		if cached.Backend == backend && cached.Device == device {
+			delete(d.cache, key)
+		}
+	}
+	d.mu.Unlock()
+	return d.probe(ctx, executable, backend, device, true, generation)
+}
+
+func (d *HardwareDetector) probe(ctx context.Context, executable string, backend HardwareBackend, device string, force bool, generation uint64) HardwareProbe {
 	out := HardwareProbe{Backend: backend, Reason: ProbeUnsupportedPlatform, Device: device}
 	spec, ok := backendSpecs[backend]
 	if !ok || backend == BackendSoftware {
@@ -391,14 +426,20 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 	if !spec.supported() {
 		return out
 	}
-	if deviceCircuitOpen(backend, device) {
+	if !force && deviceCircuitOpen(backend, device) {
 		out.Reason = ProbeCircuitOpen
 		return out
 	}
 	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
+	cell := hardwareProbeCell{backend, device}
 	d.mu.Lock()
-	if cached, ok := d.cache[key]; ok && !recovery {
+	if force && d.probeGenerations[cell] != generation {
+		d.mu.Unlock()
+		return invalidHardwareObservation(out, ProbeWarming)
+	}
+	generation = d.probeGenerations[cell]
+	if cached, ok := d.cache[key]; ok && !recovery && !force {
 		d.mu.Unlock()
 		return cached
 	}
@@ -490,6 +531,10 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		return invalidHardwareObservation(out, ProbeEncodeFailed)
 	}
 	d.mu.Lock()
+	if d.probeGenerations[cell] != generation {
+		d.mu.Unlock()
+		return invalidHardwareObservation(out, ProbeWarming)
+	}
 	if d.cache == nil {
 		d.cache = map[string]HardwareProbe{}
 	}

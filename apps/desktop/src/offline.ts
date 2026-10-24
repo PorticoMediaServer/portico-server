@@ -10,6 +10,8 @@ export type DesktopOfflineTransport=Readonly<{
   api:DownloadsApi;
   resolvePublishedPath:(path:string)=>string;
   serverOrigin:string;
+  /** Actual captured RouteConnection admission, never a hostname or discovery guess. */
+  isPublishedOrigin?:(origin:string)=>boolean;
   fetcher:typeof fetch;
   /** Actual OS observation; unknown must not be treated as unmetered. */
   networkCost:()=> 'unmetered'|'metered'|'unknown';
@@ -62,7 +64,7 @@ export class DesktopOfflineCoordinator{
   }
   private address(path:string):string{
     const resolved=new URL(this.transport.resolvePublishedPath(path));
-    if(resolved.origin!==this.origin||resolved.username||resolved.password||resolved.hash)failed('invalid_command');
+    if((resolved.origin!==this.origin&&this.transport.isPublishedOrigin?.(resolved.origin)!==true)||!['http:','https:'].includes(resolved.protocol)||resolved.username||resolved.password||resolved.hash)failed('invalid_command');
     return resolved.href;
   }
   private allowed(unmeteredOnly:boolean):boolean{return !unmeteredOnly||this.transport.networkCost()==='unmetered';}

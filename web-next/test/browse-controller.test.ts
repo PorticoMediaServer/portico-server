@@ -83,12 +83,73 @@ test('an authority change discards an in-flight result and disposal cancels requ
  assert.equal(controller.collection.itemAt(0), undefined);
 });
 test('a different revision cannot enter the displayed collection', async () => {
+ let changed = false;
  const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
   if (path.includes('capabilities')) return caps as T;const start = (body as {range: {start: number}}).range.start;
-  return payload(start, 500, start === 0 ? 'revision-one' : 'revision-two') as T;
+  return payload(start, 500, changed ? 'revision-two' : 'revision-one') as T;
  }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
- try {await controller.load();await settle();assert.equal(controller.collection.itemAt(0)?.entry.id, 'movie-0');
-  controller.collection.ensureRange(60, 65);await settle();assert.equal(controller.collection.itemAt(60), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
+ try {await controller.load();await settle();const old = controller.collection.itemAt(0)!.entry;assert.equal(old.id, 'movie-0');assert(controller.contains(old));
+  changed = true;controller.collection.ensureRange(120, 125);await settle();assert.equal(controller.collection.itemAt(120), undefined);assert.equal(controller.collection.getSnapshot().status, 'error');
+  assert.equal(controller.getSnapshot().revision, undefined);assert.equal(controller.contains(old), false);
+ } finally {controller.dispose();}
+});
+
+test('applied query changes retire old borrowed rows before the replacement page arrives', async () => {
+ let resolve!: (value: unknown) => void;
+ const controller = new BrowseController({async request<T>(path: string) {
+  return path.includes('capabilities') ? caps as T : await new Promise(r => {resolve = r;}) as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  assert.equal(controller.getSnapshot().revision, undefined);
+  await controller.load();await tick();assert.equal(controller.getSnapshot().revision, undefined);
+  resolve(payload(0, 1, 'opaque:first'));await settle();
+  const old = controller.collection.itemAt(0)!.entry, generation = controller.getSnapshot().queryRevision;
+  assert.equal(controller.getSnapshot().revision, 'opaque:first');assert(controller.contains(old));assert.equal(controller.contains({...old}), false);
+  controller.setQuery([], {field: 'title', direction: 'desc'});await tick();
+  assert.equal(controller.getSnapshot().revision, undefined);
+  assert(controller.getSnapshot().queryRevision > generation);
+  assert.equal(controller.collection.itemAt(0)!.entry, old, 'retained paint is not current action membership');
+  assert.equal(controller.contains(old), false);
+  resolve(payload(0, 1, 'opaque:second'));await settle();
+  const current = controller.collection.itemAt(0)!.entry;
+  assert.notEqual(current, old);assert(controller.contains(current));assert.equal(controller.contains(old), false);
+  assert.equal(controller.getSnapshot().revision, 'opaque:second');
+ } finally {controller.dispose();}
+});
+
+test('stale continuation closes old actions until explicit refresh and never drops the token on retry', async () => {
+ let fresh = false;
+ const ranges: {start: number; revision?: string}[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return caps as T;
+  const range = (body as {range: {start: number; revision?: string}}).range;ranges.push(range);
+  if (!fresh && range.start > 0) throw Object.assign(new Error('stale'), {code: 'stale_continuation'});
+  return payload(range.start, 180, fresh ? 'new-token' : 'old-token') as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await settle();const old = controller.collection.itemAt(0)!.entry;
+  controller.collection.ensureRange(60, 65);await settle();
+  assert.equal(controller.getSnapshot().revision, undefined);assert.equal(controller.contains(old), false);
+  const reads = ranges.length;controller.collection.retry();await settle();assert.equal(ranges.length, reads, 'same stale source must not issue an unversioned read');
+  fresh = true;controller.retry();await settle();
+  assert.equal(ranges[reads].revision, undefined, 'only explicit refresh opens a new source');
+  assert.equal(controller.getSnapshot().revision, 'new-token');assert.equal(controller.contains(old), false);
+ } finally {controller.dispose();}
+});
+
+test('captured source and applied predicates cannot change through caller-owned draft objects', async () => {
+ const value = ['Action'], predicate = {field: 'genre', operator: 'in' as const, value};
+ const source = {libraryId: 'lib', pivot: 'movies', predicates: [predicate]};
+ const scoped = {...caps, fields: [{id: 'genre', labelKey: 'genre', type: 'enum', operators: ['in'], controlHint: 'facet-multi-select', applicableKinds: ['movie']}]};
+ let current = true;
+ const controller = new BrowseController({async request<T>(path: string) {return (path.includes('capabilities') ? scoped : payload(0, 1)) as T;}}, source, () => current);
+ try {
+  value.push('Comedy');source.libraryId = 'other-library';
+  await controller.load();await settle();
+  assert.equal(controller.source.libraryId, 'lib');assert.deepEqual(controller.query().query, {field: 'genre', operator: 'in', value: ['Action']});
+  const staged = {field: 'genre', operator: 'in' as const, value: ['Drama']};controller.setQuery([staged]);staged.value.push('Horror');await settle();
+  assert.deepEqual(controller.query().query, {field: 'genre', operator: 'in', value: ['Drama']});
+  const entry = controller.collection.itemAt(0)!.entry;assert(controller.contains(entry));current = false;assert.equal(controller.contains(entry), false);
  } finally {controller.dispose();}
 });
 test('Retry after a revision change obtains a fresh source window rather than repeating the old revision', async () => {
