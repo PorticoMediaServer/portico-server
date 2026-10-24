@@ -8,7 +8,11 @@
   },
   "scripts": {
     "check": "tsc --noEmit && node --experimental-transform-types --test test/*.test.ts",
-    "test:rust": "cargo test --manifest-path src-tauri/storage/Cargo.toml --lib"
+    "test:rust": "cargo test --manifest-path src-tauri/storage/Cargo.toml --lib",
+    "dev": "vite --config vite.config.ts",
+    "build:web": "vite build --config vite.config.ts",
+    "build:unsigned": "npm run build:web && cargo build --manifest-path src-tauri/Cargo.toml --features custom-protocol --bin portico-desktop",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1"
