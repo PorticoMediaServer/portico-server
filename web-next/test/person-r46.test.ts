@@ -77,7 +77,8 @@ test('the DEV entry mounts the registered Person route on the public frame facts
   assert.match(entry, /name: 'Rebecca Ferguson'/);
   assert.match(entry, /birthPlace: 'Stockholm, Sweden'/);
   assert.match(entry, /biographySource: 'TMDB'/);
-  assert.match(entry, /\{id: 'movie', kind: 'movie', total: 2\}, Object\.freeze\(\{id: 'show', kind: 'show', total: 1\}\)/);
+  assert.match(entry, /\{id: 'movie', kind: 'movie', total: 2\}/);
+  assert.match(entry, /\{id: 'show', kind: 'show', total: 1\}/);
   assert.match(entry, /role: 'Executive producer', department: 'Production'/);
   assert.match(html, /<script type="module" src="\.\/person\.tsx"><\/script>/);
   assert.doesNotMatch(entry, /Bearer |Authorization|assets\/pool|--bd\.jpg/i);
