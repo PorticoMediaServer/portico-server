@@ -491769,7 +491769,7 @@
         "x-scope": "admin"
       }
     },
-    "/v1/storage/sources/{id}/read-profile": {
+    "/v1/storage/sources/{id}/settings/read-profile": {
       "get": {
         "operationId": "get_storage_source_read_profile",
         "parameters": [

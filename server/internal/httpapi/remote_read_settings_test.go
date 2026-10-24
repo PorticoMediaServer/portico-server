@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"portico.local/apikit"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
@@ -45,8 +44,12 @@ func TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
-	registerSourceReadSettings(registry, d)
+	// Register the actual complete API: isolated route registration missed the
+	// read-profile/WebDAV wildcard conflict and allowed an unbootable server.
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
 	request := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		t.Helper()
 		var raw []byte
@@ -68,7 +71,7 @@ func TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt(t *testing.T
 		registry.ServeHTTP(w, r)
 		return w
 	}
-	path := "/v1/storage/sources/profile-source/read-profile"
+	path := "/v1/storage/sources/profile-source/settings/read-profile"
 	for _, actor := range []struct {
 		token  string
 		status int
@@ -112,7 +115,7 @@ func TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt(t *testing.T
 	if w = request("PUT", path, owner.AccessToken, partial); w.Code != 400 {
 		t.Fatal("omitted false value accepted", w.Code, w.Body.String())
 	}
-	if w = request("GET", "/v1/storage/sources/unknown/read-profile", owner.AccessToken, nil); w.Code != 404 {
+	if w = request("GET", "/v1/storage/sources/unknown/settings/read-profile", owner.AccessToken, nil); w.Code != 404 {
 		t.Fatal("unknown source inherited settings", w.Code, w.Body.String())
 	}
 	if _, err = d.DB.Exec(`UPDATE authorization_session_families SET revoked=1 WHERE id=?`, owner.SessionFamilyID); err != nil {
