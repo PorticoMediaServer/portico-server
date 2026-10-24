@@ -27,13 +27,14 @@ import (
 )
 
 type Service struct {
-	ArtworkLimit     func(context.Context) int64
-	artworkBytes     int64
-	artworkAccounted bool
-	lastArtworkIssue string
-	root, binary     string
-	storage          *storage.Client
-	mu               sync.Mutex
+	artworkCandidateObservations map[string]string
+	ArtworkLimit                 func(context.Context) int64
+	artworkBytes                 int64
+	artworkAccounted             bool
+	lastArtworkIssue             string
+	root, binary                 string
+	storage                      *storage.Client
+	mu                           sync.Mutex
 	// sidecars caches sidecar-file reads by full path (positive hits only,
 	// bounded): one show's hundred episodes share a single poster read.
 	sidecars map[string]string

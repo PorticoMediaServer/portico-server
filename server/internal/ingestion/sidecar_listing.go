@@ -4,7 +4,9 @@ import (
 	"context"
 	"path/filepath"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/storage"
+	"sort"
 	"strings"
 	"sync"
 
@@ -35,13 +37,16 @@ const (
 // listedDirectory is one directory as a scan saw it.
 type listedDirectory struct {
 	names              map[string]struct{}
+	artwork            map[string]string
 	identity, revision string
 }
 
 type scanListing struct {
-	open  map[string]map[string]struct{}
-	done  map[string]listedDirectory
-	names int
+	open         map[string]map[string]struct{}
+	done         map[string]listedDirectory
+	names        int
+	artworkOpen  map[string]map[string]string
+	artworkNames int
 }
 
 // sidecarLike reports whether a name has one of the extensions local metadata
@@ -79,10 +84,16 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 		s.listings[job] = l
 	}
 	if cursor == "" {
+		if l.artworkOpen == nil {
+			l.artworkOpen = map[string]map[string]string{}
+		}
+		l.artworkNames -= len(l.artworkOpen[relative]) + len(l.done[relative].artwork)
+		l.artworkOpen[relative] = map[string]string{}
 		l.names -= len(l.open[relative]) + len(l.done[relative].names)
 		delete(l.open, relative)
 		delete(l.done, relative)
 		if len(l.open)+len(l.done) >= maxListedDirectories {
+			delete(l.artworkOpen, relative)
 			return
 		}
 		l.open[relative] = map[string]struct{}{}
@@ -98,7 +109,22 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 		if l.names >= maxListedNames {
 			l.names -= len(names)
 			delete(l.open, relative)
+			l.artworkNames -= len(l.artworkOpen[relative])
+			delete(l.artworkOpen, relative)
 			return
+		}
+		if imageSidecarLike(v.Name) {
+			if images := l.artworkOpen[relative]; images != nil {
+				if _, seen := images[v.Name]; !seen {
+					if l.artworkNames >= maxListedNames {
+						l.artworkNames -= len(images)
+						l.artworkOpen[relative] = nil
+					} else {
+						images[v.Name] = storage.InventoryRevision(v)
+						l.artworkNames++
+					}
+				}
+			}
 		}
 		if _, seen := names[listedName(v.Name)]; !seen {
 			names[listedName(v.Name)] = struct{}{}
@@ -108,10 +134,12 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 	if page.Complete {
 		delete(l.open, relative)
 		if page.DirectoryIdentity != "" && page.DirectoryRevision != "" {
-			l.done[relative] = listedDirectory{names: names, identity: page.DirectoryIdentity, revision: page.DirectoryRevision}
+			l.done[relative] = listedDirectory{names: names, artwork: l.artworkOpen[relative], identity: page.DirectoryIdentity, revision: page.DirectoryRevision}
 		} else {
 			l.names -= len(names)
+			l.artworkNames -= len(l.artworkOpen[relative])
 		}
+		delete(l.artworkOpen, relative)
 	}
 }
 
@@ -129,8 +157,7 @@ func (s *Service) forgetListing(job string) {
 // was listed. That last check reads the directory once per call of scanListed,
 // so each analysed file looks again; a directory found changed is forgotten.
 func (s *Service) scanListed(ctx context.Context, job string, source catalog.LibrarySource) func(path string) (present, known bool) {
-	var mu sync.Mutex
-	unchanged := map[string]bool{}
+	current := s.scanDirectoryListed(ctx, job, source)
 	return func(path string) (bool, bool) {
 		if !sidecarLike(path) {
 			return false, false
@@ -139,6 +166,21 @@ func (s *Service) scanListed(ctx context.Context, job string, source catalog.Lib
 		if err != nil || relative != "." && !filepath.IsLocal(relative) {
 			return false, false
 		}
+		listed, known := current(relative)
+		if !known {
+			return false, false
+		}
+		_, present := listed.names[listedName(filepath.Base(path))]
+		return present, true
+	}
+}
+
+// scanDirectoryListed shares the existing per-analysis directory recheck with
+// image enumeration. A name lookup never manufactures a listing observation.
+func (s *Service) scanDirectoryListed(ctx context.Context, job string, source catalog.LibrarySource) func(string) (listedDirectory, bool) {
+	var mu sync.Mutex
+	unchanged := map[string]bool{}
+	return func(relative string) (listedDirectory, bool) {
 		s.listingMu.Lock()
 		var listed listedDirectory
 		known := false
@@ -147,7 +189,7 @@ func (s *Service) scanListed(ctx context.Context, job string, source catalog.Lib
 		}
 		s.listingMu.Unlock()
 		if !known {
-			return false, false
+			return listedDirectory{}, false
 		}
 		mu.Lock()
 		defer mu.Unlock()
@@ -159,16 +201,16 @@ func (s *Service) scanListed(ctx context.Context, job string, source catalog.Lib
 				s.listingMu.Lock()
 				if l := s.listings[job]; l != nil && l.done[relative].revision == listed.revision {
 					l.names -= len(l.done[relative].names)
+					l.artworkNames -= len(l.done[relative].artwork)
 					delete(l.done, relative)
 				}
 				s.listingMu.Unlock()
 			}
 		}
 		if !same {
-			return false, false
+			return listedDirectory{}, false
 		}
-		_, present := listed.names[listedName(filepath.Base(path))]
-		return present, true
+		return listed, true
 	}
 }
 
@@ -185,4 +227,35 @@ func (s *Service) directoryAsListed(ctx context.Context, source catalog.LibraryS
 		v, err = storage.LocalInventoryDirectory(req)
 	}
 	return err == nil && v.ObjectIdentity == listed.identity && storage.InventoryRevision(v) == listed.revision
+}
+
+// scanArtworkListed exposes actual case-preserving image names only from a
+// complete, still-current directory observation. It is discovery data, never
+// an I/O grant; every image still passes the admitted metadata reader.
+func (s *Service) scanArtworkListed(ctx context.Context, job string, source catalog.LibrarySource) func(string) (localmetadata.ArtworkDirectoryListing, bool) {
+	current := s.scanDirectoryListed(ctx, job, source)
+	return func(directory string) (localmetadata.ArtworkDirectoryListing, bool) {
+		relative, err := filepath.Rel(source.ResolvedPath, directory)
+		if err != nil || relative != "." && !filepath.IsLocal(relative) {
+			return localmetadata.ArtworkDirectoryListing{}, false
+		}
+		dir, known := current(relative)
+		if !known || dir.artwork == nil {
+			return localmetadata.ArtworkDirectoryListing{}, false
+		}
+		entries := make([]localmetadata.ArtworkListingEntry, 0, len(dir.artwork))
+		for name, revision := range dir.artwork {
+			entries = append(entries, localmetadata.ArtworkListingEntry{Name: name, Revision: revision})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+		return localmetadata.ArtworkDirectoryListing{SourceID: source.ID, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks, Entries: entries}, true
+	}
+}
+
+func imageSidecarLike(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".jpg", ".jpeg", ".png", ".tbn", ".webp":
+		return true
+	}
+	return false
 }
