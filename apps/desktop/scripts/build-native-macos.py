@@ -2,7 +2,7 @@
 import argparse,ctypes,fcntl,hashlib,importlib.util,json,os,pathlib,resource,shutil,signal,subprocess,sys,tarfile,time,wave
 parser=argparse.ArgumentParser(description="Owned macOS shared-native development build; no hardware/release qualification")
 parser.add_argument('job',type=pathlib.Path)
-for name in ['build-tools','rust-tools','cargo-home','dependency-prefix','pkg-config','pkg-config-dir','mpv-archive']:
+for name in ['build-tools','rust-tools','cargo-home','dependency-prefix','pkg-config','pkg-config-dir','mpv-archive','prepared-source-archive']:
  parser.add_argument('--'+name,required=True,type=pathlib.Path)
 args=parser.parse_args()
 def interrupt_job(_signal,_frame):raise KeyboardInterrupt()
@@ -93,13 +93,27 @@ try:
  assert run(['/usr/bin/git','-C',soxr,'rev-parse','HEAD'],output=True)=='945b592b70470e29f917f4de89b4281fbbd540c0'
  soxr_build=job/'build/soxr'
  run([cmake,'-S',soxr,'-B',soxr_build,'-G','Ninja','-DCMAKE_MAKE_PROGRAM='+ninja,'-DCMAKE_C_COMPILER='+compiler,'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_OSX_ARCHITECTURES=arm64','-DCMAKE_OSX_SYSROOT='+sdk,'-DCMAKE_INSTALL_PREFIX='+str(prefix),'-DBUILD_SHARED_LIBS=ON','-DWITH_OPENMP=OFF','-DWITH_LSR_BINDINGS=OFF','-DWITH_AVFFT=OFF','-DBUILD_TESTS=ON','-DBUILD_EXAMPLES=OFF','-DWITH_DEV_TRACE=OFF'])
- run([cmake,'--build',soxr_build,'--parallel','1']);run([ctest,'--test-dir',soxr_build,'-R','^1-delay-clear$','--output-on-failure']);run([cmake,'--install',soxr_build])
+ run([cmake,'--build',soxr_build,'--parallel','1']);run([ctest,'--test-dir',soxr_build,'-R','^1-delay-clear$','--no-tests=error','--output-on-failure']);run([cmake,'--install',soxr_build])
  print('SOXR_SHARED_ARM64_BUILD_PASS',flush=True)
- source_lock=json.loads((contract/'third_party/ffmpeg/sources.lock.json').read_text());ff=source_lock['ffmpeg'];raw=job/'ffmpeg.tar.gz'
- run(['/usr/bin/curl','--silent','--show-error','--fail','--location','--proto','=https','--proto-redir','=https','--max-time','240',ff['source'],'-o',raw])
- assert sha(raw)=='87bedcefc860cd234cdeddbebdcd3ce45aeedc81d0fbb258ed839ff778be3140'
- prepared=job/'ffmpeg-source';run([python,contract/'scripts/prepare-ffmpeg-source.py',prepared,'--archive',raw])
- receipt=prepared/'portico-source-receipt.json';assert sha(receipt)=='a47f4c8e3dadc47e0fd564d47f7b4c3f2a9b1f7680c4765f0750e562efb6a71f'
+ locked=json.loads((native/'native-deps.lock.json').read_text())['ffmpeg']
+ assert sha(contract/'third_party/ffmpeg/sources.lock.json')==locked['sourceLockSha256']
+ assert sha(contract/'scripts/prepare-ffmpeg-source.py')==locked['preparerSha256']
+ assert sha(args.prepared_source_archive)==locked['preparedArchiveSha256']
+ unpack(args.prepared_source_archive,job/'ffmpeg-input');prepared=job/'ffmpeg-input/ffmpeg'
+ receipt=prepared/'portico-source-receipt.json';assert sha(receipt)==locked['preparedReceiptSha256']
+ # Verify every canonical source byte/symlink before configuring. Never normalize
+ # a platform-generated patch tree or waive the producer's immutable receipt.
+ verify="""import importlib.util,json,pathlib,sys
+contract=pathlib.Path(sys.argv[1]);source=pathlib.Path(sys.argv[2])
+spec=importlib.util.spec_from_file_location('canonical_source',contract/'scripts/prepare-ffmpeg-source.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+receipt=json.loads((source/'portico-source-receipt.json').read_text());lock=json.loads((contract/'third_party/ffmpeg/sources.lock.json').read_text())
+assert receipt['sourceCommit']==lock['ffmpeg']['commit']
+assert receipt['patches']==lock['ffmpeg']['patches'] and receipt['postSeriesPatches']==lock['ffmpeg']['postSeriesPatches']
+assert receipt['files']==module.tree_files(source)
+print('EXACT_102_CANONICAL_SOURCE_INVENTORY_PASS')
+"""
+ run([python,'-c',verify,contract,prepared])
  ffbuild=job/'build/ffmpeg';ffbuild.mkdir()
  run([prepared/'configure','--prefix='+str(prefix),'--cc='+compiler,'--cxx='+cxx,'--pkg-config='+pkg,'--arch=arm64','--target-os=darwin','--enable-shared','--disable-static','--disable-programs','--disable-doc','--disable-debug','--enable-gpl','--enable-version3','--disable-autodetect','--enable-network','--enable-securetransport','--enable-libsoxr','--enable-libass','--enable-videotoolbox','--enable-audiotoolbox','--enable-zlib','--disable-protocols','--enable-protocol=file,pipe,http,https,tcp,tls,data','--optflags=-O2','--extra-cflags=-I'+str(prefix/'include'),'--extra-ldflags=-L'+str(prefix/'lib')],cwd=ffbuild)
  run(['/usr/bin/make','-s','-j1'],cwd=ffbuild);run(['/usr/bin/make','-s','install'],cwd=ffbuild)
