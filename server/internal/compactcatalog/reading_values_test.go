@@ -63,7 +63,7 @@ func TestReadingPathValues(t *testing.T) {
 	check(7, "Second", "Jane Doe", "", nil, compactcatalog.ReadingFolder)
 	check(8, "Root one", "", "", nil, "")
 	check(9, "Root two", "", "", nil, "")
-	check(10, "Single", "", "", nil, "")
+	check(10, "Single", "Nemo", "", nil, compactcatalog.ReadingFolder)
 }
 
 func TestReadingPathNumbersAndDates(t *testing.T) {
@@ -114,7 +114,7 @@ func TestReadingPathValuesRejectInvalidIdentityAndPaths(t *testing.T) {
 		{{0, "source", "A.pdf", compactcatalog.Ebook}},
 		{{1, "", "A.pdf", compactcatalog.Ebook}},
 		{{1, "source", "A.pdf", compactcatalog.Book}},
-		{{1, "source", "A.pdf", compactcatalog.Ebook}, {1, "other", "B.pdf", compactcatalog.Ebook}},
+		{{1, "source", "A.pdf", compactcatalog.Ebook}, {1, "other", "B.pdf", compactcatalog.Comic}},
 	} {
 		if _, err := compactcatalog.ReadingPathValues(input); !errors.Is(err, compactcatalog.ErrReadingValue) {
 			t.Errorf("invalid identity accepted: %v", err)
@@ -211,5 +211,121 @@ func TestReadingFacetsAcceptedValuesAndSeriesOrder(t *testing.T) {
 	frequency := compactcatalog.ReadingFacets("library", []compactcatalog.ReadingFacetItem{item(1, "a", "Dune", compactcatalog.ReadingFolder, nil), item(2, "b", "dune", compactcatalog.ReadingFolder, nil), item(3, "c", "dune", compactcatalog.ReadingFolder, nil)})
 	if frequency.Series[0].Name != "dune" {
 		t.Fatal("label is not most frequent accepted spelling")
+	}
+}
+
+func TestReadingPathRuling45Vectors(t *testing.T) {
+	tests := []struct {
+		name           string
+		paths          []string
+		ids            []int64
+		author, series string
+		nums           []float64
+	}{
+		{"hierarchy", []string{"Frank Herbert/Dune Saga/Dune.epub", "Frank Herbert/Dune Saga/Children of Dune.epub"}, []int64{1, 2}, "Frank Herbert", "Dune Saga", nil},
+		{"calibre", []string{"Frank Herbert/Dune (12)/Dune.epub", "Frank Herbert/Dune (12)/Dune.pdf"}, []int64{1, 1}, "Frank Herbert", "", nil},
+		{"ambiguous", []string{"Isaac Asimov/Foundation.epub"}, []int64{1}, "Isaac Asimov", "", nil},
+		{"filename-author", []string{"Isaac Asimov/Isaac Asimov - Foundation.epub"}, []int64{1}, "Isaac Asimov", "", nil},
+		{"nemo", []string{"Little Nemo/Little Nemo 01.cbz", "Little Nemo/02.cbz"}, []int64{1, 2}, "", "Little Nemo", []float64{1, 2}},
+		{"not-every-title", []string{"Dune/Dune.epub", "Dune/Children of Dune.epub"}, []int64{1, 2}, "Dune", "", nil},
+		{"deep", []string{"A/B/C/One.epub", "A/B/C/Two.epub"}, []int64{1, 2}, "B", "C", nil},
+		{"formats-once", []string{"Dune/Dune.epub", "Dune/Dune.pdf"}, []int64{1, 1}, "", "", nil},
+		{"generic-deep", []string{"Books/Sci-fi/Frank Herbert/Dune.epub"}, []int64{1}, "Frank Herbert", "", nil},
+		{"generic-only", []string{"Ebooks/Foundation.epub"}, []int64{1}, "", "", nil},
+		{"root-tags", []string{"Some Book [Group] (Digital).epub"}, []int64{1}, "", "", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var inputs []compactcatalog.ReadingRuleInput
+			for i, p := range tc.paths {
+				inputs = append(inputs, compactcatalog.ReadingRuleInput{tc.ids[i], "library-root", p, compactcatalog.Ebook})
+			}
+			got, err := compactcatalog.ReadingPathValues(inputs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, id := range tc.ids {
+				v := got[id]
+				if tc.author == "" {
+					if v.Author != nil {
+						t.Errorf("invented author: %+v", v.Author)
+					}
+				} else if v.Author == nil || v.Author.Value != tc.author {
+					t.Errorf("author=%+v want %q", v.Author, tc.author)
+				}
+				if tc.series == "" {
+					if v.Series != nil {
+						t.Errorf("invented series: %+v", v.Series)
+					}
+				} else if v.Series == nil || v.Series.Value != tc.series {
+					t.Errorf("series=%+v want %q", v.Series, tc.series)
+				}
+				if len(tc.nums) > 0 && (v.SeriesNumber == nil || v.SeriesNumber.Value != tc.nums[i]) {
+					t.Errorf("number=%+v want %v", v.SeriesNumber, tc.nums[i])
+				}
+			}
+		})
+	}
+}
+
+func TestReadingPathFilenameAuthorRequiresExactEvidence(t *testing.T) {
+	for _, tc := range []struct{ path, author, title string }{
+		{"George Orwell - 1984.epub", "George Orwell", "1984"},
+		{"A & B - Work.epub", "A & B", "Work"},
+		{"A - Work - Subtitle.epub", "", "A - Work - Subtitle"},
+		{"01 - Work.epub", "", "01 - Work"},
+		{"Series Issue 4 - Work.epub", "", "Series - Work"},
+		{"Series 01 - Work.epub", "", "Series 01 - Work"},
+		{"Folder/Series/Other Author - Work.epub", "Other Author", "Work"},
+		{"A/B/C/Other Author - Work.epub", "Other Author", "Work"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			got, err := compactcatalog.ReadingPathValues([]compactcatalog.ReadingRuleInput{{1, "source", tc.path, compactcatalog.Ebook}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			v := got[1]
+			if tc.author == "" {
+				if v.Author != nil {
+					t.Fatalf("invented author %+v", v.Author)
+				}
+			} else if v.Author == nil || v.Author.Value != tc.author || v.Author.Source != compactcatalog.ReadingFileName {
+				t.Fatalf("author=%+v want %q", v.Author, tc.author)
+			}
+			if v.Title != tc.title {
+				t.Errorf("title=%q want %q", v.Title, tc.title)
+			}
+		})
+	}
+}
+
+func TestReadingAcceptedSourcePrecedence(t *testing.T) {
+	path := compactcatalog.ReadingValues{Author: &compactcatalog.ReadingValue{"Path author", compactcatalog.ReadingFolder}, Series: &compactcatalog.ReadingValue{"Path series", compactcatalog.ReadingFolder}, SeriesNumber: &compactcatalog.ReadingNumber{1, compactcatalog.ReadingFileName}}
+	file := compactcatalog.ReadingValues{Author: &compactcatalog.ReadingValue{"File author", compactcatalog.ReadingFileMetadata}, Series: &compactcatalog.ReadingValue{"File series", compactcatalog.ReadingFileMetadata}, SeriesNumber: &compactcatalog.ReadingNumber{2, compactcatalog.ReadingFileMetadata}}
+	auto, err := compactcatalog.ReadingAutomaticValues(path, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(auto, file) {
+		t.Fatalf("file must beat path: %+v", auto)
+	}
+	owner := map[string]compactcatalog.ReadingOwnerValue{"author": {"Owner author", true}, "series": {"Owner series", true}, "seriesNumber": {"3", true}}
+	got, err := compactcatalog.ReadingEffectiveValues(auto, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Author.Value != "Owner author" || got.Series.Value != "Owner series" || got.SeriesNumber.Value != 3 {
+		t.Fatal("owner did not beat file metadata")
+	}
+	for k := range owner {
+		owner[k] = compactcatalog.ReadingOwnerValue{Value: "", Locked: false}
+	}
+	got, err = compactcatalog.ReadingEffectiveValues(auto, owner)
+	if err != nil || !reflect.DeepEqual(got, file) {
+		t.Fatal("owner clear must recover actual file provenance", err)
+	}
+	got, err = compactcatalog.ReadingAutomaticValues(path, compactcatalog.ReadingValues{})
+	if err != nil || !reflect.DeepEqual(got, path) {
+		t.Fatal("missing file metadata must keep actual path")
 	}
 }
