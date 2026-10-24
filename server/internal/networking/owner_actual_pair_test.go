@@ -368,6 +368,16 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	if status.Operation == nil {
 		t.Fatal("actual claim operation absent")
 	}
+	assertInitiatingRetired := func() {
+		t.Helper()
+		var revoked bool
+		if e := db.QueryRow(`SELECT revoked FROM authorization_session_families WHERE id=?`, setup.SessionFamilyID).Scan(&revoked); e != nil || !revoked {
+			t.Fatal("initiating family was not durably retired")
+		}
+		if _, e := id.AuthenticateContext(ctx, setup.AccessToken); e == nil {
+			t.Fatal("retired initiating family retained generic authority")
+		}
+	}
 	operation := status.Operation.OperationID
 	var faulted atomic.Bool
 	faultDone := make(chan struct{})
@@ -515,9 +525,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 		if e = db.QueryRow(`SELECT i.stage,c.phase,s.sign_in_kind,x.state,x.payload,x.signature,(SELECT count(*) FROM networking_claim_credentials) FROM networking_claim_intents i JOIN identity_owner_completions c ON c.operation_id=i.operation_id JOIN identity_state s JOIN networking_claim_cancellations x ON x.operation_id=i.operation_id WHERE i.operation_id=?`, operation).Scan(&stage, &phase, &kind, &cancellationState, &payload, &signature, &installedCount); e != nil || stage != "cancelled" || phase != "cancelled" || kind != "local" || cancellationState != "acknowledged" || installedCount != 0 || !bytes.Equal(payload, armedPayload) || !bytes.Equal(signature, armedSignature) {
 			t.Fatal("reconciliation lost original proof, local authority or cancellation CAS")
 		}
-		if _, e = id.AuthenticateContext(ctx, setup.AccessToken); e == nil {
-			t.Fatal("cancelled initiating family retained authority")
-		}
+		assertInitiatingRetired()
 		if lateResult.Credential != nil {
 			if e = runner.Do(ctx, func(ctx context.Context) error { _, e := restarted.Install(ctx, lateIntent, lateResult); return e }); e == nil {
 				t.Fatal("actual late result installed after cancellation")
@@ -563,6 +571,11 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	read(awaited, &status)
 	if status.State != "installed" || !status.InstallationAcknowledged || status.Operation == nil {
 		t.Fatal("actual approval did not install and ACK")
+	}
+	var stillLive bool
+	var grantKind string
+	if err = db.QueryRow(`SELECT NOT f.revoked,g.grant_kind FROM authorization_session_families f JOIN authorization_family_grants g ON g.family_id=f.id WHERE f.id=?`, setup.SessionFamilyID).Scan(&stillLive, &grantKind); err != nil || !stillLive || grantKind != identity.GrantOwnerCompletion {
+		t.Fatal("installed owner continuation was not a live narrowed family")
 	}
 	for _, probe := range ownerPairDeniedReads {
 		if w := request("GET", probe.path, nil); w.Code != 401 && w.Code != 403 {
@@ -632,9 +645,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 		if err = db.QueryRow(`SELECT c.phase,c.consumed_ms,s.sign_in_kind,i.stage,l.hosted_account_id FROM identity_owner_completions c JOIN identity_state s JOIN networking_claim_intents i ON i.operation_id=c.operation_id JOIN account_portico_links l ON l.account_id=c.owner_id WHERE c.operation_id=?`, operation).Scan(&phase, &consumed, &kind, &claim, &linked); err != nil || phase != "superseded" || consumed <= 0 || kind != "portico" || claim != "installed" || linked != b.AccountID {
 			t.Fatal("lost exchange did not leave a terminal attempt and installed bound owner")
 		}
-		if _, err = id.AuthenticateContext(ctx, setup.AccessToken); err == nil {
-			t.Fatal("lost exchange retained initiating family authority")
-		}
+		assertInitiatingRetired()
 		if replay := request("POST", "/v1/auth/portico-return/exchange", q); replay.Code != 401 && replay.Code != 403 {
 			t.Fatalf("terminal owner replay status=%d", replay.Code)
 		}
@@ -684,9 +695,7 @@ func runActualOwnerContinuation(t *testing.T, mode string) {
 	if admitted.Session == nil || admitted.Account.ID != setup.Viewer.AccountID || admitted.ServerID != id.ID() || admitted.Account.HostedAccountID != b.AccountID {
 		t.Fatal("actual owner grant changed the captured account/server")
 	}
-	if _, err = id.AuthenticateContext(ctx, setup.AccessToken); err == nil {
-		t.Fatal("initiating family survived final admission")
-	}
+	assertInitiatingRetired()
 	if _, err = id.AuthenticateContext(ctx, admitted.Session.AccessToken); err != nil {
 		t.Fatal("actual completed owner grant unusable", err)
 	}
