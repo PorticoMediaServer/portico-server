@@ -33,6 +33,10 @@ func TestArtworkCompactionShrinksSelectedUploadAndPreservesVariantReferences(t *
 	if width != 1280 || thumb != 400 || medium != 800 || !locked || buckets != 3 {
 		t.Fatal("compaction lost current pixels, fixed buckets or owner lock", width, thumb, medium, locked, buckets)
 	}
+	var uploadedWidth, uploadedHeight int
+	if err = db.QueryRow(`SELECT width,height FROM artwork_uploads`).Scan(&uploadedWidth, &uploadedHeight); err != nil || uploadedWidth != 1280 || uploadedHeight != 512 {
+		t.Fatal("upload projection retained obsolete display dimensions", uploadedWidth, uploadedHeight, err)
+	}
 	var violations int
 	rows, err := db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {
@@ -104,9 +108,13 @@ func TestArtworkCompactionNonstandardWalkIsBoundedAndStopsAtTheEnd(t *testing.T)
 	}
 	policy := artworkEncodingPolicy{edge: 1280, ceiling: 500000}
 	for n := 0; n < 2; n++ {
-		candidate, err := s.nextArtworkCompaction(ctx, policy)
+		measured, cost := dbwork.Measure(ctx)
+		candidate, err := s.nextArtworkCompaction(measured, policy)
 		if err != nil || candidate != "" || !s.artworkCompactionHasBacklog() {
 			t.Fatal("walk exceeded its 64-row quantum", n, candidate, err)
+		}
+		if got := cost().Statements; got != 1 {
+			t.Fatal("bounded page performed per-object reads", got)
 		}
 	}
 	candidate, err := s.nextArtworkCompaction(ctx, policy)
@@ -115,6 +123,10 @@ func TestArtworkCompactionNonstandardWalkIsBoundedAndStopsAtTheEnd(t *testing.T)
 	}
 	if _, err = s.nextArtworkCompaction(ctx, policy); err != sql.ErrNoRows || s.artworkCompactionHasBacklog() {
 		t.Fatal("exhausted walk did not idle", err)
+	}
+	idle, cost := dbwork.Measure(ctx)
+	if _, err = s.nextArtworkCompaction(idle, policy); err != sql.ErrNoRows || cost().Statements != 0 {
+		t.Fatal("completed immutable-object sweep queried the table again", cost(), err)
 	}
 	if _, err = s.nextArtworkCompaction(ctx, artworkEncodingPolicy{edge: 1920, ceiling: 500000}); err != sql.ErrNoRows || s.artworkCompactionHasBacklog() {
 		t.Fatal("standard policy retained stale walk progress", err)
