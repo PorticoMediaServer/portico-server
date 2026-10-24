@@ -12,11 +12,12 @@ const identityTransform = value => value === undefined || value === 'none' || va
 const opaque = value => value && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)';
 function significant(node) {
   const s = node.style ?? {};
-  return Boolean(node.frame || node.leaf !== false && node.ownText || node.input || node.image ||
+  return Boolean(node.frame || node.leaf !== false && node.ownText || ['button', 'a', 'label'].includes(node.tag) && node.normalizedText || node.input || node.image ||
     opaque(s.backgroundColor) || s.backgroundImage && s.backgroundImage !== 'none' || s.boxShadow && s.boxShadow !== 'none' ||
     ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(s[`border${side}Width`]) > 0 && s[`border${side}Style`] !== 'none'));
 }
 const text = node => node.input && !node.input.redacted ? node.input.value : node.frame || node.repeat || ['button', 'a', 'label'].includes(node.tag) ? node.normalizedText ?? node.ownText ?? '' : node.leaf === false ? '' : node.ownText ?? '';
+const textRectangles = node => node.frame || node.repeat || ['button', 'a', 'label'].includes(node.tag) ? node.descendantTextRects ?? node.textRects : node.textRects;
 const role = node => node.repeat?.role || node.role || (/^h[1-6]$/.test(node.tag) ? 'heading' : ['button', 'input', 'a', 'img', 'svg'].includes(node.tag) ? node.tag : 'text');
 const within = (id, roots) => typeof id === 'string' && roots.some(root => root && (id === root || id.startsWith(root + '.')));
 const colorTokens = /rgba?\([^)]+\)|color\(srgb [^)]+\)/g;
@@ -111,7 +112,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     if (node.box && other.box) for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(node.box[property] - other.box[property]) > policy.boxPixels) add(`box.${property}`, node.box[property], other.box[property]);
     if (!paintOnly && (node.ownText || other.ownText)) for (const property of textStyles) if (!unavailable(reference, node, property) && !unavailable(actual, other, property) && node.style?.[property] !== other.style?.[property]) add(property, node.style?.[property], other.style?.[property]);
     if (!paintOnly && !containsCascade && (node.ownText || other.ownText || node.frame && !node.anchoredDescendants)) {
-      const a = node.frame ? node.descendantTextRects ?? node.textRects : node.textRects, b = other.frame ? other.descendantTextRects ?? other.textRects : other.textRects;
+      const a = textRectangles(node), b = textRectangles(other);
       if (a && b) {
         if (a.length !== b.length) add('textRun.count', a.length, b.length);
         else a.forEach((rect, index) => {for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(rect[property] - b[index][property]) > policy.boxPixels) add(`textRun.${index}.${property}`, rect[property], b[index][property]);});

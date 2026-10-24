@@ -15,6 +15,7 @@ import {calibrateFrame} from './calibration.mjs';
 import {fontReadiness} from './readiness.mjs';
 import {controlledEntry, verifyGalleryEntry, settleMotion} from './gallery-entry.mjs';
 import {extractReference} from './extract-reference.mjs';
+import {assessDifferences} from './assessment.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -66,6 +67,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       }
       return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
         comparison, strings, textMetrics, nativeCaret, nativeCarets, calibration, differences, differenceCount: differences.length, classification,
+        assessment: assessDifferences(differences, {reference, actual}),
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
         verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};
@@ -85,5 +87,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const adapter = args.adapter ? JSON.parse(await readFile(args.adapter, 'utf8')) : auth4;
   const result = await compareWebScreen({referenceURL: args['reference-url'], adapter});
   await writeFile(join(parent, basename(output)), JSON.stringify(result, null, 2) + '\n', {flag: 'wx', mode: 0o600});
-  console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification}));
+  console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification, assessment: result.assessment}));
 }

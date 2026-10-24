@@ -16,6 +16,8 @@ export const frontdoorReferences = {
 
 /** App-side public IDs; private selectors/IDs stay exclusively in this tool. */
 export const frontdoorStateAdapters = {
-  phone: {anchors: {'accounts-welcome-portico': 'primary-action'}, comparison: {}},
-  androidTV: {anchors: {'tv-front-door-portico': 'primary-action'}, comparison: {focus: {frame: 'primary-action'}}},
+  phone: {anchors: {'accounts-welcome-portico': 'primary-action', 'accounts-welcome-portico/label': 'primary-action-label'},
+    comparison: {textHandledBySlots: ['primary-action'], actualContentOnly: ['primary-action-label'], contentSlots: [{reference: 'primary-action', actual: 'primary-action-label'}]}},
+  androidTV: {anchors: {'tv-front-door-portico': 'primary-action', 'tv-front-door-portico/label': 'primary-action-label'},
+    comparison: {focus: {frame: 'primary-action'}, textHandledBySlots: ['primary-action'], actualContentOnly: ['primary-action-label'], contentSlots: [{reference: 'primary-action', actual: 'primary-action-label'}]}},
 };
