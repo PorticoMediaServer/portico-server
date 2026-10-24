@@ -51,6 +51,10 @@ func NewAuthenticated(ctx context.Context, locator string, policy Policy, userna
 // transport errors. Retry/wait decisions belong to the source owner; repeating
 // here could reconnect behind its observation fence or ignore a provider wait.
 func (c *Client) Request(ctx context.Context, method string, body []byte, headers http.Header) (*http.Response, error) {
+	return c.request(ctx, method, body, headers, false)
+}
+
+func (c *Client) request(ctx context.Context, method string, body []byte, headers http.Header, setup bool) (*http.Response, error) {
 	switch method {
 	case "GET", "HEAD", "PROPFIND", "REPORT", "OPTIONS":
 	default:
@@ -64,7 +68,7 @@ func (c *Client) Request(ctx context.Context, method string, body []byte, header
 		return nil, ErrPolicy
 	}
 	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("User-Agent", "Portico/1")
+	req.Header.Set("User-Agent", c.userAgent)
 	if c.authorization != "" {
 		req.Header.Set("Authorization", c.authorization)
 	}
@@ -72,7 +76,11 @@ func (c *Client) Request(ctx context.Context, method string, body []byte, header
 		switch http.CanonicalHeaderKey(key) {
 		case "Depth", "Content-Type", "Range", "If-Match", "If-None-Match":
 		default:
-			return nil, ErrPolicy
+			// The public Request contract remains closed. Additional saved leaf
+			// headers are used only by the bounded private setup diagnostic.
+			if !setup || method != "GET" || !setupHeaderName(http.CanonicalHeaderKey(key)) {
+				return nil, ErrPolicy
+			}
 		}
 		if len(values) != 1 || len(values[0]) > 8192 {
 			return nil, ErrPolicy
