@@ -314,7 +314,7 @@ var sideTables = map[Kind]struct {
 	table  string
 	fields map[string]bool
 }{
-	Show:       {"catalog_shows", setOf("local_key", "provider_match_status", "original_title", "tagline", "overview", "content_rating", "studio", "network", "country", "tags", "labels")},
+	Show:       {"catalog_shows", setOf("source_edition", "local_key", "provider_match_status", "original_title", "tagline", "overview", "content_rating", "studio", "network", "country", "tags", "labels")},
 	Season:     {"catalog_seasons", setOf("show_id", "number", "title", "overview")},
 	Episode:    {"catalog_episodes", setOf("show_id", "season_id", "numbering", "number", "local_identity_status", "ordering_basis", "air_date")},
 	Artist:     {"catalog_artists", setOf("local_key", "overview", "tags")},
