@@ -15,10 +15,11 @@ import (
 // no credential or permission. Unknown HTTP service endpoints remain public-only
 // through the enforcing proxy; they never receive an invented private approval.
 type configuredBackend struct {
-	Kind    string
-	Remote  string
-	Native  remotemedia.NativeEndpoint
-	Origins []string
+	Kind         string
+	Remote       string
+	Native       remotemedia.NativeEndpoint
+	Origins      []string
+	RawRootKnown bool
 }
 
 func webDAVLeafCount(leaves []configuredBackend) int {
@@ -75,9 +76,10 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 	active := map[string]bool{}
 	visited := map[string]bool{}
 	out := []configuredBackend{}
+	rawRootKnown := true
 	var walk func(string, int) error
 	walk = func(remote string, depth int) error {
-		name, _, ok := strings.Cut(remote, ":")
+		name, suffix, ok := strings.Cut(remote, ":")
 		if !ok || name == "" || strings.ContainsAny(name, ",/\\") || depth > 16 || active[name] || sections[name] == nil {
 			return storage.ErrRemoteConfig
 		}
@@ -95,10 +97,16 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 		kind := fields["type"]
 		switch kind {
 		case "alias", "crypt", "chunker", "hasher", "compress", "cache":
+			if suffix != "" {
+				rawRootKnown = false
+			}
 			if err := walk(fields["remote"], depth+1); err != nil {
 				return err
 			}
 		case "union", "combine":
+			if suffix != "" {
+				rawRootKnown = false
+			}
 			reader := csv.NewReader(strings.NewReader(fields["upstreams"]))
 			reader.Comma = ' '
 			reader.TrimLeadingSpace = true
@@ -190,6 +198,9 @@ func configuredBackends(raw []byte, remote string) ([]configuredBackend, error) 
 	}
 	if len(out) == 0 {
 		return nil, storage.ErrRemoteConfig
+	}
+	for i := range out {
+		out[i].RawRootKnown = rawRootKnown
 	}
 	return out, nil
 }
