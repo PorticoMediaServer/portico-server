@@ -538,6 +538,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/shows/{id}/metadata/screen":  writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"PUT /v1/storage/sources/webdav/{id}": writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
 
+		"PUT /v1/storage/sources/{id}/read-profile": {check: TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt},
+
 		// Catalogue content named by id.
 		"PUT /v1/items/{id}/personal-state": perHidden("PUT", "/v1/items/ID/personal-state", `{"operationId":"OP","expectedRevision":0,"favorite":true}`, "item"),
 		// Not interested also names a show, album or book: those are probed too.

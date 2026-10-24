@@ -17,7 +17,8 @@ test('the actual production Vite config installs exactly one guarded Services en
       const selectors = plugins.filter(value => value?.name === 'portico-services-entry');
       assert.equal(selectors.length, 1);
       assert.ok(plugins.some(value => value?.name === 'portico-browser-check'));
-      const selected = selectors[0].transformIndexHtml!.handler!(html);
+      const handler = selectors[0].transformIndexHtml!.handler! as (markup: string, context: {path: string}) => string;
+      const selected = handler(html, {path: '/index.html'});
       assert.equal(selected, both ? html.replace('/src/main.tsx', '/src/services/main.tsx') : html);
     }
   } finally {

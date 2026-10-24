@@ -1,0 +1,82 @@
+package httpapi
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"net/http"
+
+	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/storage"
+)
+
+type SourceReadSettingsResponse struct {
+	Scope    catalog.AdminScope               `json:"scope"`
+	Settings remotesources.SourceReadSettings `json:"settings"`
+}
+
+type SourceReadSettingsReceiptResponse struct {
+	Scope   catalog.AdminScope    `json:"scope"`
+	Receipt remotesources.Receipt `json:"receipt"`
+}
+
+func sourceReadSettingsError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, storage.ErrRemoteChanged):
+		return &apierror.Error{Code: "revision_mismatch", Cause: err}
+	case errors.Is(err, mounts.ErrCommandConflict):
+		return &apierror.Error{Code: "idempotency_key_reused", Cause: err}
+	case errors.Is(err, storage.ErrRemoteConfig), errors.Is(err, mounts.ErrInvalid), errors.Is(err, mounts.ErrCommandExpired):
+		return &apierror.Error{Code: "invalid_request", Cause: err}
+	case errors.Is(err, sql.ErrNoRows), errors.Is(err, storage.ErrRemoteOffline):
+		return &apierror.Error{Code: "not_found", Cause: err}
+	case errors.Is(err, storage.ErrBusy), errors.Is(err, context.DeadlineExceeded):
+		return &apierror.Error{Code: "request_in_progress", Cause: err}
+	default:
+		return identityRouteError(err)
+	}
+}
+
+func registerSourceReadSettings(registry *apikit.Registry, d Dependencies) {
+	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "internal"}
+	v1Route(registry, apikit.Metadata{ID: "get_storage_source_read_profile", Method: "GET", Path: "/v1/storage/sources/{id}/read-profile", Summary: "Read one source's normalized reading profile and current revisions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceReadSettingsResponse, error) {
+		p, scope, err := d.storageOwner(r)
+		if err != nil {
+			return SourceReadSettingsResponse{}, sourceReadSettingsError(err)
+		}
+		if d.RemoteSources == nil || r.URL.RawQuery != "" {
+			return SourceReadSettingsResponse{}, &apierror.Error{Code: "invalid_request"}
+		}
+		out, err := d.RemoteSources.ReadSourceReadSettings(ctx, d.Identity, p, r.PathValue("id"))
+		if err != nil {
+			return SourceReadSettingsResponse{}, sourceReadSettingsError(err)
+		}
+		if _, _, err = d.storageOwner(r); err != nil {
+			return SourceReadSettingsResponse{}, sourceReadSettingsError(err)
+		}
+		return SourceReadSettingsResponse{Scope: scope, Settings: out}, nil
+	})
+	v1Route(registry, apikit.Metadata{ID: "put_storage_source_read_profile", Method: "PUT", Path: "/v1/storage/sources/{id}/read-profile", Summary: "Save one source's reading limits with current revisions and a durable receipt", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in remotesources.SourceReadSettingsChange) (SourceReadSettingsReceiptResponse, error) {
+		p, scope, err := d.storageOwner(r)
+		if err != nil {
+			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(err)
+		}
+		if d.RemoteSources == nil || r.URL.RawQuery != "" {
+			return SourceReadSettingsReceiptResponse{}, &apierror.Error{Code: "invalid_request"}
+		}
+		out, err := d.RemoteSources.SaveSourceReadSettings(ctx, d.Identity, p, r.PathValue("id"), in)
+		if err != nil {
+			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(err)
+		}
+		if _, _, err = d.storageOwner(r); err != nil {
+			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(err)
+		}
+		return SourceReadSettingsReceiptResponse{Scope: scope, Receipt: out}, nil
+	})
+}

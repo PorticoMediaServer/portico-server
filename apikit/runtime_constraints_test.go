@@ -19,6 +19,9 @@ func (constrainedMessage) JSONSchema() map[string]any {
 			"cardShape": map[string]any{"type": "string", "enum": []string{"poster", "square", "portrait"}},
 			"tier":      map[string]any{"type": "string", "enum": []string{"owner", "member"}},
 			"count":     map[string]any{"type": "integer", "minimum": 1, "maximum": 5},
+			"rate":      map[string]any{"type": "integer", "minimum": 0, "multipleOf": 1_000_000},
+			"fraction":  map[string]any{"type": "number", "multipleOf": 0.1},
+			"tiny":      map[string]any{"type": "number", "multipleOf": 1e-7},
 			"items":     map[string]any{"type": "array", "minItems": 1, "maxItems": 2, "items": map[string]any{"type": "string"}},
 			"choice":    map[string]any{"oneOf": []any{map[string]any{"type": "string", "const": "selected"}, map[string]any{"type": "null"}}},
 			"nullable":  map[string]any{"type": "string", "nullable": true}, "raw": map[string]any{},
@@ -43,7 +46,13 @@ const good={reading:false,cardShape:'poster',label:'Owner',enabled:true,tier:'ow
 assert.equal(decode('ConstraintResponse',good).nullable,null);assert.equal(decode('ConstraintResponse',{...good,choice:null}).choice,null);
 // Lane 2.05c exact capability regression: reading enum[false], cardShape enum.
 for(const bad of [{...good,reading:true},{...good,cardShape:'unknown-shape'},{...good,label:'A'},{...good,label:'Toolongname'},{...good,label:'owner'},{...good,enabled:false},{...good,tier:'admin'},{...good,count:0},{...good,count:6},{...good,items:[]},{...good,items:['a','b','c']},{...good,choice:'other'},{...good,label:undefined}])assert.throws(()=>decode('ConstraintResponse',bad));
-assert.equal(decode('ConstraintResponse',{...good,nullable:'value',raw:[null,1]}).nullable,'value');`
+assert.equal(decode('ConstraintResponse',{...good,nullable:'value',raw:[null,1]}).nullable,'value');
+for(const rate of [0,1000000,1000000000])assert.equal(decode('ConstraintResponse',{...good,rate}).rate,rate);
+for(const rate of [1,999999,1000001,1500000])assert.throws(()=>decode('ConstraintResponse',{...good,rate}));
+for(const fraction of [0,0.3,-0.3,1000])assert.equal(decode('ConstraintResponse',{...good,fraction}).fraction,fraction);
+for(const fraction of [0.15,0.30000000000000004])assert.throws(()=>decode('ConstraintResponse',{...good,fraction}));
+assert.equal(decode('ConstraintResponse',{...good,tiny:3e-7}).tiny,3e-7);
+assert.throws(()=>decode('ConstraintResponse',{...good,tiny:1.5e-7}));`
 	if e = os.WriteFile(filepath.Join(dir, "check.mjs"), []byte(script), 0600); e != nil {
 		t.Fatal(e)
 	}
