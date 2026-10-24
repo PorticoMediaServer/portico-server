@@ -251,3 +251,21 @@ test('a saved view is transport for the query it stores, and rendering withholds
   // Rendering is the guarded side: the summary is withheld rather than mislabelled as recency.
   assert.equal(savedViewSummary(definition as never, parseBrowseCapabilities(vocabulary), defaultI18n), undefined);
 });
+
+test('a nested applied query is echoed without a capability cross-check, and the capability check names each offending node', () => {
+  const nested = {all: [
+    {field: 'dateAdded', operator: OPERATOR, value: 30},
+    {any: [{field: 'year', operator: OPERATOR, value: 7}, {not: {field: 'mood', operator: 'equals', value: 'calm'}}]},
+  ]};
+  // Reading a page is structural: the applied query is kept exactly, including a window on
+  // a field the capabilities do not offer and a field they do not publish at all. The
+  // consumer that holds both the page and the vocabulary does not compare them here.
+  assert.deepEqual(parseBrowseResult(page(nested as BrowseNode)).applied.query, nested);
+  assert.doesNotThrow(() => decodeBrowseLibraryResponse(page(nested as BrowseNode)));
+  // The capability check refuses the same nested nodes, at their own paths.
+  assert.throws(() => validateBrowseQuery(capabilities(), nested as BrowseNode), queryError('query.all[1].any[0].operator'));
+  assert.throws(() => validateBrowseQuery(capabilities(), nested as BrowseNode), queryError('query.all[1].any[1].not.field'));
+  // The consistent reading of the same shape passes, so the paths above name the nodes only.
+  const consistent = {all: [{field: 'dateAdded', operator: OPERATOR, value: 30}, {any: [{field: 'releaseDate', operator: OPERATOR, value: 90}]}]};
+  assert.doesNotThrow(() => validateBrowseQuery(capabilities(), consistent as BrowseNode));
+});
