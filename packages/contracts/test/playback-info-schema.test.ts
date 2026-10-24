@@ -16,6 +16,11 @@ test('session comparison is optional and explicitly describes the committed plan
   for (const side of [info.properties.source, info.properties.delivered]) {
     assert.equal(side.properties.video.properties.hdr10Plus.type, 'boolean');
     assert.equal(new Set<string>(side.properties.video.required).has('hdr10Plus'), false);
+    for (const field of ['dolbyVisionRpu', 'dolbyVisionBaseLayer'] as const) {
+      assert.equal(side.properties.video.properties[field].type, 'boolean');
+      assert.equal(new Set<string>(side.properties.video.required).has(field), false);
+      assert.equal('nullable' in side.properties.video.properties[field], false);
+    }
     for (const field of ['url', 'path', 'token', 'screen', 'pcm', 'device']) assert.equal(field in side.properties, false);
   }
   assert.equal('observedPlayback' in info.properties, false);
