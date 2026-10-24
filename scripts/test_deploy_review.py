@@ -126,12 +126,40 @@ class ReviewDeployment(unittest.TestCase):
                 deploy.main()
             remote.assert_not_called()
 
-    def test_browser_failure_restores_the_previous_service(self):
+    def test_refused_browser_launch_never_changes_the_public_service(self):
         args = ['deploy-review.py', 'a' * 40, '/artifact', '--cycle', 'review-test', '--activate-only', '--browser-repo', '/repo', '--runner', '/runner', '--private-review', '/private', '--smoke-output', '/output']
-        with patch('sys.argv', args), patch.object(deploy, 'remote') as remote, patch.object(deploy.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'smoke')):
+        with patch('sys.argv', args), patch.object(deploy, 'remote') as remote, patch.object(deploy.subprocess, 'run', side_effect=subprocess.CalledProcessError(75, 'smoke')):
             with self.assertRaises(subprocess.CalledProcessError):
                 deploy.main()
+            remote.assert_not_called()
+
+    def test_browser_admission_is_a_whole_line_before_any_activation(self):
+        self.assertFalse(smoke.browser_ready('{"argv":["console.log(BROWSER_ADMITTED)"]}'))
+        activation = smoke.ReviewActivation('a' * 40, 'review-test', 'controls')
+        with patch.object(smoke, 'load_deployment', return_value=deploy), patch.object(deploy, 'remote') as remote:
+            activation.rollback()
+            remote.assert_not_called()
+            self.assertTrue(smoke.browser_ready('metadata\nBROWSER_ADMITTED\n'))
+            activation.start()
+            activation.rollback()
             self.assertEqual([call.args[0] for call in remote.call_args_list], [deploy.ACTIVATE, deploy.ROLLBACK])
+
+    def test_frozen_cutoff_accepts_main_ancestry_when_the_tip_advances(self):
+        cutoff, current = 'a' * 40, 'b' * 40
+        with patch.object(build.subprocess, 'check_output', return_value=current + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run') as run:
+            build.require_current_main(Path('/checkout'), cutoff, frozen=True)
+            run.assert_called_with(['git', '-C', '/checkout', 'merge-base', '--is-ancestor', cutoff, 'origin/main'], check=True)
+
+    def test_frozen_cutoff_never_accepts_a_commit_outside_main(self):
+        with patch.object(build.subprocess, 'check_output', return_value='b' * 40 + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run', side_effect=[None, subprocess.CalledProcessError(1, 'git')]):
+            with self.assertRaises(subprocess.CalledProcessError):
+                build.require_current_main(Path('/checkout'), 'a' * 40, frozen=True)
+
+    def test_activation_retry_preserves_the_same_state_and_separate_backup(self):
+        with patch.object(smoke, 'load_deployment', return_value=deploy), patch.object(deploy, 'remote') as remote:
+            smoke.ReviewActivation('a' * 40, 'review-test', 'controls').start()
+            self.assertEqual(remote.call_args.args[2], '/var/lib/portico-review-test')
+            self.assertEqual(remote.call_args.args[-1], 'review-test-controls')
 
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'
