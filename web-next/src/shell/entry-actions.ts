@@ -14,7 +14,12 @@ export class EntryActionStore {
   private listeners = new Set<() => void>();
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => {this.listeners.delete(listener);}; };
   getSnapshot = (): Open | null => this.state;
-  openDelete(target: EntryActionTarget, anchor: HTMLElement | null, ports: EntryActionPorts) { this.state = {kind: 'delete', target, anchor, ports}; this.emit(); }
+  openDelete(target: EntryActionTarget, anchor: HTMLElement | null, ports: EntryActionPorts) {
+    if (!ports.isCurrent()) { this.close(); return; }
+    this.state = {kind: 'delete', target, anchor, ports}; this.emit();
+  }
+  /** The captured screen is retiring: drop its surface and never reopen it from a successor host. */
+  retire(ports: EntryActionPorts) { if (this.state?.ports === ports || this.state && !this.state.ports.isCurrent()) this.close(); }
   close() { if (!this.state) return; this.state = null; this.emit(); }
   private emit() { for (const listener of [...this.listeners]) listener(); }
 }

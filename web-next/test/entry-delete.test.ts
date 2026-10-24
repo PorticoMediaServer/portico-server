@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {EntryDeleteProducer} from '../src/shell/entry-delete.ts';
+import {deleteSurfaceFor, EntryDeleteProducer} from '../src/shell/entry-delete.ts';
+import {entryActions} from '../src/shell/entry-actions.ts';
 
 const target = {libraryId: 'library', itemId: 'item', kind: 'movie' as const, title: 'Film'};
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -89,4 +90,31 @@ test('a preview for another title is rejected without a ready dialog', async () 
   h.producer.open(target, h.ports); await tick();
   assert.equal(h.producer.getSnapshot().phase, 'error');
   assert.equal(h.producer.getSnapshot().preview, undefined);
+});
+
+test('two confirms while the operation id is pending allocate one body and send once', async () => {
+  let release!: (value: string) => void; const pending = new Promise<string>(resolve => {release = resolve;});
+  const h = harness({requestId: () => pending});
+  h.producer.open(target, h.ports); await tick(); h.producer.setConfirmation('DELETE');
+  const first = h.producer.confirm(), second = h.producer.confirm();
+  assert.equal(h.producer.getSnapshot().phase, 'confirming');
+  release('op-1'); await Promise.all([first, second]);
+  const sent = deleteCalls(h.calls);
+  assert.equal(sent.length, 1);
+  assert.equal((sent[0]!.body as {operationId: string}).operationId, 'op-1');
+});
+
+test('a retired scope opens no surface and sends no preview or delete', async () => {
+  const retired = harness({current: () => false});
+  entryActions.openDelete(target, null, retired.ports);
+  assert.equal(entryActions.getSnapshot(), null);
+  retired.producer.open(target, retired.ports); await tick();
+  assert.equal(retired.producer.getSnapshot().phase, 'idle');
+  assert.equal(retired.calls.length, 0);
+});
+
+test('the uncertain phase maps to the approved retry surface', () => {
+  assert.equal(deleteSurfaceFor('uncertain'), 'uncertain');
+  assert.equal(deleteSurfaceFor('ready'), 'dialog');
+  assert.equal(deleteSurfaceFor('idle'), 'none');
 });

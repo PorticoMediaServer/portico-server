@@ -6,7 +6,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
 import {createScreenPlayEffect} from './playback-effect';
-import {deleteTitleEffect, type EntryActionPorts} from '../../shell/entry-actions';
+import {deleteTitleEffect, entryActions, type EntryActionPorts} from '../../shell/entry-actions';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -55,7 +55,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         },
       },
     };
-    return {value, dispose: () => {active = false;}};
+    return {value, dispose: () => {active = false; entryActions.retire(entryPorts);}};
   }, [context, scopeKey]);
   useEffect(() => () => owner.dispose(), [owner]);
   return owner.value;
