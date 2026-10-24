@@ -65,7 +65,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
       return context.artwork.foreground(entry?.posterUrl, 120, preparation.title.kind === 'book' || preparation.title.kind === 'album' || preparation.title.kind === 'song' ? 1 : 2 / 3);
     }}
     presentation={{view: choice?.defaultView === appearance.libraryView ? choice.view : appearance.libraryView,
-      cardWidth: (width < 600 ? 112 : 190) * appearance.cardSizePercent / 100, backdrops: appearance.showBackdrops, reducedMotion: appearance.reducedMotion,
+      cardWidth: (width < 600 ? 112 : 174) * appearance.cardSizePercent / 100, backdrops: appearance.showBackdrops, reducedMotion: appearance.reducedMotion,
       setView: view => {if (context.isCurrent()) setChoice({defaultView: appearance.libraryView, view});}}}
     effects={effects}/>;
 }
