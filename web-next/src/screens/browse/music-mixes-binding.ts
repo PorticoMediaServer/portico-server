@@ -30,7 +30,7 @@ export function bindMusicMixes(source: MusicMixesController, caller: MusicMixLif
     },
     subscribe(listener: () => void) {
       if (!current()) return () => {};
-      const subscription = Object.freeze({listener, off: source.subscribe(listener)});subscriptions.add(subscription);
+      const subscription = Object.freeze({listener, off: source.subscribe(() => {if (current()) listener();})});subscriptions.add(subscription);
       return () => {subscription.off();subscriptions.delete(subscription);};
     },
     contains: (row: MusicMixRow) => current() && source.contains(row),
