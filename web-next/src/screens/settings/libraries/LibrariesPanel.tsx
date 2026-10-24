@@ -6,7 +6,7 @@ import {reorderLibraries} from '@core/server-admin/libraries.ts';
 import {Button} from '../../../kit/controls';
 import {Menu} from '../../../kit/overlays/Popover';
 import {Icon} from '../../../kit/Icon';
-import {router} from '../../router';
+import {router} from '../../../router';
 import {StateView} from '../../../kit/states';
 import styles from './libraries.module.css';
 import {libraryRows, movedIds} from './model';
