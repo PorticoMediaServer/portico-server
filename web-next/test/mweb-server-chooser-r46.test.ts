@@ -95,7 +95,7 @@ test('opening, loading and list-failed are real transient states, not a second f
 });
 
 test('genuine account-directory facts supply the drawn presence and owner; status/ownership unknowns grant nothing', () => {
-  const choices = [{id: 'a', label: 'Saved A', signIn: 'portico', selected: false}, {id: 'b', label: 'Saved B', signIn: 'portico', selected: false}, {id: 'c', label: 'Saved C', signIn: 'local', selected: false}];
+  const choices = [{id: 'a', label: 'Saved A', signIn: 'portico', selected: false}, {id: 'b', label: 'Saved B', signIn: 'portico', selected: false}, {id: 'c', label: 'Saved C', signIn: 'local', selected: false}] as const;
   const listed = mobileChooserRows(choices, [
     {id: 'a', name: 'Portico demo', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true},
     {id: 'b', name: 'The cottage', status: 'quiet', presence: {lastSeenAt: seenAt}, ownedByMe: false},
@@ -108,7 +108,7 @@ test('genuine account-directory facts supply the drawn presence and owner; statu
 });
 
 test('a saved server absent from the account directory keeps only its saved facts', () => {
-  const choices = [{id: 'x', label: 'Studio', signIn: 'local', selected: false}];
+  const choices = [{id: 'x', label: 'Studio', signIn: 'local', selected: false}] as const;
   assert.deepEqual(mobileChooserRows(choices, []), choices);
   assert.deepEqual(mobileChooserRows(choices, [{id: 'y', name: 'Elsewhere', status: 'active', presence: {lastSeenAt: null}, ownedByMe: true}]), choices);
 });
