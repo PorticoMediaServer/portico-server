@@ -113,6 +113,17 @@ func TestMusicDownloadNumberMetadataSurvivesRealConversions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err, diagnostic.String())
 			}
+			plainPath := filepath.Join(root, codec+"-plain.media")
+			if err := os.WriteFile(plainPath, encoded, 0600); err != nil {
+				t.Fatal(err)
+			}
+			plainDecode := exec.Command(ffmpeg, "-v", "error", "-xerror", "-i", plainPath, "-map", "0:a:0", "-f", "s16le", "-")
+			diagnostic.Reset()
+			plainDecode.Stderr = &diagnostic
+			plainPCM, err := plainDecode.Output()
+			if err != nil || len(plainPCM) == 0 {
+				t.Fatal("plain prepared audio did not decode", codec, err, diagnostic.String())
+			}
 			for _, tc := range []struct {
 				name string
 				tags audiotags.Tags
@@ -132,7 +143,7 @@ func TestMusicDownloadNumberMetadataSurvivesRealConversions(t *testing.T) {
 				diagnostic.Reset()
 				decode.Stderr = &diagnostic
 				pcm, err := decode.Output()
-				if err != nil || len(pcm) == 0 || len(pcm)%4 != 0 {
+				if err != nil || !bytes.Equal(pcm, plainPCM) {
 					t.Fatal("decorated download did not decode", codec, tc.name, err, len(pcm), diagnostic.String())
 				}
 			}
