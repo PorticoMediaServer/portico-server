@@ -8,7 +8,10 @@ import {IconSprite} from '../../kit/Icon';
 import {createArtworkRuntime} from '../../kit/artwork';
 import type {ShellArtwork} from '../../shell/artwork';
 import type {HomeEffects, HomeSelection} from './Home';
-import {HomeView} from './Home';
+import {HomeHeroArtwork, HomeView} from './Home';
+import {homeSpotlights} from './model';
+import {HeroFacts} from '../../kit/layout';
+import extras from './ds-web-home-r46.extras.module.css';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -191,6 +194,15 @@ const homeDocument: HomeDocument = {
   layout: {revision: 1, rowOrder: rows.map(value => value.id), hiddenRowIds: []}, revision: {catalog: 1, viewer: 1}, generatedAt: now,
 };
 
+/** mock.html#extras uses exactly these three artwork states; the entries carry only what they have. */
+const extrasReason = {kind: 'recommended', text: {code: 'next.home.reason.recommended', fallback: 'Recommended for you'}} as const;
+const extrasSpotlights: readonly HomeSpotlight[] = [
+  {entry: entry('sp-severance-extras', 'show', 'Severance', {year: 2022, genres: ['Drama', 'Mystery'], posterUrl: photo('p-sev.jpg'), backdropUrl: photo('bd-sev.jpg')}), reason: extrasReason},
+  {entry: entry('sp-jjk-extras', 'show', 'JUJUTSU KAISEN', {year: 2020, genres: ['Anime'], seasonCount: 1, posterUrl: photo('p-jjk.jpg')}), reason: extrasReason},
+  {entry: entry('sp-lanterns-extras', 'show', 'Lanterns', {year: 2026, genres: ['TV Shows'], seasonCount: 1}), reason: extrasReason},
+];
+const extrasDocument: HomeDocument = {...homeDocument, spotlight: extrasSpotlights};
+
 const assetOrigin = new URLSearchParams(location.search).get('assets') ?? '/';
 function useArtwork() {
   const runtime = useMemo(() => createArtworkRuntime({
@@ -244,4 +256,19 @@ function Specimen() {
     artwork={artwork} effects={effects} selection={selection} time={{t: defaultI18n.t, locale: 'en-US', timeZone: 'America/Halifax', hourCycle: 'h12'}} reducedMotion />;
 }
 
-createRoot(document.getElementById('root')!).render(<><IconSprite /><main data-home-specimen><Specimen /></main></>);
+const extrasLabels = ['next.artwork.native.backdrop', 'next.artwork.native.posterOnly', 'next.artwork.native.noArtwork'] as const;
+function ExtrasGallery() {
+  const artwork = useArtwork(), slides = homeSpotlights(extrasDocument, {t: defaultI18n.t, locale: 'en-US'});
+  return <main data-home-extras className={extras.gallery}>
+    <h3>{defaultI18n.t('next.artwork.native.galleryTitle')}</h3>
+    <p className={extras.lead}>{defaultI18n.t('next.artwork.native.lead')}</p>
+    {slides.map((slide, index) => <div key={slide.id} className={extras.fb}>
+      <HomeHeroArtwork slide={slide} context={{index, visible: true}} platform="desktop" artwork={artwork} heroPixels={1440} variant="panel"/>
+      <span className={extras.label}>{defaultI18n.t(extrasLabels[index]!)}</span>
+      <div className={extras.copy}><h4 className={extras.title}>{slide.title}</h4><HeroFacts parts={slide.facts} platform="desktop"/></div>
+    </div>)}
+  </main>;
+}
+
+const extrasMode = new URLSearchParams(location.search).get('mode') === 'extras';
+createRoot(document.getElementById('root')!).render(<><IconSprite />{extrasMode ? <ExtrasGallery/> : <main data-home-specimen><Specimen /></main>}</>);

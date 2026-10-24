@@ -41,6 +41,17 @@ export function homeSpotlights(document: HomeDocument, env: TextEnvironment) {
   return homeSpotlightModels(document).map(slide => ({...slide, id: slide.entry.id, title: slide.entry.displayTitle ?? slide.entry.title,
     facts: homeTitleFactParts(slide.entry, env)}));
 }
+export type HeroArtworkTreatment = 'colour' | 'generated' | 'poster' | 'panel' | 'backdrop';
+/**
+ * The author's extras frame draws three hero states from what a title actually has.
+ * The colour preference withdraws every image, and the panel crop is that frame's
+ * backdrop excerpt, never the full hero.
+ */
+export function heroArtworkTreatment(artwork: Readonly<{backdropUrl?: string; posterUrl?: string}>, showBackdrops: boolean, variant: 'hero' | 'panel' = 'hero'): HeroArtworkTreatment {
+  if (!showBackdrops) return 'colour';
+  if (artwork.backdropUrl) return variant === 'panel' ? 'panel' : 'backdrop';
+  return artwork.posterUrl ? 'poster' : 'generated';
+}
 /** Expired live facts are withdrawn, never presented as current while refreshing. */
 export function currentHomeLive(live: HomeLive | undefined, nowMs: number): HomeLive | undefined {
   if (!live || !Number.isFinite(nowMs)) return undefined;
