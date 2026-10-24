@@ -54,10 +54,11 @@ func testNativeSavedNAS(t *testing.T, backend string) {
 	f, managed, identities, owner, _, _ := nativeSaveFixture(t)
 	// The listing path needs the actual service constructor's local worker
 	// capacity and lifecycle hooks, not the smaller DB-only save fixture.
-	f.s, err = New(f.s.db, t.TempDir(), managed)
+	sources, err := New(f.s.db, t.TempDir(), managed)
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.s = sources
 	if err := f.s.startReadRuntime(ctx); err != nil {
 		t.Fatal(err)
 	}
