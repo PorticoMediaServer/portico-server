@@ -35,6 +35,7 @@ type Service struct {
 	Remote    *remotesources.Service
 	Authorize Authorization
 	Visible   Visibility
+	SeriesScope SeriesScopeResolver
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)
