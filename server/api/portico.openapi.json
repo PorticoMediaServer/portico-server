@@ -37715,6 +37715,10 @@
                 "label": {
                   "type": "string"
                 },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
+                  "type": "string"
+                },
                 "value": {
                   "type": "string"
                 }
@@ -114652,6 +114656,10 @@
                   "type": "boolean"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "seriesId": {
+                  "pattern": "^[A-Za-z0-9_-]{43}$",
                   "type": "string"
                 },
                 "value": {
@@ -288755,6 +288763,10 @@
                           "label": {
                             "type": "string"
                           },
+                          "seriesId": {
+                            "pattern": "^[A-Za-z0-9_-]{43}$",
+                            "type": "string"
+                          },
                           "value": {
                             "type": "string"
                           }
@@ -406914,6 +406926,10 @@
                             "type": "boolean"
                           },
                           "label": {
+                            "type": "string"
+                          },
+                          "seriesId": {
+                            "pattern": "^[A-Za-z0-9_-]{43}$",
                             "type": "string"
                           },
                           "value": {

@@ -27,15 +27,15 @@ import (
 type ReadingFacetSeriesID string
 
 func (ReadingFacetSeriesID) JSONSchema() map[string]any {
- return map[string]any{"type":"string","pattern":"^[A-Za-z0-9_-]{43}$"}
+	return map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
 }
 
 type FacetValue struct {
- SeriesID ReadingFacetSeriesID `json:"seriesId,omitempty"`
-	Value             string `json:"value"`
-	Label             string `json:"label"`
-	Count             int    `json:"count"`
-	CountIsLowerBound bool   `json:"countIsLowerBound"`
+	SeriesID          ReadingFacetSeriesID `json:"seriesId,omitempty"`
+	Value             string               `json:"value"`
+	Label             string               `json:"label"`
+	Count             int                  `json:"count"`
+	CountIsLowerBound bool                 `json:"countIsLowerBound"`
 }
 type FacetPage struct {
 	// Private aggregate payload reuses the bounded revision/single-flight cache;
