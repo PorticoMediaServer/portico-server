@@ -38,7 +38,7 @@ export type LiveChromeProps = Readonly<{
  * Presentation only: every fact is a genuine channel/guide/session fact supplied by the port,
  * and every action rechecks that port's exact channel fence before it runs. */
 export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, reportError}: LiveChromeProps) {
-  const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [notice, setNotice] = useState<string>(), [scrub, setScrub] = useState<number>();
+  const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
   const guide = useRef<HTMLElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef(false);
   const window = port.window, channel = port.channel, programme = port.programme;
   const displayWindow = scrub === undefined ? window : {...window, positionMs: scrub};
@@ -101,7 +101,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       {port.miniGuide.map(item => {
         const current = item.channel.id === channel.id && item.channel.sourceId === channel.sourceId;
         const facts = current ? programme : item.programme, from = facts?.startMs ?? window.programmeStartMs, to = facts?.endMs ?? window.programmeEndMs;
-        const span = to - from, progress = span > 0 ? Math.min(100, Math.max(0, (window.liveEdgeMs - from) / span * 100)) : 0;
+        const span = from !== undefined && to !== undefined ? to - from : 0, progress = span > 0 ? Math.min(100, Math.max(0, (window.liveEdgeMs - from!) / span * 100)) : 0;
         return <button type="button" className={styles.miniRow} data-mini-row data-current={current || undefined} key={`${item.channel.sourceId}:${item.channel.id}`}
           onClick={() => act(async () => {await port.tuneTo({sourceId: item.channel.sourceId, channelId: item.channel.id, generation: item.channel.generation, kind: item.channel.kind});openGuide(false);})}>
           {item.channel.mark && <ChannelMark className={styles.miniMark} mark={{sourceId: item.channel.sourceId, id: item.channel.id, ...item.channel.mark}} size={34}/>}

@@ -6,6 +6,7 @@ import {legacyChannel, legacyChannelRow, legacyGuideSource, legacyProgramme, typ
 import type {GuideChannel, GuideProgramme} from '@core/channel-guide.ts';
 import {sameFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
+import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {router} from '../../router';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 import {createLiveBindings} from './bindings';
@@ -37,15 +38,24 @@ type GuideFacts = Readonly<{fenceKey: string; current: GuideChannel; rows: reado
  * for the current channel and its nearby rows. No second player, channel controller or
  * store is created, and no guide fact is guessed from the VOD presentation.
  */
-export function useLiveChromePort(context: ScreenContext | undefined, runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined,
+export function useLiveChromePort(context: ShellAssemblyContext | undefined, runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined,
   skips: Readonly<{back: number; forward: number}>): LiveChromePort | undefined {
   const fence = snapshot?.fence?.kind === 'channel' ? snapshot.fence as ChannelPlaybackFence : undefined;
   const expanded = snapshot?.dock.local?.expanded === true;
   const linear = snapshot?.playback.linear, presentation = snapshot?.presentation;
   const channelRef = linear?.channel;
   const fenceKey = fence && channelRef ? JSON.stringify([fence.sessionId, fence.generation, fence.channelId, fence.channelGeneration, linear?.programme?.id ?? '']) : '';
-  const life = useMemo(() => context ? screenLifetime(context) : undefined, [context]);
-  const client = useMemo(() => life && context ? new DVRClient(life.api, context.scope.serverId, randomHex) : undefined, [life, context]);
+  const screen = useMemo<ScreenContext | undefined>(() => {
+    if (!context) return undefined;
+    const session = context.session();
+    return {api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
+      scope: {serverId: session.viewer.serverId, viewerId: JSON.stringify([session.viewer.authority, session.viewer.accountId, session.viewer.profileId])},
+      isCurrent: context.isCurrent,
+      preferences: {getSnapshot: () => context.preferences?.getSnapshot() ?? context.facts.preferences, subscribe: listener => context.preferences?.subscribe(listener) ?? (() => {})},
+      effects: {reportError: error => {if (context.isCurrent()) context.home.effects.reportError(error);}, openEntry: () => {}, openSettings: () => {}, openHome: () => {}, play: async () => {}}};
+  }, [context]);
+  const life = useMemo(() => screen ? screenLifetime(screen) : undefined, [screen]);
+  const client = useMemo(() => life && screen ? new DVRClient(life.api, screen.scope.serverId, randomHex) : undefined, [life, screen]);
   useEffect(() => () => {client?.dispose();life?.dispose();}, [client, life]);
   const [facts, setFacts] = useState<GuideFacts>();
   const [recorded, setRecorded] = useState<Readonly<{programmeId: string; state: 'recording' | 'scheduled'}>>();
@@ -54,9 +64,9 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
   useEffect(() => { setRecorded(undefined); }, [fenceKey]);
   useEffect(() => {
     const fence = input.current.fence, channelRef = input.current.channelRef;
-    if (!context || !life || !expanded || !fence || !channelRef || !fenceKey) { setFacts(undefined); return; }
+    if (!screen || !life || !expanded || !fence || !channelRef || !fenceKey) { setFacts(undefined); return; }
     const abort = new AbortController();
-    const bindings = createLiveBindings(context, {kind: channelRef.kind, sourceId: channelRef.sourceId, timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
+    const bindings = createLiveBindings(screen, {kind: channelRef.kind, sourceId: channelRef.sourceId, timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
     const source = legacyGuideSource(life.api, context.scope.serverId, {kind: channelRef.kind, sourceId: channelRef.sourceId,
       timezone: defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, search: '', sort: 'number'});
     const run = async () => {
@@ -86,17 +96,17 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
     };
     void run().catch(() => {});
     return () => {abort.abort();bindings.dispose();};
-  }, [context, life, expanded, fenceKey, refresh]);
-  if (!context || !life || !client || !runtime || !snapshot || !expanded || !fence || !linear || !presentation || !fenceKey) return undefined;
+  }, [screen, life, expanded, fenceKey, refresh]);
+  if (!screen || !life || !client || !runtime || !snapshot || !expanded || !fence || !linear || !presentation || !fenceKey) return undefined;
   const channel = !!facts && facts.fenceKey === fenceKey ? asChromeChannel(facts.current) : undefined;
   const currentGuide = !!facts && facts.fenceKey === fenceKey ? facts.rows.find(row => row.id === fence.channelId) : undefined;
   const currentGuideProgramme = !!facts && facts.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
   const guideProgramme = !!facts && facts.fenceKey === fenceKey && linear.programme
     ? (currentGuideProgramme?.id === linear.programme.id ? currentGuideProgramme : facts.current.programmes.find(programme => programme.id === linear.programme!.id)) : undefined;
-  const authoritative = channel && currentGuide ? channel : {id: fence.channelId, sourceId: fence.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
+  const authoritative: LiveChromeChannel = channel && currentGuide ? channel : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
     number: '', name: linear.name, favorite: false, recordAvailable: false, tuneAvailable: true};
   const factsRecording = recordingState(guideProgramme);
-  const localRecording = recorded?.programmeId === linear.programme?.id ? recorded.state : undefined;
+  const localRecording = recorded && recorded.programmeId === linear.programme?.id ? recorded.state : undefined;
   const currentRecording = factsRecording ?? localRecording;
   const programme: LiveChromeProgramme | undefined = linear.programme ? {id: linear.programme.id, title: linear.programme.title,
     startMs: linear.programme.startMs, endMs: linear.programme.endMs, ...(currentRecording ? {recording: currentRecording} : {})} : undefined;
@@ -160,8 +170,8 @@ export function useLiveChromePort(context: ScreenContext | undefined, runtime: W
     isCurrent, record, goLive,
     tune: async direction => { const row = direction === -1 ? down : up; if (row) await tuneTarget(guideRowTarget(row)); },
     tuneTo: tuneTarget,
-    openFullGuide: () => { if (context.isCurrent()) void router.navigate({to: '/live', search: {tab: 'guide'}}).catch(() => {}); },
-    openRecordings: () => { if (context.isCurrent()) void router.navigate({to: '/live', search: {tab: 'recordings', dvr: 'upcoming'}}).catch(() => {}); },
+    openFullGuide: () => { if (screen.isCurrent()) void router.navigate({to: '/live', search: {tab: 'guide'}}).catch(() => {}); },
+    openRecordings: () => { if (screen.isCurrent()) void router.navigate({to: '/live', search: {tab: 'recordings', dvr: 'upcoming'}}).catch(() => {}); },
   };
   return port;
 }
