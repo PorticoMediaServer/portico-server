@@ -175,7 +175,7 @@ export function ShowSettingsPanel({binding, data}: {binding: ShowBindings; data:
         <div className={styles.ownerLabel}>{t('title.episodeLayout')}</div>
         <div className={styles.ownerBig}><span>{grouping}</span><span>{settings.newestFirst ? t('next.overlays.newest') : t('next.overlays.oldest')}</span></div>
         <p>{t('title.showSettings.lede')}</p>
-        <Popover open={open} onOpenChange={setOpen} placement="top-end" sideOffset={8} alignOffset={18} width={540} className={styles.settingsMenu}
+        <Popover open={open} onOpenChange={setOpen} placement="top-end" sideOffset={8} alignOffset={-18} width={540} className={styles.settingsMenu}
           title={t('title.showSettings')} trigger={<Chip className={styles.changeChip} trailingIcon="i-down">{t('web.metadataLookup.change')}</Chip>}>
           <ShowSettingsMenu binding={binding} data={data} />
         </Popover>
