@@ -10,11 +10,12 @@ function session(serverId = 'server-1') {
     viewer: {accountId: 'owner-account', profileId: 'main-profile', serverId, authority: 'local', role: 'owner'}};
 }
 
-function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: () => Promise<void>; add?: (value: unknown) => Promise<void>}> = {}) {
+function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: () => Promise<void>; add?: (value: unknown) => Promise<void>; admittedOwner?: boolean; setupRequired?: boolean}> = {}) {
   const calls: {name: string; value?: unknown}[] = [], completions: number[] = [];
   let requests = 0;
   const server: SetupServer = {
-    server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: true, hostedConfigured: false, hostedAttached: false},
+    server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: input.setupRequired ?? true, hostedConfigured: false, hostedAttached: false},
+    ...(input.admittedOwner ? {admittedOwner: true as const} : {}),
     api: {getRouteConnection: () => ({pin: {serverId: 'server-1'}}), request: async (path: string) => {requests++; calls.push({name: 'request', value: path});
       if (path.includes('setup/browser')) throw Object.assign(new Error('not allowed from this address'), {status: 401});
       return input.resume ?? session();}} as never,
@@ -105,6 +106,20 @@ test('the first library sends the drawn kind, name and path, and Skip completes 
     assert.equal(skip.completions.length, 1);
     assert.equal(skip.calls.some(call => call.name === 'addLibrary'), false);
   } finally {skip.flow.dispose();}
+});
+
+test('only a trusted admitted-owner return opens the first-library phase on a configured server', async () => {
+  const refused = fixture({setupRequired: false});
+  try {
+    await refused.flow.start();
+    assert.equal(refused.flow.getSnapshot().phase, 'error');
+  } finally {refused.flow.dispose();}
+  const returned = fixture({setupRequired: false, admittedOwner: true});
+  try {
+    await returned.flow.start();
+    assert.equal(returned.flow.getSnapshot().phase, 'library');
+    assert.equal(returned.accepted(), 0);
+  } finally {returned.flow.dispose();}
 });
 
 test('the setup values keep the drawn boundary rules', () => {

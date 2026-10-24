@@ -3,6 +3,8 @@
    its right-hand steps. */
 .host { position: relative; }
 .content { width: 560px; padding-top: 104px; justify-content: flex-start; }
+.approvalContent { width: 560px; }
+.approvalContent h1 { font-size: 52px; line-height: .98; }
 .contentLibrary { width: 600px; padding-top: 112px; justify-content: flex-start; }
 .one { white-space: nowrap; }
 .lede { font-size: 17px; line-height: 1.5; color: var(--color-text-secondary); margin: 0 0 28px; }

@@ -7,6 +7,9 @@ import {defaultLibraryName, defaultSetupServerName, localPasswordValid, setupErr
 
 export type SetupServer = Readonly<{
   server: ServerSignIn;
+  /** Set only by the trusted composition after it revalidated the admitted owner
+   * for auth3's return; a plain setupRequired=false answer still refuses. */
+  admittedOwner?: true;
   api: HttpLocalApi;
   pin: ServerPin;
   draft: SetupDraftStore;
@@ -80,10 +83,13 @@ export class SetupFlow {
       if (!op.current() || this.disposed) {server.dispose(); return;}
       this.server?.dispose();
       this.server = server;
-      if (!server.server.setupRequired) throw Object.assign(new Error('This server is already set up.'), {code: 'not_setup_required'});
       const hostname = this.ports.hostname?.() ?? (typeof location === 'undefined' ? '' : location.hostname);
       const name = defaultSetupServerName(server.server.name, hostname);
       this.publish({serverId: server.server.id, serverName: server.server.name, name, libraryName: defaultLibraryName('movie'), busy: false});
+      if (!server.server.setupRequired) {
+        if (server.admittedOwner === true) {this.publish({phase: 'library', busy: false}); return;}
+        throw Object.assign(new Error('This server is already set up.'), {code: 'not_setup_required'});
+      }
       const draft = await server.draft.read();
       if (!op.current()) return;
       if (draft) {
