@@ -117,7 +117,7 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 		t.Fatal(err)
 	}
 	w = f.call("POST", "/v1/metadata/bulk", admin.AccessToken, string(body))
-	if w.Code != 401 && w.Code != 403 {
+	if w.Code != 404 {
 		t.Fatal("revoked successful target replayed", w.Code)
 	}
 }
