@@ -222,6 +222,11 @@ func SoftwareToneMap(algorithm string) string {
 // HardwareDetector probes backends once per ffmpeg identity and caches the
 // verdict. The cache key is the ffmpeg binary identity plus backend and device,
 // so replacing ffmpeg re-probes without a restart.
+type hardwareProbeCell struct {
+	backend HardwareBackend
+	device  string
+}
+
 type HardwareDetector struct {
 	// Devices supplies physical discovery only; candidates still require probes.
 	Devices func(context.Context) []HardwareDevice
@@ -237,7 +242,7 @@ type HardwareDetector struct {
 	mu               sync.Mutex
 	cache            map[string]HardwareProbe
 	warming          map[string]bool
-	probeGenerations map[string]uint64
+	probeGenerations map[hardwareProbeCell]uint64
 }
 
 const defaultProbeTimeout = 20 * time.Second
@@ -391,9 +396,9 @@ func (d *HardwareDetector) Reprobe(ctx context.Context, executable string, backe
 	}
 	d.mu.Lock()
 	if d.probeGenerations == nil {
-		d.probeGenerations = map[string]uint64{}
+		d.probeGenerations = map[hardwareProbeCell]uint64{}
 	}
-	cell := string(backend) + "/" + device
+	cell := hardwareProbeCell{backend, device}
 	d.probeGenerations[cell]++
 	generation := d.probeGenerations[cell]
 	for key, cached := range d.cache {
@@ -427,7 +432,7 @@ func (d *HardwareDetector) probe(ctx context.Context, executable string, backend
 	}
 	recovery := deviceNeedsProbe(backend, device)
 	key := identity + "/" + string(backend) + "/" + device
-	cell := string(backend) + "/" + device
+	cell := hardwareProbeCell{backend, device}
 	d.mu.Lock()
 	if force && d.probeGenerations[cell] != generation {
 		d.mu.Unlock()
