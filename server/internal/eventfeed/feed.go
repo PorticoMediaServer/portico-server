@@ -131,13 +131,21 @@ func (h *Hub) Run(ctx context.Context) {
 
 }
 
-// The flush committed exactly one gated transaction and read through its
-// events. Consume its own notification, then recheck the publication counter:
-// any peer commit before/during the take must retain a pass. A later commit
-// wakes the signal normally, so this cannot swallow newly queued work.
+// The flush commits one gated transaction and this pass reads through its
+// events. Consume the coalesced wake, then recheck the publication counter:
+// exactly one publication is the pass's own flush commit, so a wake still
+// pending for it is already covered. A pass that published nothing at all (an
+// empty outbox whose commit was not a publication) has nothing left to deliver
+// either, so re-arming that wake would ask for the same empty pass at the
+// feed's two-second floor forever. Anything beyond the pass's own commit is a
+// peer (including an unknown write scope), and its pass must stay pending. A
+// commit after this check wakes the signal normally, so no queued work is
+// swallowed.
 func retireOwnFlushWake(signal *worker.Signal, before uint64) {
-	signal.Take()
-	if dbwork.Publications() != before+1 {
+	if !signal.Take() {
+		return
+	}
+	if publications := dbwork.Publications(); publications != before && publications != before+1 {
 		signal.Wake()
 	}
 }
