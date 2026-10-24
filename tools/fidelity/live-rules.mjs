@@ -10,6 +10,7 @@ const sourceFiles = [
 const preferredKeys = [...new Set(sourceFiles.flatMap(path => [...readFileSync(new URL('../../web-next/' + path, import.meta.url), 'utf8').matchAll(/\bt\(\s*['"]([^'"]+)['"]/g)].map(value => value[1])).concat([
   'next.home.shell.home', 'search.chip.movies', 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.label',
   'web.libraries.kindAnime', 'pref.group.music.title', 'search.chip.audiobooks', 'next.home.shell.live', 'next.overlays.close',
+  'recordings.on', 'recordings.paused', 'guide.newOnly', 'recordings.startEarly', 'recordings.endLate',
 ]))];
 const message = (name, key, values) => ({name, key, values});
 const titles = ['clockmakers', 'world', 'football', 'wild'].map(name => t('next.live.example.' + name));
@@ -29,10 +30,10 @@ export const liveRules = {
     'panel-glow': '.sh-glow', 'panel-glyph': '.sh-glyph', 'panel-close': '.sh-x', form: '.sh-form',
     'coming-up': 'aside h3', footer: '.sh-foot'},
   actual: {screen: '$root', navigation: '[data-live-rules] > nav', heading: '[data-live-rules] > header h1', header: '[data-live-rules] > header',
-    'brand-slot': '[data-live-rules] nav a img', ambient: '[data-live-rules] > div[class*="_ambient_"]', source: '[data-live-rules] > header select', 'header-detail': '[data-live-rules] > header > p',
+    'brand-slot': '[data-live-rules] nav a img', ambient: '[data-live-rules] > div[class*="_ambient_"]', source: '[data-live-rules] > header button[role="combobox"]', 'header-detail': '[data-live-rules] > header > p',
     search: '[data-live-rules] nav button[aria-label="Search"]', saved: '[data-live-rules] nav button[aria-label="Saved"]', notifications: '[data-live-rules] nav button[aria-label^="Notifications,"]', activity: '[data-live-rules] nav button[aria-label^="Server activity:"]',
     rules: '[data-live-rules] div[class*="_rules_"]', panel: 'aside[role="region"][data-state="open"]',
-    'panel-title': 'aside header h2 > span[class*="_title_"]', 'panel-kind': 'aside header h2 > span[class*="_kind_"]', 'panel-detail': 'aside header > p',
+    'panel-title': 'aside header h2 > span[class*="_title_"]', 'panel-kind': 'aside header h2 > span[class*="_kind_"]', 'panel-detail': 'aside header p',
     'panel-glow': 'aside div[class*="_glow_"]', 'panel-glyph': 'aside span[class*="_glyph_"]', 'panel-close': 'aside header button[aria-label="Close"]', form: 'aside div[class*="_form_"]',
     'coming-up': 'aside h3', footer: 'aside > footer'},
   repeats: {
@@ -42,6 +43,9 @@ export const liveRules = {
       {container: 'form', items: ':scope > div', role: 'rule-field', parts: {label: ':scope > span'}}],
   },
   messageSlots: [
+    message('shell.notifications', 'next.home.shell.unread', {count: 3}),
+    message('shell.activity', 'next.shell.activityLabel', {count: 2}),
+    message('recordings.conflicts', 'next.live.conflicts', {count: 1}),
     message('header.channels', 'player.info.channels', {count: 14}),
     message('header.guideThrough', 'next.live.guideThrough', {day: t('next.live.example.saturday')}),
     message('storage.used', 'next.live.storageUsed', {amount: 64}), message('storage.free', 'next.live.storageFree', {amount: 412}),
@@ -57,6 +61,7 @@ export const liveRules = {
   ],
   dataValues: [
     ...['C', 'W', 'S'].map(value => ({name: 'rules.monogram.' + value, value})), {name: 'shell.viewer.initial', value: 'D'},
+    {name: 'shell.viewer.label', value: 'demo'},
     ...['1', '2', '3', '4', '6', '8', '20'].map(value => ({name: 'fixture.count.' + value, value})),
     ...['4:15 PM', '6:45 PM', '7:30 PM'].map((value, index) => ({name: 'airing.time.' + index, value})),
   ],
