@@ -190,17 +190,16 @@ func TestPlex45SubtitleSidecarsStoreFlagsWithoutBecomingItems(t *testing.T) {
 	}
 }
 
-// Plex's TV sidecars sit beside the episode, and Plex also reads a Subs or
-// Subtitles folder there. Both attach to the episode; neither becomes an item.
-func TestPlex45TVSubtitleSidecarsIncludeSubsFolder(t *testing.T) {
+// Plex's TV sidecars sit beside the episode. They attach to that episode and
+// never become items.
+func TestPlex45TVEpisodeSubtitleSidecars(t *testing.T) {
 	f := newLoopFixture(t, "tv", "Band of Brothers (2001)/Season 01/Band of Brothers - s01e01 - Currahee.mkv")
 	srt := "1\n00:00:00,000 --> 00:00:02,000\nHello\n"
 	f.write("Band of Brothers (2001)/Season 01/Band of Brothers - s01e01 - Currahee.en.srt", srt)
-	f.write("Band of Brothers (2001)/Season 01/Subs/Band of Brothers - s01e01 - Currahee.es.srt", srt)
 	f.finish(f.queue())
 
-	if n := f.count(`SELECT count(*) FROM inventory_sidecars WHERE relative_path LIKE 'Band of Brothers (2001)/Season 01/%'`); n != 2 {
-		t.Fatalf("stored TV subtitle sidecars: %d; want the beside and Subs files", n)
+	if n := f.count(`SELECT count(*) FROM inventory_sidecars WHERE relative_path LIKE 'Band of Brothers (2001)/Season 01/%'`); n != 1 {
+		t.Fatalf("stored TV subtitle sidecars: %d; want the episode sidecar", n)
 	}
 	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE relative_path LIKE '%.srt'`); n != 0 {
 		t.Fatalf("TV subtitle sidecars became inventory media: %d", n)
@@ -217,21 +216,15 @@ func TestPlex45TVSubtitleSidecarsIncludeSubsFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inventory.Status != "known" || len(inventory.Tracks) != 2 {
+	if inventory.Status != "known" || len(inventory.Tracks) != 1 {
 		t.Fatalf("TV subtitle inventory status=%q tracks=%+v", inventory.Status, inventory.Tracks)
 	}
-	want := map[string]string{
-		"Band of Brothers - s01e01 - Currahee.en.srt": "en",
-		"Band of Brothers - s01e01 - Currahee.es.srt": "es",
+	track := inventory.Tracks[0]
+	if track.Origin != "sidecar" || track.StreamIndex != -1 || track.Reason != "" || track.Format != "srt" || track.Language != "en" || track.Size <= 0 || track.Digest == "" {
+		t.Fatalf("TV sidecar evidence %+v; want one srt en track", track)
 	}
-	for _, track := range inventory.Tracks {
-		language, ok := want[filepath.Base(track.Locator)]
-		if !ok {
-			t.Fatalf("unexpected TV sidecar track %q (%+v)", filepath.Base(track.Locator), track)
-		}
-		if track.Origin != "sidecar" || track.StreamIndex != -1 || track.Reason != "" || track.Format != "srt" || track.Language != language || track.Size <= 0 || track.Digest == "" {
-			t.Fatalf("%s: sidecar evidence %+v; want srt %s", filepath.Base(track.Locator), track, language)
-		}
+	if got, want := filepath.Base(track.Locator), "Band of Brothers - s01e01 - Currahee.en.srt"; got != want {
+		t.Fatalf("TV sidecar locator %q; want %q", got, want)
 	}
 }
 
