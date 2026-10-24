@@ -162,7 +162,7 @@ try {
   const referenceHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;background:#071018}.screen{overflow:visible}nav{visibility:hidden}</style></head><body class="p">${sprite}${source.slice(start, end)}</body></html>`;
   await page.route('**/__saved_reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
   await page.goto(`${origin}/__saved_reference__`, {waitUntil: 'domcontentloaded'});
-  await settle(scope === 'history' ? '#saved .day .hl' : '#saved .grid .card', scope === 'history' ? 7 : 14, 'frame');
+  await settle(scope === 'history' ? '#history .day .hl' : '#saved .grid .card', scope === 'history' ? 7 : 14, 'frame');
   report.reference = await measure(activeSelectors);
   report.referenceText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.reference = 'saved-frame.png';
