@@ -86,10 +86,11 @@ func (s *Service) Albums(artist, cursor string, limit int) ([]Album, string, err
 	out := []Album{}
 	for rows.Next() {
 		var row Album
-		var artItem string
-		if err = rows.Scan(&row.ID, &row.LibraryID, &row.Title, &row.AlbumArtistID, &row.AlbumArtist, &row.Year, &row.ProviderMatchStatus, &artItem, &row.ProviderReleaseID, &row.ProviderReleaseGroupID, &row.ProviderReleaseDate, &row.ProviderReleaseCountry, &row.ProviderObservedAt, &row.Role); err != nil {
+		var artItem, role string
+		if err = rows.Scan(&row.ID, &row.LibraryID, &row.Title, &row.AlbumArtistID, &row.AlbumArtist, &row.Year, &row.ProviderMatchStatus, &artItem, &row.ProviderReleaseID, &row.ProviderReleaseGroupID, &row.ProviderReleaseDate, &row.ProviderReleaseCountry, &row.ProviderObservedAt, &role); err != nil {
 			return nil, "", err
 		}
+		row.Role = AlbumRole(role)
 		if artItem != "" {
 			row.PosterURL = "/v1/items/" + artItem + "/art/poster"
 		}
