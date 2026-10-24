@@ -663,6 +663,7 @@ func run() (runErr error) {
 		return e
 	}
 	defer analysisService.Close()
+	adminOperations.SonicRuntimeAvailable = analysisService.SonicRuntimeAvailable
 	analysisService.Admission = workAdmission.Admit
 	scanner.DeepAnalysis = analysisService
 	donePrepared := reporter.step("prepared-media", "Open prepared media storage")

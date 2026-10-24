@@ -155,6 +155,10 @@ type SessionView struct {
 	// the paused-session limit, with its message), "stopped", "transferred",
 	// "lease_expired", "replaced" and so on.
 	End *SessionEnd `json:"end,omitempty"`
+
+	// ObservedPlayback is only the current renderer snapshot accepted by its
+	// device timeline. It is distinct from source, plan and capability facts.
+	ObservedPlayback *playback.ObservedPlayback `json:"observedPlayback,omitempty"`
 }
 
 // SessionEnd is why a session ended and what the viewer is told.
@@ -1307,7 +1311,26 @@ func (s *Service) Get(ctx context.Context, c Caller, id string) (SessionView, er
 	if err != nil {
 		return SessionView{}, err
 	}
-	return s.view(s.endIfChannelRefused(ctx, r)), nil
+	s.endIfChannelRefused(ctx, r)
+	var view SessionView
+	err = dbwork.WithReadSnapshot(ctx, s.DB, func(readCtx context.Context) error {
+		tx := dbwork.Snapshot(readCtx)
+		current, err := loadRow(readCtx, tx, id)
+		if err != nil {
+			return err
+		}
+		// The row, ordinary viewer/media authorization and renderer facts share
+		// one snapshot. A replacement never supplies output to an obsolete view.
+		if err = c.authorizeSession(readCtx, current); err != nil {
+			return err
+		}
+		view = s.view(current)
+		if current.ended == 0 {
+			view.ObservedPlayback, err = playback.ReadObservedPlayback(readCtx, tx, id, current.generation, view.Presentation.Generation)
+		}
+		return err
+	})
+	return view, err
 }
 
 // endIfChannelRefused ends a live channel session the viewer is no longer
