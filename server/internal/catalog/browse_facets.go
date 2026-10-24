@@ -95,6 +95,18 @@ func attributeFacetJoin(field string) string {
 // Facets returns the counted values of one field under the viewer's visibility.
 func (s *Service) Facets(viewer Viewer, request FacetRequest) (FacetPage, error) {
 	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
+	if request.Library != "" {
+		lib,err:=s.library(request.Library)
+		if err!=nil {return out,err}
+		if isReadingLibrary(lib.Kind) {
+			if !viewer.AllowsLibrary(request.Library) {return out,sql.ErrNoRows}
+			if dbwork.Snapshot(s.Context())==nil {
+				err=dbwork.WithReadSnapshot(s.Context(),s.db,func(ctx context.Context) error {var e error;out,e=s.WithContext(ctx).Facets(viewer,request);return e});return out,err
+			}
+			r,err:=s.readingBrowseScope(request.Library);if err!=nil {return out,err}
+			return s.readingFacetPage(viewer,request,r)
+		}
+	}
 	if request.Query != nil || request.Pivot != "" || request.Field == "library" || request.Field == "actor" || request.Field == "director" || request.Field == "writer" {
 		return s.contextualFacets(viewer, request)
 	}

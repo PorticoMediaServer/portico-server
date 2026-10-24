@@ -80,7 +80,8 @@ type browseRequestBody struct {
 
 func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/libraries/{id}/browse-capabilities", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := d.browseLibrary(w, r); !ok {
+		p, ok := d.browseLibrary(w, r)
+		if !ok {
 			return
 		}
 		for key, values := range r.URL.Query() {
@@ -89,10 +90,21 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		out, e := d.Catalog.WithContext(r.Context()).BrowseCapabilitiesFor(r.PathValue("id"), r.URL.Query().Get("pivot"))
+		var out catalog.BrowseCapabilities
+		var capabilityViewer catalog.Viewer
+		e := d.compose(r,identity.ContentRestrictions{},func(cat *catalog.Service) error {
+			viewer,err:=d.readingBrowseViewer(cat.Context(),p,r.PathValue("id"),catalog.Viewer{Libraries:[]string{r.PathValue("id")}})
+			if err!=nil {return err}
+			capabilityViewer=viewer
+			out,err=cat.BrowseCapabilitiesForViewer(viewer,r.PathValue("id"),r.URL.Query().Get("pivot"));return err
+		})
 		if e != nil {
 			browseFailure(w, e)
 			return
+		}
+		if out.Library.Kind=="book"||out.Library.Kind=="comic" {
+			if err:=d.browseAuthorityAfter(r,p,capabilityViewer);err!=nil {browseFailure(w,err);return}
+			if err:=d.allowedLibrary(r.Context(),p,r.PathValue("id"));err!=nil {failure(w,err);return}
 		}
 		write(w, 200, out)
 	})
@@ -223,11 +235,13 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 	var out catalog.BrowseResult
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		viewer,composeErr:=d.readingBrowseViewer(cat.Context(),p,r.PathValue("id"),viewer)
+		if composeErr!=nil {return composeErr}
 		rows, composeErr := d.resolveHomeRows(r, p, viewer, query, cat)
 		if composeErr != nil {
 			return composeErr
 		}
-		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows})
+		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: viewer.Profile, ViewerFence: viewer.Fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: viewer.EffectiveRestrictions(), RowSources: rows})
 		if composeErr != nil {
 			return composeErr
 		}
@@ -289,11 +303,13 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: restrictionFence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		viewer,composeErr=d.readingBrowseViewer(cat.Context(),p,r.PathValue("id"),viewer)
+		if composeErr!=nil {return composeErr}
 		rows, err := d.resolveHomeRows(r, p, viewer, query, cat)
 		if err != nil {
 			return err
 		}
-		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, RowSources: rows, Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
+		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, RowSources: rows, Library: r.PathValue("id"), Profile: viewer.Profile, Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: viewer.EffectiveRestrictions()})
 		return composeErr
 	})
 	if e != nil {

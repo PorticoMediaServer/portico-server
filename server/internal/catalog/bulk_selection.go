@@ -103,6 +103,9 @@ func (s *Service) bulkSelection(p identity.Principal, v Viewer, in JobRequest) (
 		}
 		scope, values := browseScopeSQL(library, pivot)
 		c := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: v.Profile, restrictions: v.EffectiveRestrictions()}
+		readingEligible, e := s.bindReadingBrowse(library,c)
+		if e != nil { return "", nil, e }
+		scope += " AND "+readingEligible
 		filter, e := c.compile(node)
 		if e != nil {
 			return "", nil, e

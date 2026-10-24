@@ -54,7 +54,7 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/browse_routes.go:79
-	if err := apikit.RegisterHTTP[struct{}, catalog.BrowseCapabilities](registry, apikit.Metadata{ID: "get_libraries_id_browse_capabilities", Method: "GET", Path: "/v1/libraries/{id}/browse-capabilities", Summary: "Read library browse capabilities", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"pivot"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.BrowseCapabilities](registry, apikit.Metadata{ID: "get_libraries_id_browse_capabilities", Method: "GET", Path: "/v1/libraries/{id}/browse-capabilities", Summary: "Read library browse capabilities", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"pivot"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/browse_routes.go:102

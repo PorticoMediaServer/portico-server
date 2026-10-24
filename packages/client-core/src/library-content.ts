@@ -12,7 +12,7 @@ export type ContentSurface = ContentView;
 export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc'; category?: string; q?: string } & { libraryId: string; view: ContentView; entityId?: string }>;
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
-export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist';
+export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
@@ -104,7 +104,7 @@ export type LibraryContentSnapshot = Readonly<{
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
-const entryKinds: readonly string[] = ['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist'];
+const entryKinds: readonly string[] = ['ebook','comic','movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
 export const unknownContentEntryKind = (v: unknown): boolean => record(v) && typeof v.kind === 'string' && !entryKinds.includes(v.kind);
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : { [key]: value } as Record<K, V>);
@@ -159,6 +159,7 @@ function seeAll(v: unknown): ContentSeeAll | undefined {
 function entry(v: unknown): ContentEntry {
  v=wireDisplayDurations(v,{duration:"durationMs",progressSeconds:"progressMs"},left);
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
+  if ((v.kind==='ebook'||v.kind==='comic') && (v.playback!=null||v.durationMs!=null||v.duration!=null)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
   if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);
