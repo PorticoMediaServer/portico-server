@@ -83,7 +83,9 @@ test('frame 2 renders three rows, real percentages and no invented work or issue
 test('the open frame-2 glyph carries the total, the open state and the owner-only control', () => {
   const view = activityView(frameTwo(), environment, actions);
   const trigger = renderToStaticMarkup(createElement(TopBarActivity, {viewerRole: 'owner', view, open: true, onOpenChange() {}}));
-  assert.match(trigger, /aria-label="Server activity: 3 streams"/);
+  // The drawn f2 markup labels this state "Server activity: 3 streams"; the notes define the name as
+  // saying the state, so an available update is spoken too (frame 6's Update state does the same).
+  assert.match(trigger, /aria-label="Server activity: 3 streams, update available"/);
   assert.match(trigger, /aria-haspopup="dialog"/); assert.match(trigger, /aria-expanded="true"/);
   assert.match(trigger, /data-open="true"/); assert.match(trigger, /data-streams="true"/);
   assert.match(trigger, />3</);
