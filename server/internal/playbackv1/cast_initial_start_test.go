@@ -29,6 +29,7 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 		t.Fatal(err)
 	}
 	entryID, item, ok := l.entryAt(0)
+	stored, err := loadQueue(context.Background(), tx, q)
 	if err = tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 		return nil
 	}
 	resolved, initial, revision, err := s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil })
-	if err != nil || !initial || resolved != item || revision != q.revision {
+	if err != nil || !initial || resolved != item || revision != stored.revision {
 		t.Fatalf("initial start did not bind: item=%q initial=%v revision=%d err=%v", resolved, initial, revision, err)
 	}
 	if admitted == 0 {
