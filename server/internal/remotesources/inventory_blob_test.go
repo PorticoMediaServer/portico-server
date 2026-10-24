@@ -2,6 +2,7 @@ package remotesources
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -160,8 +161,8 @@ func TestInventoryBlobRejectsUnknownOrCrossPurposeFactsBeforeIO(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer view.Rollback()
-	if _, err = f.s.captureInventoryBlobTx(ctx, view.Tx(), f.library, request, a, 1024); err == nil {
-		t.Fatal("missing profile granted automatic basic work")
+	if _, err = f.s.captureInventoryBlobTx(ctx, view.Tx(), f.library, request, a, 1024); !errors.Is(err, ErrInventoryBlobSourceTier) {
+		t.Fatal("missing profile granted work or invented a provider/STRM failure", err)
 	}
 }
 
