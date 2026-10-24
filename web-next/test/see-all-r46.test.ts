@@ -132,7 +132,7 @@ test('the row screen is the drawn see-all header over the kit page, seven column
   assert.match(screen, /variant="primary" size="hero" icon="i-play"/);
   assert.match(screen, /variant="glass" size="hero" icon="i-shuffle"/);
   // The frame draws seven fluid columns at 1440 on Medium; 170 is that column's card size.
-  assert.match(route, /cardWidth: \(width < 600 \? 112 : 170\)/);
+  assert.match(route, /cardWidth: \(width < 600 \? 103 : 170\)/);
   assert.match(route, /ambient=\{ambient\}/);
   assert.match(css, /\.title \{ margin: 14px 0 12px; font-size: var\(--type-lockup-long-size\)/);
   assert.match(css, /\.why \{ max-width: 760px; margin: 0 0 26px;/);
