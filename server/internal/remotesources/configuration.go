@@ -155,13 +155,6 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 		if in.KeepPassword || in.KeepConnection {
 			return zero, storage.ErrRemoteConfig
 		}
-		var count int
-		if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM remote_sources WHERE kind='webdav' AND removed=0`).Scan(&count); err != nil {
-			return zero, err
-		}
-		if count >= 8 {
-			return zero, mounts.ErrCommandCapacity
-		}
 		source.ID = identity.Token()
 		source.RootPath = filepath.Join(s.private, source.ID)
 	}
