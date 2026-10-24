@@ -52,7 +52,7 @@ export function browserPictureInPictureSupported(host: PictureInPictureDocument 
 export function pictureInPictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot): boolean {
   const plan = snapshot.offers?.subtitlePlan, fence = snapshot.fence;
   if (!plan) return true;
-  if (!fence || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation || plan.sourceId !== fence.sourceId) return false;
+  if (!fence || fence.kind === 'local' || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation || plan.sourceId !== fence.sourceId) return false;
   return plan.mode === 'off' || plan.renderer === 'burn_in';
 }
 
