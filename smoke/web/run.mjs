@@ -693,7 +693,9 @@ async function main() {
         assert(/\/read\//.test(state.url), `book ${title} did not open a reader (at ${state.url})`);
         const text = await bodyText(page);
         if (text.trim().length <= 200) {
-          const blocked = (events.consoleErrors || []).filter(line => /Content Security Policy|Refused to|blocked/i.test(line)).slice(-3);
+          const all = (events.consoleErrors || []).filter(line => /Content Security Policy|Refused to|blocked/i.test(line));
+          const frameLines = all.filter(line => /frame-src|default-src|Refused to frame|blob:/i.test(line));
+          const blocked = (frameLines.length ? frameLines : all).slice(-3);
           throw await failure(page, evidence, 'read-blocked',
             new Error(`reader rendered only ${text.trim().length} characters; console: ${blocked.join(' ;; ') || 'no CSP line captured'}`),
             {blocked, text: text.slice(0, 300)});
