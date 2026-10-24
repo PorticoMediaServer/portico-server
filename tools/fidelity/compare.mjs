@@ -66,7 +66,7 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
     sameLogicalExtent(node.box?.width, screen.root?.width, screen.measurement) && sameLogicalExtent(node.box?.height, screen.root?.height, screen.measurement);
   const referenceRoots = reference.elements.filter(node => canvasRoot(node, reference));
   const referenceCanvas = referenceRoots.length === 1 && !referenceRoots[0].frame && !referenceRoots[0].repeat ? referenceRoots[0] : undefined;
-  const actualRoots = referenceCanvas ? actual.elements.filter(node => canvasRoot(node, actual) && !node.frame && !node.repeat) : [];
+  const actualRoots = referenceCanvas ? actual.elements.filter(node => node.parent == null && !node.frame && !node.repeat) : [];
   const actualCanvas = actualRoots.length === 1 ? actualRoots[0] : undefined;
   if (referenceCanvas && !actualCanvas) {
     differences.push({kind: 'anchor-cardinality', label: 'canonical-canvas-root', expected: 1, actual: actualRoots.length});
@@ -96,10 +96,12 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
     const targets = observed.filter(other => other.frame === node.frame);
     if (targets.length === 1) anchoredMatches.set(node.id, targets[0].id);
   }
-  const descendantOf = (node, ancestor) => {
+  const insideSemanticScope = (node, ancestor) => {
     const seen = new Set();
     for (let parent = node.parent; parent && !seen.has(parent); parent = actualNodes.get(parent)?.parent) {
       if (parent === ancestor) return true;
+      const boundary = actualNodes.get(parent);
+      if (boundary?.frame || boundary?.repeat) return false;
       seen.add(parent);
     }
     return false;
@@ -125,7 +127,7 @@ export function compareScreens(reference, actual, options = {}, {referenceSelf =
       const seen = new Set();
       for (let parent = node.parent; parent && !seen.has(parent); parent = referenceNodes.get(parent)?.parent) {
         seen.add(parent);
-        if (anchoredMatches.has(parent)) {candidates = candidates.filter(other => descendantOf(other, anchoredMatches.get(parent))); break;}
+        if (anchoredMatches.has(parent)) {candidates = candidates.filter(other => insideSemanticScope(other, anchoredMatches.get(parent))); break;}
       }
       const exact = candidates.filter(other => role(other) === role(node) && text(other) === text(node));
       const copy = candidates.filter(other => text(node) && text(other) === text(node));

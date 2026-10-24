@@ -21,6 +21,16 @@ not its `{anchors,comparison}` envelope. The envelope is rejected rather than
 silently ignoring its content slots. Public semantic ID bindings stay in `anchors`;
 they are a separate producer input. Comparison files are named `*-comparison.json`.
 
+Explicit anchors and their semantic regions are reserved before unanchored
+fallback matching. A unique unanchored reference canvas pairs with the unique
+actual tree root even when native paint/bounds are unavailable; absence is kept
+as coverage, never filled with defaults. Its measured geometry remains scored.
+Fallback children cannot consume an anchor or another anchored region's contents.
+Unknown `image.loaded` is also coverage. Its meaning is successful decode
+completion for the currently bound image, not retained/intermediate drawable
+presence; it establishes neither artwork identity nor visibility. An unavailable
+producer observation uses the explicit property `image.loaded`, never `true`.
+
 The common top-level fields are `version:1`, `scope:'screen'`, `fullViewport`,
 `root:{x,y,width,height}`, `viewport:{width,height,deviceScaleFactor}`, `elements`,
 `strings`, `anchorIssues`, `repeatedLists`. The root is the whole selected screen,

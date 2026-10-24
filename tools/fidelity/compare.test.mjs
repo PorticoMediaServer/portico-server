@@ -15,6 +15,10 @@ test('canonical canvas pairing retains an unknown native root and cannot consume
   assert.deepEqual(result.matches.map(value => [value.reference, value.actual, value.method]), [['0', 'native', 'canonical-canvas-root'], ['0.0', 'native.0', 'frame-anchor']]);
   assert.equal(result.differences.some(value => ['missing-element', 'ambiguous-match'].includes(value.kind)), false);
   assert.ok(result.differences.some(value => value.kind === 'unavailable-measurement'));
+  const unknownBox = {...actual, elements: [{...actualRoot, box: null}, actual.elements[1]], unavailable: [...actual.unavailable, {element: 'native', property: 'box', reason: 'physical bounds unknown'}]};
+  assert.ok(compareScreens(spec([root, backdrop]), unknownBox).matches.some(value => value.reference === '0' && value.actual === 'native'));
+  const shifted = {...actual, elements: [{...actualRoot, box: {...actualRoot.box, x: 4}}, actual.elements[1]]};
+  assert.ok(compareScreens(spec([root, backdrop]), shifted).differences.some(value => value.property === 'box.x'));
   const duplicate = {...actualRoot, id: 'other'};
   const invalid = compareScreens(spec([root, backdrop]), {...actual, elements: [...actual.elements, duplicate]});
   assert.equal(invalid.differences.filter(value => value.kind === 'anchor-cardinality').length, 1);
@@ -27,6 +31,19 @@ test('unanchored fallbacks cannot steal explicit anchors that appear later in re
   const result = compareScreens(spec([plain, anchored]), spec([anchored, plain]));
   assert.equal(result.verdict, 'PASS');
   assert.deepEqual(result.matches.map(value => [value.reference, value.actual]), [['plain', 'plain'], ['anchored', 'anchored']]);
+});
+
+test('unanchored parts cannot steal paint or text from a different anchored region', () => {
+  const canvas = node(null, {id: '0', parent: null, tag: 'div', leaf: false, ownText: '', normalizedText: '',
+    box: {x: 0, y: 0, width: 200, height: 100}, style: {backgroundColor: 'rgb(7, 16, 24)'}});
+  const backdrop = node('backdrop', {id: '0.0', parent: '0', ownText: '', normalizedText: '', tag: 'div'});
+  const absent = node(null, {id: '0.1', parent: '0', ownText: 'Unobserved external text'});
+  const native = {...canvas, id: 'native'}, background = {...backdrop, id: 'native.0', parent: 'native'};
+  const payload = {...absent, id: 'native.0.0', parent: 'native.0'};
+  const result = compareScreens(spec([canvas, backdrop, absent]), spec([native, background, payload]));
+  assert.ok(result.differences.some(value => value.kind === 'missing-element' && value.reference === '0.1'));
+  assert.equal(result.matches.some(value => value.reference === '0.1'), false);
+  assert.ok(result.differences.some(value => value.kind === 'extra-element' && value.actual === 'native.0.0'));
 });
 
 test('transform origin is inactive only when both observed transforms are identity', () => {
