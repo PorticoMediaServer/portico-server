@@ -15,9 +15,10 @@ const session = (family = 'returned-family'): LocalSession => ({accessToken: 'ac
 const callback = {href: origin + '/auth/portico-return', fragment: '#code=kept-private&state=kept-private&transaction=kept-private'};
 async function fixture() {
   let raw: AppSessionRecord | undefined, finishCalls = 0, factorCalls = 0, remembers = 0, challenge = false, cancels = 0, disposed = 0;
+  let notifications = 0, returnedRevision = -1, returnedNotifications = -1;
   let supersede = false, hold: Promise<void> | undefined, release: (() => void) | undefined, restoringGate: Promise<void> | undefined, releaseRestore: (() => void) | undefined;
   const retired: string[] = [], hints = new Set<() => void>();
-  const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);for (const fn of hints) fn();}});
+  const store = new AppSessionStore({read: async () => raw, change: async update => {const next = update(raw);if (next === raw) return;raw = next;notifications++;for (const fn of hints) fn();}});
   const record = (captured: LocalSession): RememberedServer => ({version: '1', logicalOrigin: origin, pin, session: captured, hosted, routes: {paired: [origin]}});
   const save = async (captured: LocalSession) => store.connectionStorage(serverId, {signIn: 'portico', hostedAccount: hosted, expectedRevision: (await store.read()).revision}).change(() => record(captured));
   const snapshot = {authority: 'local' as const, serverId, canManage: false,
@@ -28,7 +29,7 @@ async function fixture() {
   const system = {id: serverId, name: 'Actual server', version: '1', signIn: 'portico', move: null, setupRequired: false, hostedConfigured: true, hostedAttached: true};
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => ({pin, getSnapshot: () => ({phase: 'ready'}), dispose: () => {disposed++;}}) as never;
   api.request = (async path => {if (path === '/v1/system') return system;if (path === '/v1/direct') return snapshot;throw new Error('Unexpected second protocol/admission: ' + path);}) as HttpLocalApi['request'];
-  const complete = async () => {await save(session());if (supersede) await save(session('successor'));return {api, result: result()};};
+  const complete = async () => {await save(session());if (supersede) await save(session('successor'));returnedRevision = (await store.read()).revision;returnedNotifications = notifications;return {api, result: result()};};
   const controller = {prepare: async () => hostedOrigin + '/#canonical',
     finish: async captured => {assert.equal(captured, callback);finishCalls++;if (hold) await hold;return challenge ? {api, result: {kind: 'challenge' as const, token: 'private-factor-token', expiresAt: '2099-01-01T00:00:00Z'}} : complete();},
     completeChallenge: async (code: string) => {assert.equal(code, '123456');factorCalls++;return complete();}, cancel: async () => {cancels++;}};
@@ -38,7 +39,7 @@ async function fixture() {
     registered: () => ({controller, installationId: () => 'i'.repeat(43)}), observeSelection: fn => {hints.add(fn);return () => {hints.delete(fn);};},
     retire: async (_api, captured) => {retired.push(captured.sessionFamilyId);},
   });
-  return {entry, store, save, retired, hints, get finishCalls() {return finishCalls;}, get factorCalls() {return factorCalls;}, get remembers() {return remembers;}, get cancels() {return cancels;}, get disposed() {return disposed;},
+  return {entry, store, save, retired, hints, get notifications() {return notifications;}, get returnedRevision() {return returnedRevision;}, get returnedNotifications() {return returnedNotifications;}, get finishCalls() {return finishCalls;}, get factorCalls() {return factorCalls;}, get remembers() {return remembers;}, get cancels() {return cancels;}, get disposed() {return disposed;},
     challenge: () => {challenge = true;}, supersede: () => {supersede = true;}, hold: () => {hold = new Promise(resolve => {release = resolve;});}, release: () => release?.(),
     holdRestore: () => {restoringGate = new Promise(resolve => {releaseRestore = resolve;});}, releaseRestore: () => releaseRestore?.()};
 }
@@ -58,12 +59,19 @@ test('registered MFA uses the same private controller and never the generic fact
 test('a selected successor after the registered grant is preserved while the unused family is retired', async () => {
   const f = await fixture();f.supersede();await f.entry.finishPorticoReturn(callback);
   assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, 'successor');assert.deepEqual(f.retired, ['returned-family']);
+  assert.equal((await f.store.read()).revision, f.returnedRevision);assert.equal(f.notifications, f.returnedNotifications);
   assert.equal(f.entry.getSnapshot().phase, 'welcome');assert.equal(f.remembers, 0);f.entry.dispose();
 });
-test('cancelling the entry cancels its canonical controller and quarantines a late admitted grant', async () => {
-  const f = await fixture();f.hold();const work = f.entry.finishPorticoReturn(callback);await new Promise(resolve => setImmediate(resolve));
-  f.entry.cancel();assert.equal(f.cancels, 1);f.release();await work;
-  assert.equal(await f.store.selected(), undefined);assert.deepEqual(f.retired, ['returned-family']);assert.equal(f.entry.getSnapshot().phase, 'welcome');f.entry.dispose();
+test('cancelling the entry quarantines only the late admitted family without invalidating a successor', async () => {
+  for (const successor of [false, true]) {
+    const f = await fixture();if (successor) f.supersede();f.hold();
+    const work = f.entry.finishPorticoReturn(callback);await new Promise(resolve => setImmediate(resolve));
+    f.entry.cancel();assert.equal(f.cancels, 1);f.release();await work;
+    assert.equal((await f.store.selected())?.connection.session.sessionFamilyId, successor ? 'successor' : undefined);
+    assert.equal((await f.store.read()).revision, f.returnedRevision + (successor ? 0 : 1));
+    assert.equal(f.notifications, f.returnedNotifications + (successor ? 0 : 1));
+    assert.deepEqual(f.retired, ['returned-family']);assert.equal(f.entry.getSnapshot().phase, 'welcome');f.entry.dispose();
+  }
 });
 test('a selection replaced during restoration never becomes the completed return profile context', async () => {
   const f = await fixture();f.holdRestore();const work = f.entry.finishPorticoReturn(callback);

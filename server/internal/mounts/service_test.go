@@ -1,19 +1,24 @@
 package mounts
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/nacl/secretbox"
+	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/storagepaths"
 	"strings"
@@ -81,6 +86,16 @@ func fixture(t *testing.T) (*Service, CreateInput) {
 	t.Cleanup(s.shutdown)
 	// The executable above simulates mounting; command tests need no host FUSE.
 	s.mountSupported = func() bool { return true }
+	s.PrepareSourceCandidate = func(ctx context.Context, input SourceCandidateInput, _ func(*sql.Tx) error) (*SourceCandidatePublication, error) {
+		return &SourceCandidatePublication{Test: func(ctx context.Context, program rcloneprogram.Program, digest string) error {
+			candidate, err := s.candidateFile(input.Configuration)
+			if err != nil {
+				return err
+			}
+			defer os.Remove(candidate)
+			return s.fixtureValidateCandidate(ctx, program.Path, digest, input.Remote, candidate)
+		}, CheckAfterTest: func(context.Context) error { return nil }, CommitTx: func(context.Context, *sql.Tx, Mount) error { return nil }}, nil
+	}
 	return s, CreateInput{Name: "Cloud movies", Executable: binary, Remote: "cloud:movies", Config: "[cloud]\ntype = s3\nprovider = AWS\naccess_key_id = fixture\nsecret_access_key = leaky-secret\n"}
 }
 func TestPlainConfigLifecycleAndDurableIntent(t *testing.T) {
@@ -319,4 +334,29 @@ func writeMountFixture(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.WriteFile(path, data, mode)
+}
+
+// ValidateConfiguration tests an already private candidate. No database write
+// transaction or mount/service lock is held while the provider is contacted.
+func (s *Service) fixtureValidateCandidate(ctx context.Context, executable, digest, remote, file string) error {
+	data, _ := json.Marshal(nativeRequest{Executable: executable, Digest: digest, Remote: remote, ConfigPath: file, PrivateHome: s.work, Password: "", Operation: "stat"})
+	cmd := exec.Command(s.helper, "--portico-rclone-native")
+	cmd.Stdin = bytes.NewReader(data)
+	check, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	err := s.validationSupervisor.Run(check, "rclone-configuration", cmd, func(r io.Reader) error {
+		raw, e := io.ReadAll(io.LimitReader(r, 65537))
+		if e != nil || len(raw) > 65536 {
+			return ErrConfigInvalid
+		}
+		var entry NativeEntry
+		if json.Unmarshal(raw, &entry) != nil || !entry.IsDir {
+			return ErrConfigInvalid
+		}
+		return nil
+	})
+	if err != nil {
+		return storage.ErrRemoteCredentials
+	}
+	return nil
 }
