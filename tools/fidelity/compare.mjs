@@ -1,0 +1,145 @@
+import {colorDifference} from './color.mjs';
+import {usesLogicalCoordinates} from './contract.mjs';
+
+export const policy = Object.freeze({boxPixels: 2, opacity: .02, deltaE2000: 2, colorAlpha: .02});
+const textStyles = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'textTransform', 'textDecorationLine', 'textShadow'];
+const paintStyles = ['backgroundImage', 'backgroundSize', 'backgroundPosition', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+  'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
+  'boxShadow', 'filter', 'backdropFilter', 'transform', 'transformOrigin', 'objectFit'];
+const colors = ['color', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'textDecorationColor', 'fill', 'stroke'];
+const unscored = ['diagnostics', 'classes', 'tag', 'role', 'aria', 'display', 'position', 'zIndex', 'objectPosition', 'lineHeight', 'textAlign', 'backgroundColor', 'opacity', 'fill', 'stroke', 'boxSizing', 'overflowX', 'overflowY', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gap', 'rowGap', 'columnGap', 'alignItems', 'justifyContent', 'flexDirection', 'flexGrow', 'flexShrink', 'flexBasis'];
+const identityTransform = value => value === undefined || value === 'none' || value.replaceAll(' ', '') === 'matrix(1,0,0,1,0,0)';
+const opaque = value => value && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)';
+function significant(node) {
+  const s = node.style ?? {};
+  return Boolean(node.frame || node.leaf !== false && node.ownText || node.input || node.image ||
+    opaque(s.backgroundColor) || s.backgroundImage && s.backgroundImage !== 'none' || s.boxShadow && s.boxShadow !== 'none' ||
+    ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(s[`border${side}Width`]) > 0 && s[`border${side}Style`] !== 'none'));
+}
+const text = node => node.input && !node.input.redacted ? node.input.value : node.frame || node.repeat || ['button', 'a', 'label'].includes(node.tag) ? node.normalizedText ?? node.ownText ?? '' : node.leaf === false ? '' : node.ownText ?? '';
+const role = node => node.repeat?.role || node.role || (/^h[1-6]$/.test(node.tag) ? 'heading' : ['button', 'input', 'a', 'img', 'svg'].includes(node.tag) ? node.tag : 'text');
+const within = (id, roots) => typeof id === 'string' && roots.some(root => root && (id === root || id.startsWith(root + '.')));
+const colorTokens = /rgba?\([^)]+\)|color\(srgb [^)]+\)/g;
+function samePaint(a, b) {
+  if (a === b) return true;
+  const left = [...String(a).matchAll(colorTokens)].map(match => match[0]), right = [...String(b).matchAll(colorTokens)].map(match => match[0]);
+  return left.length > 0 && left.length === right.length && String(a).replace(colorTokens, '[color]') === String(b).replace(colorTokens, '[color]') &&
+    left.every((value, index) => {const difference = colorDifference(value, right[index]); return difference && difference.deltaE2000 <= policy.deltaE2000 && difference.alpha <= policy.colorAlpha;});
+}
+
+/** Deterministic anchor -> role/text/order matching. Never widens policy to pass. */
+export function compareScreens(reference, actual, {referenceOnly = [], actualContentOnly = [], textHandledBySlots = [], contentSlots = [], focus} = {}) {
+  const differences = [], diagnostics = [], ambiguous = [], matches = [], used = new Set(), itemMatches = new Map();
+  const unavailable = (screen, node, property) => screen.unavailable?.some(fact => fact.element === node?.id && fact.property === property);
+  const cascadeRoots = {reference: [], actual: []};
+  const invalidAnchors = new Set([...(reference.anchorIssues ?? []), ...(actual.anchorIssues ?? [])].map(issue => issue.name));
+  for (const name of invalidAnchors) {
+    const a = reference.anchorIssues?.find(issue => issue.name === name), b = actual.anchorIssues?.find(issue => issue.name === name);
+    differences.push({kind: 'anchor-cardinality', label: name, expected: a?.matches ?? 1, actual: b?.matches ?? 1});
+    cascadeRoots.reference.push(...reference.elements.filter(node => node.frame === name).map(node => node.id));
+    cascadeRoots.actual.push(...actual.elements.filter(node => node.frame === name).map(node => node.id));
+  }
+  for (const group of reference.repeatedLists ?? []) {
+    const other = actual.repeatedLists?.find(item => item.name === group.name);
+    if (!invalidAnchors.has(group.name) && group.count !== (other?.count ?? 0)) {
+      differences.push({kind: 'list-cardinality', label: group.name, expected: group.count, actual: other?.count ?? 0});
+      if (group.container) cascadeRoots.reference.push(group.container);
+      if (other?.container) cascadeRoots.actual.push(other.container);
+    }
+  }
+  const exclude = new Set(referenceOnly);
+  const expected = reference.elements.filter(node => significant(node) && !exclude.has(node.frame) && !within(node.id, cascadeRoots.reference));
+  const observed = actual.elements.filter(node => significant(node) && !actualContentOnly.includes(node.frame) && !within(node.id, cascadeRoots.actual));
+  const actualLogical = usesLogicalCoordinates(actual);
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+    differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
+  for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
+  if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {
+    const focused = actual.elements.filter(node => node.focused === true), target = actual.elements.filter(node => node.frame === focus.frame);
+    if (typeof focus.frame !== 'string' || target.length !== 1 || target[0]?.focused !== true || focused.length !== 1)
+      differences.push({kind: 'focus-state', label: focus.frame ?? 'Drawn focus target', expected: {frame: focus.frame, count: 1}, actual: {frames: focused.map(node => node.frame ?? node.id), count: focused.length}});
+  }
+  for (const node of expected) {
+    let candidates = observed.filter(other => !used.has(other.id)), method;
+    if (node.repeat) {
+      candidates = candidates.filter(other => other.repeat?.list === node.repeat.list && other.repeat?.part === node.repeat.part);
+      if (node.repeat.part) candidates = candidates.filter(other => other.repeat.item === itemMatches.get(node.repeat.item));
+      else {
+        const semantic = candidates.filter(other => role(other) === role(node) && text(other) === text(node));
+        candidates = semantic.length ? semantic : candidates.filter(other => role(other) === role(node));
+      }
+      method = 'list-role-text-order';
+    } else if (node.frame) {candidates = candidates.filter(other => other.frame === node.frame); method = 'frame-anchor';}
+    else {
+      const exact = candidates.filter(other => role(other) === role(node) && text(other) === text(node));
+      const copy = candidates.filter(other => text(node) && text(other) === text(node));
+      candidates = exact.length ? exact : copy.length ? copy : candidates.filter(other => role(other) === role(node));
+      method = exact.length ? 'role-text-order' : copy.length ? 'text-order' : 'role-order';
+    }
+    const label = node.frame || text(node) || `${node.image?.kind ?? node.tag} ${node.id}`;
+    if (!candidates.length) {differences.push({kind: 'missing-element', label, reference: node.id}); continue;}
+    if (candidates.length > 1 && !node.repeat) ambiguous.push({label, reference: node.id, candidates: candidates.map(value => value.id), selectedBy: 'DOM order'});
+    const other = candidates[0]; used.add(other.id); matches.push({label, reference: node.id, actual: other.id, method});
+    if (node.repeat && !node.repeat.part) itemMatches.set(node.repeat.item, other.repeat.item);
+    const add = (property, left, right, detail) => differences.push({kind: 'measured-difference', label, property, expected: left, actual: right, ...(detail ? {detail} : {})});
+    const paintOnly = textHandledBySlots.includes(node.frame);
+    const containsCascade = cascadeRoots.reference.some(root => root.startsWith(node.id + '.')) || cascadeRoots.actual.some(root => root.startsWith(other.id + '.'));
+    if (!paintOnly && !containsCascade && text(node) !== text(other)) add('text', text(node), text(other));
+    if (node.box && other.box) for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(node.box[property] - other.box[property]) > policy.boxPixels) add(`box.${property}`, node.box[property], other.box[property]);
+    if (!paintOnly && (node.ownText || other.ownText)) for (const property of textStyles) if (!unavailable(reference, node, property) && !unavailable(actual, other, property) && node.style?.[property] !== other.style?.[property]) add(property, node.style?.[property], other.style?.[property]);
+    if (!paintOnly && !containsCascade && (node.ownText || other.ownText || node.frame && !node.anchoredDescendants)) {
+      const a = node.frame ? node.descendantTextRects ?? node.textRects : node.textRects, b = other.frame ? other.descendantTextRects ?? other.textRects : other.textRects;
+      if (a && b) {
+        if (a.length !== b.length) add('textRun.count', a.length, b.length);
+        else a.forEach((rect, index) => {for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(rect[property] - b[index][property]) > policy.boxPixels) add(`textRun.${index}.${property}`, rect[property], b[index][property]);});
+      }
+    }
+    for (const property of paintStyles) {
+      if (['transform', 'transformOrigin'].includes(property) && identityTransform(node.style?.transform) && identityTransform(other.style?.transform)) continue;
+      if (!samePaint(node.style?.[property], other.style?.[property])) add(property, node.style?.[property], other.style?.[property]);
+    }
+    if (!unavailable(reference, node, 'effectiveOpacity') && !unavailable(actual, other, 'effectiveOpacity') && Math.abs(Number(node.effectiveOpacity ?? node.style?.opacity ?? 1) - Number(other.effectiveOpacity ?? other.style?.opacity ?? 1)) > policy.opacity) add('effectiveOpacity', node.effectiveOpacity ?? node.style?.opacity, other.effectiveOpacity ?? other.style?.opacity);
+    const backgroundA = node.effectiveBackgroundColor ?? node.style?.backgroundColor, backgroundB = other.effectiveBackgroundColor ?? other.style?.backgroundColor;
+    if (!unavailable(reference, node, 'effectiveBackgroundColor') && !unavailable(actual, other, 'effectiveBackgroundColor') && backgroundA !== backgroundB) {const difference = colorDifference(backgroundA, backgroundB); if (!difference || difference.deltaE2000 > policy.deltaE2000 || difference.alpha > policy.colorAlpha) add('effectiveBackgroundColor', backgroundA, backgroundB, difference);}
+    for (const property of colors) {
+      if (unavailable(reference, node, property) || unavailable(actual, other, property)) continue;
+      if (property === 'color' && (paintOnly || !(node.ownText || other.ownText || node.image?.kind === 'icon'))) continue;
+      if (property.startsWith('border') && property.endsWith('Color') && !(parseFloat(node.style?.[property.replace('Color', 'Width')]) > 0 || parseFloat(other.style?.[property.replace('Color', 'Width')]) > 0)) continue;
+      if (['fill', 'stroke'].includes(property) || property === 'textDecorationColor' && node.style?.textDecorationLine === 'none' && other.style?.textDecorationLine === 'none') continue;
+      const a = node.style?.[property], b = other.style?.[property];
+      if (a === b || a === undefined || b === undefined) continue;
+      const difference = colorDifference(a, b);
+      if (!difference || difference.deltaE2000 > policy.deltaE2000 || difference.alpha > policy.colorAlpha) add(property, a, b, difference);
+    }
+    if (node.image?.kind !== other.image?.kind) add('image-slot.kind', node.image?.kind, other.image?.kind);
+    if (node.image?.kind === 'image' && node.image.loaded !== other.image?.loaded) add('image-slot.loaded', node.image.loaded, other.image?.loaded);
+    for (const property of unscored) {
+      const a = node[property] ?? node.style?.[property], b = other[property] ?? other.style?.[property];
+      if (JSON.stringify(a) !== JSON.stringify(b)) diagnostics.push({label, property, expected: a, actual: b, scored: false});
+    }
+  }
+  for (const node of observed.filter(node => !used.has(node.id))) differences.push({kind: 'extra-element', label: node.frame || text(node) || `${node.image?.kind ?? node.tag} ${node.id}`, actual: node.id});
+  for (const slot of contentSlots) {
+    const a = reference.elements.find(node => node.frame === slot.reference), b = actual.elements.find(node => node.frame === slot.actual);
+    if (within(a?.id, cascadeRoots.reference) || within(b?.id, cascadeRoots.actual)) continue;
+    if (!a || !b) {differences.push({kind: 'missing-content-slot', label: slot.reference}); continue;}
+    if (!b.input?.redacted && text(a) !== text(b)) differences.push({kind: 'measured-difference', label: slot.reference, property: 'text', expected: text(a), actual: text(b)});
+    for (const property of textStyles.filter(property => !slot.nativeInput || property !== 'textShadow')) {
+      if (unavailable(reference, a, property) || unavailable(actual, b, property)) continue;
+      if (a.style[property] !== b.style[property]) differences.push({kind: 'measured-difference', label: slot.reference, property, expected: a.style[property], actual: b.style[property]});
+    }
+    const color = colorDifference(a.style.color, b.style.color);
+    if (!unavailable(reference, a, 'color') && !unavailable(actual, b, 'color') && a.style.color !== b.style.color && (!color || color.deltaE2000 > policy.deltaE2000 || color.alpha > policy.colorAlpha)) differences.push({kind: 'measured-difference', label: slot.reference, property: 'color', expected: a.style.color, actual: b.style.color, detail: color});
+    if (!slot.nativeInput) {
+      const left = a.descendantTextRects ?? a.textRects, right = b.descendantTextRects ?? b.textRects;
+      if (left && right) {
+        if (left.length !== right.length) differences.push({kind: 'measured-difference', label: slot.reference, property: 'textRun.count', expected: left.length, actual: right.length});
+        else left.forEach((rect, index) => {for (const property of ['x', 'y', 'width', 'height']) if (Math.abs(rect[property] - right[index][property]) > policy.boxPixels) differences.push({kind: 'measured-difference', label: slot.reference, property: `textRun.${index}.${property}`, expected: rect[property], actual: right[index][property]});});
+      }
+    }
+    if (slot.nativeInput) diagnostics.push({label: slot.reference, property: 'native-input-glyph-rectangles/lineHeight', scored: false, reason: 'Native input exposes host/value/font facts, not glyph rectangles; never substitute host width for text width.'});
+  }
+  for (const item of ambiguous) differences.push({kind: 'ambiguous-match', ...item});
+  return {policy, matchedElements: matches.length, expectedElements: expected.length, actualElements: observed.length, matches, differences, diagnostics,
+    unscoredProperties: unscored, referenceOnly, actualContentOnly, cascadeRoots, verdict: differences.length ? 'FAIL' : 'PASS'};
+}

@@ -45,11 +45,12 @@ func (s *Service) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel, s.done = cancel, make(chan struct{})
 	shared := worker.NewSignal()
-	dbwork.WakeOnCommit(shared)
+	unregister := watchDownloadWork(shared)
 	supervise.Go("downloads.worker", func() {
 		defer close(s.done)
+		defer unregister()
 		// A preparation exists because somebody asked for one, so the loop is
-		// driven by that request and by any commit, not by a five-second tick
+		// driven by that request and by relevant input changes, not by a five-second tick
 		// that asked an empty queue the same question all night.
 		worker.RunWith(ctx, "downloads.worker", s.wake, shared, func(ctx context.Context) time.Duration {
 			// A failing pass is not fatal: the next wake retries, and every
@@ -733,4 +734,21 @@ func finishHash(state []byte) (string, error) {
 		return "", e
 	}
 	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+// watchDownloadWork follows this runtime's durable inputs; clock-only expiry
+// still runs through worker.SafetyTick. Unrelated telemetry is not work.
+func watchDownloadWork(signal *worker.Signal) func() {
+	return dbwork.WakeOnTables(signal,
+		"download_*", "prepared_media_*", "catalog_asset_links", "catalog_assets",
+		"catalog_entities", "catalog_item_availability", "catalog_libraries", "catalog_episodes",
+		"catalog_seasons", "catalog_albums", "catalog_songs", "catalog_books",
+		"catalog_book_chapters", "catalog_book_files", "catalog_playlists", "catalog_playlist_entries",
+		"asset_stream*", "episode_asset_boundaries", "music_virtual_tracks", "music_technical_facts",
+		"inventory_objects", "library_sources", "library_revisions", "library_network_policy",
+		"source_*", "remote_source_*", "remote_sources", "remote_scan_observations", "playback_owner_policy",
+		"server_settings", "console_settings_revision", "authorization_*", "accounts", "direct_profile_trust", "restrictions", "hosted_*", "identity_devices",
+		"direct_profiles", "direct_memberships", "profile_*", "playlist_shares",
+		"container_personal_state", "personal_explicit_events", "viewer_revisions", "dvr_catalog_retirements",
+	)
 }

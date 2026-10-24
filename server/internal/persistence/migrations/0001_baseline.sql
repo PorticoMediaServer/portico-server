@@ -194,6 +194,19 @@ CREATE TABLE reading_publications(
  format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_source_values(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ field TEXT NOT NULL CHECK(field IN('author','series','seriesNumber')),
+ text_value TEXT,
+ number_value REAL,
+ source TEXT NOT NULL CHECK(source IN('file-name','folder','file-metadata')),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ PRIMARY KEY(item_id,asset_id,field,source),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
+ CHECK((field IN('author','series') AND text_value IS NOT NULL AND length(text_value) BETWEEN 1 AND 4096 AND number_value IS NULL)
+    OR (field='seriesNumber' AND text_value IS NULL AND number_value IS NOT NULL AND number_value>=0 AND number_value<=1.7976931348623157e308))) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
