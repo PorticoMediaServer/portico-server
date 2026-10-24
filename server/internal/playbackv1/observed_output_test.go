@@ -178,6 +178,10 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	if !reflect.DeepEqual(read(1, 7), actual) || read(7, 7) != nil || read(1, 1) != nil {
 		t.Fatal("session/buffer generations were collapsed")
 	}
+	if view, err := s.Get(ctx, pausedCaller(), "observed-live"); err != nil || view.Presentation.Generation != 7 || !reflect.DeepEqual(view.ObservedPlayback, actual) {
+		t.Fatal("live read collapsed buffer/session generations", view, err)
+	}
+
 	if _, err = db.Exec(`UPDATE playback_channel_sessions SET buffer_ordinal=8 WHERE session_id='observed-live'`); err != nil {
 		t.Fatal(err)
 	}
@@ -185,6 +189,10 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	if read(1, 7) != nil || read(1, 8) != nil {
 		t.Fatal("new buffer inherited previous output")
 	}
+	if view, err := s.Get(ctx, pausedCaller(), "observed-live"); err != nil || view.ObservedPlayback != nil {
+		t.Fatal("live GET inherited old buffer output", view.ObservedPlayback, err)
+	}
+
 	if _, err = s.Timeline(ctx, pausedCaller(), "observed-live", Report{Seq: 2, Generation: 8, State: "playing", ObservedPlayback: actual}); err != nil {
 		t.Fatal(err)
 	}
@@ -213,5 +221,68 @@ func TestObservedLiveOutputKeepsSessionAndBufferGenerationsDistinct(t *testing.T
 	}
 	if read(1, 8) != nil || read(1, 9) != nil {
 		t.Fatal("callback bypassed canonical buffer generation")
+	}
+}
+
+// The authorized session GET is the read side of the existing timeline's
+// sparse output snapshot, not a new output observation writer or source plan.
+func TestSessionGetPublishesOnlyCurrentObservedOutput(t *testing.T) {
+	db := pausedTestDB(t)
+	ctx := context.Background()
+	now := time.UnixMilli(1_750_000_000_000)
+	service := &Service{DB: db, Now: func() time.Time { return now }}
+	caller := pausedCaller()
+	insertPausedSession(t, db, "read-output", "vod", "playing", now.UnixMilli(), 0)
+	get := func() SessionView {
+		t.Helper()
+		view, err := service.Get(ctx, caller, "read-output")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return view
+	}
+	if get().ObservedPlayback != nil {
+		t.Fatal("unreported output inferred from session/quality/source")
+	}
+	actual := &playback.ObservedPlayback{Video: &playback.ObservedVideo{Width: 1920, Height: 1080}, Audio: &playback.ObservedAudioOutput{SampleRate: 44100, Channels: 2}}
+	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 1, Generation: 1, State: "playing", ObservedPlayback: actual}); err != nil {
+		t.Fatal(err)
+	}
+	if view := get(); !reflect.DeepEqual(view.ObservedPlayback, actual) || view.ObservedPlayback.Screen != nil {
+		t.Fatal("actual output lost or screen inferred", view.ObservedPlayback)
+	}
+	controller := caller
+	controller.DeviceID = "controller"
+	if view, err := service.Get(ctx, controller, "read-output"); err != nil || !reflect.DeepEqual(view.ObservedPlayback, actual) {
+		t.Fatal("authorized controller lost current facts", view.ObservedPlayback, err)
+	}
+	other := caller
+	other.Principal.ProfileID = "other-profile"
+	if _, err := service.Get(ctx, other, "read-output"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("output crossed profile authority", err)
+	}
+	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 2, Generation: 1, State: "playing", ObservedPlayback: &playback.ObservedPlayback{}}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(get().ObservedPlayback, &playback.ObservedPlayback{}) {
+		t.Fatal("cleared output inherited old blocks")
+	}
+	if _, err := db.Exec(`UPDATE playback_v1_sessions SET generation=2,last_seq=-1,revision=revision+1 WHERE id='read-output'`); err != nil {
+		t.Fatal(err)
+	}
+	if get().ObservedPlayback != nil {
+		t.Fatal("new presentation inherited previous output")
+	}
+	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 1, Generation: 2, State: "playing", ObservedPlayback: actual}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(get().ObservedPlayback, actual) {
+		t.Fatal("new accepted output missing")
+	}
+	if _, err := service.Timeline(ctx, caller, "read-output", Report{Seq: 2, Generation: 2, State: "ended"}); err != nil {
+		t.Fatal(err)
+	}
+	if get().ObservedPlayback != nil {
+		t.Fatal("ended session retained output")
 	}
 }

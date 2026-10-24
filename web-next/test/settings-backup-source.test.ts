@@ -117,3 +117,75 @@ test('an owner refusal clears retained facts and closes all later commands immed
     } finally {f.source.dispose();}
   }
 });
+
+test('restore uses only the issued inspected candidate and keeps the passphrase top-level and request-local', async () => {
+  let posted = false;
+  const staged = {staged: true, restartRequired: true, validation: {schemaVersion: 1, integrity: 'ok'}};
+  const f = fixture(async (path, method, body) => {
+    if (path.endsWith('/settings')) return envelope(settings);
+    if (path.endsWith('/inspect')) return envelope({encrypted: true});
+    if (path.endsWith('/restore')) {
+      const sent = body as {source: unknown; passphrase: unknown; operationId: string};
+      assert.deepEqual(sent.source, {backupId: 'listed'});assert.equal(sent.passphrase, 'request-local phrase');assert.ok(sent.operationId);
+      posted = true;return envelope({jobId: 'restore-job'});
+    }
+    return envelope(posted ? {backups: [backup], restore: {jobId: 'restore-job', phase: 'staged', bytesDone: 1, bytesTotal: 1, result: staged}} : {backups: [backup]});
+  });
+  try {
+    await f.source.load();const dialog = new AbortController(), selection = await f.source.prepareRestore({backupId: 'listed'}, dialog.signal);
+    assert.equal(selection.encrypted, true);
+    await assert.rejects(f.source.restore({...selection}, 'request-local phrase', dialog.signal), {name: 'AbortError'});
+    assert.equal(posted, false);
+    assert.deepEqual(await f.source.restore(selection, 'request-local phrase', dialog.signal), staged);
+    assert.deepEqual(f.source.getSnapshot().staged, staged);
+    assert.doesNotMatch(JSON.stringify(f.source.getSnapshot()), /request-local phrase|"passphrase":/);
+  } finally {f.source.dispose();}
+});
+
+test('changed selections, closed dialogs and disappeared list members refuse Restore before POST', async () => {
+  let listed = true;
+  const f = fixture(async path => envelope(path.endsWith('/settings') ? settings : path.endsWith('/inspect') ? {encrypted: false} : {backups: listed ? [backup] : []}));
+  try {
+    await f.source.load();const dialog = new AbortController();
+    const first = await f.source.prepareRestore({backupId: 'listed'}, dialog.signal);
+    const next = await f.source.prepareRestore({path: '/actual/plain.pba'}, dialog.signal);
+    assert.equal(first.isCurrent(), false);
+    await assert.rejects(f.source.restore(first, undefined, dialog.signal), {name: 'AbortError'});
+    dialog.abort();await assert.rejects(f.source.restore(next, undefined, new AbortController().signal), {name: 'AbortError'});
+    const live = new AbortController(), missing = await f.source.prepareRestore({backupId: 'listed'}, live.signal);
+    listed = false;await f.source.load();assert.equal(missing.isCurrent(), false);
+    await assert.rejects(f.source.restore(missing, undefined, live.signal), {name: 'AbortError'});
+    assert.equal(f.calls.some(call => call.path.endsWith('/restore')), false);
+  } finally {f.source.dispose();}
+});
+
+test('an authenticated archive refusal keeps the original candidate for explicit retry and never marks a stage', async () => {
+  let posted = false;
+  const f = fixture(async path => {
+    if (path.endsWith('/restore')) {posted = true;return envelope({jobId: 'refused-restore'});}
+    return envelope(path.endsWith('/settings') ? settings : path.endsWith('/inspect') ? {encrypted: true} : posted ? {backups: [backup], restore: {jobId: 'refused-restore', phase: 'failed', bytesDone: 0, bytesTotal: 0, errorCode: 'restore_integrity_failed'}} : {backups: [backup]});
+  });
+  try {
+    await f.source.load();const dialog = new AbortController(), selection = await f.source.prepareRestore({backupId: 'listed'}, dialog.signal);
+    await assert.rejects(f.source.restore(selection, undefined, dialog.signal));
+    assert.equal(f.calls.some(call => call.path.endsWith('/restore')), false);
+    await assert.rejects(f.source.restore(selection, 'wrong input', dialog.signal), {code: 'restore_integrity_failed'});
+    assert.equal(selection.isCurrent(), true);assert.equal(f.source.getSnapshot().staged, undefined);assert.equal(f.source.getSnapshot().busy, false);
+    assert.doesNotMatch(JSON.stringify(f.source.getSnapshot()), /wrong input/);
+  } finally {f.source.dispose();}
+});
+
+test('closing during an accepted restore stops polling and refuses a late stage or automatic restart', async () => {
+  let release!: () => void, captured: AbortSignal | undefined;
+  const f = fixture(async (path, _method, _body, signal) => {
+    if (path.endsWith('/restore')) {captured = signal;await new Promise<void>(resolve => {release = resolve;});return envelope({jobId: 'late-restore'});}
+    return envelope(path.endsWith('/settings') ? settings : path.endsWith('/inspect') ? {encrypted: false} : {backups: [backup]});
+  });
+  try {
+    await f.source.load();const dialog = new AbortController(), selection = await f.source.prepareRestore({path: '/actual/source.db'}, dialog.signal);
+    const pending = f.source.restore(selection, undefined, dialog.signal), count = f.calls.length;
+    f.source.cancelRestoreSelection();assert.equal(captured?.aborted, true);release();
+    await assert.rejects(pending, {name: 'AbortError'});
+    assert.equal(f.calls.length, count);assert.equal(f.source.getSnapshot().staged, undefined);assert.equal(f.source.getSnapshot().busy, false);
+  } finally {f.source.dispose();}
+});

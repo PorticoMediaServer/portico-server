@@ -24,6 +24,12 @@ func encodeDisplayArtwork(source image.Image, edge int, preferJPEG bool) ([]byte
 
 func encodeDisplayArtworkContext(ctx context.Context, source image.Image, edge int, preferJPEG bool) ([]byte, int, int, error) {
 	edge, ceiling := artworkEncodingLimits(ctx, edge)
+	return encodeDisplayArtworkWithinLimits(ctx, source, edge, ceiling, preferJPEG)
+}
+
+// Fixed serving buckets use explicit limits rather than the full-image policy.
+// The encoder, alpha handling, quality floor and no-enlargement rule are shared.
+func encodeDisplayArtworkWithinLimits(ctx context.Context, source image.Image, edge, ceiling int, preferJPEG bool) ([]byte, int, int, error) {
 	bounds := source.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w < 1 || h < 1 {

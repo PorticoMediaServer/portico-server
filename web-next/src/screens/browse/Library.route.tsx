@@ -58,8 +58,9 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
-  const actions = (entry: ContentEntry) => ({onOpen: () => context.effects.openEntry(entry),
+  const actions = (entry: ContentEntry) => ({onOpen: () => {if (!browse || resources.controller.contains(entry)) context.effects.openEntry(entry);},
     onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
+      if (browse && !resources.controller.contains(entry)) return;
       void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal()).catch(context.effects.reportError);
     } : undefined});
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
