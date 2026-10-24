@@ -3526,6 +3526,7 @@ export const schemas = {
     "type": "object"
   },
   "ServerClaimLookupResponse": {
+    "additionalProperties": false,
     "properties": {
       "address": {
         "type": "string"
@@ -3542,6 +3543,11 @@ export const schemas = {
       },
       "name": {
         "type": "string"
+      },
+      "otherPeopleCount": {
+        "maximum": 10000,
+        "minimum": 0,
+        "type": "integer"
       },
       "ownerTransactionId": {
         "type": "string"
@@ -3658,6 +3664,24 @@ export const schemas = {
         "additionalProperties": false,
         "properties": {
           "ownerStart": {
+            "additionalProperties": false,
+            "properties": {
+              "payload": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "signature": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "ownerSwitchCount": {
             "additionalProperties": false,
             "properties": {
               "payload": {
