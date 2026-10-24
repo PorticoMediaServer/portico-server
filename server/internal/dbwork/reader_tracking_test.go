@@ -23,11 +23,22 @@ func readerFixture(t *testing.T) *sql.DB {
 
 func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) {
 	db := readerFixture(t)
+	// ReaderLifetimes is process-wide, and another fixture can still be
+	// physically releasing a reader after its test has returned: database/sql
+	// rolls a canceled transaction back from a goroutine, so joining the test's
+	// own goroutines does not join that cleanup. Measure this fixture's scope so
+	// a foreign lease cannot move the baseline under the assertions.
+	scope := readerScopeForTest(t, db)
 	ctx := context.Background()
-	baseline := ReaderLifetimes().Snapshots
+	baseline := scope.stats().Snapshots
+	defer func() {
+		if t.Failed() {
+			t.Logf("reader lifetime baseline=%d final=%+v", baseline, scope.stats())
+		}
+	}()
 	check := func(want int) {
 		t.Helper()
-		if stats := ReaderLifetimes(); stats.Snapshots != baseline+want {
+		if stats := scope.stats(); stats.Snapshots != baseline+want {
 			t.Fatalf("snapshot lifetime: %+v, want%d", stats, baseline+want)
 		}
 	}
@@ -76,7 +87,7 @@ func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) 
 	}
 	check(1)
 	cancel()
-	waitReaderCondition(t, func() bool { return ReaderLifetimes().Snapshots == baseline })
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
 	tx, err = db.Begin() // Legacy/default transactions also own a snapshot.
 	if err != nil {
 		t.Fatal(err)
