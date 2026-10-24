@@ -187,7 +187,7 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 				dst.Interlaced = nil
 			}
 			if target := p.ConversionTarget; target != nil {
-				dst.Profile, dst.BitDepth, dst.DynamicRange = target.VideoProfile, target.BitDepth, target.DynamicRange
+				dst.Profile, dst.BitDepth, dst.DynamicRange = encodedPictureProfile(*target), target.BitDepth, target.DynamicRange
 				dst.MasterDisplay, dst.MaxCLL = target.MasterDisplay, target.MaxCLL
 			}
 			dst.DolbyVisionProfile, dst.DolbyVisionCompatibility = 0, 0

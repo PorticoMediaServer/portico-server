@@ -12,6 +12,7 @@ function setup() {
     getSnapshot: () => state,
     subscribeAuthorityRetired: (listener: () => void) => {retired.add(listener); return () => {retired.delete(listener);};},
     signIn: async (username: string, password: string) => {calls.push(['signin', username, password]); state = {phase: 'two-step-setup'};},
+    redeemLocalMove: async () => {throw new Error('Ordinary sign-in cannot redeem a member move.');},
     completeChallenge: async (code: string) => {calls.push(['challenge', code]); state = {phase: 'two-step-setup'};},
     beginRequiredTwoStep: async (password: string) => {calls.push(['enrol', password]); return enrolment;},
     confirmRequiredTwoStep: async (password: string, code: string) => {calls.push(['confirm', password, code]); state = {phase: 'profiles'}; return true;},
