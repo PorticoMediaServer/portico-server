@@ -4,7 +4,9 @@ import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
-import {titleRecommendationRows} from '@core/recommendations.ts';
+import {titleRecommendationRows, type ItemRecommendations} from '@core/recommendations.ts';
+import {serverTextLabel} from '@core/presentation/server-text.ts';
+import {serviceI18n} from '@core/presentation/service-text.ts';
 import {fileInfoModel, titleFactParts} from '@core/presentation/kit-model';
 import {preferenceValue} from '@core/preferences.ts';
 import {AmbientArt, PersonCircle} from '../../kit/artwork';
@@ -50,11 +52,11 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
     {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
     {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
-    <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
+    <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitleActions binding={binding} data={data} small />}><Tabs className={styles.tabStrip} aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
-    <div key={tab} className={styles.tabPanel}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
-      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRow key={row.id} heading={row.title} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)
+    <div key={tab} className={tab === 'details' ? styles.tabPanel : `${styles.tabPanel} ${styles.rowsPanel}`}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
+      : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} row={row} binding={binding} subtitleVisible={!compact} guard={() => binding.current(data)} />)
         : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}</div>
   </article>;
 }
@@ -183,8 +185,14 @@ export function TitleDetails({binding, data}: {binding: DetailBindings; data: De
   </div>;
 }
 
-export function TitleRow({heading, entries, binding, guard}: {heading: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
-  return <Shelf heading={heading} items={entries} getKey={entry => entry.id} renderItem={entry => {
+export function TitleRecommendationRow({row, binding, guard, subtitleVisible = true}: {row: ItemRecommendations['rows'][number]; binding: Pick<DetailBindings, 'context'>; guard?: () => void; subtitleVisible?: boolean}) {
+  const i18n = serviceI18n();
+  return <TitleRow heading={serverTextLabel(i18n, row.titleText, row.title)} subtitle={subtitleVisible ? serverTextLabel(i18n, row.subtitleText) : undefined} entries={row.entries} binding={binding} guard={guard} />;
+}
+
+export function TitleRow({heading, subtitle, entries, binding, guard}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
+  const phone = useShellWidth() < 1024;
+  return <Shelf heading={heading} subtitle={phone ? undefined : subtitle} items={entries} getKey={entry => entry.id} renderItem={entry => {
     const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }), watched: entry.watched};
     return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
   }} />;
