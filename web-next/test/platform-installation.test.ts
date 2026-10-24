@@ -56,3 +56,16 @@ test('with no native provider the existing durable browser claim remains the def
   const identity = await initializeAppInstallation('web-build');
   assert.ok(reads > 0);assert.equal(identity?.installationId, native.installationId);assert.equal(identity?.platform, 'web');assert.equal(identity?.app, 'Portico Web');assert.equal(identity?.appVersion, 'web-build');
 });
+test('closing startup fences a late native provider before identity or lock publication', async t => {
+  environment(t);const controller = new AbortController(), beforeLock = credentialLock();let resolve!: (identity: InstallationIdentity) => void;
+  t.after(installPlatformInstallationProvider(() => new Promise(done => {resolve = done;})));
+  const loading = initializeAppInstallation('web-version', controller.signal);
+  controller.abort();resolve(native);
+  await assert.rejects(loading, {name: 'AbortError'});
+  assert.equal(installationIdentity(), undefined);assert.equal(credentialLock(), beforeLock);
+});
+test('already closed startup never invokes an installed native provider', async t => {
+  environment(t);t.after(installPlatformInstallationProvider(() => {assert.fail('disposed startup must not start a bridge read');}));
+  await assert.rejects(initializeAppInstallation('web-version', AbortSignal.abort()), {name: 'AbortError'});
+  assert.equal(installationIdentity(), undefined);
+});
