@@ -23,7 +23,9 @@ var listeningGroupBatch = 256
 
 // listeningGroupPassGap coalesces a burst of audiobook commits (a scan) into
 // one follow-up pass instead of a pass per commit.
-var listeningGroupPassGap = 30 * time.Second
+const ListeningGroupPassGap = 30 * time.Second
+
+var listeningGroupPassGap = ListeningGroupPassGap
 
 // RefreshListeningGroups advances the current pass over the books by one
 // bounded batch and publishes any author or series navigation identity the

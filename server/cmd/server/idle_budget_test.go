@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 )
 
@@ -117,13 +118,20 @@ func TestServerIdleBudgetHelper(t *testing.T) {
 			done <- fmt.Errorf("listening-group startup pass did not finish")
 			return
 		}
-		// Let the remaining commit subscribers finish their first pass.
+		// Let the remaining commit subscribers finish their first pass, and let
+		// the startup burst's single coalesced book pass run: it is scheduled at
+		// least one full gap after the pass that just settled. The measured
+		// minute then starts from steady state rather than from start-up work.
 		dbwork.ProfileStatements(true)
 		settleStart := dbwork.Reads().Statements
-		time.Sleep(2 * time.Second)
+		time.Sleep(catalog.ListeningGroupPassGap + 2*time.Second)
 		settle := dbwork.Reads().Statements - settleStart
 		settleProfile := dbwork.StatementProfile()
 		dbwork.ProfileStatements(false)
+		sort.Slice(settleProfile, func(i, j int) bool { return settleProfile[i].Count > settleProfile[j].Count })
+		if len(settleProfile) > 12 {
+			settleProfile = settleProfile[:12]
+		}
 		window, windows := time.Minute, 1
 		if os.Getenv("PORTICO_FULL_IDLE") == "1" {
 			window, windows = time.Minute, 6
