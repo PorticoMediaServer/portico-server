@@ -6,6 +6,11 @@ export async function observeRenderedFonts(call, measured, selector) {
   const text = result.elements.filter(node => node.ownText || node.input && (!node.input.type || ['text', 'password', 'email', 'search', 'tel', 'url', 'number', 'textarea'].includes(node.input.type)));
   if (text.length > 256) throw new Error('Rendered font observation requires a bounded text specimen');
   const ids = new Set(text.map(node => node.id));
+  const parents = new Map(result.elements.map(node => [node.id, node.parent])), inputAncestors = new Set();
+  for (const node of result.elements.filter(node => node.input)) {
+    const seen = new Set();
+    for (let parent = node.parent; parent && !seen.has(parent); parent = parents.get(parent)) {seen.add(parent); inputAncestors.add(parent);}
+  }
   result.unavailable = (result.unavailable ?? []).filter(fact => fact.property !== 'resolvedFontFamily' || !ids.has(fact.element));
   const unavailable = (node, reason) => result.unavailable.push({element: node.id, property: 'resolvedFontFamily', reason});
   for (const node of text) delete node.style.resolvedFontFamily;
@@ -16,7 +21,7 @@ export async function observeRenderedFonts(call, measured, selector) {
     root = (await call('DOM.querySelector', {nodeId: document.root.nodeId, selector})).nodeId;
   } catch { /* Each required text fact below remains explicitly unavailable. */ }
   for (const node of text) {
-    if (node.input) {unavailable(node, 'Input glyph font identity is not read by this observer'); continue;}
+    if (node.input || inputAncestors.has(node.id)) {unavailable(node, 'Input glyph subtrees are not read by this observer'); continue;}
     if (!root || !/^0(?:\.\d+)*$/.test(node.id)) {unavailable(node, 'Rendered font node identity is unavailable'); continue;}
     try {
       const path = node.id.split('.').slice(1).map(index => ` > :nth-child(${Number(index) + 1})`).join('');

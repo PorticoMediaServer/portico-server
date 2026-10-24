@@ -31,3 +31,14 @@ test('mixed, empty, unsafe or failed observations never become the requested fam
   const failed = await observeRenderedFonts(async () => {throw new Error('Unavailable');}, stale, '#screen');
   assert.equal(failed.elements[0].style.resolvedFontFamily, undefined);
 });
+
+test('an input-containing label is never recursively probed for glyph fonts', async () => {
+  const input = fixture(); input.elements[1].parent = input.elements[0].id;
+  let probes = 0;
+  const output = await observeRenderedFonts(async (method, params) => {
+    if (method === 'CSS.getPlatformFontsForNode') probes++;
+    return observer([{familyName: 'Face', glyphCount: 1}])(method, params);
+  }, input, '#screen');
+  assert.equal(probes, 0); assert.equal(output.elements[0].style.resolvedFontFamily, undefined);
+  assert.equal(output.unavailable.length, 2);
+});
