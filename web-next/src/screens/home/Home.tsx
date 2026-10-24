@@ -241,7 +241,9 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
   const source = wide ? entry.backdropUrl ?? entry.posterUrl : entry.posterUrl;
   // The drawn ranked card carries the number and the title only (mock.html#home).
   const ranked = row.id === 'community_watching' && !!row.period;
-  const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%'},
+  // The frame's square cards are the row buttons themselves, so a shorter card centres
+  // inside the line set by the drawn continuation card; the kit article fills that line.
+  const props = {model: ranked ? {...model, caption: []} : model, visible: interest.visible, watched: entry.watched, isNew: entry.new, style: {width: '100%', ...(square ? {height: '100%'} : {})},
     artwork: artwork.foreground(source, width * devicePixelRatio, wide ? 16 / 9 : square ? 1 : 2 / 3, {order: rowIndex * 1000 + index, group: row.id}),
     ambient: square && appearance?.showBackdrops !== false ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from((entry.displayTitle ?? entry.title).trim())[0] ?? ''} />,
