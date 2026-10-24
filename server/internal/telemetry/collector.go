@@ -7,6 +7,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/reportwindow"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -385,6 +386,8 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 	defer gated.Rollback()
 	tx := gated.Tx()
 	for _, s := range pending {
+		values := []string{}
+		args := []any{}
 		for _, name := range MetricNames {
 			m := s.Metrics[name]
 			count, total := s.counts[name], s.totals[name]
@@ -392,7 +395,14 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 				continue
 			}
 			stamp := s.At - s.At%reportwindow.Grain.Milliseconds()
-			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms)`, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name])
+			values = append(values, "(?,?,?,?,?,?,?,?)")
+			args = append(args, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name])
+		}
+		if len(values) > 0 {
+			// A sample has a fixed, bounded metric vocabulary. Persist all of
+			// its known cells together, preserving each weight and event bound
+			// without one statement per cell on an otherwise idle server.
+			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES`+strings.Join(values, ",")+` ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms)`, args...)
 			if e != nil {
 				return
 			}
