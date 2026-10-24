@@ -54,6 +54,25 @@ test('the vault keeps a record across reads and replaces or removes it on reques
   await store.change(() => undefined);
   assert.equal(await store.read(), undefined);
 });
+test('a retired attempt cannot write its encrypted record after encryption finishes', async t => {
+  const {db, store} = await vault(t);
+  await store.change(() => record('original'));
+  const original = db.data.get('selected');
+  let release!: () => void, entered!: () => void, current = true;
+  const waiting = new Promise<void>(resolve => {release = resolve;});
+  const started = new Promise<void>(resolve => {entered = resolve;});
+  const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, 'encrypt', async (...args: Parameters<typeof encrypt>) => {
+    const cipher = await encrypt(...args); entered(); await waiting; return cipher;
+  });
+  const cancelled = assert.rejects(store.change(() => record('cancelled'), () => {
+    if (!current) throw new Error('Attempt ended.');
+  }));
+  await started; current = false; release(); await cancelled;
+  assert.equal(db.data.get('selected'), original, 'no cancelled cipher or key was written');
+  await store.change(() => record('successor'));
+  assert.deepEqual(await store.read(), record('successor'));
+});
 
 // Each of these records is there and can never be read again, however long the app waits.
 const damage: Record<string, (data: Map<string, unknown>) => void | Promise<void>> = {
