@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--runner', type=Path)
     parser.add_argument('--private-review', type=Path)
     parser.add_argument('--smoke-output', type=Path)
+    parser.add_argument('--smoke-host', choices=['netcup', 'contabo'], default='netcup')
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         parser.error("a full published MAIN commit is required")
@@ -71,7 +72,7 @@ install -d -o portico -g portico -m700 "$2" "$2/cache-home"
         try:
             subprocess.run(['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
                             '--repo', str(args.browser_repo), '--runner', str(args.runner),
-                            '--credentials', str(args.private_review), '--output', str(args.smoke_output)], check=True)
+                            '--credentials', str(args.private_review), '--output', str(args.smoke_output), '--host', args.smoke_host], check=True)
         except BaseException:
             remote(ROLLBACK, args.cycle)
             raise
