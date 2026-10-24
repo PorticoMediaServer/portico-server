@@ -3,7 +3,7 @@ import {browserEntryDestination, isProfileSettingsLocation, profileSettingsAlias
 import {accountReturnPath} from './route-registry-return';
 
 export function isAccountEntryPath(path: string): boolean {
-  return path === '/sign-in' || path === '/profiles' || path === '/servers' || path === accountReturnPath;
+  return path === '/setup' || path === '/sign-in' || path === '/profiles' || path === '/servers' || path === accountReturnPath;
 }
 type Location = Readonly<{pathname: string; search?: Record<string, unknown>}>;
 type Navigation = Readonly<{fromLocation?: Location; toLocation: Location}>;

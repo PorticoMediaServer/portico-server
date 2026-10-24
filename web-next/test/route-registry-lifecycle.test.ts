@@ -22,7 +22,7 @@ function navigation(path: string) {
 }
 const unavailable: ShellAssembler = async () => {throw new Error('Unexpected assembly');};
 test('entry destinations require exact paths and do not restore private state on initial entry', () => {
-  for (const path of ['/sign-in', '/profiles', '/servers', '/auth/portico-return']) {
+  for (const path of ['/setup', '/sign-in', '/profiles', '/servers', '/auth/portico-return']) {
     let reads = 0;const bootstrap = new ShellBootstrap(unavailable, {selected: {read: async () => {reads++;return null;}}, restore: async () => undefined});
     const nav = navigation(path), close = bindWebAccountEntry(nav.router, bootstrap);
     assert.equal(reads, 0);assert.deepEqual(bootstrap.getSnapshot(), {phase: 'signed-out', entry: true});close();
