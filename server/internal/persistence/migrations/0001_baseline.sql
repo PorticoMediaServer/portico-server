@@ -2325,6 +2325,7 @@ CREATE TABLE lyric_fetch_runs (
 ) STRICT;
 CREATE TABLE metadata_runtime_settings(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
+ artwork_max_edge INTEGER NOT NULL DEFAULT 1920 CHECK(artwork_max_edge IN(1280,1920,2560)),
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
  include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
  tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '',

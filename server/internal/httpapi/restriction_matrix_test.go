@@ -414,6 +414,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{itemId}/subtitles":                                   perItem("/subtitles"),
 		"GET /v1/items/{itemId}/playback/{session}/subtitles":                perItem("/playback/unknown/subtitles"),
 		"GET /v1/admin/console/settings":                                     exempt(reasonAdmin),
+		"GET /v1/admin/settings/configuration":                               static("/v1/admin/settings/configuration"),
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),
@@ -675,6 +676,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/libraries/{id}/facets":              probe(func(m *restrictionEnv) []string { return m.facetPaths() }),
 		// Catalogue: lists across the viewer's libraries.
 		"GET /v1/browse-capabilities": static("/v1/browse-capabilities?pivot=titles", "/v1/browse-capabilities?pivot=items"),
+		"GET /v1/search/genres":       static("/v1/search/genres?limit=50"),
 		"GET /v1/browse/facets": probe(func(m *restrictionEnv) []string {
 			out := []string{}
 			for _, field := range catalog.BrowseFacetFields() {

@@ -1015,6 +1015,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		MaxFrameRate:     p.MaxFrameRate,
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
+		SourceVideoCodec: p.SourceVideoCodec,
 	}
 	if p.ConversionToolchain != nil {
 		request.Toolchain = p.ConversionToolchain
@@ -1080,6 +1081,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	}
 	if p.Trace != nil && p.Trace.Video != nil {
 		v := p.Trace.Video
+		request.SourceBitDepth = v.BitDepth
 		request.DisableHardwareDecode = v.Rotation != 0 || v.SampleAspectRatio != "" && v.SampleAspectRatio != "1:1" && v.SampleAspectRatio != "0:1"
 		if request.Target != nil && request.Target.SourceRange == "" {
 			target := *request.Target
