@@ -16,6 +16,7 @@ func TestSettledSegmentCatchupDoesNotPublishItsOwnWake(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			c := catalogtest.Open(t)
+			c.Exec(`INSERT INTO server_settings(singleton,"library.segmentDetection") VALUES(1,'standard') ON CONFLICT(singleton) DO UPDATE SET "library.segmentDetection"=excluded."library.segmentDetection"`)
 			if library {
 				c.Library("tv", "TV", "tv", "/tv")
 			}
