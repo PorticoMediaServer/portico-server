@@ -425,6 +425,11 @@
         "sha256": "b15d70a2872174a6c10373c1bff26131513e8995b4b946b20896aec49607c569",
         "sourceContract": "third_party/ffmpeg/portico-dovi-join.v1.json",
         "qualification": "actual target option and dual-PID fixtures required; name alone grants nothing"
+      },
+      {
+        "path": "third_party/ffmpeg/portico-bluray-playlist-minimum.patch",
+        "sha256": "4d475459c9688dcc11229a680fa87cc34733422025a76a069aee1ec8ac29c52c",
+        "qualification": "Actual protocol help default180/min0 and 60-second selected-title BDMV/UDF fixture decode required; default unchanged."
       }
     ]
   },
@@ -597,6 +602,6 @@
   },
   "sourceAuthority": {
     "path": "third_party/ffmpeg/source-authority.v1.json",
-    "sha256": "6ff50f7c1c7b91bfa0904a082296f05ee2d8d15e0a6e5ed714e79ca1a40caef1"
+    "sha256": "46910deca2ff7a101b98426d32b5b2a0ce2fbb30d3f10f4098b199f7f45accd0"
   }
 }
