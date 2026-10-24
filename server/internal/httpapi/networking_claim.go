@@ -50,9 +50,20 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			pending, proof, setupErr := id.SetupClaimAuthority(r.Context(), secret)
 			if setupErr == nil {
 				resume, _ := json.Marshal(claimResume{SetupOperationID: pending.RequestID, SetupRevision: pending.Revision, SetupProof: proof})
-				return networking.ClaimRequestOwner{Owner: networking.LocalOwner{SetupOperationID: pending.RequestID, Epoch: pending.Revision}, Resume: string(resume), Guard: func(ctx context.Context, tx *sql.Tx) error {
+				actor := networking.ClaimRequestOwner{Owner: networking.LocalOwner{SetupOperationID: pending.RequestID, Epoch: pending.Revision}, WebOrigin: d.ownerSwitchWebOrigin(r), SetupStart: &networking.SetupStartAuthority{RequestID: pending.RequestID, Revision: pending.Revision, CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
+					return networkingOwnerStartError(id.CaptureSetupClaimTx(ctx, tx, pending, proof, original, start, audience))
+				}, BindTx: func(ctx context.Context, tx *sql.Tx, operation, transaction string) error {
+					return networkingOwnerStartError(id.BindSetupClaimTransactionTx(ctx, tx, pending, proof, operation, transaction))
+				}}, Resume: string(resume), Guard: func(ctx context.Context, tx *sql.Tx) error {
 					return id.CheckSetupClaimTx(ctx, tx, pending.RequestID, pending.Revision, proof)
-				}}, nil
+				}}
+				if d.Hosted != nil && d.Networking != nil && actor.WebOrigin != "" {
+					actor.ResolveSetupReturn = func(ctx context.Context) error {
+						_, err := d.Hosted.PrepareSetupCompletion(ctx, d.Networking, secret, actor.WebOrigin)
+						return networkingOwnerStartError(err)
+					}
+				}
+				return actor, nil
 			}
 		}
 

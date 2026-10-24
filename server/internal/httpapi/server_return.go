@@ -45,6 +45,7 @@ type porticoReturnRequest struct {
 	ExpectedRevision int64                       `json:"expectedRevision,string,omitempty"`
 	MoveTicket       string                      `json:"moveTicket,omitempty"`
 	MoveCode         string                      `json:"moveCode,omitempty"`
+	Setup            *serverreturn.SetupExchange `json:"-"`
 	Owner            *serverreturn.OwnerExchange `json:"-"`
 }
 
@@ -62,6 +63,18 @@ func (q *porticoReturnRequest) UnmarshalJSON(raw []byte) error {
 		}
 	}
 	if _, owner := fields["state"]; owner {
+		var purpose string
+		if json.Unmarshal(fields["purpose"], &purpose) != nil {
+			return identity.ErrDirectInput
+		}
+		if purpose == "setup" {
+			var next serverreturn.SetupExchange
+			if json.Unmarshal(raw, &next) != nil {
+				return identity.ErrDirectInput
+			}
+			q.Setup = &next
+			return nil
+		}
 		var next serverreturn.OwnerExchange
 		if json.Unmarshal(raw, &next) != nil {
 			return identity.ErrDirectInput
@@ -88,7 +101,7 @@ func (porticoReturnRequest) JSONSchema() map[string]any {
 		panic(err)
 	}
 	normal["additionalProperties"] = false
-	return map[string]any{"oneOf": []any{normal, (serverreturn.OwnerExchange{}).JSONSchema()}}
+	return map[string]any{"oneOf": []any{normal, (serverreturn.OwnerExchange{}).JSONSchema(), (serverreturn.SetupExchange{}).JSONSchema()}}
 }
 
 func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
@@ -145,6 +158,10 @@ func (d Dependencies) serverReturnRoutes(mux *http.ServeMux) {
 		var q porticoReturnRequest
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
+			return
+		}
+		if q.Setup != nil {
+			d.completeSetupReturnHTTP(w, r, *q.Setup)
 			return
 		}
 		if q.Owner != nil {
@@ -212,6 +229,30 @@ func (d Dependencies) completeOwnerReturnHTTP(w http.ResponseWriter, r *http.Req
 		return
 	}
 	out, err := d.Hosted.ExchangeOwnerCompletion(r.Context(), d.Networking, strings.TrimPrefix(authorization, "Bearer "), origin, q)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	d.Hosted.MembershipChanged()
+	writeAuth(w, r, http.StatusOK, out)
+}
+func (d Dependencies) completeSetupReturnHTTP(w http.ResponseWriter, r *http.Request, q serverreturn.SetupExchange) {
+	installation := r.Header.Get("X-Portico-Installation-Id")
+	authorization := r.Header.Get("Authorization")
+	if d.Hosted == nil || d.Networking == nil || len(r.Header.Values("Authorization")) != 1 || !strings.HasPrefix(authorization, "Bearer ") || strings.ContainsAny(strings.TrimPrefix(authorization, "Bearer "), " ,\r\n") || len(r.Cookies()) != 0 || len(r.Header.Values("X-Portico-Installation-Id")) != 1 || q.InstallationID != installation {
+		failure(w, identity.ErrUnauthorized)
+		return
+	}
+	origin := d.ownerSwitchWebOrigin(r)
+	if origin == "" {
+		failure(w, identity.ErrUnauthorized)
+		return
+	}
+	if err := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "setup-return", 30); err != nil {
+		setupFailure(w, err)
+		return
+	}
+	out, err := d.Hosted.ExchangeSetupCompletion(r.Context(), d.Networking, strings.TrimPrefix(authorization, "Bearer "), origin, q)
 	if err != nil {
 		failure(w, err)
 		return

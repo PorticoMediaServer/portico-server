@@ -327,6 +327,7 @@ index identity_refresh_device
 index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
+index identity_setup_one_active
 index identity_unknown_attempts_age
 index inventory_analysis_object
 index inventory_analysis_pending
@@ -941,6 +942,7 @@ table identity_refresh_credentials
 table identity_refresh_predecessors
 table identity_refresh_receipts
 table identity_service_outbox
+table identity_setup_completions
 table identity_sign_in_policy
 table identity_state
 table identity_unknown_attempts

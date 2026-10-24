@@ -1,6 +1,6 @@
 {
   "sourceRepository": "PorticoMediaServer/portico-internal",
-  "sourceCommit": "09424c07c20031ef13fffe31b66f90dcbf08ddd0",
+  "sourceCommit": "835536254702a46a1ecfa4f5031cd49041cb2290",
   "importMapping": {
     "portico.local/hosted/internal/serverreturn": "portico.local/server/internal/serverreturn",
     "portico.local/hosted/internal/wirejson": "portico.local/server/internal/wirejson"
@@ -9,9 +9,9 @@
     {
       "source": "hosted-services/hosted/claimweb/protocol.go",
       "target": "server/internal/claimweb/protocol.go",
-      "sourceBlob": "a6eee6cb9e7cdb7f7c23d6cd20eb542aa02d8bf2",
-      "sourceSHA256": "fee2194a47b4108f3c02263e0c530b5ca06e90ce11bb411ed96c660507e64ab6",
-      "targetSHA256": "ecdb7cb80504535d2d5c938df0c31cde6228951698e7b4dc70e01ab3e3141d9a"
+      "sourceBlob": "a3f851a38ee4a568f43897d65047edb36d776a3c",
+      "sourceSHA256": "21be130bceeb5e222fd573659a1ada5c407c1d356aa510c8ddd562ed067fad92",
+      "targetSHA256": "2cfba69039a0f3483ffd288155417dad6aa74f71213d65dfddca77412d4957c2"
     },
     {
       "source": "hosted-services/hosted/claimweb/owner_start.go",
@@ -65,16 +65,16 @@
     {
       "source": "hosted-services/hosted/claimweb/pending_request.go",
       "target": "server/internal/claimweb/pending_request.go",
-      "sourceBlob": "6a780dbd495f08fe367945a1f32ede793272e2eb",
-      "sourceSHA256": "3d97970bbc09d01be592a30aaba882802ed19aecbc37960d1ca8a925a6ba8250",
-      "targetSHA256": "1c19ee225c044c76277ff562263a491f82a7d73c1361c0e06779554c6878f5bc"
+      "sourceBlob": "e984725474160d151f610b6423234cdb8357597a",
+      "sourceSHA256": "fdf1e2c8917a775f00d74b9c1688e6c1ed25664e774200c2074346bbae29b908",
+      "targetSHA256": "1cfd1065c8d2d108cc27c63858bc83c33832ed9a68689855f7e5fd75789bb2d0"
     },
     {
       "source": "hosted-services/hosted/claimweb/pending_request_test.go",
       "target": "server/internal/claimweb/pending_request_test.go",
-      "sourceBlob": "41174fab55938ad25b1071988b8cf8430db710d8",
-      "sourceSHA256": "e33d2057e64531ea1fad971b2fedde9e7145dfd4af9a507b83110ba18d2c4897",
-      "targetSHA256": "e33d2057e64531ea1fad971b2fedde9e7145dfd4af9a507b83110ba18d2c4897"
+      "sourceBlob": "9bf51b3429b2feb3debd92f682952b1ffa348d30",
+      "sourceSHA256": "cb193cbe2e95b0fd40a371134f75e85a2a43747ebe346339910dacbca20da8dd",
+      "targetSHA256": "cb193cbe2e95b0fd40a371134f75e85a2a43747ebe346339910dacbca20da8dd"
     },
     {
       "source": "hosted-services/hosted/internal/serverreturn/registration.go",
@@ -100,16 +100,30 @@
     {
       "source": "hosted-services/hosted/internal/serverreturn/owner_exchange.go",
       "target": "server/internal/serverreturn/owner_exchange.go",
-      "sourceBlob": "1b80090b54d7f1770299e04a362cff60023a7f85",
-      "sourceSHA256": "ceb4c426f05087ed8f64646cc60ca2d559f64b7fd963a3163b0632554f8a0fce",
-      "targetSHA256": "cf0cfa5dc774252d3e0c5f42a46b6a57d7cb9e7956cb3650d45d432965a05eba"
+      "sourceBlob": "a3ced6e60a1d2dca474ca1883e3370d71a3c8b5d",
+      "sourceSHA256": "ad7aa8d70ee72326fdbbeef9de7906b77c66500ac41aa4d189178a6ab13bf9ea",
+      "targetSHA256": "65ecacedec9c5ed16b4505fe5dc2425ccc4490bf937392b1ea44a4c256b5295f"
+    },
+    {
+      "source": "hosted-services/hosted/internal/serverreturn/setup_exchange.go",
+      "target": "server/internal/serverreturn/setup_exchange.go",
+      "sourceBlob": "d3ae2ee159f877d87934bf28fbc4f371e6ef5381",
+      "sourceSHA256": "946b5ecb62db44b39774b8aba065a752206e098b51ce6c026f98c3065a854662",
+      "targetSHA256": "6da327f3c0431b43b2279d85cd991ee0cba66b8d763c11097a8cde3386df9e0a"
+    },
+    {
+      "source": "hosted-services/hosted/internal/serverreturn/setup_exchange_test.go",
+      "target": "server/internal/serverreturn/setup_exchange_test.go",
+      "sourceBlob": "3e738d21d0404cec8c9dccccfea6bb3314525dc6",
+      "sourceSHA256": "ca4f9ded25356faf535b40be7e925f9c0759d4ed89a4b934165dcae14e0d4bf2",
+      "targetSHA256": "ca4f9ded25356faf535b40be7e925f9c0759d4ed89a4b934165dcae14e0d4bf2"
     },
     {
       "source": "hosted-services/hosted/internal/serverreturn/owner_exchange_test.go",
       "target": "server/internal/serverreturn/owner_exchange_test.go",
-      "sourceBlob": "d9728de5b08a2998cdfe056e55f73d031980adac",
-      "sourceSHA256": "023b9cb32c0f751566984bdee5d091850888891bc46555c649e785d01d3664bf",
-      "targetSHA256": "023b9cb32c0f751566984bdee5d091850888891bc46555c649e785d01d3664bf"
+      "sourceBlob": "90a886953d6d7bf5770aac2f766523b2230f70ac",
+      "sourceSHA256": "7ccff6b15f6d180cc582d64e43ef5c6d0fd8514a94d7da0ae3c9902f87485fb6",
+      "targetSHA256": "7ccff6b15f6d180cc582d64e43ef5c6d0fd8514a94d7da0ae3c9902f87485fb6"
     },
     {
       "source": "hosted-services/hosted/internal/wirejson/object.go",

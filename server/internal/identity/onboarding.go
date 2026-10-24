@@ -378,6 +378,27 @@ func (s *Service) CompleteAccountSetup(ctx context.Context, requestID, secret st
 	}
 	var out DirectSignIn
 	e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		var err error
+		out, err = s.completeAccountSetupTx(ctx, tx, pending, proof, who)
+		return err
+	})
+	if e != nil {
+		return DirectSignIn{}, e
+	}
+	return out, nil
+}
+
+// completeAccountSetupTx is the single owner-admission boundary for both the
+// existing completion API and the protected setup continuation. It uses the
+// caller's writer so challenge spending and durable adoption commit together.
+func (s *Service) completeAccountSetupTx(ctx context.Context, tx *sql.Tx, pending PendingAccountSetup, proof string, who PorticoIdentity) (DirectSignIn, error) {
+	if !validHostedAccountID(who.AccountID) || len(who.Username) < 3 || len(who.Username) > 64 || strings.ContainsAny(who.Username, " \t\r\n@") || !directName(who.Username) || who.Consent == "" || who.SignerKeyID == "" {
+		return DirectSignIn{}, ErrUnauthorized
+	}
+	requestID := pending.RequestID
+	var out DirectSignIn
+	var e error
+	e = func() error {
 		if who.Return != nil {
 			if who.Return.Purpose != "setup" {
 				return ErrUnauthorized
@@ -437,7 +458,7 @@ func (s *Service) CompleteAccountSetup(ctx context.Context, requestID, secret st
 			e = CheckPorticoReturnTx(ctx, tx, who)
 		}
 		return e
-	})
+	}()
 	if e != nil {
 		return DirectSignIn{}, e
 	}

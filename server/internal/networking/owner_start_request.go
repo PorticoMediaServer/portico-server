@@ -32,12 +32,13 @@ func (q *ClaimOwnerStartRequest) UnmarshalJSON(raw []byte) error {
 type ClaimActionRequest struct {
 	Expected         ClaimExpected           `json:"expected"`
 	ApprovalEnvelope string                  `json:"approvalEnvelope,omitempty"`
+	SetupStart       *ClaimSetupStartRequest `json:"setupStart,omitempty"`
 	OwnerStart       *ClaimOwnerStartRequest `json:"ownerStart,omitempty"`
 }
 
 func (q *ClaimActionRequest) UnmarshalJSON(raw []byte) error {
 	*q = ClaimActionRequest{}
-	fields, err := wirejson.Object(raw, "expected", "approvalEnvelope", "ownerStart")
+	fields, err := wirejson.Object(raw, "expected", "approvalEnvelope", "ownerStart", "setupStart")
 	if err != nil {
 		return ErrInvalid
 	}
@@ -57,6 +58,10 @@ func (q *ClaimActionRequest) UnmarshalJSON(raw []byte) error {
 	if d.Decode(&next) != nil {
 		return ErrInvalid
 	}
+	_, hasApproval := fields["approvalEnvelope"]
+	if next.SetupStart != nil && (next.OwnerStart != nil || hasApproval) {
+		return ErrInvalid
+	}
 	*q = ClaimActionRequest(next)
 	return nil
 }
@@ -74,3 +79,24 @@ type OwnerContinuation struct {
 
 func (OwnerContinuation) String() string   { return "[owner continuation redacted]" }
 func (OwnerContinuation) GoString() string { return "[owner continuation redacted]" }
+
+// Setup uses the same protected-state scalar grammar in a separate purpose.
+type ClaimSetupStartRequest ClaimOwnerStartRequest
+
+func (q *ClaimSetupStartRequest) UnmarshalJSON(raw []byte) error {
+	*q = ClaimSetupStartRequest{}
+	var value ClaimOwnerStartRequest
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	*q = ClaimSetupStartRequest(value)
+	return nil
+}
+func (ClaimSetupStartRequest) JSONSchema() map[string]any {
+	return (ClaimOwnerStartRequest{}).JSONSchema()
+}
+
+type SetupContinuation OwnerContinuation
+
+func (SetupContinuation) String() string   { return "[setup continuation redacted]" }
+func (SetupContinuation) GoString() string { return "[setup continuation redacted]" }

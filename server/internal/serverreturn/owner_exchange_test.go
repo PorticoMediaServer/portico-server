@@ -57,7 +57,6 @@ func TestOwnerExchangeRejectsMixedOrIncompleteRequests(t *testing.T) {
 		strings.Replace(valid, `"state"`, `"State"`, 1),
 		strings.Replace(valid, `"state":"`+owner.State+`",`, "", 1),
 		strings.Replace(valid, `"state":"`+owner.State+`"`, `"state":null`, 1),
-		strings.Replace(valid, `"purpose":"switch"`, `"purpose":"setup"`, 1),
 		strings.Replace(valid, `"purpose":"switch"`, `"purpose":"change-owner"`, 1),
 		strings.Replace(valid, `"purpose":"switch"`, `"purpose":"sign-in"`, 1),
 		strings.Replace(valid, owner.Verifier, "short", 1),

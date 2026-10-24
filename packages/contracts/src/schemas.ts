@@ -113463,6 +113463,70 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "setupContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "state": {
         "type": "string"
       }
@@ -164179,6 +164243,61 @@ export const schemas = {
           "purpose"
         ],
         "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "installationId": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "purpose": {
+            "const": "setup",
+            "type": "string"
+          },
+          "registrationId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "serverChallenge": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "transactionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "verifier": {
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "state",
+          "verifier",
+          "registrationId",
+          "installationId",
+          "serverChallenge",
+          "purpose"
+        ],
+        "type": "object"
       }
     ]
   },
@@ -176185,6 +176304,70 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "setupContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "state": {
         "type": "string"
       }
@@ -176330,6 +176513,70 @@ export const schemas = {
         "type": "object"
       },
       "ownerContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "setupContinuation": {
         "properties": {
           "claim": {
             "properties": {
@@ -176604,6 +176851,70 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "setupContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "state": {
         "type": "string"
       }
@@ -176752,6 +177063,70 @@ export const schemas = {
         "type": "object"
       },
       "ownerContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "setupContinuation": {
         "properties": {
           "claim": {
             "properties": {
@@ -177098,6 +177473,70 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "setupContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "state": {
         "type": "string"
       }
@@ -177112,65 +177551,128 @@ export const schemas = {
     "type": "object"
   },
   "PostNetworkingClaimWebApprovalRequest": {
-    "additionalProperties": false,
-    "properties": {
-      "approvalEnvelope": {
-        "type": "string"
-      },
-      "expected": {
+    "oneOf": [
+      {
         "additionalProperties": false,
         "properties": {
-          "localGeneration": {
+          "approvalEnvelope": {
             "type": "string"
           },
-          "operationId": {
-            "type": "string"
+          "expected": {
+            "additionalProperties": false,
+            "properties": {
+              "localGeneration": {
+                "type": "string"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "localGeneration",
+              "revision"
+            ],
+            "type": "object"
           },
-          "revision": {
-            "type": "string"
+          "ownerStart": {
+            "additionalProperties": false,
+            "properties": {
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "codeChallenge",
+              "installationId"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "operationId",
-          "localGeneration",
-          "revision"
+          "expected"
         ],
         "type": "object"
       },
-      "ownerStart": {
+      {
         "additionalProperties": false,
         "properties": {
-          "codeChallenge": {
-            "maxLength": 43,
-            "minLength": 43,
-            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
-            "type": "string"
+          "expected": {
+            "additionalProperties": false,
+            "properties": {
+              "localGeneration": {
+                "type": "string"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "localGeneration",
+              "revision"
+            ],
+            "type": "object"
           },
-          "installationId": {
-            "maxLength": 128,
-            "minLength": 32,
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "type": "string"
-          },
-          "state": {
-            "maxLength": 43,
-            "minLength": 43,
-            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
-            "type": "string"
+          "setupStart": {
+            "additionalProperties": false,
+            "properties": {
+              "codeChallenge": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+                "type": "string"
+              },
+              "installationId": {
+                "maxLength": 128,
+                "minLength": 32,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "state": {
+                "maxLength": 43,
+                "minLength": 43,
+                "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "codeChallenge",
+              "installationId"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "state",
-          "codeChallenge",
-          "installationId"
+          "expected",
+          "setupStart"
         ],
         "type": "object"
       }
-    },
-    "required": [
-      "expected"
-    ],
-    "type": "object"
+    ]
   },
   "PostNetworkingClaimWebApprovalResponse": {
     "properties": {
@@ -177277,6 +177779,70 @@ export const schemas = {
         "type": "object"
       },
       "ownerContinuation": {
+        "properties": {
+          "claim": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "returnRegistration": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "origin"
+            ],
+            "type": "object"
+          },
+          "start": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "transactionId",
+          "phase",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "setupContinuation": {
         "properties": {
           "claim": {
             "properties": {

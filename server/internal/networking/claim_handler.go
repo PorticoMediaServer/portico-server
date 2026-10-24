@@ -32,10 +32,12 @@ type ClaimRequestOwner struct {
 	// opaque note of the sign-in that asked, never a credential.
 	Resume string
 	// OwnerStart is a captured live family capability, never client input.
+	SetupStart *SetupStartAuthority
 	OwnerStart *OwnerStartAuthority
 	// ResolveOwnerReturn is a captured same-origin local-owner callback. It
 	// obtains the actual installed HTTPS resolver fact after installation.
 	ResolveOwnerReturn func(context.Context) error
+	ResolveSetupReturn func(context.Context) error
 	// CancelOwnerReturnTx can retire only the captured installed continuation.
 	// It never authorizes cancelling the installed central claim.
 	CancelOwnerReturnTx func(context.Context, *sql.Tx, string) error
@@ -70,6 +72,7 @@ type ClaimStatus struct {
 	ApprovalRequired         bool                  `json:"approvalRequired"`
 	Actions                  []string              `json:"actions"`
 	ApprovalRequest          *ClaimApprovalRequest `json:"approvalRequest,omitempty"`
+	SetupContinuation        *SetupContinuation    `json:"setupContinuation,omitempty"`
 	OwnerContinuation        *OwnerContinuation    `json:"ownerContinuation,omitempty"`
 }
 type ClaimHandler struct {
@@ -272,13 +275,18 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 			address = actor.WebOrigin
 		}
 		var pending localWebClaim
-		if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
+		if body.SetupStart != nil {
+			if expected.Purpose != "setup" || actor.SetupStart == nil || actor.WebOrigin == "" || body.OwnerStart != nil || body.ApprovalEnvelope != "" || len(r.Header.Values("X-Portico-Installation-Id")) != 1 || body.SetupStart.InstallationID != r.Header.Get("X-Portico-Installation-Id") {
+				return ClaimStatus{}, ErrInvalid
+			}
+			pending, e = h.beginSetupWebClaim(ctx, expected, actor.WebOrigin, body.SetupStart.State, body.SetupStart.CodeChallenge, body.SetupStart.InstallationID, actor.SetupStart)
+		} else if expected.Purpose == "switch" && expected.CurrentOwnerAccountID == "" {
 			if body.OwnerStart == nil || actor.OwnerStart == nil || actor.WebOrigin == "" || body.ApprovalEnvelope != "" || len(r.Header.Values("X-Portico-Installation-Id")) != 1 || body.OwnerStart.InstallationID != r.Header.Get("X-Portico-Installation-Id") {
 				return ClaimStatus{}, ErrInvalid
 			}
 			pending, e = h.beginOwnerWebClaim(ctx, expected, address, body.OwnerStart.State, body.OwnerStart.CodeChallenge, body.OwnerStart.InstallationID, actor.OwnerStart)
 		} else {
-			if body.OwnerStart != nil {
+			if body.OwnerStart != nil || body.SetupStart != nil {
 				return ClaimStatus{}, ErrInvalid
 			}
 			pending, e = h.beginWebClaim(ctx, expected, address)
@@ -289,12 +297,15 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 		status, e := h.snapshot(ctx)
 		status.ApprovalURL = pending.URL
 		status.ClaimCode = pending.Code
+		if pending.SetupStart != nil {
+			status.SetupContinuation = &SetupContinuation{TransactionID: pending.SetupTransactionID, Phase: "prepared", ExpiresAt: pending.ExpiresAt.UTC().Format(time.RFC3339Nano), Claim: &pending.Signed, Start: pending.SetupStart}
+		}
 		if pending.OwnerStart != nil {
 			status.OwnerContinuation = &OwnerContinuation{TransactionID: pending.OwnerTransactionID, Phase: "prepared", ExpiresAt: pending.ExpiresAt.UTC().Format(time.RFC3339Nano), Claim: &pending.Signed, Start: pending.OwnerStart}
 		}
 		return status, e
 	}
-	if body.OwnerStart != nil {
+	if body.OwnerStart != nil || body.SetupStart != nil {
 		return ClaimStatus{}, ErrInvalid
 	}
 	if r.URL.Path == "/v1/networking/claim/approve" {
@@ -343,6 +354,15 @@ func (h *ClaimHandler) handle(ctx context.Context, w http.ResponseWriter, r *htt
 	} else {
 		var next Intent
 		next, e = coordinator.Step(ctx)
+		if e == nil && next.Purpose == "setup" && next.Stage == Installed && next.InstallationAcknowledged && actor.ResolveSetupReturn != nil {
+			var captured bool
+			if e = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_setup_completions WHERE operation_id=? AND phase IN('prepared','installed'))`, next.OperationID).Scan(&captured); e == nil && captured {
+				e = actor.ResolveSetupReturn(ctx)
+				if errors.Is(e, ErrUnavailable) {
+					e = nil
+				}
+			}
+		}
 		if e == nil && next.Stage == Installed && next.InstallationAcknowledged && actor.ResolveOwnerReturn != nil {
 			var captured bool
 			if e = h.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_owner_completions WHERE operation_id=? AND phase='installed')`, next.OperationID).Scan(&captured); e == nil && captured {
@@ -445,6 +465,23 @@ func (h *ClaimHandler) snapshot(ctx context.Context) (ClaimStatus, error) {
 	result.AccountID = v.AccountID
 	result.InstallationAcknowledged = v.InstallationAcknowledged
 	result.Actions = []string{}
+	var setup SetupContinuation
+	var setupExpires int64
+	var setupRegistration, setupOrigin string
+	se := tx.QueryRowContext(ctx, `SELECT transaction_id,phase,expires_ms,registration_id,registration_origin FROM identity_setup_completions WHERE operation_id=?`, v.OperationID).Scan(&setup.TransactionID, &setup.Phase, &setupExpires, &setupRegistration, &setupOrigin)
+	if se != nil && !errors.Is(se, sql.ErrNoRows) {
+		return ClaimStatus{}, se
+	}
+	if se == nil {
+		setup.ExpiresAt = time.UnixMilli(setupExpires).UTC().Format(time.RFC3339Nano)
+		if setupRegistration != "" && setupOrigin != "" {
+			setup.ReturnRegistration = &serverreturn.Registration{ID: setupRegistration, Origin: setupOrigin}
+		}
+		result.SetupContinuation = &setup
+		if setup.Phase != "prepared" && setup.Phase != "installed" {
+			return result, nil
+		}
+	}
 	var continuation OwnerContinuation
 	var expires int64
 	var registration, origin string
