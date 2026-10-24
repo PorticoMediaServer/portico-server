@@ -332,6 +332,7 @@ index inventory_analysis_object
 index inventory_analysis_pending
 index inventory_artwork_candidates_asset
 index inventory_artwork_candidates_entity
+index inventory_artwork_candidates_order
 index inventory_artwork_sources_entity
 index inventory_artwork_sources_role
 index inventory_changes_source
