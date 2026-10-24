@@ -111,7 +111,11 @@ export class ListeningService {
  private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();
   if(s.mode==='local'||s.channel){const reset=this.lastRateKey!==''&&this.state.rate!==1;this.lastRateKey='';this.heldRate=undefined;if(this.state.rate!==1)this.publish({rate:1});if(reset&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(1);return;}
   if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
-  if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
+  if(this.state.rate!==rate)this.publish({rate});
+  // A subscriber can replace playback synchronously while the rate publishes.
+  const current=this.playback.getSnapshot();
+  if(this.state.context!==c||current.mode==='local'||current.channel||current.itemId!==s.itemId||current.session?.id!==s.session?.id||current.session?.generation!==s.session?.generation||current.playbackRun!==s.playbackRun)return;
+  if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
  private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel||p.mode==='local'?'':p.itemId??'';
   const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;

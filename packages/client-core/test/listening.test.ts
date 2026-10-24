@@ -234,6 +234,15 @@ test('late server context and chapter responses cannot rebind a local source',as
  assert.equal(g.engine.policies.at(-1).preferences,null);assert.equal(g.engine.policies.at(-1).timer,null);
 });
 
+test('a synchronous local replacement during rate publication cannot apply the retired book rate',async t=>{
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});
+ let replaced=false;
+ f.service.subscribe(()=>{if(!replaced&&f.service.getSnapshot().rate===1.5){replaced=true;f.engine.update({mode:'local'});}});
+ await settle();
+ assert.equal(replaced,true);assert.equal(f.service.getSnapshot().context,null);assert.equal(f.service.getSnapshot().rate,1);
+ assert.equal(f.engine.rates.includes(1.5),false);
+});
+
 test('a listening journey keeps millisecond resume and drops only unknown actions',()=>{
  const result=parseListeningJourney({target:{libraryId:'library',kind:'book',id:'book'},actions:['play','future','play'],resume:{itemId:'part',positionMs:123500},resumeUnavailable:false},'library');
  assert.deepEqual(result.actions,['play']);
