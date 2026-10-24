@@ -17,22 +17,26 @@ import (
 	"portico.local/server/internal/linearbuffer"
 	"portico.local/server/internal/linearinput"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
-// Exercise the real rolling HLS origin -> shared gateway -> confined probe ->
-// confined copy/mux -> private publisher path beyond the configured startup
+// Exercise the real rolling HLS origin -> shared gateway -> owned probe ->
+// owned copy/mux -> private publisher path beyond the configured startup
 // buffer. A finite three-second probe cannot establish this continuation.
-func TestConfinedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
+func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
 	defer cancel()
-	if !decoder.CheckConfinement(ctx) {
-		decodertest.Unavailable(t, "decoder confinement unavailable")
-	}
 	ffmpeg, ffprobe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
 	ffmpeg, _ = filepath.EvalSymlinks(ffmpeg)
 	ffprobe, _ = filepath.EvalSymlinks(ffprobe)
+	// The production media owner selects the execution posture. Do not skip a
+	// valid baseline host or force a required sandbox off to run this test.
+	if err := decoder.RequiredConfinement(ffmpeg); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("production decoder sandboxed=%t", mediaexec.Decide(ffmpeg).Sandboxed)
 	libraries, err := decoder.ResolveLibraries(ffmpeg, ffprobe, nil)
 	if err != nil {
 		t.Fatal(err)
