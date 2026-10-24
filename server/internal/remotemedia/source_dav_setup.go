@@ -70,6 +70,10 @@ const (
 // fence. A full pacing window separates the stopped serve's requests from these
 // at-most-three direct origin requests; no independent concurrent pacer exists.
 func (d *DAV) DiagnoseSetupRanges(ctx context.Context, file DAVEntry, test *ExclusiveTest, rps int, bps int64, check func(context.Context) error) (SetupRangeSupport, error) {
+	return d.diagnoseSetupRanges(ctx, file, test, rps, bps, check, nil)
+}
+
+func (d *DAV) diagnoseSetupRanges(ctx context.Context, file DAVEntry, test *ExclusiveTest, rps int, bps int64, check func(context.Context) error, headers http.Header) (SetupRangeSupport, error) {
 	if d == nil || !d.policy.SourceEndpoints || test == nil || test.Operations() == nil || check == nil || file.Directory || file.Deleted || file.Size < 1 || file.Relative == "" || rps < 1 || rps > 50 || bps < 0 || bps > 1_000_000_000 {
 		return SetupRangeUnknown, ErrPolicy
 	}
@@ -106,7 +110,12 @@ func (d *DAV) DiagnoseSetupRanges(ctx context.Context, file DAVEntry, test *Excl
 		if err != nil {
 			return SetupRangeUnknown, err
 		}
-		response, err := client.Request(ctx, http.MethodGet, nil, http.Header{"Range": []string{fmt.Sprintf("bytes=%d-%d", start, start+length-1)}})
+		requestHeaders := headers.Clone()
+		if requestHeaders == nil {
+			requestHeaders = make(http.Header)
+		}
+		requestHeaders.Set("Range", fmt.Sprintf("bytes=%d-%d", start, start+length-1))
+		response, err := client.request(ctx, http.MethodGet, nil, requestHeaders, headers != nil)
 		if err != nil {
 			client.Close()
 			return SetupRangeUnknown, err

@@ -11,10 +11,10 @@ const server = (platform: 'web' | 'phone' | 'tv') => settingsStructure({owner: t
 const page = (pages: readonly SettingsPage[], id: string) => pages.find(p => p.id === id);
 const rowIds = (p: SettingsPage) => p.sections.flatMap(s => s.rows.map((r: SettingsRow) => (r.kind === 'server-setting' ? `${r.form}.${r.key}` : r.kind === 'custom' ? r.id : '')));
 
-test('the web has one page for keys, members\' tokens, webhooks and assistants', () => {
+test('the web groups keys, webhooks and assistants without the retired member-token controls', () => {
   const integrations = page(server('web'), 'integrations')!;
-  assert.deepEqual(integrations.tabs?.map(x => x.id), ['keys', 'tokens', 'webhooks', 'assistants']);
-  assert.deepEqual(rowIds(integrations), ['server.apiKeys', 'runtime.apiRequestsPerMinute', 'server.memberTokens', 'runtime.blockMemberAccessTokens', 'server.webhooks', 'server.assistants']);
+  assert.deepEqual(integrations.tabs?.map(x => x.id), ['keys', 'webhooks', 'assistants']);
+  assert.deepEqual(rowIds(integrations), ['server.apiKeys', 'runtime.apiRequestsPerMinute', 'server.webhooks', 'server.assistants']);
   // People keeps accounts and invitations; keys moved out.
   assert.deepEqual(page(server('web'), 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices']);
 });
@@ -139,9 +139,9 @@ test('a list setting takes an entry once, trimmed, and never an empty one', () =
 
 test('the second-pass rows are where an owner would look', () => {
   const web = server('web');
-  assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
-  // Phones and tablets have the approval switch and the list of everyone's devices, as the web does.
-  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
+  assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['server.devices']);
+  // Phones and tablets retain the device list; the retired approval switch is absent on both surfaces.
+  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['server.devices']);
   for (const id of ['runtime.sessionStorageMiB', 'runtime.ffmpegPath', 'runtime.temporaryDirectory', 'runtime.hardwareBackend']) assert.ok(rowIds(page(web, 'streaming')!).includes(id), id);
   for (const id of ['liveDefaults.importLimits.channels', 'liveDefaults.importLimits.programmes', 'liveDefaults.importLimits.bytes']) assert.ok(rowIds(page(web, 'live')!).includes(id), id);
   assert.ok(rowIds(page(web, 'general')!).includes('server.restart'));

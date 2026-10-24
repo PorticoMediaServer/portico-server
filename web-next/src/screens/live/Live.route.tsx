@@ -1,7 +1,7 @@
-import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
-import {dayStarts, localDayStart, layoutRow, legacyChannel, legacyChannelRow, legacyProgram, pxPerMsFor, rulerTicks, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
+import {dayStarts, localDayStart, legacyChannel, legacyChannelRow, legacyProgram, pxPerMsFor, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {dayPrimeTime} from '@core/channel-guide.ts';
 import type {GuideSourceSummaries} from '@core/guide/directory.ts';
 import type {LegacyGuideOptions} from '@core/guide/legacy-source.ts';
@@ -11,20 +11,20 @@ import {useQuietRefresh} from '../../platform/freshness';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
-import {Artwork, ChannelMark} from '../../kit/artwork';
-import {Button, Chip, Segmented, Select, TextField} from '../../kit/controls';
+import {Artwork} from '../../kit/artwork';
+import {Button} from '../../kit/controls';
 import {BottomSheet, SidePanel} from '../../kit/overlays';
-import {Skeleton, StateView} from '../../kit/states';
+import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
-import {LiveRecordingTabs} from './SeriesRules';
 import {SeriesRulesEntry} from './SeriesRulesEntry';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
-import {liveListPrograms, liveProgramWindow} from './program-window';
+import {liveProgramWindow} from './program-window';
 import {LiveOnNow} from './OnNow';
+import {GuideScreen, type GuideRowData} from './GuideScreen';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
@@ -59,9 +59,6 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     const filtersChanged = ['sourceId', 'kind', 'group', 'favorites', 'q'].some(key => Object.hasOwn(change, key));
     if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), ...(filtersChanged ? {channelId: undefined} : {}), ...change}, replace: true, resetScroll: false}).catch(context.effects.reportError);
   }, [context, searchKey]);
-  const [draft, setDraft] = useState(search.q ?? '');
-  useEffect(() => setDraft(search.q ?? ''), [search.q]);
-  useEffect(() => {if (draft === (search.q ?? '')) return;const timer = setTimeout(() => navigate({q: draft.trim() || undefined}), 180);return () => clearTimeout(timer);}, [draft, search.q, navigate]);
   const [start, setStart] = useState(nowStart), [now, setNow] = useState(Date.now), [selected, setSelected] = useState<Selected>();
   useEffect(() => {const timer = setInterval(() => setNow(Date.now()), 30_000);return () => clearInterval(timer);}, []);
   useEffect(() => {
@@ -74,18 +71,14 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     }).catch(error => {if (!request.signal.aborted) context.effects.reportError(error);});
     return () => request.abort();
   }, [context, owner, search.sourceId, search.channelId, search.kind]);
-  const viewport = useRef<HTMLDivElement>(null), [windowSize, setWindowSize] = useState({width: 1, height: 480}), [scrollTop, setScrollTop] = useState(0);
-  useLayoutEffect(() => {
-    const element = viewport.current;if (!element) return;
-    const measure = () => setWindowSize({width: element.clientWidth, height: element.clientHeight});
-    const observer = new ResizeObserver(measure);observer.observe(element);measure();return () => observer.disconnect();
-  }, [owner, sources?.length]);
   const phone = width < 600, column = phone ? 60 : width < 1024 ? 180 : 284, rowHeight = phone ? 72 : width < 1024 ? 62 : 76;
+  const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, width - column) / scale;
   const view = search.view ?? 'guide';
-  const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, windowSize.width - column) / scale;
   const {start: readStart, end: readEnd} = liveProgramWindow(view, start, end, now);
-  const first = Math.max(0, Math.floor(scrollTop / rowHeight) - 1), count = Math.ceil(windowSize.height / rowHeight) + 3;
-  const last = Math.max(first, Math.min(first + count - 1, (snapshot.total ?? count) - 1));
+  // The guide body scrolls with the page; the loaded window is the visible rows.
+  const [visible, setVisible] = useState({first: 0, last: Math.max(0, Math.ceil(640 / rowHeight))});
+  const onVisibleWindow = useCallback((first: number, last: number) => setVisible(old => old.first === first && old.last === last ? old : {first, last}), []);
+  const first = visible.first, last = visible.last;
   useEffect(() => owner.store.setViewport({firstRow: first, lastRow: last, start: readStart, end: readEnd}), [owner, first, last, readStart, readEnd]);
   useEffect(() => {
     if (!search.channelId || selected?.owner === owner) return;
@@ -97,7 +90,6 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
       return;
     }
   }, [owner, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now]);
-  const drag = useRef<Readonly<{x: number; y: number; start: number}> | undefined>(undefined), moved = useRef(false);
   const currentSelection = selected?.owner === owner ? selected : undefined;
   useQuietRefresh('live-guide', async refresh => {
     await refresh.settle();
@@ -109,12 +101,6 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     episode: programme.episode ? {mode: 'seasonal', season: programme.episode.season, episode: programme.episode.number} : undefined,
     subtitle: programme.subtitle, categories: programme.categories, year: programme.year, rating: programme.rating, flags: programme.flags, recording: programme.recording?.state === 'recording'},
   {t, locale: defaultI18n.region.formatLocale, timeZone: timezone});
-  const mark = (channel: GuideChannelRow) => {
-    const native = legacyChannel(channel);
-    const actual = channel.mark;
-    return actual && native ? <ChannelMark mark={{sourceId: native.sourceId, id: native.id, ...actual}} size={phone ? 36 : 34}/>
-      : <span className={styles.mark} aria-hidden="true"/>;
-  };
   const play = (channel: GuideChannelRow) => {
     const actual = legacyChannel(channel), playback = captured.binding.playback;
     if (!actual || !playback || !owner.life.current()) return;
@@ -123,7 +109,28 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const ends = selectedSources.map(source => Date.parse(source.availableEnd));
   const through = ends.length && ends.every(value => Number.isFinite(value)) ? Math.min(...ends) : undefined;
   const days = through === undefined ? [] : dayStarts(now, through, timezone);
+  const throughDay = through === undefined ? undefined : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(through - 1);
   const hasSources = !!sources?.length;
+  const total = snapshot.total ?? Math.max(1, last + 1);
+  const rows: GuideRowData[] = [];
+  for (let index = first; index <= last; index++) {
+    const channel = owner.store.channelAt(index), page = owner.store.programsFor(index, readStart, readEnd);
+    rows.push({index, ...(channel ? {channel} : {}), programs: page.programs, complete: page.complete, failed: page.failed});
+  }
+  const favoriteCount = selectedSources.reduce((sum, source) => sum + source.favoriteCount, 0);
+  const chips = [
+    {id: 'all', label: t('channels.filterAll'), count: snapshot.total, selected: !search.group && !search.favorites, onSelect: () => navigate({group: undefined, favorites: undefined})},
+    {id: 'favorites', label: t('channels.favorites'), favorites: true, count: favoriteCount, selected: search.favorites === true, onSelect: () => navigate({favorites: !search.favorites || undefined, group: undefined})},
+    ...groups.map(([group, count]) => ({id: `group:${group}`, label: group, count, selected: search.group === group, onSelect: () => navigate({group, favorites: undefined})})),
+  ];
+  const sourceOptions = [{value: 'all', label: t('channels.all')},
+    ...(sources ?? []).map(source => ({value: JSON.stringify(['source', source.provenance, source.id]), label: source.provenance === 'library-channel' ? t('channels.custom.name') : source.name}))];
+  const switchSource = (value: string) => {
+    const source = sources?.find(source => JSON.stringify(['source', source.provenance, source.id]) === value);
+    if (source) navigate({sourceId: source.id, kind: source.provenance, channelId: undefined, group: undefined});
+    else if (value === 'all') navigate({sourceId: undefined, kind: undefined, channelId: undefined, group: undefined});
+  };
+  const sourceName = search.sourceId ? selectedSources[0]?.provenance === 'library-channel' ? t('channels.custom.name') : selectedSources[0]?.name : t('channels.all');
   const body = currentSelection && <>
     {currentSelection.programme ? <p className={styles.facts}>{facts(currentSelection.programme).map(part => <span key={part.id}>{part.text}</span>)}</p> : <p>{t('guide.noInformation')}</p>}
     {currentSelection.programme?.description && <p>{currentSelection.programme.description}</p>}
@@ -132,74 +139,36 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const footer = currentSelection && currentSelection.channel.tuneAvailable && captured.binding.playback
     ? <Button variant="primary" icon="i-play" onClick={() => play(currentSelection.channel)}>{t(!currentSelection.programme || currentSelection.programme.start > now ? 'guide.watchChannel' : 'guide.watchLive')}</Button> : undefined;
   if (authorityFailure) return <ScreenProblem context={context} error={authorityFailure} retry={() => setAttempt(value => value + 1)}/>;
-  return <section className={styles.live}>
-    <header className={styles.header}><h1>{t('next.home.shell.live')}</h1>
-      {sources && <Select aria-label={t('channels.source')} value={search.sourceId ? JSON.stringify(['source', selectedSources[0]?.provenance, search.sourceId]) : 'all'} options={[{value: 'all', label: t('channels.all')}, ...sources.map(source => ({value: JSON.stringify(['source', source.provenance, source.id]), label: source.provenance === 'library-channel' ? t('channels.custom.name') : source.name}))]}
-        onValueChange={value => {const source = sources.find(source => JSON.stringify(['source', source.provenance, source.id]) === value);
-          if (source) navigate({sourceId: source.id, kind: source.provenance, channelId: undefined, group: undefined});
-          else if (value === 'all') navigate({sourceId: undefined, kind: undefined, channelId: undefined, group: undefined});}}/>}
-      {hasSources && <p className={styles.sourceFacts}><strong>{t('next.live.sources', {count: selectedSources.length})}</strong>{through !== undefined && <span>{t('next.live.guideThrough', {day: new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(through - 1)})}</span>}</p>}
-    </header>
-    <LiveRecordingTabs view="guide" onChange={tab => {if (tab === 'recordings') navigate({tab});}}/>
-    {failed === owner ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setAttempt(value => value + 1)}}/>
-      : sources && !sources.length ? <StateView title={t('channels.noSourcesTitle')} body={t(context.identity?.viewer.role === 'owner' ? 'channels.noSourcesOwner' : 'channels.noSourcesMember')}/>
-        : <>
-          <div className={styles.chips}><Chip selected={!search.group && !search.favorites} onClick={() => navigate({group: undefined, favorites: undefined})}>{t('channels.filterAll')}</Chip>
-            <Chip icon="i-star" selected={search.favorites === true} count={selectedSources.reduce((sum, source) => sum + source.favoriteCount, 0)} onClick={() => navigate({favorites: !search.favorites || undefined, group: undefined})}>{t('channels.favorites')}</Chip>
-            {groups.slice(0, 6).map(([group, count]) => <Chip key={group} selected={search.group === group} count={count} onClick={() => navigate({group, favorites: undefined})}>{group}</Chip>)}
-            {groups.length > 6 && <Select aria-label={t('next.live.moreGroups')} placeholder={t('next.live.moreGroups')} value={groups.slice(6).some(([group]) => group === search.group) ? search.group : undefined}
-              options={groups.slice(6).map(([group, count]) => ({value: group, label: group, description: defaultI18n.number(count)}))} onValueChange={group => navigate({group, favorites: undefined})}/>}
-          </div>
-          {width >= 1024 && hasSources && <LiveOnNow owner={owner} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
+  return <>
+    {failed === owner ? <div className={styles.guideState}><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setAttempt(value => value + 1)}}/></div>
+      : sources && !sources.length ? <div className={styles.guideState}><StateView title={t('channels.noSourcesTitle')} body={t(context.identity?.viewer.role === 'owner' ? 'channels.noSourcesOwner' : 'channels.noSourcesMember')}/></div>
+        : <GuideScreen title={t('next.home.shell.live')}
+          switcher={hasSources ? {value: search.sourceId ? JSON.stringify(['source', selectedSources[0]?.provenance, search.sourceId]) : 'all', options: sourceOptions, onChange: switchSource} : undefined}
+          summary={hasSources ? {name: sourceName ?? t('channels.all'), ...(snapshot.total !== undefined ? {channels: snapshot.total} : {}), ...(throughDay ? {through: t('next.live.guideThrough', {day: throughDay})} : {})} : undefined}
+          onTabChange={() => navigate({tab: 'recordings'})}
+          chips={chips}
+          onNow={width >= 1024 && hasSources ? <LiveOnNow owner={owner} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
             onOpen={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, programme});}}
-            onPlay={captured.binding.playback ? play : undefined}/>}
-          <div className={styles.controls}><div className={styles.stepper}><Button variant="icon" size="small" icon="i-left" iconOnly aria-label={t('guide.earlier')} onClick={() => setStart(value => value - 2 * 60 * 60_000)}/><Button variant="text" size="small" onClick={() => setStart(nowStart())}>{t('guide.now')}</Button><Button variant="icon" size="small" icon="i-right" iconOnly aria-label={t('guide.later')} onClick={() => setStart(value => value + 2 * 60 * 60_000)}/></div>
-            {days.length > 0 && <Select aria-label={t('guide.day')} value={String(localDayStart(start, timezone))}
-              options={days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)}))}
-              onValueChange={value => {const day = days.find(day => String(day) === value);if (day !== undefined) setStart(dayPrimeTime(day, timezone));}}/>}
-            <TextField aria-label={t('web.live.findChannel')} placeholder={t('web.live.findChannel')} maxLength={120} value={draft} onChange={event => setDraft(event.currentTarget.value)}/>
-            <div className={styles.end}>{snapshot.total !== undefined && <span>{t('player.info.channels', {count: snapshot.total})}</span>}
-              <Select aria-label={t('channels.sort')} value={search.sort ?? 'number'} options={[{value: 'number', label: t('channels.sortNumber')}, {value: 'name', label: t('channels.sortName')}, {value: 'favorites', label: t('channels.favorites')}]}
-                onValueChange={sort => {if (sort === 'number' || sort === 'name' || sort === 'favorites') navigate({sort});}}/>
-              <Segmented variant="view" aria-label={t('channels.view')} value={view} onValueChange={view => {if (view === 'guide' || view === 'list') navigate({view});}}
-                items={[{value: 'guide', label: t('channels.viewGuide'), icon: 'i-grid'}, {value: 'list', label: t('channels.viewList'), icon: 'i-list'}]}/></div>
-          </div>
-          {snapshot.channelsError && <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => owner.store.retry()}}/>}
-          {snapshot.total === 0 && <StateView title={t('channels.filterEmptyTitle', {filter: search.group ?? (search.favorites ? t('channels.favorites') : search.q ?? t('channels.all'))})}
-            primary={{id: 'all', label: t('channels.showAll'), onPress: () => navigate({group: undefined, favorites: undefined, q: undefined})}}/>}
-          <div className={styles.guide} style={{'--live-channel': `${column}px`, '--live-row': `${rowHeight}px`} as CSSProperties}>
-            {view === 'guide' && <div className={styles.ruler}><span>{phone ? <Button className={styles.dockedNow} variant="text" size="xs" onClick={() => setStart(nowStart())}>{t('guide.now')}</Button> : t('guide.channelColumn')}</span><div className={styles.lane}>{rulerTicks(start, end, scale, timezone).map(tick => <span key={tick.atMs} className={styles.tick} style={{left: tick.x}}>{defaultI18n.time(tick.atMs)}</span>)}</div></div>}
-            <div className={styles.viewport} ref={viewport} onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
-              onPointerDown={event => {if (event.pointerType === 'touch') {drag.current = {x: event.clientX, y: event.clientY, start};moved.current = false;}}}
-              onPointerMove={event => {const initial = drag.current;if (!initial || Math.abs(event.clientX - initial.x) < 8 || Math.abs(event.clientY - initial.y) > Math.abs(event.clientX - initial.x)) return;
-                moved.current = true;event.currentTarget.setPointerCapture(event.pointerId);setStart(initial.start - (event.clientX - initial.x) / scale);}}
-              onPointerUp={() => {drag.current = undefined;}} onPointerCancel={() => {drag.current = undefined;}}
-              onClickCapture={event => {if (moved.current) {event.preventDefault();event.stopPropagation();moved.current = false;}}}>
-              <div className={styles.rows} style={{height: Math.max(0, snapshot.total ?? count) * rowHeight}}>
-                {Array.from({length: Math.max(0, last - first + 1)}, (_, offset) => {
-                  const index = first + offset, channel = owner.store.channelAt(index), page = owner.store.programsFor(index, readStart, readEnd);
-                  const programs = page.programs, cells = page.complete ? layoutRow(programs, {viewStart: start, viewEnd: end, pxPerMs: scale, now, gapPx: 2, ...(width < 1024 ? {tiers: {full: 50, title2: 50, title: 24}} : {})}) : [];
-                  return <div key={index} className={styles.row} style={{top: index * rowHeight}} data-live-channel-id={channel?.id}>
-                    <div className={styles.channel}>{channel ? <>{mark(channel)}<span><b>{channel.name}</b><small>{channel.number}{!phone && channel.group && <span>{channel.group}</span>}</small></span></> : <Skeleton width={phone ? 36 : 180} height={34}/>}</div>
-                    <div className={styles.lane}>{!channel || !page.complete ? <Skeleton width="100%" height={rowHeight - 8}/> : view === 'guide' ? <>
-                      {now >= start && now < end && <i className={styles.nowLine} style={{left: (now - start) * scale}}/>}
-                      {cells.map(cell => <button key={`${cell.start}:${cell.end}`} className={styles.cell} data-state={cell.state} data-gap={cell.kind === 'gap' || undefined} data-tier={cell.tier}
-                        style={{left: cell.x, width: cell.width}} type="button" aria-label={cell.program?.title ?? t('guide.noInformation')}
-                        onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme: cell.program});}}>
-                        <b>{cell.program?.title ?? t('guide.noInformation')}</b>{cell.tier === 'full' && cell.program && <small>{facts(cell.program).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new', 'premiere', 'recording'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</small>}
-                      </button>)}
-                    </> : <div className={styles.listPrograms}>{liveListPrograms(programs, now).map((programme, slot) => programme
-                      ? <button key={slot} type="button" onClick={() => {if (owner.life.current()) setSelected({owner, channel, programme});}}><small>{defaultI18n.time(programme.start)}</small><b>{programme.title}</b><span>{facts(programme).filter(part => ['episode-label', 'programme-subtitle', 'live', 'new'].includes(part.id)).map(part => <span key={part.id}>{part.text}</span>)}</span></button>
-                      : <span key={slot} className={styles.listGap}>{slot === 0 ? t('guide.noInformation') : undefined}</span>)}</div>}</div>
-                  </div>;
-                })}
-              </div>
-            </div>
-          </div>
-        </>}
+            onPlay={captured.binding.playback ? play : undefined}/> : undefined}
+          day={{label: t('guide.day'), value: String(localDayStart(start, timezone)),
+            options: days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)})),
+            onChange: value => {const day = days.find(day => String(day) === value);if (day !== undefined) setStart(dayPrimeTime(day, timezone));}}}
+          sort={{value: search.sort ?? 'number', options: [{value: 'number', label: t('channels.sortNumber')}, {value: 'name', label: t('channels.sortName')}, {value: 'favorites', label: t('channels.favorites')}],
+            onChange: sort => {if (sort === 'number' || sort === 'name' || sort === 'favorites') navigate({sort});}}}
+          problem={snapshot.channelsError ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => owner.store.retry()}}/> : undefined}
+          empty={snapshot.total === 0 ? <StateView title={t('channels.filterEmptyTitle', {filter: search.group ?? (search.favorites ? t('channels.favorites') : search.q ?? t('channels.all'))})}
+            primary={{id: 'all', label: t('channels.showAll'), onPress: () => navigate({group: undefined, favorites: undefined, q: undefined})}}/> : undefined}
+          view={view} onViewChange={view => navigate({view})}
+          time={{earlier: t('guide.earlier'), now: t('guide.now'), later: t('guide.later'), onEarlier: () => setStart(value => value - 2 * 60 * 60_000), onNow: () => setStart(nowStart()), onLater: () => setStart(value => value + 2 * 60 * 60_000)}}
+          span={{start, end, now, scale, column, rowHeight, timezone}}
+          rows={rows} total={total}
+          selected={currentSelection ? {channelId: currentSelection.channel.id, ...(currentSelection.programme ? {programmeId: currentSelection.programme.id} : {})} : undefined}
+          onSelect={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, ...(programme ? {programme} : {})});}}
+          onPlay={captured.binding.playback ? play : undefined}
+          onVisibleWindow={onVisibleWindow} onRetry={() => owner.store.retry()}/>}
     {phone ? <BottomSheet open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</BottomSheet>
       : <SidePanel open={!!currentSelection} onOpenChange={open => {if (!open) setSelected(undefined);}} title={currentSelection?.programme?.title ?? currentSelection?.channel.name} description={currentSelection?.programme ? currentSelection.channel.name : undefined} footer={footer}>{body}</SidePanel>}
-  </section>;
+  </>;
 }
 function LiveRouteScreen() {
   const captured = useProtectedWebScreenContext();

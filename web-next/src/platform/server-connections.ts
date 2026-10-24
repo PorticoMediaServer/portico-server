@@ -50,7 +50,7 @@ export class BrowserProtectedStore<RecordType> {
   * inside this tab; the database's own transactions are what order two tabs. Nothing here needs
   * to wait on anything but the database, because the record is plain JSON in that case, so the
   * transaction stays open from the read to the write and another tab's change cannot fall between. */
- private changeInOneTransaction(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{
+ private changeInOneTransaction(update:(current:RecordType|undefined)=>RecordType|undefined,beforeCommit?:()=>void):Promise<void>{
   return this.transaction<void>('readwrite',(store,done)=>{
    const read=store.get('selected');
    read.onsuccess=()=>{
@@ -62,6 +62,7 @@ export class BrowserProtectedStore<RecordType> {
      if(record?.version===2&&typeof record.plain==='string'&&record.plain.length<=this.maximumBytes+16){try{current=JSON.parse(record.plain);}catch{current=undefined;}}
      const next=update(current);
      if(next===current){done();return;}
+     beforeCommit?.();
      if(!next){store.delete('selected');done();return;}
      const plain=JSON.stringify(next);if(new TextEncoder().encode(plain).length>this.maximumBytes)throw new Error('Saved server routes exceeded their limit.');
      store.put({version:2,plain} satisfies Vault,'selected');done();
@@ -69,9 +70,9 @@ export class BrowserProtectedStore<RecordType> {
    };
   });
  }
- change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{this.requireEncryption();return this.exclusive(async()=>{
+ change(update:(current:RecordType|undefined)=>RecordType|undefined,beforeCommit?:()=>void):Promise<void>{this.requireEncryption();return this.exclusive(async()=>{
   this.requireEncryption();
-  if(!canEncrypt())return this.changeInOneTransaction(update);
+  if(!canEncrypt())return this.changeInOneTransaction(update,beforeCommit);
   const values=await this.values();
   // A damaged record is treated as absent: a save replaces it, and an update that saves nothing
   // (a cache update, forgetting a sign-in that is not there) leaves it exactly as it is.
@@ -79,11 +80,11 @@ export class BrowserProtectedStore<RecordType> {
   try{current=await this.decode(values);}catch(e){if(!savedConnectionDamaged(e))throw e;damaged=true;}
   const next=update(current);
   if(next===current)return;
-  if(!next){await this.transaction<void>('readwrite',(store,done)=>{store.delete('selected');done();});return;}
+  if(!next){await this.transaction<void>('readwrite',(store,done)=>{beforeCommit?.();store.delete('selected');done();});return;}
   const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>this.maximumBytes)throw new Error('Saved server routes exceeded their limit.');
   let key=this.usable(values.key)?values.key:undefined;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
   const iv=crypto.getRandomValues(new Uint8Array(12));let cipher:ArrayBuffer;try{cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(this.databaseName)},key,bytes);}finally{bytes.fill(0);}
-  await this.transaction<void>('readwrite',(store,done)=>{if(key!==values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
+  await this.transaction<void>('readwrite',(store,done)=>{beforeCommit?.();if(key!==values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});
  });}
 }
 let sessions:AppSessionStore|undefined;
@@ -107,9 +108,9 @@ export function browserAppSessions():AppSessionStore {
  if(sessions)return sessions;
  const vault=new BrowserProtectedStore<AppSessionRecord>('portico.app-sessions.v1',4*1024*1024);
  listenForSessionChanges();
- return sessions=new AppSessionStore({read:()=>vault.read(),change:async update=>{
+ return sessions=new AppSessionStore({read:()=>vault.read(),change:async (update,beforeCommit)=>{
   let changed=false;
-  await vault.change(current=>{const next=update(current);changed=next!==current;return next;});
+  await vault.change(current=>{const next=update(current);changed=next!==current;return next;},beforeCommit);
   if(changed){notifySessions();try{sessionChannel?.postMessage('changed');}catch{/* The durable write remains successful. */}}
  }});
 }

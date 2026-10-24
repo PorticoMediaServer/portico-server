@@ -148,6 +148,9 @@ jobs:
           mkdir -p .toolchain/ffmpeg
           gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz" --dir .toolchain
           tar -xJf .toolchain/*.tar.xz -C .toolchain/ffmpeg
+      - name: Download and verify Sonic for Linux packages
+        if: matrix.os == 'linux'
+        run: python3 scripts/sonic-bundle.py fetch .toolchain/sonic --target '${{ matrix.target }}'
       - name: Restore the release signing key
         env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}', PUBLIC_KEY: '${{ vars.PORTICO_RELEASE_PUBLIC_KEY }}'}
         run: |
@@ -162,7 +165,9 @@ jobs:
       - name: Build and seal the server
         id: build
         run: |
-          result="$(python3 scripts/build-server-release.py --version '${{ needs.identity.outputs.version }}' --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg | tail -1)"
+          sonic_args=()
+          if [ '${{ matrix.os }}' = linux ]; then sonic_args=(--sonic-bundle .toolchain/sonic); fi
+          result="$(python3 scripts/build-server-release.py --version '${{ needs.identity.outputs.version }}' --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg "${sonic_args[@]}" | tail -1)"
           echo "stage=$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['directory'])" "$result")" >> "$GITHUB_OUTPUT"
       - name: Package
         run: ./scripts/package-release.sh '${{ matrix.os }}' '${{ matrix.arch }}' '${{ needs.identity.outputs.version }}' '${{ steps.build.outputs.stage }}' .release/web dist '${{ github.run_number }}'
@@ -238,6 +243,12 @@ jobs:
             tar -xJf ".toolchain/$target"/*.tar.xz -C "$bundle"
             python3 scripts/verify-ffmpeg-manifest.py "$bundle"
             test "$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['target'])" "$bundle/toolchain-manifest.json")" = "$target"
+          done
+      - name: Download and verify Sonic for both image architectures
+        run: |
+          set -euo pipefail
+          for pair in x64:amd64 arm64:arm64; do
+            python3 scripts/sonic-bundle.py fetch "third_party/portico-sonic/bundle/linux-${pair##*:}" --target "linux-${pair%%:*}"
           done
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3

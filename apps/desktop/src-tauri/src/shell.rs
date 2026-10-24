@@ -72,6 +72,18 @@ async fn desktop_network_cost(window:WebviewWindow)->Result<crate::network::Netw
     tauri::async_runtime::spawn_blocking(crate::network::current).await.map_err(|_|Error::EngineUnavailable)
 }
 #[tauri::command]
+async fn desktop_discover(window:WebviewWindow,request_id:u64)->Result<Vec<crate::discovery::DiscoveryRoute>>{
+    caller(&window)?;
+    let browser=window.state::<Arc<crate::discovery::Browser>>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move||browser.browse(request_id).map_err(|_|Error::DiscoveryUnavailable))
+        .await.map_err(|_|Error::DiscoveryUnavailable)?
+}
+#[tauri::command]
+fn desktop_discovery_cancel(window:WebviewWindow,request_id:u64)->Result<()>{
+    caller(&window)?;
+    window.state::<Arc<crate::discovery::Browser>>().cancel(request_id);Ok(())
+}
+#[tauri::command]
 async fn desktop_device_facts(window:WebviewWindow)->Result<crate::device_facts::DeviceFacts>{
     caller(&window)?;
     tauri::async_runtime::spawn_blocking(crate::device_facts::current).await.map_err(|_|Error::EngineUnavailable)
@@ -116,6 +128,7 @@ fn desktop_app_close(window:WebviewWindow)->Result<()>{
     request_shutdown(window.app_handle(),true);Ok(())
 }
 fn request_shutdown(app:&tauri::AppHandle,web_completed:bool){
+    app.state::<Arc<crate::discovery::Browser>>().cancel_all();
     if !app.state::<ShutdownState>().begin_native(){return}
     app.state::<Arc<crate::folder_operations::FolderOperations>>().cancel_all();
     crate::folder_ui::cancel_all();
@@ -422,12 +435,13 @@ pub fn run() {
         .manage(InstallationState(Mutex::new(Err(Error::PreferencesUnavailable))))
         .manage(DownloadsState(Arc::new(Mutex::new(Err(Error::DownloadsUnavailable)))))
         .manage(ShutdownState::default())
+        .manage(Arc::new(crate::discovery::Browser::default()))
         .manage(Arc::new(crate::folder_operations::FolderOperations::default()))
         .manage(Arc::new(crate::window::ChromeState::default()))
         .on_window_event(|window,event|{
             if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_app_close(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_app_close,desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open,desktop_measurement_options,desktop_measurement_write])
+        .invoke_handler(tauri::generate_handler![desktop_app_close,desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_discover,desktop_discovery_cancel,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open,desktop_measurement_options,desktop_measurement_write])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");

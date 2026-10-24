@@ -1,6 +1,26 @@
 import {createWindowedCollection, type WindowedCollection, type PageResult} from '@core/collections/index.ts';
 import {readPerson, type PersonPage, type PersonCredit, type PersonRole} from '@core/people.ts';
+import type {CardFactPresentation} from '../../kit/cards/types';
+import {t} from './text';
 import {screenLifetime, type ScreenContext} from './context';
+
+const castDepartment = (department: string) => /^(acting|cast)$/i.test(department);
+
+/** One drawn credit row: acting reads "as {character}", every other department keeps its role.
+ * The character stays a separate run so the frame's brighter weight is presentation, not copy. */
+export function creditRole(role: Readonly<{role: string; department: string}>, id: string) {
+  const cast = castDepartment(role.department);
+  const text = cast ? t('web.person.as', {character: role.role}) : role.role;
+  if (!cast || !role.role) return {part: {id, text, role: 'context' as const}, presentation: undefined};
+  const at = text.indexOf(role.role);
+  if (at < 0) return {part: {id, text, role: 'context' as const}, presentation: undefined};
+  const runs = [
+    ...(at > 0 ? [{text: text.slice(0, at)}] : []),
+    {text: role.role, emphasis: 'secondary' as const},
+    ...(at + role.role.length < text.length ? [{text: text.slice(at + role.role.length)}] : []),
+  ];
+  return {part: {id, text, role: 'context' as const}, presentation: {[id]: runs} satisfies CardFactPresentation};
+}
 
 type PersonSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'; page?: PersonPage; role: PersonRole; error?: unknown}>;
 /** People and credits are server identities. Paging keeps at most five resident pages per group. */

@@ -1,4 +1,4 @@
-import {ShowWorkspaceService, saveShowSettings, type ShowSettings, type ShowWorkspaceData, type ShowWorkspaceRoute} from '@core/show-workspace.ts';
+import {ShowWorkspaceService, saveShowSettings, type ShowSettings, type ShowWorkspaceData, type ShowWorkspaceRoute, type WorkspaceShow} from '@core/show-workspace.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {createDetailBindings} from './bindings';
 import {screenLifetime, type ScreenContext} from './context';
@@ -6,6 +6,7 @@ import {getContainerState, setContainerFlag, setContainerState, type ContainerSt
 import {createRecommendations} from './recommendations';
 import {titleView} from './view-state';
 import {openGenre} from './genre-binding';
+import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseNode} from '@core/browse.ts';
 import {preferenceValue} from '@core/preferences.ts';
 
 export function createShowBindings(context: ScreenContext) {
@@ -37,6 +38,18 @@ export function createShowBindings(context: ScreenContext) {
   };
   return {
     context, service, episode, primary, current, recommendations, view,
+    async browseFacet(data: ShowWorkspaceData, field: 'network' | 'studio', value: string) {
+      current(data);
+      const actual = field === 'network' ? data.show.network : data.show.studio;
+      if (actual !== value) throw new DOMException('Show fact changed', 'AbortError');
+      if (!context.effects.openBrowse) throw new DOMException('Browse destination unavailable', 'AbortError');
+      const active = life.signal(), capabilities = parseBrowseCapabilities(await life.api.request(browseCapabilitiesPath(data.scope.libraryId, ''), 'GET', undefined, active));
+      current(data); active.throwIfAborted();
+      if (capabilities.library.id !== data.scope.libraryId) throw new DOMException('Browse vocabulary changed', 'AbortError');
+      const query: BrowseNode = {field, operator: 'equals', value};
+      validateBrowseQuery(capabilities, query);
+      context.effects.openBrowse({libraryId: data.scope.libraryId, query});
+    },
     browseGenre(data: ShowWorkspaceData, genre: string) {
       current(data);
       if (!data.show.genres?.includes(genre)) throw new DOMException('Show genre changed', 'AbortError');
@@ -121,3 +134,31 @@ export function createShowBindings(context: ScreenContext) {
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;
+
+/**
+ * The drawn Details facts of one show, taken only from the workspace producer's stored
+ * show record. File facts never appear here (ruling: no file details on any page); the
+ * season/episode totals are the visible counts the page already shows.
+ */
+export function showDetailFacts(show: WorkspaceShow, seasonTotalCount: number, language: string) {
+  const displayLanguage = (code?: string) => {
+    if (!code) return undefined;
+    try { return new Intl.DisplayNames(language, {type: 'language'}).of(code) ?? code; } catch { return code; }
+  };
+  const creators = [...new Map((show.credits ?? [])
+    .filter(credit => /creator|created by|showrunner/i.test(`${credit.department ?? ''} ${credit.role ?? ''}`))
+    .map(credit => [credit.name.toLocaleLowerCase(language), credit])).values()];
+  return Object.freeze({
+    firstAired: show.firstAired,
+    status: show.status,
+    network: show.network,
+    studio: show.studio,
+    country: show.country,
+    genres: show.genres ?? Object.freeze([]),
+    creators: Object.freeze(creators),
+    rating: show.contentRating,
+    language: displayLanguage(show.originalLanguage),
+    onServer: seasonTotalCount > 0 ? Object.freeze({seasons: seasonTotalCount, episodes: show.episodeCount}) : undefined,
+    addedAt: show.addedAt,
+  });
+}

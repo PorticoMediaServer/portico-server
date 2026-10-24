@@ -1,0 +1,25 @@
+/* See all: Recommended for you — design/ui-v1/desktop-browse.html#seeall, 1440 wide.
+   The drawn header (`.sa-head`) sits over the kit browse page: a back link, the 64px
+   title, the server's why line with its titles in bold, Play and Shuffle. The ambient
+   wash is the page's own artwork, so it stops behind the header like the frame. */
+.homeRow { position: relative; isolation: isolate; min-height: 100dvh; padding-bottom: 72px; }
+.ambient { position: absolute; inset: 0 0 auto; height: 560px; pointer-events: none; z-index: -1;
+  -webkit-mask-image: linear-gradient(180deg, var(--color-ink) 0%, transparent 100%); mask-image: linear-gradient(180deg, var(--color-ink) 0%, transparent 100%); }
+.header { position: relative; z-index: 1; padding: 104px var(--shell-gutter, var(--gutter-desktop)) 0; }
+/* The frame's `.back`: 15px/700 with the 18px left arrow, pulled 4px past the gutter. */
+.back.back[data-size='small'] { --control-height: 29px; --control-inset: 8px; --control-gap: 4px; --control-icon: 18px; --control-radius: 8px; margin-left: -4px; padding-left: 2px; color: var(--color-text-secondary); }
+.back.back[data-size='small']:hover:not(:disabled) { color: var(--color-text); }
+.title { margin: 14px 0 12px; font-size: var(--type-lockup-long-size); line-height: calc(var(--type-lockup-long-size) * .98); font-weight: var(--type-lockup-long-weight); letter-spacing: var(--type-lockup-long-tracking); }
+.why { max-width: 760px; margin: 0 0 26px; color: var(--color-text-secondary); font-size: var(--type-synopsis-size); line-height: var(--type-synopsis-line); }
+.why strong { color: var(--color-text); font-weight: var(--type-row-heading-weight); }
+.actions { display: flex; align-items: center; gap: 12px; }
+/* Frame 46a: the back row sits over the wash, the 34px title and 14px why line follow,
+   then Play and Shuffle share one full-width row before the toolbar's own chip rows. */
+@media (max-width: 599px) {
+  .header { padding: 98px 20px 0; }
+  .header > .back { position: absolute; top: 0; left: 16px; height: 58px; padding-inline: 0; }
+  .title { margin: 0 0 8px; font-size: var(--type-display-size); line-height: calc(var(--type-display-size) * 1.05); letter-spacing: var(--type-banner-title-tracking); }
+  .why { margin: 0; font-size: var(--type-body-strong-size); line-height: var(--type-body-strong-line); }
+  .actions { margin: 0; padding: 14px 0 4px; gap: 10px; }
+  .actions > * { flex: 1 1 0; height: 46px; border-radius: 10px; font-size: var(--type-body-strong-size); }
+}

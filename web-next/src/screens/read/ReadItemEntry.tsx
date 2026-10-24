@@ -1,5 +1,6 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
+import {generatedCoverTint} from '@design';
 import type {ReadingManifest, ReadingProgress} from '@portico/client-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -10,6 +11,7 @@ import {Skeleton, StateView} from '../../kit/states';
 import {ReadBookFacts, ReadBookHero, ReadBookSections} from '../../kit/reader/ReadBookHero';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
+import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 const {t} = defaultI18n;
@@ -41,19 +43,26 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
   const manifest = detail.manifest, version = eligibility.versions.find(version => version.sourceId === sourceId);
   if (!manifest || !version) return <Skeleton height={480}/>;
+  const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
+  const tint = generatedCoverTint(title);
   const saved = detail.progress?.progress;
   const progression = saved && !saved.stale && saved.sourceRevision === manifest.revision ? saved.location.progression : undefined;
   const open = () => {if (captured.context.isCurrent()) void router.navigate(readDestination(eligibility.itemId, manifest.sourceId)).catch(captured.binding.home.effects.reportError);};
-  return <><ReadBookHero title={manifest.metadata.title ?? ''} author={manifest.metadata.author ? {name: manifest.metadata.author} : undefined} facts={[]}
+  /** No Version control with one file (notes/read-web.md); the details keep format and size. */
+  const chooseVersion = eligibility.versions.length > 1;
+  const details = <ReadBookFacts heading={t('next.reader.details')} facts={[
+    ...(author ? [{id: 'author', label: t('filter.field.author'), value: author}] : []),
+    {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
+    {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
+  ]}/>;
+  return <><ReadBookHero title={title} author={author ? {name: author} : undefined} facts={[]}
+    ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} onClick={open}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={open}>{t('next.reader.read')}</Button>}
-    under={<><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
+    under={chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => setSourceId(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>
-        {candidate.format.toUpperCase()}</MenuItem>)}</Menu></>}/>
-    <ReadBookSections details={<ReadBookFacts heading={t('next.reader.details')} facts={[
-      {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
-      {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
-    ]}/>}/></>;
+        {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : undefined}/>
+    <ReadBookSections contents={<span hidden/>} details={details}/></>;
 }

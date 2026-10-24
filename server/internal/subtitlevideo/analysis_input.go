@@ -3,10 +3,18 @@ package subtitlevideo
 import (
 	"context"
 	"io"
+	"path/filepath"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/subtitles"
 )
+
+// AnalysisConfigured is a necessary startup configuration check only. It does
+// not qualify codec/filter support or authorize an input. New records the
+// resolved absolute executable; an unresolved tool must not advertise work.
+func (r *Runtime) AnalysisConfigured() bool {
+	return r != nil && filepath.IsAbs(r.ffmpeg)
+}
 
 // AnalysisDecoder exposes the already-retained, root/configuration-fenced input
 // bridge to P11A without granting analysis any subtitle or playback authority.

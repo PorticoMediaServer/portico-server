@@ -2,6 +2,18 @@
 # General admitted-job recipe. All installs/downloads stay in that job's TMPDIR;
 # an optional caller-owned dependency cache may be supplied explicitly.
 set -euo pipefail
+# Distribution mode verifies the actual already-built bundle on its native
+# architecture, using references exported once from the original checkpoint.
+if [ "${1:-}" = --bundle ]; then
+  if [ "$#" != 4 ]; then echo 'Usage: --bundle DIRECTORY REFERENCE TARGET' >&2; exit 2; fi
+  root="$(cd "$(dirname "$0")/.." && pwd)"
+  bundle="$(realpath "$2")"
+  python3 "$root/scripts/check-sonic-bundle-conformance.py" --bundle "$bundle" --reference "$3" --target "$4"
+  export PORTICO_SONIC_HELPER_TEST="$bundle/portico-sonic" PORTICO_SONIC_MODEL_TEST="$bundle/musicnn-mtt"
+  (cd "$root/server" && GOMAXPROCS=1 GOMEMLIMIT=1200MiB GOFLAGS="-p=1 -trimpath" \
+    go test -count=1 ./internal/sonic -run '^TestRuntimeActual(CPUAndCurrentVerifiedModel|CancellationRetiresHelperAndInput)$')
+  exit
+fi
 : "${TMPDIR:?Run inside an admitted isolated build job}"
 ulimit -c 0
 cpu="${PORTICO_SONIC_TEST_CPU:-no-avx}"

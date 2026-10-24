@@ -20,11 +20,12 @@ path = "src/bin/engine-proof.rs"
 
 [features]
 default = []
-shell = ["dep:tauri", "dep:tauri-build", "dep:gtk", "dep:webkit2gtk"]
+shell = ["dep:tauri", "dep:tauri-build", "dep:gtk", "dep:webkit2gtk", "dep:portico-desktop-discovery"]
 custom-protocol = ["shell", "tauri/custom-protocol"]
 updater = ["shell", "dep:tauri-plugin-updater"]
 
 [dependencies]
+portico-desktop-discovery = { path = "discovery", optional = true }
 libloading = "=0.9.0"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"

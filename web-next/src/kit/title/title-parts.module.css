@@ -2,7 +2,7 @@
 .prose[data-variant=hero] { font-size: 17px; line-height: 1.55; margin: 18px 0; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-size: var(--type-meta-size); color: var(--color-text-secondary); margin: 0 0 16px; }
 .facts [data-fact=year] { color: var(--color-text); font-weight: 700; }
-.facts [data-fact=kind],.facts [data-fact=content-rating] { padding: 3px 9px; border-radius: 6px; border: 1px solid var(--color-line-strong); font-size: var(--type-tag-size); font-weight: var(--type-tag-weight); color: var(--color-text); }
+.facts [data-fact=kind],.facts [data-fact=content-rating] { padding: 3px 9px; border-radius: 6px; border: 1px solid color-mix(in srgb,var(--color-text) 28%,transparent); font-size: var(--type-tag-size); line-height: normal; font-weight: var(--type-tag-weight); color: var(--color-text); }
 .searchHero { width: 100%; position: relative; height: 380px; border-radius: 18px; overflow: hidden; background: var(--color-raised); display: flex; align-items: center; }
 .searchHero > :first-child { position: absolute; inset: 0; }
 .searchCopy { position: relative; padding-left: 56px; width: 640px; max-width: 100%; }

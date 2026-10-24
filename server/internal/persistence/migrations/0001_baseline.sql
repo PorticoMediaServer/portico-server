@@ -3481,7 +3481,17 @@ CREATE TABLE remote_sources(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('rclone','webdav','sftp','smb')),name TEXT NOT NULL,root TEXT NOT NULL UNIQUE,
  generation INTEGER NOT NULL DEFAULT 1,config BLOB,state TEXT NOT NULL DEFAULT 'ready',error_code TEXT NOT NULL DEFAULT '',
  range_support TEXT NOT NULL DEFAULT 'unknown',origin TEXT NOT NULL DEFAULT '',insecure INTEGER NOT NULL DEFAULT 0,
- credential_present INTEGER NOT NULL DEFAULT 0,mount_id TEXT NOT NULL DEFAULT '',removed INTEGER NOT NULL DEFAULT 0) STRICT;
+ credential_present INTEGER NOT NULL DEFAULT 0,mount_id TEXT NOT NULL DEFAULT '',removed INTEGER NOT NULL DEFAULT 0,
+ webdav_leaf_count INTEGER CHECK(webdav_leaf_count BETWEEN 0 AND 32)) STRICT;
+CREATE TABLE remote_source_webdav_tests(
+ source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
+ source_generation TEXT NOT NULL CHECK(length(source_generation)>0),
+ config_digest TEXT NOT NULL CHECK(length(config_digest)=64 AND config_digest NOT GLOB '*[^0-9a-f]*'),
+ leaf_remote TEXT NOT NULL CHECK(length(leaf_remote) BETWEEN 1 AND 8192),
+ object_path TEXT NOT NULL CHECK(length(object_path)<=8192),object_size INTEGER NOT NULL CHECK(object_size>=0),
+ range_support TEXT NOT NULL CHECK(range_support IN('unknown','conditional','unsupported')),
+ observed_ms INTEGER NOT NULL CHECK(observed_ms>0),PRIMARY KEY(source_id,leaf_remote),
+ CHECK(range_support!='conditional' OR (object_path!='' AND object_size>0))) STRICT;
 CREATE TABLE remote_source_operations(operation_id TEXT PRIMARY KEY,actor TEXT NOT NULL,fingerprint TEXT NOT NULL,response TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_listing_sessions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,directory TEXT NOT NULL,ready INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(job_id,directory)) STRICT;
 CREATE TABLE remote_native_listings(listing_id TEXT PRIMARY KEY REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,owner TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('running','complete','failed')),error_code TEXT NOT NULL DEFAULT '',entries INTEGER NOT NULL DEFAULT 0,bytes INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL) STRICT;

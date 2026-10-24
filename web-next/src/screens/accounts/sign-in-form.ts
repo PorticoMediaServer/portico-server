@@ -1,7 +1,7 @@
 import type {BrowserAccountEntry} from '../../platform/account-entry';
 import {RequiredFactorForm} from './required-factor';
 
-type SignInPort = Pick<BrowserAccountEntry, 'getSnapshot' | 'subscribeAuthorityRetired' | 'signIn' | 'completeChallenge' | 'beginRequiredTwoStep' | 'confirmRequiredTwoStep'>;
+type SignInPort = Pick<BrowserAccountEntry, 'getSnapshot' | 'subscribeAuthorityRetired' | 'signIn' | 'redeemLocalMove' | 'resetLocalPassword' | 'completeChallenge' | 'beginRequiredTwoStep' | 'confirmRequiredTwoStep'>;
 export type SignInFormState = Readonly<{username: string; inputEpoch: number; busy: boolean; factor?: RequiredFactorForm}>;
 
 /** Only the live submitted password bridges password/MFA to required setup.
@@ -31,11 +31,24 @@ export class AccountSignInForm {
       await factor.enrol();
     } else if (phase !== 'challenge') this.#password = '';
   }
-  async signIn(username: string, password: string) {
-    if (this.disposed || this.state.busy || !username || !password || this.entry.getSnapshot().phase !== 'password') return;
+  signIn(username: string, password: string) {return this.submit(username, password, 'password', this.entry.signIn.bind(this.entry));}
+  /** The new Local password belongs only to the already-proved member move. */
+  redeemLocalMove(username: string, password: string) {return this.submit(username, password, 'move-local', this.entry.redeemLocalMove.bind(this.entry));}
+  /** Entry owns the one-use proof, temporary family and ordinary sign-in after reset. */
+  resetMemberPassword(username: string, code: string, password: string, secondFactorCode = '') {
+    if (!code) return Promise.resolve();
+    return this.submit(username, password, 'password', (name, next) => this.entry.resetLocalPassword({kind: 'member', username: name, code}, next, secondFactorCode));
+  }
+  private async submit(username: string, password: string, phase: 'password' | 'move-local', command: (username: string, password: string) => Promise<void>) {
+    if (this.disposed || this.state.busy || !username || !password || this.entry.getSnapshot().phase !== phase) return;
     this.clear(); const epoch = this.epoch; this.#password = password;
     this.publish({...this.state, username, busy: true});
-    try {await this.entry.signIn(username, password); await this.continuation(epoch);}
+    if (this.disposed || this.epoch !== epoch) return;
+    try {
+      await command(username, password);
+      await this.continuation(epoch);
+    }
+    catch (error) {if (!this.disposed && this.epoch === epoch) this.#password = '';throw error;}
     finally {if (!this.disposed && this.epoch === epoch) this.publish({...this.state, busy: false});}
   }
   async completeChallenge(code: string) {

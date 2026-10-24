@@ -235,6 +235,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if request == "" || len(request) > 128 {
 		return Session{}, requestinput.New("requestId is required")
 	}
+	var e error
+	p, e = s.authorizeSourcePreparation(ctx, p, item)
+	if e != nil {
+		return Session{}, e
+	}
 	legacyRequest := request
 	request = sessionRequestKey(p, request)
 	var prepared *remotePreparation
