@@ -221,9 +221,15 @@ test('a failed entry that nonetheless acquired the element is retired before a s
  const next=pip.toggle();element.enter!();await next;assert.equal(doc.pictureInPictureElement,element);
 });
 
-test('actual bound AirPlay availability and activation both refuse page captions and unknown plans',async()=>{
+test('actual bound AirPlay availability and activation both refuse page captions and unknown plans',async t=>{
  const {createWatchPlayOn}=await import('../src/screens/watch/play-on-binding.ts');
- const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');Object.defineProperty(globalThis,'navigator',{value:{userAgent:'Version/18.0 Safari/605.1'},configurable:true});
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator'),previousObserver=Object.getOwnPropertyDescriptor(globalThis,'MutationObserver');let observerStops=0;
+ // Source readiness is driven by the real runtime subscription, not synthetic attribute changes.
+ class Observer{constructor(_callback:MutationCallback){}observe(){}disconnect(){observerStops++;}}
+ Object.defineProperty(globalThis,'MutationObserver',{value:Observer,configurable:true});
+ Object.defineProperty(globalThis,'navigator',{value:{userAgent:'Version/18.0 Safari/605.1'},configurable:true});
+ t.after(()=>{if(previous)Object.defineProperty(globalThis,'navigator',previous);else Reflect.deleteProperty(globalThis,'navigator');
+  if(previousObserver)Object.defineProperty(globalThis,'MutationObserver',previousObserver);else Reflect.deleteProperty(globalThis,'MutationObserver');});
  const listeners=new Set<()=>void>();let live=snapshot(),ready=true,valid=true,picks=0,requests=0;
  const runtime={getSnapshot:()=>live,browserMediaReady:()=>ready,subscribe:(changed:()=>void)=>{listeners.add(changed);return()=>{listeners.delete(changed);};}} as unknown as WebShellPlaybackRuntime;
  class AirVideo extends EventTarget{webkitShowPlaybackTargetPicker=()=>{picks++;};}
@@ -240,5 +246,5 @@ test('actual bound AirPlay availability and activation both refuse page captions
   live=snapshot({offers:{subtitlePlan:subtitlePlan({renderer:'burn_in'})} as never});changed();assert.equal(owner.controller.getSnapshot().airPlayAvailable,true);owner.controller.startAirPlay();assert.equal(picks,2);
   ready=false;changed();assert.equal(owner.controller.getSnapshot().airPlayAvailable,false);owner.controller.startAirPlay();assert.equal(picks,2);
   ready=true;valid=false;changed();assert.throws(()=>owner.controller.startAirPlay(),/authority_retired/);assert.equal(picks,2);assert.equal(requests,0);
- }finally{owner.dispose();if(previous)Object.defineProperty(globalThis,'navigator',previous);else Reflect.deleteProperty(globalThis,'navigator');}
+ }finally{owner.dispose();assert.equal(observerStops,1);assert.equal(listeners.size,0);}
 });

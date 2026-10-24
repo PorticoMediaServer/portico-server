@@ -169,7 +169,8 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   pipLive.current = {runtime, snapshot};
   const pipDocument = typeof document === 'undefined' ? undefined : document as PictureInPictureDocument;
   const pipSupported = browserPictureInPictureSupported(pipDocument, settingsPlatform()?.environment.platform);
-  const pipReady = pipSupported && pictureInPictureReady(runtime, snapshot);
+  const pipReady = pipSupported && !!video.current?.isConnected && !video.current.disablePictureInPicture
+    && typeof video.current.requestPictureInPicture==='function' && pictureInPictureReady(runtime, snapshot);
   const pipOperations = useMemo(() => pipDocument && pipSupported ? createPictureInPictureOperations({
     document: pipDocument,
     element: () => video.current,
