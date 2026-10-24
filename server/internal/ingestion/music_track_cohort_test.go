@@ -27,11 +27,15 @@ func TestMusicTrackCohortRequiresCompleteCurrentDirectoryObservation(t *testing.
 		}
 		return storage.InventoryPage{Complete: complete, DirectoryIdentity: snapshot.ObjectIdentity, DirectoryRevision: storage.InventoryRevision(snapshot), Entries: []storage.Snapshot{{Name: "101 - One.flac"}, {Name: "102 - Two.flac"}, {Name: "201 - Three.flac"}, {Name: "cover.jpg"}}}
 	}
-	s.noteDirectoryPage("job", "Album", "", page(false))
+	partial := page(false)
+	partial.Entries = partial.Entries[:1]
+	s.noteDirectoryPage("job", "Album", "", partial)
 	if _, known := s.scanMusicTracksListed(context.Background(), "job", source)(directory); known {
 		t.Fatal("partial listing trusted")
 	}
-	s.noteDirectoryPage("job", "Album", "next", page(true))
+	remaining := page(true)
+	remaining.Entries = remaining.Entries[1:]
+	s.noteDirectoryPage("job", "Album", "next", remaining)
 	names, known := s.scanMusicTracksListed(context.Background(), "job", source)(directory)
 	if !known || len(names) != 3 {
 		t.Fatal(names, known)
