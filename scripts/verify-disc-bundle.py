@@ -2,6 +2,7 @@
 """Run each target's bundled disc probe against checked, hash-pinned fixtures."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -128,8 +129,10 @@ def main():
             {entry['id'] for entry in fixtures} != REQUIRED):
         raise ValueError('the two-clip BDMV, two-title DVD and UDF 2.50 ISO fixtures are required')
     results = []
+    checked_paths = {}
     for entry in fixtures:
         path = fixture_path(args.fixtures.parent, entry)
+        checked_paths[entry['id']] = path
         result = run_helper(tool, 'probe', path)
         # Exact parsed JSON comes from the video-owned checked schema/fixture
         # producer. Do not invent field names, title facts or permissive subsets.
@@ -166,6 +169,13 @@ def main():
     report = {'target': target, 'toolSha256': digest(tool),
               'fixtureManifestSha256': digest(args.fixtures),
               'supplementalFixtureManifestSha256': digest(supplemental_path), 'fixtures': results}
+    spec = importlib.util.spec_from_file_location('bluray_protocol_verifier', Path(__file__).with_name('verify-ffmpeg-bluray.py'))
+    protocol = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(protocol)
+    ffmpeg = args.bundle.resolve() / 'bin' / ('ffmpeg.exe' if target.startswith('windows-') else 'ffmpeg')
+    report['blurayProtocol'] = protocol.qualify(ffmpeg, checked_paths)
+    for entry in fixtures:
+        fixture_path(args.fixtures.parent, entry)
     if args.report:
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
     print('Verified disc fixtures for ' + target)

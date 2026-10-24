@@ -2,6 +2,7 @@
 """Repeat the Linux source build with one sealed dependency/compiler input."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -74,6 +75,15 @@ def main():
               '--enable-nvenc', '--enable-nvdec', '--enable-amf']
     options['FF_CONFIGURE'] += ' ' + ' '.join(common)
     source_sha = digest(args.source)
+    object_cache = os.environ.get('PORTICO_FFMPEG_OBJECT_CACHE')
+    cache_fingerprint = None
+    if object_cache:
+        object_cache = Path(object_cache).resolve(strict=True)
+        spec = importlib.util.spec_from_file_location('protocol_object_cache',
+            root / 'scripts/reuse-ffmpeg-protocol-objects.py')
+        cache = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cache)
+        cache_fingerprint = cache.fingerprint(object_cache, lock)
     recovery = None
     prior_inputs = None
     recovered_provenance = None
@@ -116,6 +126,8 @@ def main():
               'dovi-profile-packets.c': root / 'third_party/ffmpeg/tests/dovi-profile-packets.c',
               'portico-dovi-profile.v1.json': root / 'third_party/ffmpeg/portico-dovi-profile.v1.json'}
     fixture_root = root / 'fixtures/video/dovi-metadata'
+    if object_cache:
+        inputs['reuse-ffmpeg-protocol-objects.py'] = root / 'scripts/reuse-ffmpeg-protocol-objects.py'
     contract = json.loads(inputs['portico-dovi-profile.v1.json'].read_text())
     if digest(inputs['dovi-profile-packets.c']) != contract['hostProof']['packetTestSourceSha256']:
         raise ValueError('Qualified packet test source changed')
@@ -152,6 +164,8 @@ def main():
         'sourceArchiveSHA256': source_sha, 'compilerImage': lock['linuxSourceBuild']['compilerImage'],
         'dependencyPrefixFilesSHA256': digest(deps / 'prefix-files.json'),
         'nativeBuildTools': {'glslc': digest(deps / 'extra/glslc')}}
+    if object_cache:
+        input_record['protocolObjectCacheSHA256'] = cache_fingerprint
     if recovery:
         unchanged = {k: v for k, v in hashes.items()
                      if k not in ('build-linux-ffmpeg.py', 'recovery/original-build-linux-ffmpeg.py')}
@@ -242,6 +256,10 @@ export PKG_CONFIG_LIBDIR="$PKG_CONFIG_PATH"
 /opt/ffbuild/bin/ffmpeg -hide_banner -h bsf=dovi_profile > /ffbuild/dovi-profile-help.txt 2>&1
 cat /ffbuild/dovi-profile-packets.json
 '''
+        if object_cache:
+            shell = shell.replace('\nmake -j',
+                '\npython3 /disc/reuse-ffmpeg-protocol-objects.py --cache /protocol-cache '
+                '--source /ffbuild/source --lock /sources.lock.json --expected ' + cache_fingerprint + '\nmake -j', 1)
         if recover_round:
             if command.read_text() != shell or digest(command) != recovery['shellSHA256']:
                 raise ValueError('Recovered compilation shell differs from the fresh build recipe')
@@ -260,6 +278,8 @@ cat /ffbuild/dovi-profile-packets.json
                 '-e', 'TMPDIR=/ffbuild/tmp',
                 '-e', 'PORTICO_DISC_SOURCE_COMMIT=' + os.environ['PORTICO_DISC_SOURCE_COMMIT']]
         (build / 'tmp').mkdir(exist_ok=recover_round)
+        if object_cache:
+            argv += ['-v', str(object_cache) + ':/protocol-cache:ro']
         if (deps / 'extra/glslc').exists():
             argv += ['-v', str(deps / 'extra/glslc') + ':/usr/bin/glslc:ro']
         for key, value in options.items():

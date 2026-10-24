@@ -530,10 +530,10 @@ export { entry as validateContentEntry };
 export { seeAll as parseContentSeeAll };
 
 /** A bounded server ranking, read lazily when its title/artist page asks for it. */
-export async function readListeningSimilar(api:LibraryContentApi,scope:import('./queues.ts').QueueScope,itemId:string,options:{limit?:number;signal?:AbortSignal}={}){
- const q=new URLSearchParams();if(options.limit!==undefined)q.set('limit',String(options.limit));
+export async function readListeningSimilar(api:LibraryContentApi,scope:import('./queues.ts').QueueScope,itemId:string,options:{limit?:number;by?:'sound';signal?:AbortSignal}={}){
+ const q=new URLSearchParams();if(options.limit!==undefined)q.set('limit',String(options.limit));if(options.by!==undefined){if(options.by!=='sound')invalid();q.set('by',options.by);}
  const raw=listeningData(await api.request(encodedRoutePath('get_items_id_similar',{id:encodeURIComponent(itemId)})+(q.size?'?'+q:''),'GET',undefined,options.signal),scope);
- if(!record(raw)||raw.itemId!==itemId||!id(raw.libraryId)||!record(raw.revision)||!count(raw.revision.catalog)||!count(raw.revision.viewer)||!Array.isArray(raw.entries)||raw.entries.length>24)invalid();
- const entries=raw.entries.map(entry);if(entries.some(e=>!['artist','album','book'].includes(e.kind)||e.playback!==undefined))invalid();
- return Object.freeze({itemId,libraryId:raw.libraryId,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),entries:Object.freeze(entries)});
+ if(!record(raw)||raw.itemId!==itemId||!id(raw.libraryId)||!record(raw.revision)||!count(raw.revision.catalog)||!count(raw.revision.viewer)||typeof raw.bySound!=='boolean'||!Array.isArray(raw.entries)||raw.entries.length>24)invalid();
+ const entries=raw.entries.map(entry);if(entries.some(e=>!['artist','album','song','book'].includes(e.kind)||raw.bySound&&e.kind==='book'||e.playback!==undefined))invalid();
+ return Object.freeze({itemId,libraryId:raw.libraryId,bySound:raw.bySound,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),entries:Object.freeze(entries)});
 }

@@ -8,6 +8,7 @@ import {ApiError,HttpLocalApi,type HostedServer,type LocalSession} from './index
 import {credentialLock,installationIdentity} from './installation.ts';
 import {parseLocalSession} from './local-session.ts';
 import {parseServerSignIn} from './sign-in.ts';
+import {parseDirectSnapshot} from './profile-management.ts';
 import {RouteConnection,bindSessionRoute,forgetSessionRoute,sessionRoute,sessionRoute as sessionRouteForRotation,type DiscoveryRoute,type RouteMemory} from './route-connection.ts';
 import {RouteError,routeBase64,probeRoute,routeOrigin,routeJSON,serverPin,sameServerPin,verifyRoutes,webRouteCrypto,type RouteCrypto,type RouteKey,type ServerPin,type SignedRoutes,type VerifiedRoutes} from './route-identity.ts';
 export type RememberedServer = {
@@ -139,8 +140,20 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
   // retried (each retry would rotate a refresh token for nothing). The credential stays.
   const refusedAccess=()=>new RouteError(ACCESS_REFUSED,'This profile no longer has access to this server.');
   const statusOf=(e:unknown)=>(e as {status?:unknown}|null)?.status;
-  let me:Awaited<ReturnType<HttpLocalApi['me']>>;
-  try{me=await api.me();}
+  const validateLiveScope=async()=>{
+   const viewer=record.session.viewer;
+   if(viewer.authority==='local'&&viewer.role==='account'){
+    // Account sign-in has not selected a viewer. Validate this exact live
+    // account through its canonical endpoint; /me correctly refuses it.
+    const snapshot=parseDirectSnapshot(await api.request(routePath('get_direct_account')),
+     {authority:'local',accountId:viewer.accountId,serverId:viewer.serverId});
+    if(snapshot.account.disabled||snapshot.account.primaryProfileId!==viewer.profileId)throw new RouteError('identity_mismatch','The saved account no longer matches this server sign-in.');
+    return;
+   }
+   const me=await api.me();
+   if(JSON.stringify(Object.entries(me.viewer).sort())!==JSON.stringify(Object.entries(viewer).sort()))throw new RouteError('identity_mismatch','The saved viewer no longer matches this server session.');
+  };
+  try{await validateLiveScope();}
   catch(e){
    const status=statusOf(e);
    if(status===403||(status===401&&renewedNow))throw refusedAccess();
@@ -148,10 +161,9 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
    bindSessionRoute(record.session.accessToken,connection);
    const renewed=await refreshStoredSession({env,api,family:{sessionFamilyId:record.session.sessionFamilyId,serverId:record.pin.serverId},rejected:record.session.accessToken});
    record.session=renewed;record.pendingRefresh=undefined;api.setAccessToken(renewed.accessToken);
-   try{me=await api.me();}
+   try{await validateLiveScope();}
    catch(again){const s=statusOf(again);if(s===401||s===403)throw refusedAccess();throw again;}
   }
-  if(JSON.stringify(Object.entries(me.viewer).sort())!==JSON.stringify(Object.entries(record.session.viewer).sort()))throw new RouteError('identity_mismatch','The saved viewer no longer matches this server session.');
   const selectedAfter=await env.storage.read();
   if(!sameSelection(selectedAfter,record)||selectedAfter!.session.accessToken!==record.session.accessToken)throw new RouteError('cancelled','The saved selection changed during reconnect.');
   attachPersistence(connection,env,record,hosted);bindSessionRoute(record.session.accessToken,connection);return {api,session:record.session};
@@ -318,7 +330,7 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   let next:LocalSession;
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId});}
   catch{throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);}
-  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
+  if(next.sessionFamilyId!==session.sessionFamilyId||BigInt(next.tokenGeneration)<=BigInt(session.tokenGeneration)||(session.viewer.role==='account'&&next.viewer.role!=='account')||(next.serverIdentity&&(next.serverIdentity.publicKey!==record.pin.publicKey||next.serverIdentity.fingerprint!==record.pin.fingerprint)))
    throw new SessionRefreshError('refresh_invalid','The renewed sign-in didn’t match this one.',false);
   const connection=sessionRoute(session.accessToken);
   try{

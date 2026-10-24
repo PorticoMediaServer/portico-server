@@ -616,6 +616,14 @@ impl DownloadsSession {
     pub fn active_generation(&self) -> Option<u64> {
         self.active_local.as_ref().map(|p| p.generation)
     }
+    pub fn folder_path(&self,lease:&str)->Result<&Path>{self.viewer(lease)?;Ok(self.store.folder_path())}
+    /// Native chooser result only. An active local decoder keeps its file lifetime;
+    /// changing the app-wide folder must never stop that playback implicitly.
+    pub fn relocate_folder(&mut self,lease:&str,selected:&Path,current:impl Fn()->bool)->Result<()>{
+        self.viewer(lease)?;
+        if self.active_local.is_some(){return Err(Error::DownloadsConflict)}
+        self.store.relocate_files(selected,current)
+    }
     pub fn retire_local_load(&mut self,lease:&str,generation:u64,previous:&crate::boundary::Observation,execute:impl FnOnce()->Result<()>)->Result<()>{
         if !self.lease_current(lease)||self.active_generation()!=Some(generation){return Ok(())}
         execute()?;
