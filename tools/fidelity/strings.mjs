@@ -43,21 +43,27 @@ export function catalogueMatches(screen, catalogue) {
   return stringInventory(screen).map(value => ({...value, catalogueKeys: values.get(value.text) ?? []}));
 }
 
-export function mapScreenStrings(screen, catalogue, {keys = {}, data = {}} = {}) {
+export function mapScreenStrings(screen, catalogue, {keys = {}, data = {}, preferredKeys = [], messageSlots = [], dataValues = []} = {}, formatMessage) {
   const index = new Map();
   for (const [key, value] of Object.entries(catalogue)) if (typeof value === 'string') {const ids = index.get(value) ?? []; ids.push(key); index.set(value, ids);}
   return screen.strings.map(value => {
     const slot = data[value.frame];
     if (slot) return {...value, status: value.text === slot.value ? 'data' : 'data-mismatch', dataSlot: slot.name, expected: slot.value};
+    const literal = dataValues.find(slot => typeof slot.name === 'string' && slot.value === value.text);
+    if (literal) return {...value, status: 'data', dataSlot: literal.name, expected: literal.value};
+    const messages = typeof formatMessage === 'function' ? messageSlots.filter(slot => (!slot.frame || slot.frame === value.frame) && typeof catalogue[slot.key] === 'string' && formatMessage(slot.key, slot.values) === value.text) : [];
+    if (messages.length) {const ids = [...new Set(messages.map(slot => slot.key))]; return {...value, status: ids.length === 1 ? 'mapped' : 'ambiguous', catalogueKeys: ids, messageSlots: messages.map(slot => slot.name)};}
     const selected = (Array.isArray(keys[value.frame]) ? keys[value.frame] : [keys[value.frame]]).filter(key => key && catalogue[key] === value.text);
+    if (!selected.length) selected.push(...preferredKeys.filter(key => catalogue[key] === value.text));
     const candidates = selected.length ? selected : index.get(value.text) ?? [];
     return {...value, status: candidates.length === 1 ? 'mapped' : candidates.length > 1 ? 'ambiguous' : 'unmapped', catalogueKeys: candidates};
   });
 }
 
-export function compareCatalogueStrings(reference, actual, catalogue, adapter, cascadeRoots = {reference: [], actual: []}) {
+export function compareCatalogueStrings(reference, actual, catalogue, adapter, cascadeRoots = {reference: [], actual: []}, formatMessage) {
   const keep = (value, roots) => !roots.some(root => value.owner && (value.owner === root || value.owner.startsWith(root + '.')));
-  const frame = mapScreenStrings(reference, catalogue, adapter).filter(value => keep(value, cascadeRoots.reference)), built = mapScreenStrings(actual, catalogue, adapter).filter(value => keep(value, cascadeRoots.actual)), differences = [];
+  const frame = mapScreenStrings(reference, catalogue, adapter, formatMessage).filter(value => keep(value, cascadeRoots.reference)), built = mapScreenStrings(actual, catalogue, adapter, formatMessage).filter(value => keep(value, cascadeRoots.actual)), differences = [];
+  for (const slot of adapter.messageSlots ?? []) if (!slot.name || typeof catalogue[slot.key] !== 'string' || typeof formatMessage !== 'function') differences.push({kind: 'message-slot-invalid', label: slot.name ?? 'Unnamed message slot', key: slot.key});
   for (const value of frame) if (['unmapped', 'ambiguous', 'data-mismatch'].includes(value.status)) differences.push({kind: 'frame-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});
   const frameText = new Set(frame.map(value => value.text));
   for (const value of built) if (value.status === 'data-mismatch' || value.status === 'ambiguous' || value.status === 'unmapped' && !frameText.has(value.text)) differences.push({kind: 'built-string-' + value.status, label: value.frame || value.id, text: value.text, catalogueKeys: value.catalogueKeys ?? [], dataSlot: value.dataSlot});

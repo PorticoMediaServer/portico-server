@@ -120,3 +120,16 @@ for 900 can select a loaded 800 face when no 900 face exists. The requested
 computed weight remains 900 and is still compared exactly. An existing failed
 matching face is not masked by a different loaded weight; this is readiness
 selection, never a font/style substitution or relaxed comparison threshold.
+
+Existing `/dev/kit?family=...&case=...&capture=true` specimens are allowed only
+when the actual gallery registry contains that exact case and its logical
+viewport matches the adapter. Missing/unknown cases cannot fall back to a pass.
+A settled-motion adapter awaits real finite animations without canceling or
+rewriting them. Portals require a whole BODY root and a readySelector covering
+the actual open surface, not a crop of the gallery section.
+
+Dynamic catalogue copy uses explicit named messageSlots (existing key + public
+fixture values) formatted by the canonical defaultI18n API, not another message
+formatter. preferredKeys select existing used keys for repeated static wording;
+named dataValues declare approved literal fixture facts. All matching stays
+exact, and formatted-message occurrence counts still detect missing/extra copy.
