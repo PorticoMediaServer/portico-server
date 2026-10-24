@@ -30,7 +30,7 @@ func TestMinuteCleanupWakesForItsInputsAndUnknownWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail) VALUES(0,'cpu',1,1,'available','')`)
+	write(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES(0,'cpu',1,1,'available','',0,0)`)
 	if wake.Take() {
 		t.Fatal("unrelated known telemetry publication woke retention")
 	}
