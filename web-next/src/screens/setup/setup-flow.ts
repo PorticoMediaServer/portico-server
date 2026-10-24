@@ -177,7 +177,3 @@ function signalWithin(signal: AbortSignal, ms: number): AbortSignal {
   const any = (AbortSignal as unknown as {any?: (signals: AbortSignal[]) => AbortSignal}).any;
   return any ? any([signal, timed]) : signal;
 }
-
-function errorCode(error: unknown): string | undefined {
-  return (error as {code?: unknown} | undefined)?.code as string | undefined;
-}
