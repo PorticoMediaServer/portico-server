@@ -96,13 +96,22 @@ func TestLocalArtworkCandidateChangesDirtyOnlyAffectedHeads(t *testing.T) {
 		t.Fatal("stale publication accepted", err)
 	}
 	expect(t)
+	c.Exec(`UPDATE inventory_objects SET revision='r2' WHERE id='candidate-object'`)
+	if err = write("r2", a); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, second.ID)
+	if err = write("r2", a); err != nil {
+		t.Fatal(err)
+	}
+	expect(t)
 	// A notification is part of the publication transaction, never a separate
 	// wake that can escape a failed or rolled-back accepted candidate update.
 	tx, err := c.DB.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.commitInventoryArtworkCandidatesTx(ctx, tx, source, "candidate-object", "r1", first.Token, "movie", []assets.LocalArtworkCandidate{b}); err != nil {
+	if err = s.commitInventoryArtworkCandidatesTx(ctx, tx, source, "candidate-object", "r2", first.Token, "movie", []assets.LocalArtworkCandidate{b}); err != nil {
 		tx.Rollback()
 		t.Fatal(err)
 	}
@@ -115,4 +124,8 @@ func TestLocalArtworkCandidateChangesDirtyOnlyAffectedHeads(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect(t)
+	var key string
+	if err = c.DB.QueryRow(`SELECT art_key FROM inventory_artwork_candidates WHERE object_id='candidate-object'`).Scan(&key); err != nil || key != a.Key {
+		t.Fatal("rolled-back replacement changed accepted candidates", key, err)
+	}
 }
