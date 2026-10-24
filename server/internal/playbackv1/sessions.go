@@ -1137,6 +1137,11 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		}
 	}
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
+		if bound, ok := ctx.Value(queueInitialStartKey{}).(queueInitialStart); ok && c.Principal.Grant == identity.GrantCastTarget {
+			if err := s.recheckInitialQueueStartTx(ctx, tx, c, bound, base); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO playback_v1_sessions(`+rowColumns+`) `+rowValues,
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
@@ -1178,6 +1183,42 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		v.RetryAfterMs = PreparingRetryMs
 	}
 	return v, state == "preparing", nil
+}
+
+// recheckInitialQueueStartTx repeats an initial Cast start's admission in the
+// accepting writer: the same queue, selected entry and resolved item, the
+// viewer's live device queue with no session yet, and the current family and
+// active pairing. Any drift refuses the start.
+func (s *Service) recheckInitialQueueStartTx(ctx context.Context, tx *sql.Tx, c Caller, bound queueInitialStart, base row) error {
+	if bound.queue == "" || bound.entry == "" || bound.item == "" || base.queueID != bound.queue || base.entryID != bound.entry || base.item != bound.item {
+		return ErrRevision
+	}
+	if err := s.castQueueStartAuthorityTx(ctx, tx, c, bound.queue, bound.entry, bound.item); err != nil {
+		return err
+	}
+	q, err := loadQueue(ctx, tx, bound.queue)
+	if err != nil {
+		return ErrNotFound
+	}
+	if !ownsQueue(c, q) || q.session != "" {
+		return ErrRevision
+	}
+	l, err := s.readLayout(ctx, tx, q)
+	if err != nil {
+		return err
+	}
+	p, ok := l.positionOf(bound.entry)
+	if !ok {
+		return ErrNotFound
+	}
+	_, item, err := l.entryAtErr(p)
+	if err != nil {
+		return err
+	}
+	if item != bound.item {
+		return ErrRevision
+	}
+	return nil
 }
 
 // sessionEventsTx publishes a session change: session.updated to its device and

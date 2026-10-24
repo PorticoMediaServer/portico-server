@@ -219,13 +219,18 @@ type Service struct {
 	// CastQueueAuthority rechecks the paired screen's actual adopted session
 	// in the queue writer. Nil refuses narrowed Cast queue access.
 	CastQueueAuthority func(context.Context, *sql.Tx, Caller, string) error
-	QueryKeys          func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
-	RadioKeys          func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
-	MixKeys            func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
-	JourneyKeys        func(context.Context, *sql.Tx, identity.Principal, JourneySelector) ([]string, error)
-	SmoothOrder        func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error)
-	LibraryCheck       LibraryCheck
-	Visibility         Visibility
+	// CastQueueStartAuthority admits a paired screen's initial queue start before
+	// any adopted occurrence exists: the current family/device and active pairing,
+	// the same-viewer live device queue, and the selected entry and resolved item
+	// bound by the caller. Nil refuses narrowed Cast starts.
+	CastQueueStartAuthority func(context.Context, *sql.Tx, Caller, string, string, string) error
+	QueryKeys               func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
+	RadioKeys               func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
+	MixKeys                 func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
+	JourneyKeys             func(context.Context, *sql.Tx, identity.Principal, JourneySelector) ([]string, error)
+	SmoothOrder             func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error)
+	LibraryCheck            LibraryCheck
+	Visibility              Visibility
 	// Unrestricted says the caller's item fence admits every item (every
 	// library, no restrictions): such a caller sees a container as it is, so a
 	// large shuffle can use the container's cached size (queue_counts.go).

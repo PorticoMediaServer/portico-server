@@ -64,3 +64,17 @@ func (d Dependencies) castOccurrenceAllowed(ctx context.Context, p identity.Prin
 func (d Dependencies) castQueueAuthorityTx(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, queue string) error {
 	return d.castOccurrenceTx(ctx, tx, c.Principal, "", queue)
 }
+
+// castQueueStartAuthorityTx admits the paired screen's initial start before any
+// adopted occurrence exists. Identity proves the current family/device, the
+// active pairing and the viewer's live sessionless device queue; playbackv1
+// proves the exact selected entry and resolved item in the same transaction.
+func (d Dependencies) castQueueStartAuthorityTx(ctx context.Context, tx *sql.Tx, c playbackv1.Caller, queue, entry, item string) error {
+	if c.Principal.Grant != identity.GrantCastTarget {
+		return nil
+	}
+	if d.Identity == nil || tx == nil {
+		return identity.ErrForbidden
+	}
+	return d.Identity.CastQueueStartTx(ctx, tx, c.Principal, queue, entry, item)
+}

@@ -132,6 +132,12 @@ func (s *Service) carryChoice(ctx context.Context, p identity.Principal, item, m
 type queueContinuation struct{ queue, session string }
 type queueContinuationKey struct{}
 
+// queueInitialStart is the selected entry and resolved item an initial Cast
+// queue start bound. The accepting start writer rechecks exactly these facts
+// under its own transaction before inserting the session.
+type queueInitialStart struct{ queue, entry, item string }
+type queueInitialStartKey struct{}
+
 // queueCarry carries choices only along an explicit continuation of the
 // queue's current session: a device replacement (replay, retry, recovery), or
 // Advance. A fresh start, including a paused restore on this same queue,
