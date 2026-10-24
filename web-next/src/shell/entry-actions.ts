@@ -4,11 +4,6 @@ import type {ContentEntryKind} from '@core/library-content.ts';
 export type EntryActionTarget = Readonly<{libraryId: string; itemId: string; kind: ContentEntryKind; title: string}>;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
 export type EntryActionPorts = Readonly<{api: Api; serverId: string; viewerId: string; isCurrent: () => boolean; requestId: () => Promise<string>}>;
-/** One title a screen can act on; facts only, never a projection or a movie-only shape. */
-export type EntryActionTarget = Readonly<{libraryId: string; itemId: string; kind: ContentEntryKind; title: string}>;
-type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
-export type EntryActionPorts = Readonly<{api: Api; serverId: string; viewerId: string; isCurrent: () => boolean; requestId: () => Promise<string>}>;
-
 type OpenDelete = Readonly<{kind: 'delete'; target: EntryActionTarget; anchor: HTMLElement | null; ports: EntryActionPorts}>;
 type Open = OpenDelete;
 
