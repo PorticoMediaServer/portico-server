@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -54,6 +55,16 @@ func Inspect(f *Source) (Publication, error) {
 type LibraryRow struct {
 	ID, LibraryID, Title, Format, SourceID string
 	InventoryAvailable                     bool
+	// Catalogue facts, distinct from package identity and read availability.
+	Author *compactcatalog.ReadingValue
+	Series *SeriesValue
+	entity int64
+}
+
+type SeriesValue struct {
+	ID, Name string
+	Number   *float64
+	Source   compactcatalog.ReadingValueSource
 }
 type LibraryPage struct {
 	Items      []LibraryRow
@@ -121,9 +132,17 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
 			break
 		}
 		out.Items = append(out.Items, row)
+		out.Items[len(out.Items)-1].entity = id
 		last = id
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	if err = rows.Close(); err != nil {
+		return out, err
+	}
+	err = readingOwnerProjectionTx(ctx, tx, out.Items)
+	return out, err
 }
 
 type Version struct {

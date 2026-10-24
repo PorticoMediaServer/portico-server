@@ -34,6 +34,14 @@ function fresh(review: Pick<HostedOwnerClaimReview, 'expiresAt'>, now = Date.now
 function captureLink(value: HostedOwnerClaimLink): HostedOwnerClaimLink {
   return Object.freeze({hostedOrigin: value.hostedOrigin, code: value.code, operation: value.operation, nameHint: value.nameHint});
 }
+/** Validate persisted link scalars without trusting its display hint or issuing work. */
+export function checkedHostedOwnerClaimLink(value: HostedOwnerClaimLink, expectedHostedOrigin: string): HostedOwnerClaimLink {
+  if (typeof value?.hostedOrigin !== 'string' || value.hostedOrigin !== expectedHostedOrigin || !expectedHostedOrigin.startsWith('https://') ||
+      routeOrigin(expectedHostedOrigin) !== expectedHostedOrigin || typeof value.code !== 'string' || typeof value.operation !== 'string' ||
+      !identifier(value.operation) || typeof value.nameHint !== 'string' || !value.nameHint || new TextEncoder().encode(value.nameHint).length > 120) throw invalid();
+  claimCode(value.code);
+  return captureLink(value);
+}
 function captureReview(value: HostedOwnerClaimReview): HostedOwnerClaimReview {
   return Object.freeze({request: captureLink(value.request), identity: Object.freeze({accountId: value.identity.accountId, familyId: value.identity.familyId}),
     serverId: value.serverId, name: value.name, address: value.address, transactionId: value.transactionId,
@@ -53,8 +61,7 @@ export function captureHostedOwnerClaim(page: Pick<Location, 'href' | 'pathname'
         url.origin !== expectedHostedOrigin || url.pathname !== '/claim' || url.search || url.username || url.password ||
         [...fields.keys()].sort().join(',') !== 'code,operation,server') throw invalid();
     const code = fields.get('code') ?? '', operation = fields.get('operation') ?? '', nameHint = fields.get('server') ?? '';
-    if (!identifier(operation) || !nameHint || new TextEncoder().encode(nameHint).length > 120) throw invalid();
-    return {request: Object.freeze({hostedOrigin: expectedHostedOrigin, code: claimCode(code), operation, nameHint})};
+    return {request: checkedHostedOwnerClaimLink({hostedOrigin: expectedHostedOrigin, code, operation, nameHint}, expectedHostedOrigin)};
   } catch {return {};}
 }
 

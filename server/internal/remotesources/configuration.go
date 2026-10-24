@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"portico.local/server/internal/identity"
-	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
@@ -167,41 +166,15 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 		source.RootPath = filepath.Join(s.private, source.ID)
 	}
 	// Candidate network validation happens without a database write transaction.
-	config, err := remotemedia.ValidateDAVConfig(ctx, remotemedia.DAVConfig{Root: in.Root, Username: in.Username, Password: in.Password, InsecureLocal: in.InsecureLocal}, s.resolver)
+	config, err := remotemedia.ValidateSourceDAVConfig(ctx, remotemedia.DAVConfig{Root: in.Root, Username: in.Username, Password: in.Password, InsecureLocal: in.InsecureLocal}, s.resolver)
 	if err != nil {
 		return zero, mapError(err)
 	}
-	d, err := remotemedia.NewDAV(config, s.resolver)
+	support, setupGuard, err := s.testDAVSetup(ctx, id, source, config, authorize)
 	if err != nil {
 		return zero, mapError(err)
 	}
-	rootEntry, err := d.Stat(ctx, "")
-	if err != nil {
-		return zero, mapError(err)
-	}
-	if !rootEntry.Directory {
-		return zero, storage.ErrRemoteConfig
-	}
-	page, err := d.Sync(ctx, "", "")
-	if errors.Is(err, remotemedia.ErrDAVUnsupported) || errors.Is(err, remotemedia.ErrDAVToken) {
-		page, err = d.List(ctx, "")
-	}
-	if err != nil {
-		return zero, mapError(err)
-	}
-	for _, e := range page.Entries {
-		if !e.Deleted && !e.Directory && e.Size > 0 && source.RangeSupport == "unknown" {
-			err = d.CheckRange(ctx, e.Relative)
-			switch {
-			case err == nil:
-				source.RangeSupport = "conditional"
-			case errors.Is(err, mediasource.ErrIdentityRequired), errors.Is(err, remotemedia.ErrRepresentationRange):
-				source.RangeSupport = "unsupported"
-			default:
-				return zero, mapError(err)
-			}
-		}
-	}
+	source.RangeSupport = string(support)
 	source.Origin = safeOrigin(config.Root)
 	source.CredentialPresent = config.Username != "" || config.Password != ""
 	raw, _ = json.Marshal(config)
@@ -227,7 +200,7 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	if err = authorize(tx); err != nil {
+	if err = setupGuard(tx); err != nil {
 		return zero, err
 	}
 	if id == "" {

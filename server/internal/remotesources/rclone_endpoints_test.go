@@ -9,7 +9,7 @@ func TestConfiguredEndpointsFollowEveryWrapperToActualOrigin(t *testing.T) {
 	for _, wrapper := range []string{"alias", "crypt", "chunker", "hasher", "compress", "cache"} {
 		raw := "[top]\ntype=" + wrapper + "\nremote=leaf:path\n[leaf]\ntype=webdav\nurl=https://nas.example:9443/private\n[unused]\ntype=http\nurl=http://127.0.0.1/\n"
 		leaves, err := configuredBackends([]byte(raw), "top:")
-		if err != nil || len(leaves) != 1 || leaves[0].Kind != "webdav" || len(leaves[0].Origins) != 1 || leaves[0].Origins[0] != "https://nas.example:9443/private" {
+		if err != nil || len(leaves) != 1 || leaves[0].Kind != "webdav" || len(leaves[0].Origins) != 1 || leaves[0].Origins[0] != "https://nas.example:9443/" {
 			t.Fatal(wrapper, leaves, err)
 		}
 	}
@@ -40,5 +40,12 @@ func TestConfiguredEndpointsRefuseCyclesEscapesAndUnknownMembers(t *testing.T) {
 		if leaves, err := configuredBackends([]byte(raw), "top:"); err == nil {
 			t.Fatal("invalid graph admitted", leaves)
 		}
+	}
+}
+
+func TestConfiguredEndpointApprovalFactsNeverRetainPathOrQueryCredentials(t *testing.T) {
+	leaves, err := configuredBackends([]byte("[top]\ntype=http\nurl=https://NAS.example/private?access_token=fixture-only\n"), "top:")
+	if err != nil || len(leaves) != 1 || len(leaves[0].Origins) != 1 || leaves[0].Origins[0] != "https://nas.example:443/" {
+		t.Fatal("endpoint not reduced to its real origin", err)
 	}
 }

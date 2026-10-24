@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -545,7 +547,7 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 	modified := time.Unix(1700000000, 0).UTC()
 	password := identity.Token()
 	var gets, active, peak atomic.Int32
-	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	origin := readingPrivateOrigin(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := active.Add(1)
 		defer active.Add(-1)
 		for previous := peak.Load(); n > previous && !peak.CompareAndSwap(previous, n); previous = peak.Load() {
@@ -688,11 +690,34 @@ func TestReadingRemoteSequentialPDF(t *testing.T) {
 	}
 }
 
+// ConfigureDAV must see a genuinely admitted private origin, never loopback
+// or a forged DNS result. The locked fixture helper owns this job's bridge.
+func readingPrivateOrigin(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	ip, err := netip.ParseAddr(os.Getenv("PORTICO_PRIVATE_ORIGIN_TEST_HOST"))
+	if err != nil || !ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		t.Fatal("run locked fixture helper with PORTICO_PRIVATE_ORIGIN_TEST=1")
+	}
+	listener, err := net.Listen("tcp4", net.JoinHostPort(ip.String(), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewUnstartedServer(handler)
+	if err = server.Listener.Close(); err != nil {
+		listener.Close()
+		t.Fatal(err)
+	}
+	server.Listener = listener
+	server.Start()
+	t.Cleanup(server.Close)
+	return server
+}
+
 // The DAV directory/document metadata is derived from actual fixture files;
 // finite206 is implemented by net/http against their real open descriptors.
 func readingDAVFiles(t *testing.T, root string, requests *atomic.Int64) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return readingPrivateOrigin(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		relative := strings.TrimPrefix(r.URL.Path, "/")
 		if relative != "" && !filepath.IsLocal(relative) {

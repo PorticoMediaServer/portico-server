@@ -186,7 +186,7 @@ test('a pause from a media key or the Picture in Picture window stays paused', a
   assert.equal(t.playback.getSnapshot().intent, 'paused', 'the viewer’s pause is their intent');
   // Later ticks and snapshot updates do not start it again.
   t.video.fire('timeupdate');
-  t.playback.audioEffectsNotice('anything');
+  t.playback.listeningNotice('audio_autoplay_blocked');
   await settle();
   assert.equal(t.video.paused, true);
   // Portico's own Play resumes.

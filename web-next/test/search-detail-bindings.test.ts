@@ -7,6 +7,7 @@ import {createPersonBindings} from '../src/screens/detail/person-bindings.ts';
 import {createSearchBindings} from '../src/screens/search/bindings.ts';
 import {createEntryDetailsBindings} from '../src/screens/detail/entry-details.ts';
 import {createWatchBodyBindings} from '../src/screens/detail/watch-body.ts';
+import {createScreenPlayEffect} from '../src/screens/browse/playback-effect.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {browseCapabilitiesPath} from '@core/browse.ts';
@@ -81,6 +82,69 @@ test('Search summary is immutable and unavailable during replacement reads or au
     assert.deepEqual(binding.summary().map(group => group.totalCount), [5, 7]);
     owner.retire();assert.deepEqual(binding.summary(), []);
   } finally {binding.dispose();}
+});
+
+test('a changed Search query retires its original caller through the actual screen play effect', async () => {
+  const held = deferred<void>();let guard: (() => boolean) | undefined;
+  const owner = setup(async path => {
+    const raw = searchPage(path);
+    return {...raw, groups: raw.groups.map(group => ({...group, items: group.items.map(item => item.kind === 'movie'
+      ? {...item, available: true, playback: {itemId: item.id, startMs: 0}} : item)}))};
+  });
+  const effect = createScreenPlayEffect({isCurrent: owner.context.isCurrent, runtime: () => runtime});
+  const runtime = {async playFromScreen(_target: unknown, lifetime: {signal: AbortSignal; isCurrent: () => boolean}) {guard = lifetime.isCurrent;await held.promise;}};
+  const binding = createSearchBindings({...owner.context, effects: {...owner.context.effects, play: effect}});
+  try {
+    await binding.select('harbor', {groups: ['movies', 'shows']});const entry = binding.service.getSnapshot().groups[0].items[0];
+    const play = binding.play(entry);assert.equal(guard?.(), true);
+    await binding.select('different', {groups: ['movies', 'shows']});assert.equal(guard?.(), false);
+    held.resolve();await assert.rejects(play, {name: 'AbortError'});
+  } finally {held.resolve();binding.dispose();}
+});
+
+test('paused or restarted Search never revives an original Play when the same query and revisions return', async () => {
+  for (const change of ['pause', 'same-query', 'round-trip']) {
+    const held = deferred<void>();let guard: (() => boolean) | undefined;
+    const owner = setup(async path => {
+      const raw = searchPage(path);
+      return {...raw, groups: raw.groups.map(group => ({...group, items: group.items.map(item => item.kind === 'movie'
+        ? {...item, available: true, playback: {itemId: item.id, startMs: 0}} : item)}))};
+    });
+    const runtime = {async playFromScreen(_target: unknown, lifetime: {signal: AbortSignal; isCurrent: () => boolean}) {
+      guard = lifetime.isCurrent;await held.promise;
+    }};
+    const effect = createScreenPlayEffect({isCurrent: owner.context.isCurrent, runtime: () => runtime});
+    const binding = createSearchBindings({...owner.context, effects: {...owner.context.effects, play: effect}});
+    try {
+      await binding.select('harbor', {groups: ['movies', 'shows']});
+      const entry = binding.service.getSnapshot().groups[0].items[0];
+      assert('libraryId' in entry && entry.libraryId);
+      const play = binding.context.effects.play({libraryId: entry.libraryId, itemId: entry.id, startSeconds: 0}, new AbortController().signal);
+      assert.equal(guard?.(), true);
+      if (change === 'pause') {binding.service.pause();assert.equal(guard?.(), false);}
+      if (change === 'round-trip') await binding.select('different', {groups: ['movies', 'shows']});
+      await binding.select('harbor', {groups: ['movies', 'shows']});
+      assert.equal(binding.service.getSnapshot().phase, 'ready');assert.equal(guard?.(), false, change);
+      held.resolve();await assert.rejects(play, {name: 'AbortError'});
+    } finally {held.resolve();binding.dispose();}
+  }
+});
+
+test('a replaced Detail projection retires its original caller through the actual screen play effect', async () => {
+  const held = deferred<void>();let guard: (() => boolean) | undefined;
+  const owner = setup(async path => {
+    const id = path.includes('/two/') ? 'two' : 'one';
+    return {...detailPage(id), actions: [{id: 'play', labelKey: 'action.play', enabled: true, playback: {itemId: id, startMs: 0}}]};
+  });
+  const runtime = {async playFromScreen(_target: unknown, lifetime: {signal: AbortSignal; isCurrent: () => boolean}) {guard = lifetime.isCurrent;await held.promise;}};
+  const binding = createDetailBindings({...owner.context, effects: {...owner.context.effects,
+    play: createScreenPlayEffect({isCurrent: owner.context.isCurrent, runtime: () => runtime})}});
+  try {
+    await binding.select({libraryId: 'library', itemId: 'one'});const data = binding.service.getSnapshot().data!;
+    const play = binding.play(data, 'play');assert.equal(guard?.(), true);
+    await binding.select({libraryId: 'library', itemId: 'two'});assert.equal(guard?.(), false);
+    held.resolve();await assert.rejects(play, {name: 'AbortError'});
+  } finally {held.resolve();binding.dispose();}
 });
 const showPage = () => ({scope: {serverId: 'server', libraryId: 'library', viewerFence: 'show-fence'}, revision: {catalog: 3, viewer: 2},
   show: {id: 'show', libraryId: 'library', title: 'show', libraryKind: 'tv', providerMatchStatus: 'unresolved'},

@@ -129,8 +129,24 @@ func (s *Service) Continue(ctx context.Context, p identity.Principal, library, c
 			progress.Location.PageIndex = &page.Int64
 		}
 		progress.Stale = progress.SourceRevision != selected.fence() || progress.Location.Format != selected.Format
-		out.Items = append(out.Items, ContinueRow{Item: LibraryRow{ID: selected.ItemID, LibraryID: selected.library, Title: selected.Title, Format: selected.Format, SourceID: selected.token, InventoryAvailable: true}, Progress: progress})
+		out.Items = append(out.Items, ContinueRow{Item: LibraryRow{ID: selected.ItemID, LibraryID: selected.library, Title: selected.Title, Format: selected.Format, SourceID: selected.token, InventoryAvailable: true, entity: selected.Entity}, Progress: progress})
 		last = continueCursor{progress.ObservedAt, selected.Entity, selected.Asset}
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	if err = rows.Close(); err != nil {
+		return out, err
+	}
+	items := make([]LibraryRow, len(out.Items))
+	for i := range items {
+		items[i] = out.Items[i].Item
+	}
+	if err = readingOwnerProjectionTx(ctx, g.Tx(), items); err != nil {
+		return out, err
+	}
+	for i := range items {
+		out.Items[i].Item = items[i]
+	}
+	return out, nil
 }
