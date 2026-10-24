@@ -36,6 +36,13 @@ test('real browser measures the whole viewport and protects source, secret and n
       await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
       const screen = await browser.measure('main');
       assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
+      const activeFonts = await browser.observeRenderedFonts(screen, 'main');
+      const heading = activeFonts.elements.find(node => node.tag === 'h1');
+      assert.equal(typeof heading.style.resolvedFontFamily, 'string');
+      assert.ok(!['sans-serif', 'serif'].includes(heading.style.resolvedFontFamily), 'active face is not a requested generic family');
+      assert.equal(heading.style.fontFamily, screen.elements.find(node => node.tag === 'h1').style.fontFamily);
+      assert.ok(!JSON.stringify(activeFonts).includes('never-serialize-this'));
+      assert.ok(activeFonts.unavailable.some(fact => fact.property === 'resolvedFontFamily' && screen.elements.find(node => node.id === fact.element)?.input));
       assert.equal(screen.scope, 'screen'); assert.equal(screen.fullViewport, true);
       assert.deepEqual(screen.measurement, {renderer: 'dom', coordinateUnit: 'css-px'});
       assert.deepEqual(screen.root, {x: 0, y: 0, width: 800, height: 600});
