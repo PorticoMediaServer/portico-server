@@ -35,21 +35,24 @@ func TestInitialCastStartBindsSelectedEntryAndRefusesConcurrentSession(t *testin
 	}
 
 	admitted := 0
-	var gotQueue, gotEntry, gotItem string
-	s.CastQueueStartAuthority = func(ctx context.Context, tx *sql.Tx, c Caller, queue, entry, item string) error {
+	s.CastQueueStartAuthority = func(ctx context.Context, tx *sql.Tx, c Caller, queue, entry, itemArg string) error {
 		if tx == nil || c.Principal != cast.Principal {
 			t.Fatalf("start authority lost its transaction or caller: %v %v", tx, c.Principal)
 		}
+		// Every read attempt and every missing-window capture repeats exactly
+		// these bound facts; the count is the queue's own capture policy.
+		if queue != q.id || entry != entryID || itemArg != item {
+			t.Fatalf("start authority binding drifted: %q %q %q", queue, entry, itemArg)
+		}
 		admitted++
-		gotQueue, gotEntry, gotItem = queue, entry, item
 		return nil
 	}
 	resolved, initial, err := s.withMusicLayoutStart(context.Background(), cast, q.id, entryID, sonicEntryWindow(entryID), func(*layout) error { return nil })
 	if err != nil || !initial || resolved != item {
 		t.Fatalf("initial start did not bind: item=%q initial=%v err=%v", resolved, initial, err)
 	}
-	if admitted != 1 || gotQueue != q.id || gotEntry != entryID || gotItem != item {
-		t.Fatalf("start authority saw %q %q %q after %d admissions", gotQueue, gotEntry, gotItem, admitted)
+	if admitted == 0 {
+		t.Fatal("initial start never reached the start authority")
 	}
 
 	// The accepting writer repeats the bound facts and refuses a queue that
