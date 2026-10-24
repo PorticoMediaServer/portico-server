@@ -16,6 +16,7 @@ registerHooks({load(url, context, next) {
 (globalThis as {devicePixelRatio?: number}).devicePixelRatio = 1;
 
 const {TitleActions, TitleDetails, TitlePinnedActions} = await import('../src/screens/detail/Detail.tsx');
+const {TitlePeople} = await import('../src/screens/detail/People.tsx');
 const {createDetailSpecimen} = await import('../src/dev/entries/detail-specimen.tsx');
 const {DetailService} = await import('@core/detail.ts');
 
@@ -84,4 +85,13 @@ test('the pinned bar carries the drawn Play or Resume and My List pair', async (
     assert.match(body, new RegExp(defaultI18n.t('next.controls.resume')));
     assert.doesNotMatch(body, new RegExp(defaultI18n.t('next.controls.play')));
   } finally { resume.service.dispose(); }
+});
+
+test('a person with two credits draws one face under Cast and crew', async () => {
+  width(1440);
+  const {data, binding, service} = await detailData('3');
+  try {
+    const body = text(renderToStaticMarkup(createElement(TitlePeople, {binding, data})));
+    assert.equal((body.match(/Denis Villeneuve/g) ?? []).length, 1);
+  } finally { service.dispose(); }
 });
