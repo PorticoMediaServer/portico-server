@@ -654,6 +654,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)
+	registerSourceReadSettings(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)

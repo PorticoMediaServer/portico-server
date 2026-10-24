@@ -8036,6 +8036,29 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_storage_source_read_profile",
+    "method": "GET",
+    "path": "/v1/storage/sources/{id}/read-profile",
+    "summary": "Read one source's normalized reading profile and current revisions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "request_in_progress",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_storage_sources",
     "method": "GET",
     "path": "/v1/storage/sources",
@@ -15110,6 +15133,30 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "put_storage_source_read_profile",
+    "method": "PUT",
+    "path": "/v1/storage/sources/{id}/read-profile",
+    "summary": "Save one source's reading limits with current revisions and a durable receipt",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "request_in_progress",
+      "internal",
+      "revision_required"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "put_storage_sources_webdav_id",
     "method": "PUT",
     "path": "/v1/storage/sources/webdav/{id}",
@@ -18558,6 +18605,7 @@ export const routePaths = {
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
+  "get_storage_source_read_profile": "/v1/storage/sources/{id}/read-profile",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
   "get_subtitle_fonts_cjk": "/v1/subtitle-fonts/cjk",
@@ -18858,6 +18906,7 @@ export const routePaths = {
   "put_shows_id_metadata_screen": "/v1/shows/{id}/metadata/screen",
   "put_shows_id_metadata_screen_season": "/v1/shows/{id}/metadata/screen/season",
   "put_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
+  "put_storage_source_read_profile": "/v1/storage/sources/{id}/read-profile",
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
   "query_titles": "/v1/titles",
