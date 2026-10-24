@@ -101,8 +101,12 @@ func TestPlaybackSourceInvocationRechecksCurrentActorSessionAndPin(t *testing.T)
 			f := newSubtitleFixture(t)
 			i := capturePlaybackInvocation(t, f)
 			change(f)
-			if err := checkPlaybackInvocation(context.Background(), f.db, i); err == nil {
+			err := checkPlaybackInvocation(context.Background(), f.db, i)
+			if err == nil {
 				t.Fatal("changed actor/session/source pin accepted")
+			}
+			if (name == "actor denied" || name == "foreign pin") && !errors.Is(err, identity.ErrUnauthorized) {
+				t.Fatal("current actor/pin refusal lost its authority error", err)
 			}
 		})
 	}
