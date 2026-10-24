@@ -49,9 +49,9 @@ class Driver {
       try {
         const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
         const target = targets.find(item => item.type === 'page');
-        if (target) return new Driver(target.webSocketDebuggerUrl);
+        if (target) {const driver = new Driver(target.webSocketDebuggerUrl); await driver.ready; return driver;}
       } catch {}
-      await sleep(100);
+      await sleep(150);
     }
     throw new Error('Chromium did not expose a page target');
   }
@@ -132,10 +132,11 @@ try {
   note('setup ok: local owner, name "Portico demo"');
 
   browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking',
-    '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check',
+    '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
     '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE fonts.googleapis.com, EXCLUDE fonts.gstatic.com', '--remote-debugging-address=127.0.0.1',
     `--remote-debugging-port=${chromePort}`, `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe']});
-  browser.stderr.on('data', () => {});
+  let chromeLog = ''; browser.stderr.on('data', bytes => {chromeLog += bytes;});
+  browser.on('exit', code => {note('chromium exited ' + code + '\n' + chromeLog.split('\n').slice(-8).join('\n'));});
   driver = await Driver.connect(chromePort);
   await driver.send('Page.enable'); await driver.send('Runtime.enable');
   await driver.viewport(1440, 1000);
