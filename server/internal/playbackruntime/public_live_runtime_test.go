@@ -149,7 +149,7 @@ func TestPublicLiveRuntimePublishesWithRetainedAuthority(t *testing.T) {
 			t.Logf("state=%s window=%s..%s URLpresent=%t error=%s", media.State, media.WindowStartUS, media.WindowEndUS, media.StreamURL != "", media.ErrorCode)
 			previous = key
 		}
-		if media.StreamURL != "" && media.State == "ready" {
+		if media.StreamURL != "" && media.State == "active" {
 			return
 		}
 		select {
