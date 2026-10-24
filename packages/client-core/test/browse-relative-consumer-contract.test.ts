@@ -10,28 +10,30 @@ import {PersonalSavedService} from '../src/personal-saved.ts';
 import {savedViewSummary} from '../src/presentation/saved-view-summary.ts';
 
 /**
- * Relative recency (`within-last-days`) crosses four layers, and they do not all say
- * the same thing, on purpose:
+ * Relative recency (`within-last-days`) meets four layers that do not all say the same
+ * thing:
  *
- *  1. the generated contract (`BrowseLibraryResponse.applied.query`) admits the
- *     operator only on the three published date fields, for 1–36500 whole days;
- *  2. `parseBrowseNode` is capability-free structure: it re-reads what the server
- *     sent, so it refuses an unknown operator or a bad day count but knows no field
- *     vocabulary;
+ *  1. the generated contract (`BrowseLibraryResponse.applied.query`) admits the operator
+ *     only on the three published date fields, for 1–36500 whole days;
+ *  2. `parseBrowseNode` checks structure, not vocabulary: it refuses an unknown operator
+ *     or a bad day count but knows no field list;
  *  3. `parseBrowseResult` echoes `applied.query` through that structural parser;
- *  4. `validateBrowseQuery`/`BrowseQueryBuilder` are the send guard: they refuse an
+ *  4. `validateBrowseQuery`/`BrowseQueryBuilder` are capability checks: they refuse an
  *     operator the published field capability does not offer.
  *
- * These tests pin the split rather than flattening it. A window on a field the
- * contract cannot express is refused by (1) and (4); (2) and (3) tolerate it
- * because they only ever read server-sourced values, and failing a whole page over
- * one is not their call.
+ * These tests record what each layer does today. A window on a field the contract cannot
+ * express is refused by (1) and (4) and admitted by (2) and (3).
  *
- * The same window crosses every other server-sourced boundary verbatim — the
- * published vocabulary and its quick filters, a See all destination, a Home row's
- * See all, a counts request, a facet link and a saved view's stored definition —
- * and none of them turns it into a date computed from the clock. Only the
- * executable and rendering paths check it against the published vocabulary.
+ * (2) does not only read server responses. `PersonalSavedService.definition` uses it for
+ * the definition a create or update intent sends, and `browseContextFacetsPath` uses it to
+ * serialize an outgoing facet link. A capability-free parser therefore does not establish
+ * that every send is validated: (4) is the validation, and it is not on those two paths.
+ *
+ * The same window crosses the other readers verbatim — the published vocabulary and its
+ * quick filters, a See all destination, a Home row's See all, a counts request, a facet
+ * link and a saved view's stored definition — and none of them turns it into a date
+ * computed from the clock. The executable browse path and the saved-view summary are the
+ * capability checks; the transport paths above are not.
  */
 
 const OPERATOR = 'within-last-days';
@@ -88,8 +90,8 @@ const vocabulary = {
 test('the published relative window is exactly the three date fields, in whole days from 1 to 36500', () => {
   assert.deepEqual([...relative.properties.field.enum].sort(), [...DATE_FIELDS].sort());
   assert.deepEqual(relative.properties.value, {type: 'integer', minimum: 1, maximum: 36500});
-  // The general predicate shape deliberately does not carry the relative operator:
-  // it is only ever a date window on one of those fields, never a scalar value.
+  // The general predicate shape does not carry the relative operator: it is only a date
+  // window on one of those fields, never a scalar value.
   assert.equal([...general.properties.operator.enum].includes(OPERATOR), false);
   for (const field of DATE_FIELDS) for (const value of [1, 7, 30, 90, 365, 36500]) {
     const node = {field, operator: OPERATOR, value};
@@ -109,13 +111,14 @@ test('a day count outside 1–36500 is refused by the contract, the structural p
   }
 });
 
-test('a relative window on a non-date field is refused by the contract and the send guard, and only tolerated structurally', () => {
+test('a relative window on a non-date field is refused by the contract and the capability check, and admitted structurally', () => {
   const node = {field: 'year', operator: OPERATOR, value: 30};
   // 1. The generated contract cannot express it at all: the relative shape enumerates
   //    date fields and the general shape's operator list leaves the relative one out.
   assert.throws(() => decodeBrowseLibraryResponse(page(node as never)), /Invalid contract value/);
-  // 2. The structural parser knows no fields, so a server-sourced node is not a parse
-  //    failure. This is the exact semantic difference from the published schema.
+  // 2. The structural parser knows no fields, so the node is not a parse failure: the app
+  //    can hold one the published contract cannot express. This is the observed difference
+  //    from the schema, not a claim about who may send it.
   assert.deepEqual(parseBrowseNode(node), node);
   // 3. A page's applied query is echoed through that same parser, unchanged.
   assert.deepEqual(parseBrowseResult(page(node)).applied.query, node);
