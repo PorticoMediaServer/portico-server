@@ -579,8 +579,12 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			// generic decoder can renew expired cursors for viewport recovery;
 			// that behavior is not part of this new ready-generation surface.
 			signed, err := s.readSignedBrowseCursor(request.Cursor)
-			if err != nil { return out,nil,err }
-			if signed.Expires <= time.Now().Unix() { return out,nil,ErrStaleContinuation }
+			if err != nil {
+				return out, nil, err
+			}
+			if signed.Expires <= time.Now().Unix() {
+				return out, nil, ErrStaleContinuation
+			}
 		}
 		cursor, err := s.decodeCursor(request.Cursor, scope)
 		if err != nil {

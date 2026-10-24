@@ -71,9 +71,19 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(caps.Pivots) != 3 {t.Fatalf("facet pivots: %+v",caps.Pivots)}
-			for _,pivot:=range caps.Pivots {if pivot.ID=="authors"||pivot.ID=="series" {if pivot.Browsable||pivot.FacetSource==nil {t.Fatalf("facet pivot: %+v",pivot)}}}
-			if kind=="comic" && (caps.Pivots[0].ID!="series"||caps.Pivots[1].ID!="comics"||caps.Pivots[1].LabelKey!="library.tab.volumesAndIssues") {t.Fatalf("drawn Comic order: %+v",caps.Pivots)}
+			if len(caps.Pivots) != 3 {
+				t.Fatalf("facet pivots: %+v", caps.Pivots)
+			}
+			for _, pivot := range caps.Pivots {
+				if pivot.ID == "authors" || pivot.ID == "series" {
+					if pivot.Browsable || pivot.FacetSource == nil {
+						t.Fatalf("facet pivot: %+v", pivot)
+					}
+				}
+			}
+			if kind == "comic" && (caps.Pivots[0].ID != "series" || caps.Pivots[1].ID != "comics" || caps.Pivots[1].LabelKey != "library.tab.volumesAndIssues") {
+				t.Fatalf("drawn Comic order: %+v", caps.Pivots)
+			}
 			query := &BrowseNode{All: []BrowseNode{{Field: "author", Operator: "contains", Value: "  café\tAUTHOR  "}, {Field: "series", Operator: "equals", Value: "real series"}}}
 			page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Query: query, Limit: 1})
 			if err != nil {
@@ -131,12 +141,18 @@ func TestReadingBrowseCursorBindsUnboundedSortAndRejectsInputDrift(t *testing.T)
 	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Cursor: page.PageInfo.NextCursor}); err != nil {
 		t.Fatal(err)
 	}
-	signed,err:=s.readSignedBrowseCursor(page.PageInfo.NextCursor)
-	if err!=nil {t.Fatal(err)}
-	signed.Expires=time.Now().Add(-time.Second).Unix()
-	expired,err:=s.encodeCursor(signed)
-	if err!=nil {t.Fatal(err)}
-	if _,err=s.BrowseEntities(viewer,BrowseRequest{Library:"reading",Limit:1,Cursor:expired});!errors.Is(err,ErrStaleContinuation) {t.Fatalf("expired Reading cursor renewed: %v",err)}
+	signed, err := s.readSignedBrowseCursor(page.PageInfo.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed.Expires = time.Now().Add(-time.Second).Unix()
+	expired, err := s.encodeCursor(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "reading", Limit: 1, Cursor: expired}); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatalf("expired Reading cursor renewed: %v", err)
+	}
 	c.Exec(`UPDATE metadata_owner_fields SET value='Changed Series' WHERE entity_id=? AND field='series'`, items[0].ID)
 	if _, err = s.Facets(viewer, FacetRequest{Library: "reading", Field: "series"}); !errors.Is(err, ErrStaleContinuation) {
 		t.Fatalf("unready facets returned facts: %v", err)
