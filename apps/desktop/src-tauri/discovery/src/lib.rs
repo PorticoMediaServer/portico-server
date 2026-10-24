@@ -164,9 +164,11 @@ mod tests {
     #[ignore="explicit private runner DNS-SD fixture; candidate only, no server endpoint or trust claim"]
     fn actual_dns_sd_publisher_is_observed_as_an_untrusted_candidate(){
         let publisher=Daemon(ServiceDaemon::new_with_port(15354).unwrap());
-        publisher.0.register(service(10443)).unwrap();
+        let properties:Vec<_>=service(10443).get_properties().iter().map(|p|(p.key().to_owned(),p.val_str().to_owned())).collect();
+        let fixture=ServiceInfo::new(SERVICE,"portico-test","portico-test.local.","",10443,properties.as_slice()).unwrap().enable_addr_auto();
+        publisher.0.register(fixture).unwrap();
         let rows=browse(&AtomicBool::new(false),15354).unwrap();
-        assert_eq!(rows.len(),1);assert_eq!(rows[0].base_url,"https://192.168.77.8:10443");
-        assert!(rows[0].expires_at>now().unwrap());
+        assert!(!rows.is_empty(),"isolated smoke requires an actual private IPv4 interface");
+        for row in rows{assert_eq!(row.server_id,format!("srv_{}",URL_SAFE_NO_PAD.encode([4;32])));assert_eq!(row.port,10443);assert!(row.expires_at>now().unwrap());}
     }
 }
