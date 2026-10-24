@@ -27,7 +27,8 @@ before the native transport writes once. Private paths never cross IPC.
 DOM scoring currently requires actual DPR1. Retina DPR2, failed/unloaded fonts,
 mount failures, unstable facts and non-full-window roots remain unmeasured. No
 zoom, DPI substitution or viewport normalization is permitted. A gallery specimen
-is component evidence, not full application acceptance.
+is component evidence, not full application acceptance. The canonical React
+Native dp/pt exception does not apply to this DOM WebView transport.
 
 Use the canonical offline CLI with private reference/adapter/output files outside
 public source. Private design, references, measured output and comparisons must
