@@ -31,14 +31,28 @@ func TestArtworkUploadsUseCurrentSizeAndKeepDerivedBucketsFixed(t *testing.T) {
 		if width != edge || height != edge*1080/2700 || thumbWidth != 400 || mediumWidth != 800 {
 			t.Fatal("stored upload or derived buckets ignored actual policy", edge, width, height, thumbWidth, mediumWidth)
 		}
-		f, _, err := s.Artwork(ctx, target.ID, "poster")
+		// The stored original is the policy edge. A request for the supported
+		// 2560 representation is at or above that edge, so it opens the selected
+		// original itself instead of a derived bucket.
+		selected, _, err := s.EntityArtworkVariant(ctx, target, "poster", "", 2560, "")
 		if err != nil {
-			t.Fatal(err)
+			t.Fatal(edge, err)
 		}
-		cfg, _, err := image.DecodeConfig(f)
-		f.Close()
+		cfg, _, err := image.DecodeConfig(selected)
+		selected.Close()
 		if err != nil || cfg.Width != edge {
-			t.Fatal("published pixels differ from recorded size", cfg, err)
+			t.Fatalf("supported 2560 representation opened %d px (%v), want the %d px selected original", cfg.Width, err, edge)
+		}
+		// The legacy EntityArtwork default stays 1920: it never upscales a
+		// smaller original and downscales the 2560 one.
+		legacy, _, err := s.Artwork(ctx, target.ID, "poster")
+		if err != nil {
+			t.Fatal(edge, err)
+		}
+		cfg, _, err = image.DecodeConfig(legacy)
+		legacy.Close()
+		if err != nil || cfg.Width != min(edge, 1920) {
+			t.Fatalf("legacy default served %d px (%v), want %d", cfg.Width, err, min(edge, 1920))
 		}
 	}
 }

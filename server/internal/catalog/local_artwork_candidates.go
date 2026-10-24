@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"sort"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/storage"
@@ -45,6 +46,46 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		// facts and omit the unattached image; never invent a parent or fail
 		// the whole import merely because the filename did not match.
 	}
+	// Candidate-only changes have no local_artwork carrier trigger. Notify the
+	// affected old and new heads in this same transaction, including removals
+	// and reassociations; leave unchanged accepted observations quiet.
+	pending := make(map[sidecarCarrier]bool, len(carriers))
+	for _, c := range carriers {
+		pending[c] = true
+	}
+	type head struct {
+		kind   string
+		entity int64
+	}
+	dirty := map[head]bool{}
+	rows, err := tx.QueryContext(ctx, `SELECT source_revision,asset_id,kind,entity_id,role,art_key FROM inventory_artwork_candidates WHERE object_id=?`, object)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var c sidecarCarrier
+		var oldRevision, oldAsset string
+		if err = rows.Scan(&oldRevision, &oldAsset, &c.kind, &c.entity, &c.role, &c.key); err != nil {
+			rows.Close()
+			return err
+		}
+		if pending[c] && oldRevision == revision && oldAsset == asset {
+			delete(pending, c)
+		} else {
+			dirty[head{c.kind, c.entity}] = true
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for c := range pending {
+		dirty[head{c.kind, c.entity}] = true
+	}
+	if len(dirty) == 0 {
+		return nil
+	}
 	// Only a complete image observation reaches this method. The transaction's
 	// current inventory/policy fence remains the authority for replacement.
 	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_artwork_candidates WHERE object_id=?`, object); err != nil {
@@ -52,6 +93,21 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 	}
 	for _, c := range carriers {
 		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_artwork_candidates(object_id,source_revision,asset_id,kind,entity_id,role,art_key) VALUES(?,?,?,?,?,?,?)`, object, revision, asset, c.kind, c.entity, c.role, c.key); err != nil {
+			return err
+		}
+	}
+	heads := make([]head, 0, len(dirty))
+	for h := range dirty {
+		heads = append(heads, h)
+	}
+	sort.Slice(heads, func(i, j int) bool {
+		if heads[i].kind != heads[j].kind {
+			return heads[i].kind < heads[j].kind
+		}
+		return heads[i].entity < heads[j].entity
+	})
+	for _, h := range heads {
+		if err = markSidecarArtworkDirtyTx(ctx, tx, h.kind, h.entity); err != nil {
 			return err
 		}
 	}

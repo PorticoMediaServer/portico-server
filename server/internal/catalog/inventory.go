@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"sort"
 	"strings"
 	"time"
 )
@@ -208,6 +209,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		return false, err
 	}
 	discovered := 0
+	movedOut := map[string]bool{}
 	for _, v := range page.Entries {
 		child := filepath.Join(relative, v.Name)
 		expected := filepath.Join(source.ResolvedPath, child)
@@ -222,7 +224,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		}
 		if v.Directory {
 			if discs := naming.DiscLayout(filepath.ToSlash(child)); len(discs) > 0 {
-				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy); e != nil {
+				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy, movedOut); e != nil {
 					return false, e
 				}
 				discovered++
@@ -268,7 +270,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 				return false, err
 			}
 		}
-		added, e := s.observeInventoryTx(ctx, tx, job, source, child, v, reason, policy)
+		added, e := s.observeInventoryTx(ctx, tx, job, source, child, v, reason, policy, movedOut)
 		if e != nil {
 			return false, e
 		}
@@ -277,6 +279,16 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		}
 	}
 	if libraryKind == "book" || libraryKind == "comic" {
+		directories := make([]string, 0, len(movedOut))
+		for directory := range movedOut {
+			directories = append(directories, directory)
+		}
+		sort.Strings(directories)
+		for _, directory := range directories {
+			if err = refreshReadingDirectoryTx(ctx, tx, job, source, directory); err != nil {
+				return false, err
+			}
+		}
 		if err = refreshReadingDirectoryTx(ctx, tx, job, source, relative); err != nil {
 			return false, err
 		}
@@ -302,7 +314,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 	}
 	return true, nil
 }
-func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot, reason string, policy ScanPolicy) (bool, error) {
+func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot, reason string, policy ScanPolicy, movedOut map[string]bool) (bool, error) {
 	var removed bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_scan_issues WHERE job_id=? AND relative_path=? AND reason='reported_file_removed')`, job, relative).Scan(&removed); err != nil {
 		return false, err
@@ -329,7 +341,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	}
 	var object, asset, previousRevision, previousSeen, previousIdentity, incarnation, previousState string
 	var previousSize, previousModified int64
-	relocated := false
+	relocated, relocatedFrom := false, ""
 	err = tx.QueryRowContext(ctx, `SELECT id,asset_id,revision,seen_job,object_identity,root_incarnation,state,size,modified_ns FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0`, source.ID, relative).Scan(&object, &asset, &previousRevision, &previousSeen, &previousIdentity, &incarnation, &previousState, &previousSize, &previousModified)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
@@ -390,7 +402,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 			var oldID, oldRev, oldSeen, oldState string
 			// Both reads start from the asset: a source's own index would read
 			// every file of the source.
-			e := tx.QueryRowContext(ctx, `SELECT id,revision,seen_job,state FROM inventory_objects INDEXED BY inventory_objects_asset WHERE asset_id=?3 AND source_id=?1 AND root_incarnation=?2 AND object_identity=?4 AND retired=0 AND seen_job!=?5 AND (SELECT count(*) FROM inventory_objects x INDEXED BY inventory_objects_asset WHERE x.asset_id=?3 AND x.source_id=?1 AND x.retired=0)=1 LIMIT 1`, source.ID, source.Incarnation, asset, v.ObjectIdentity, job).Scan(&oldID, &oldRev, &oldSeen, &oldState)
+			e := tx.QueryRowContext(ctx, `SELECT id,revision,seen_job,state,relative_path FROM inventory_objects INDEXED BY inventory_objects_asset WHERE asset_id=?3 AND source_id=?1 AND root_incarnation=?2 AND object_identity=?4 AND retired=0 AND seen_job!=?5 AND (SELECT count(*) FROM inventory_objects x INDEXED BY inventory_objects_asset WHERE x.asset_id=?3 AND x.source_id=?1 AND x.retired=0)=1 LIMIT 1`, source.ID, source.Incarnation, asset, v.ObjectIdentity, job).Scan(&oldID, &oldRev, &oldSeen, &oldState, &relocatedFrom)
 			if e == nil {
 				object, previousRevision, previousSeen, previousState = oldID, oldRev, oldSeen, oldState
 				relocated = true
@@ -457,6 +469,13 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET root_incarnation=excluded.root_incarnation,directory_path=excluded.directory_path,relative_path=excluded.relative_path,revision=excluded.revision,evidence_json=excluded.evidence_json,size=excluded.size,modified_ns=excluded.modified_ns,object_identity=excluded.object_identity,seen_job=excluded.seen_job,state='available',missing_since='',missing_observations=0,last_missing_job='',unsupported_reason=excluded.unsupported_reason`, object, source.ID, asset, source.Incarnation, relative, v.ObjectIdentity, revision, evidence, v.Size, v.ModifiedNS, job, reason, filepath.Dir(relative))
 	if err != nil {
 		return false, err
+	}
+	if relocated && movedOut != nil && filepath.Dir(relocatedFrom) != filepath.Dir(relative) {
+		// The title moved out of this folder. Its stored location is already the
+		// new one, so republishing the folder it left counts that folder's
+		// remaining titles and withdraws the interpretation it no longer has.
+		// One refresh per page is enough: a folder rename relocates many files.
+		movedOut[filepath.Dir(relocatedFrom)] = true
 	}
 	if renamedByFilesystem && previousRevision != revision {
 		// The analysis already done describes this same content.

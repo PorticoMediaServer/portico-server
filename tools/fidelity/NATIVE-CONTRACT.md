@@ -26,6 +26,13 @@ its actual positive deviceScaleFactor, including Retina DPR2/3. DOM rectangles
 come unchanged from getBoundingClientRect/Range and the viewport from
 innerWidth/innerHeight: these APIs already report CSS logical pixels. RN window
 and layout APIs report Android dp or Apple pt; use those actual logical values.
+`sameLogicalExtent(a,b,measurement)` accepts exact equality, plus an exact
+float32 projection in either direction for declared RN logical extents only
+(`a === Math.fround(b)` or its inverse). This handles float32 host sizes versus
+float64 window dimensions without changing serialized values or applying an
+epsilon. DOM equality and the 2-logical-unit element tolerance are unchanged.
+Use that same relation when deriving native `fullViewport`; an already emitted
+false flag remains a validation failure and is never silently replaced.
 Do not divide either producer's logical rectangles by density a second time.
 Only genuinely physical measurements may be converted by their producer using
 its measured physical-to-logical API relationship; never infer that relationship

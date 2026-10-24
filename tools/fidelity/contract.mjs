@@ -19,6 +19,15 @@ export function usesLogicalCoordinates(screen) {
     (value.platform === 'android' && value.coordinateUnit === 'dp' || ['ios', 'tvos'].includes(value.platform) && value.coordinateUnit === 'pt');
 }
 
+/** Native host sizes may be float32 while Dimensions supplies float64. Accept
+ * only an exact representational projection, never a geometric epsilon. */
+export function sameLogicalExtent(left, right, measurement) {
+  if (!finite(left) || !finite(right)) return false;
+  if (left === right) return true;
+  return measurement?.renderer === 'react-native' && usesLogicalCoordinates({measurement}) &&
+    (left === Math.fround(right) || right === Math.fround(left));
+}
+
 export function validateMeasurement(screen, {reference = false} = {}) {
   const errors = [];
   const need = (condition, path) => {if (!condition) errors.push(path);};
@@ -33,7 +42,7 @@ export function validateMeasurement(screen, {reference = false} = {}) {
     need(rect(origin?.windowBounds) && origin.windowBounds.width === screen.root?.width && origin.windowBounds.height === screen.root?.height && origin.windowViewport?.deviceScaleFactor === 1 && screen.viewport?.deviceScaleFactor === 1 && typeof origin.fullWindowViewport === 'boolean', 'referencePresentation');
   }
   need(finite(screen?.viewport?.width) && screen.viewport.width > 0 && finite(screen?.viewport?.height) && screen.viewport.height > 0 && finite(screen?.viewport?.deviceScaleFactor) && screen.viewport.deviceScaleFactor > 0, 'viewport');
-  need(screen?.root?.x === 0 && screen?.root?.y === 0 && screen?.root?.width === screen?.viewport?.width && screen?.root?.height === screen?.viewport?.height, 'root.viewport');
+  need(screen?.root?.x === 0 && screen?.root?.y === 0 && sameLogicalExtent(screen?.root?.width, screen?.viewport?.width, screen?.measurement) && sameLogicalExtent(screen?.root?.height, screen?.viewport?.height, screen?.measurement), 'root.viewport');
   if (screen?.measurement) {
     need(['dom', 'react-native'].includes(screen.measurement.renderer), 'measurement.renderer');
     need(['css-px', 'dp', 'pt'].includes(screen.measurement.coordinateUnit), 'measurement.coordinateUnit');

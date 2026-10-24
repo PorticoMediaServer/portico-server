@@ -5,6 +5,7 @@ import {basename, dirname, sep} from 'node:path';
 import {createServer} from 'vite';
 import {withMeasurementBrowser} from './browser.mjs';
 import {enUS} from '../../packages/i18n/src/catalog/en-US.ts';
+import {defaultI18n} from '../../packages/i18n/src/index.ts';
 import {compareCatalogueStrings} from './strings.mjs';
 import {compareTextMetrics} from './text-metrics.mjs';
 import {compareScreens} from './compare.mjs';
@@ -12,6 +13,8 @@ import {auth4} from './auth4.mjs';
 import {applyControlledState, checkControlledState} from './controlled-state.mjs';
 import {calibrateFrame} from './calibration.mjs';
 import {fontReadiness} from './readiness.mjs';
+import {controlledEntry, verifyGalleryEntry, settleMotion} from './gallery-entry.mjs';
+import {extractReference} from './extract-reference.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -19,7 +22,12 @@ const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 export async function compareWebScreen({referenceURL, adapter = auth4}) {
   const {referenceSelector, entry, actualSelector, viewport} = adapter;
   if (!process.env.TMPDIR || !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) throw new Error('Owned runner scratch and explicit Chromium required');
-  if (!entry.startsWith('/src/dev/entries/') && !entry.startsWith('/test/')) throw new Error('An explicit controlled DEV entry is required');
+  controlledEntry(entry);
+  // Contact-sheet frames are measured at their natural size in a large enough
+  // window. The shared extractor rejects scaled roots; no DOM/CSS is rewritten.
+  const authoredReference = adapter.referenceWindowViewport ? await extractReference({url: referenceURL,
+    selector: referenceSelector, windowViewport: adapter.referenceWindowViewport, viewport,
+    anchors: adapter.reference, repeats: adapter.repeats?.reference}) : undefined;
   const vite = await createServer({root: join(root, 'web-next'), configFile: join(root, 'web-next/vite.config.ts'),
     cacheDir: join(process.env.TMPDIR, 'fidelity-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   try {
@@ -27,14 +35,16 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
     const actualOrigin = `http://127.0.0.1:${vite.httpServer.address().port}`, actualURL = actualOrigin + entry;
     return await withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       viewport, allowedOrigins: [new URL(referenceURL).origin, actualOrigin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
-      await browser.navigate(referenceURL, referenceSelector);
-      const reference = await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
-      const deterministicReference = JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
+      if (!authoredReference) await browser.navigate(referenceURL, referenceSelector);
+      const reference = authoredReference ?? await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference);
+      const deterministicReference = !!authoredReference || JSON.stringify(reference) === JSON.stringify(await browser.measure(referenceSelector, adapter.reference, adapter.repeats?.reference));
       await browser.navigate(actualURL, adapter.readySelector ?? actualSelector);
+      await verifyGalleryEntry(browser, entry, viewport);
       await applyControlledState(browser, adapter.stateSteps);
+      if (adapter.motion === 'settled') await settleMotion(browser);
       const actual = await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual);
       const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual));
-      const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter, comparison.cascadeRoots), textMetrics = compareTextMetrics(reference, actual);
+      const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter, comparison.cascadeRoots, (key, values) => defaultI18n.t(key, values)), textMetrics = compareTextMetrics(reference, actual);
       const differences = [...comparison.differences, ...strings.differences];
       const calibration = calibrateFrame(reference);
       if (!calibration.passed) differences.push({kind: 'calibration-failure', label: 'Frame self and single-fact perturbations', calibration});
@@ -47,7 +57,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       if (nativeCarets.length) comparison.diagnostics.push({label: 'Native input caret illustration', scored: false, ruling: 27, properties: ['x', 'width', 'blink'], reason: 'Binding native-input illustration erratum; no fake caret or input metric compensation.'});
       const classification = {adapter: 0, stateOrReadiness: 0, copyOrCatalogue: 0, geometry: 0, computedStyle: 0, unmatchedElement: 0};
       for (const difference of differences) {
-        if (['anchor-cardinality', 'list-cardinality', 'ambiguous-match', 'missing-content-slot'].includes(difference.kind)) classification.adapter++;
+        if (['anchor-cardinality', 'list-cardinality', 'ambiguous-match', 'missing-content-slot', 'message-slot-invalid'].includes(difference.kind)) classification.adapter++;
         else if (['screen-state', 'fixture-state', 'nondeterministic-extraction', 'font-not-loaded', 'page-readiness', 'native-caret-state', 'calibration-failure'].includes(difference.kind)) classification.stateOrReadiness++;
         else if (difference.kind.includes('string') || difference.property === 'text') classification.copyOrCatalogue++;
         else if (difference.property?.startsWith('box.')) classification.geometry++;

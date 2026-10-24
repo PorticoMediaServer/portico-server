@@ -1,5 +1,5 @@
 import {colorDifference} from './color.mjs';
-import {usesLogicalCoordinates} from './contract.mjs';
+import {usesLogicalCoordinates, sameLogicalExtent} from './contract.mjs';
 
 export const policy = Object.freeze({boxPixels: 2, opacity: .02, deltaE2000: 2, colorAlpha: .02});
 const textStyles = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'textTransform', 'textDecorationLine', 'textShadow'];
@@ -54,7 +54,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const actualLogical = usesLogicalCoordinates(actual);
   const referenceSelfCanvas = referenceSelf && reference.measurement?.sourceRole === 'reference-frame' && actual.measurement?.sourceRole === 'reference-frame' &&
     JSON.stringify(reference.referencePresentation) === JSON.stringify(actual.referencePresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || reference.root.width !== actual.root.width || reference.root.height !== actual.root.height || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || !sameLogicalExtent(reference.root.width, actual.root.width, actual.measurement) || !sameLogicalExtent(reference.root.height, actual.root.height, actual.measurement) || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
     differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
   for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
   if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {
@@ -62,6 +62,16 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     if (typeof focus.frame !== 'string' || target.length !== 1 || target[0]?.focused !== true || focused.length !== 1)
       differences.push({kind: 'focus-state', label: focus.frame ?? 'Drawn focus target', expected: {frame: focus.frame, count: 1}, actual: {frames: focused.map(node => node.frame ?? node.id), count: focused.length}});
   }
+  const referenceNodes = new Map(reference.elements.map(node => [node.id, node])), actualNodes = new Map(actual.elements.map(node => [node.id, node]));
+  const anchoredMatches = new Map();
+  const descendantOf = (node, ancestor) => {
+    const seen = new Set();
+    for (let parent = node.parent; parent && !seen.has(parent); parent = actualNodes.get(parent)?.parent) {
+      if (parent === ancestor) return true;
+      seen.add(parent);
+    }
+    return false;
+  };
   for (const node of expected) {
     let candidates = observed.filter(other => !used.has(other.id)), method;
     if (referenceSelf) {candidates = candidates.filter(other => other.id === node.id); method = 'same-observation-id';}
@@ -75,6 +85,13 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       method = 'list-role-text-order';
     } else if (node.frame) {candidates = candidates.filter(other => other.frame === node.frame); method = 'frame-anchor';}
     else {
+      // Wrapper depth may differ, but an unanchored child belongs to its nearest
+      // already matched semantic anchor/list part, not an unrelated global row.
+      const seen = new Set();
+      for (let parent = node.parent; parent && !seen.has(parent); parent = referenceNodes.get(parent)?.parent) {
+        seen.add(parent);
+        if (anchoredMatches.has(parent)) {candidates = candidates.filter(other => descendantOf(other, anchoredMatches.get(parent))); break;}
+      }
       const exact = candidates.filter(other => role(other) === role(node) && text(other) === text(node));
       const copy = candidates.filter(other => text(node) && text(other) === text(node));
       candidates = exact.length ? exact : copy.length ? copy : candidates.filter(other => role(other) === role(node));
@@ -84,6 +101,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     if (!candidates.length) {differences.push({kind: 'missing-element', label, reference: node.id}); continue;}
     if (candidates.length > 1 && !node.repeat) ambiguous.push({label, reference: node.id, candidates: candidates.map(value => value.id), selectedBy: 'DOM order'});
     const other = candidates[0]; used.add(other.id); matches.push({label, reference: node.id, actual: other.id, method});
+    if (node.frame || node.repeat) anchoredMatches.set(node.id, other.id);
     if (node.repeat && !node.repeat.part) itemMatches.set(node.repeat.item, other.repeat.item);
     const add = (property, left, right, detail) => differences.push({kind: 'measured-difference', label, property, expected: left, actual: right, ...(detail ? {detail} : {})});
     const paintOnly = textHandledBySlots.includes(node.frame);
