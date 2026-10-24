@@ -94,7 +94,7 @@ jobs:
           archive=".sonic-output/portico-sonic-${tag}-${BUNDLE_TARGET}.tar.xz"
           python3 scripts/sonic-bundle.py package "$archive" --helper .sonic-build/portico-sonic --sdk .sonic-build/sdk --model .sonic-model/musicnn-mtt --target "$BUNDLE_TARGET" --source-revision "$GITHUB_SHA"
           python3 scripts/sonic-bundle.py extract .sonic-build/verified --archive "$archive" --target "$BUNDLE_TARGET"
-          scripts/run-sonic-cpu-conformance.sh --bundle "$PWD/.sonic-build/verified" "$PWD/.sonic-model/conformance.json" "$BUNDLE_TARGET"
+          bash scripts/run-sonic-cpu-conformance.sh --bundle "$PWD/.sonic-build/verified" "$PWD/.sonic-model/conformance.json" "$BUNDLE_TARGET"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sonic-${{ matrix.target }}
