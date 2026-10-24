@@ -10,7 +10,7 @@ import {resolve, join} from 'node:path';
 const output = process.env.PORTICO_RUNNER_OUTPUT, reference = process.env.PORTICO_RUNNER_SECONDARY_SOURCE;
 if (!output || !reference || !process.env.TMPDIR) throw new Error('Run on the external runner with --browser and the exact design secondary source.');
 const origin = 'http://127.0.0.1:5188', referenceOrigin = 'http://127.0.0.1:5199';
-const chromium = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/snap/bin/chromium'].find(path => existsSync(path));
+const chromium = ['/usr/bin/chromium-browser', '/usr/bin/chromium', '/snap/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'].find(path => existsSync(path));
 if (!chromium) throw new Error('Chromium is not installed on this runner.');
 const sleep = ms => new Promise(done => setTimeout(done, ms));
 const server = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '5188'],
