@@ -17,7 +17,7 @@ const session = (family: string, role = 'account'): LocalSession => ({accessToke
   sessionFamilyId: family, tokenGeneration: '1', installationId: 'i'.repeat(43), expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z',
   viewer: {serverId, authority: 'local', accountId: 'owner-account', profileId: 'main', role}});
 
-async function fixture(kind:'owner'|'setup'|'ambiguous'='owner') {
+async function fixture(kind:'owner'|'setup'|'ambiguous'='owner', admittedSetupOwner=false) {
   let raw: AppSessionRecord | undefined, portico = false, pending = true, remembers = 0, ownerFinishes = 0, registeredFinishes = 0, cancels = 0;
   let gate: Promise<void> | undefined, release: (() => void) | undefined, pendingGate: Promise<void> | undefined, releasePending: (() => void) | undefined;
   let successor = false, mismatch = false, required = false, exchangeFailure = false, capturedAttempt = false;
@@ -33,7 +33,7 @@ async function fixture(kind:'owner'|'setup'|'ambiguous'='owner') {
     capabilities: {manageAccount: false, managePeople: false, manageServer: false, manageSignIn: false},
     account: {id: 'owner-account', username: 'actual_owner', primaryProfileId: 'main', role: 'owner', revision: 1, disabled: false, allowedLibraries: [], ...(portico ? {hostedAccountId: hosted.accountId} : {})},
     profiles: [{id: 'main', name: 'Main', primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false},
-      {id: 'second', name: 'Second', primary: false, position: 1, art: 'blue', revision: 1, pinRevision: 1, pinRequired: false}],
+      ...(!admittedSetupOwner ? [{id: 'second', name: 'Second', primary: false, position: 1, art: 'blue', revision: 1, pinRevision: 1, pinRequired: false}] : [])],
     ...(live && required ? {twoStepSetupRequired: true} : {})});
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => ({pin, getSnapshot: () => ({phase: 'ready'}), dispose() {}}) as never;
   api.request = (async path => {
@@ -43,8 +43,8 @@ async function fixture(kind:'owner'|'setup'|'ambiguous'='owner') {
     throw new Error('Entry must not exchange, probe me, or admit again: ' + path);
   }) as HttpLocalApi['request'];
   const complete = async () => {
-    portico = true;await save(session('returned-owner'));
-    const result = {kind: 'signed-in' as const, snapshot: snapshot(), session: session('returned-owner'), accountScoped: true, passwordChangeRequired: false};
+    portico = true;await save(session('returned-owner', admittedSetupOwner ? 'owner' : 'account'));
+    const result = {kind: 'signed-in' as const, snapshot: snapshot(), session: session('returned-owner', admittedSetupOwner ? 'owner' : 'account'), accountScoped: !admittedSetupOwner, passwordChangeRequired: false};
     if (mismatch) result.session = {...result.session, viewer: {...result.session.viewer, profileId: 'different-profile'}};
     if (successor) await save(session('successor'));
     returnedRevision = (await store.read()).revision;returnedNotifications = notifications;
@@ -152,4 +152,21 @@ test('protected setup kind uses the setup controller without a Local owner conti
 test('two protected continuation kinds refuse without URL selection or consuming either journal',async()=>{
  const f=await fixture('ambiguous');await f.entry.finishPorticoReturn(callback);
  assert.equal(f.ownerFinishes,0);assert.equal(f.registeredFinishes,0);assert.equal(f.cancels,0);assert.equal(f.pending,true);assert.equal(f.entry.getSnapshot().phase,'welcome');f.entry.dispose();
+});
+
+
+test('only protected setup with the real admitted sole owner can resume the first-library screen',async()=>{
+ for(const kind of ['setup','owner'] as const){
+  const f=await fixture(kind,true);await f.entry.finishPorticoReturn(callback);
+  const state=f.entry.getSnapshot();
+  assert.equal((await f.store.selected())?.connection.session.viewer.role,'owner');
+  assert.equal(state.phase,kind==='setup'?'ready':'profiles');
+  assert.equal(state.setupCompleted,kind==='setup'?true:undefined);
+  assert.equal(f.remembers,0);f.entry.dispose();
+ }
+});
+test('a required two-step setup cannot be bypassed by the first-library return hint',async()=>{
+ const f=await fixture('setup',true);f.requireFactor();await f.entry.finishPorticoReturn(callback);
+ assert.equal(f.entry.getSnapshot().phase,'two-step-setup');
+ assert.equal(f.entry.getSnapshot().setupCompleted,undefined);f.entry.dispose();
 });
