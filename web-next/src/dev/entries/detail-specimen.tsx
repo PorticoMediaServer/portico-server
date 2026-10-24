@@ -99,7 +99,7 @@ function fixtures(frame: SpecimenFrame) {
   return {
     itemId, title: fixtureText('next.detail.fixture.title'), year: 2024, durationMs: 9_960_000, progressMs: 0,
     overview: fixtureText('next.detail.fixture.overview'), rating: fixtureText('next.detail.fixture.rating'), tagline: fixtureText('next.detail.fixture.tagline'),
-    releaseDate: '2024-03-01', studio: fixtureText('next.detail.fixture.studio'), country: fixtureText('next.detail.fixture.country'),
+    releaseDate: '2024-03-01', studio: fixtureText('next.detail.fixture.studio'),
     genres: [['science-fiction', 'next.detail.fixture.scienceFiction'], ['adventure', 'next.detail.fixture.adventure']] as const,
     credits: duneCredits, creditTotals: frame === '3' ? {cast: 40, crew: 24} : {cast: 4, crew: 2},
     audio: frame === '3' ? ['en', 'fr', 'es'] : ['en'], subtitles: frame === '3' ? ['en', 'fr', 'es'] : ['en'],
@@ -208,7 +208,7 @@ function detailDocument(facts: DetailsFixture, personal: ReturnType<typeof baseP
     ],
     facts: {
       contentRating: facts.rating, tagline: facts.tagline, releaseDate: facts.releaseDate,
-      studio: facts.studio, country: facts.country, originalLanguage: 'en',
+      studio: facts.studio, ...('country' in facts ? {country: facts.country} : {}), originalLanguage: 'en',
     },
     metadata: {
       status: 'available', ratings: [], attributions: [],
