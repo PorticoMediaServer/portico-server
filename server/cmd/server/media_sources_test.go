@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/persistence"
@@ -21,6 +22,12 @@ func TestMain(m *testing.M) {
 	// run() configures mediaexec with this test binary as the limits shim.
 	if handled, _ := mediaexec.RunHelper(os.Args[1:]); handled {
 		os.Exit(1)
+	}
+	if handled, err := decoder.RunHelper(os.Args[1:]); handled {
+		if err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 	if len(os.Args) == 2 && os.Args[1] == "--portico-storage-helper" {
 		if storage.Helper(os.Stdin, os.Stdout) != nil {

@@ -13,8 +13,24 @@ import (
 type LibraryProviderPolicy struct {
 	Providers        []string
 	Language, Region string
+	RefreshMode      string
 	Revision         int64
 	Consent          bool
+}
+
+// DefaultAdministrationPolicy is the factory reset policy from the library
+// agent and provider defaults, before a per-library edit. Resetting this
+// selection never changes the independent provider-consent authority.
+func DefaultAdministrationPolicy(kind string) LibraryProviderPolicy {
+	p := LibraryProviderPolicy{Providers: []string{}, RefreshMode: "replace_unlocked"}
+	switch kind {
+	case "movie", "tv", "anime":
+		p.Providers = defaultScreenProviders(kind)
+		p.Language, p.Region = LibraryAgentOptions(kind)[0].DefaultLanguage, "US"
+	case "music":
+		p.Providers = []string{"musicbrainz"}
+	}
+	return p
 }
 
 // AdministrationPolicyTx reads effective runtime policy; old admin JSON never
@@ -29,6 +45,7 @@ func AdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind strin
 		p.Revision = screen.Revision + screen.ConsentRevision - 2
 		p.Language = screen.Language
 		p.Region = screen.Region
+		p.RefreshMode = screen.RefreshMode
 		p.Consent = screen.Confirmed
 		if screen.Enabled {
 			p.Providers = screen.Providers
@@ -65,7 +82,7 @@ func ApplyAdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind 
 	}
 	raw, _ := json.Marshal(p.Providers)
 	prior, _ := json.Marshal(old.Providers)
-	if string(raw) == string(prior) && p.Language == old.Language && p.Region == old.Region {
+	if string(raw) == string(prior) && p.Language == old.Language && p.Region == old.Region && (p.RefreshMode == "" || p.RefreshMode == old.RefreshMode) {
 		return nil
 	}
 	if kind == "movie" || kind == "tv" || kind == "anime" {
@@ -91,17 +108,23 @@ func ApplyAdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind 
 			}
 			seen[provider] = true
 		}
+		if p.RefreshMode == "" {
+			p.RefreshMode = old.RefreshMode
+		}
+		if p.RefreshMode != "replace_unlocked" && p.RefreshMode != "fill_missing" {
+			return requestinput.New("invalid metadata refresh mode")
+		}
 		enabled := len(p.Providers) > 0
-		if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_policies SET revision=revision+1,enabled=?,providers=?,language=?,region=? WHERE library_id=?`, enabled, string(raw), p.Language, p.Region, library); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE screen_metadata_policies SET revision=revision+1,enabled=?,providers=?,language=?,region=?,refresh_mode=? WHERE library_id=?`, enabled, string(raw), p.Language, p.Region, p.RefreshMode, library); err != nil {
 			return err
 		}
 		if err = syncLibraryAgentTx(ctx, tx, library, enabled); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE tvdb_provider_policies SET enabled=?,revision=revision+1 WHERE library_id=?`, seen["tvdb"], library); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE tvdb_provider_policies SET enabled=?,refresh_mode=?,revision=revision+1 WHERE library_id=?`, seen["tvdb"], p.RefreshMode, library); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE metadata_provider_policies SET enabled=?,language=?,region=? WHERE library_id=? AND provider='tmdb'`, seen["tmdb"], p.Language, p.Region, library); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE metadata_provider_policies SET enabled=?,language=?,region=?,refresh_mode=? WHERE library_id=? AND provider='tmdb'`, seen["tmdb"], p.Language, p.Region, p.RefreshMode, library); err != nil {
 			return err
 		}
 		if err = screenRematchLibraryTx(ctx, tx, library, p.Providers); err != nil {

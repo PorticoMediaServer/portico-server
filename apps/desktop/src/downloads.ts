@@ -120,6 +120,7 @@ export class DesktopDownloadStore {
   private readonly localLeases=new Map<number,string>();
   private readonly localRetirements=new Map<number,Promise<void>>();
   private readonly localLoads=new Map<number,Promise<unknown>>();
+
   private readonly listeners=new Set<()=>void>();
   private readonly folderCancels=new Set<()=>void>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();

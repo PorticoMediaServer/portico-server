@@ -72,14 +72,14 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
   const empty = <StateView title={t('library.emptyLibrary')} body={t('library.emptyLibraryBody')}/>;
   const save = () => {
-    if (!state.sort || !resources.life.current()) return;
+    if (!resources.controller.canSaveView()) return;
     const query = resources.controller.query();
     setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
       sort: query.sort ?? [], presentation: header.libraryViewOverride ?? appearance.libraryView});
   };
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
-    reportError: context.effects.reportError, empty, canSaveView: !!state.sort, onSaveView: save,
+    reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
     selection: {actions: member => actions(member.entry)},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};

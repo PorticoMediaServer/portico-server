@@ -177,6 +177,7 @@ cp -R "$ROOT/third_party/ffmpeg/patches" "$WORK/provenance/contract/"
 cp "$ROOT/scripts/build-ffmpeg.sh" "$ROOT/scripts/normalize-ffmpeg-bundle.py" "$ROOT/scripts/patch-btbn-winarm64-system-error.sh" "$ROOT/scripts/prepare-ffmpeg-source.py" "$ROOT/scripts/archive-ffmpeg-source.py" "$ROOT/scripts/configure-ffmpeg-recipe.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/build-portico-disc.py" "$ROOT/scripts/build-macos-ffmpeg-extras.sh" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$ROOT/scripts/verify-ffmpeg-manifest.py" "$ROOT/scripts/verify-ffmpeg-features.py" "$ROOT/scripts/verify-disc-bundle.py" "$WORK/provenance/scripts/"
+cp "$ROOT/scripts/verify-ffmpeg-bluray.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-recipes.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/verify-ffmpeg-abi.py" "$WORK/provenance/scripts/"
 cp "$ROOT/scripts/check-ffmpeg-build-inputs.py" "$WORK/provenance/scripts/"
@@ -193,6 +194,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$INPUT/compiler-source" "$WORK/provenance/"
   cp "$INPUT/compiler-linked-inputs.json" "$WORK/provenance/"
   cp "$ROOT/scripts/build-linux-ffmpeg-deps.py" "$ROOT/scripts/build-linux-ffmpeg.py" "$WORK/provenance/scripts/"
+  cp "$ROOT/scripts/reuse-ffmpeg-protocol-objects.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/capture-ffmpeg-compiler.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/collect-ffmpeg-licenses.py" "$WORK/provenance/scripts/"
   cp "$ROOT/scripts/build-linux-libdovi.py" "$WORK/provenance/scripts/"
@@ -207,6 +209,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-join.patch" "$WORK/provenance/contract/"
+  cp "$ROOT/third_party/ffmpeg/portico-bluray-playlist-minimum.patch" "$WORK/provenance/contract/"
   cp "$ROOT/scripts/qualify-linux-ffmpeg-hdr.py" "$ROOT/scripts/qualify-hdr-video.py" "$ROOT/scripts/qualify-dovi-join.py" "$WORK/provenance/scripts/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
@@ -225,5 +228,7 @@ if [[ "$PHASE" == working ]]; then
 else
   "$ROOT/scripts/verify-ffmpeg-bundle.sh" "$WORK/bundle"
 fi
-tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1' -cf "$WORK/$archive_name" .
+# The payload includes the compressed corresponding-source archive. Keep this
+# outer compression pass fast; the manifest seals every extracted file.
+tar -C "$WORK/bundle" --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -I 'xz -T1 -0' -cf "$WORK/$archive_name" .
 echo "$WORK/$archive_name"

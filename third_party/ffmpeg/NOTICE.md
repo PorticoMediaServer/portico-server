@@ -35,3 +35,9 @@ retain the locked Cargo source/vendor inventory, module notices and Rust runtime
 notices. The official source-built dovi_tool CLI serves only as a test oracle;
 it is not a server runtime dependency. Profile conversion and separate-PID
 joining require distinct actual bundle fixture proofs.
+
+The additive libavformat/bluray.c playlist-minimum patch retains that file's
+LGPL-2.1-or-later licence and upstream 180-second default. Portico's disc reader
+selects 60 seconds explicitly. Target verification must decode the checked
+short BDMV and UDF title through FFmpeg's own protocol; source inspection and
+portico-disc's structure probe do not establish that playback works.

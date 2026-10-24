@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
@@ -60,29 +62,30 @@ func TestRefreshRoundTripOverPlainHTTP(t *testing.T) {
 }
 
 func TestUnknownAndKnownNamesHaveTheSameSignInCooloff(t *testing.T) {
-	state := t.TempDir()
-	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	ident, err := identity.New(db, state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec(`INSERT INTO identity_state(singleton,sign_in_kind) VALUES(1,'local')`); err != nil {
-		t.Fatal(err)
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("Testing1!"), bcrypt.MinCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',?,'profile',1)`, hash); err != nil {
-		t.Fatal(err)
-	}
-	h := New(Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db)})
+	d, owner := completedLocalFoundationFixture(t)
+	db, h := d.DB, New(d)
+	var knownCode, knownMessage string
 	for _, name := range []string{"owner", "unlisted"} {
 		for n := 0; n < 6; n++ {
+			if n == 5 {
+				// The fifth evaluated guess must genuinely establish the policy's
+				// one-second backoff. Then keep this HTTP-admission fixture locked across
+				// a wall-clock second or shared-runner scheduling gap; expiry is tested
+				// separately by the identity backoff tests.
+				table, predicate, args, buckets := "identity_credential_attempts", "account_id=?", []any{owner.Viewer.AccountID}, 1
+				if name == "unlisted" {
+					table, predicate, args, buckets = "identity_unknown_attempts", "1=1", nil, 2
+				}
+				var count, minAttempts, maxAttempts, minDelay, maxDelay int
+				query := "SELECT count(*),MIN(failed_attempts),MAX(failed_attempts),MIN(locked_until-last_failure),MAX(locked_until-last_failure) FROM " + table + " WHERE " + predicate
+				if err := db.QueryRow(query, args...).Scan(&count, &minAttempts, &maxAttempts, &minDelay, &maxDelay); err != nil || count != buckets || minAttempts != 5 || maxAttempts != 5 || minDelay != 1 || maxDelay != 1 {
+					t.Fatalf("%s: fifth guess did not establish the real standard cool-off", name)
+				}
+				values := append([]any{time.Now().Unix() + 30}, args...)
+				if _, err := db.Exec("UPDATE "+table+" SET locked_until=? WHERE "+predicate, values...); err != nil {
+					t.Fatal(err)
+				}
+			}
 			body, _ := json.Marshal(map[string]string{"username": name, "password": "wrong"})
 			request := httptest.NewRequest("POST", "/v1/direct/sign-in", bytes.NewReader(body))
 			request.Header.Set("Content-Type", "application/json")
@@ -91,9 +94,26 @@ func TestUnknownAndKnownNamesHaveTheSameSignInCooloff(t *testing.T) {
 			want := http.StatusUnauthorized
 			if n == 5 {
 				want = http.StatusTooManyRequests
-				if w.Header().Get("Retry-After") == "" {
-					t.Fatalf("%s: cool-off has no Retry-After", name)
+				retry, err := strconv.ParseInt(w.Header().Get("Retry-After"), 10, 64)
+				if err != nil || retry < 1 || retry > 60 {
+					t.Fatalf("%s: cool-off has no bounded Retry-After", name)
 				}
+				var result struct {
+					Error struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				if json.Unmarshal(w.Body.Bytes(), &result) != nil || result.Error.Code != "account_locked" || result.Error.Message == "" {
+					t.Fatalf("%s: cool-off response changed", name)
+				}
+				if name == "owner" {
+					knownCode, knownMessage = result.Error.Code, result.Error.Message
+				} else if result.Error.Code != knownCode || result.Error.Message != knownMessage {
+					t.Fatal("unknown name disclosed a different cool-off response")
+				}
+			} else if w.Header().Get("Retry-After") != "" {
+				t.Fatalf("%s: early guess received a different cool-off progression", name)
 			}
 			if w.Code != want {
 				t.Fatalf("%s attempt %d: %d %s", name, n+1, w.Code, w.Body.String())
