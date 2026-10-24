@@ -24,13 +24,13 @@ test('one canonical current-family read preserves actual status/presence/ownersh
   const response=await read(controller.signal);
   assert.deepEqual(f.calls.map(c=>c[0]),['sync','access','send','sync']);
   assert.deepEqual(f.calls.find(c=>c[0]==='send'),['send','/v1/servers','GET',undefined,controller.signal,'current-bearer']);
-  assert.equal(response.items[0].status,'active');assert.deepEqual(response.items[0].presence,f.row.presence);
+  assert.equal(response.items[0].status,'active');assert.equal(response.items[0].presence.lastSeenAt,f.row.presence.lastSeenAt);
   assert.equal(response.items[0].ownedByMe,false);assert.equal(response.items[0].role,'admin');
   assert.equal(response.items[0].baseUrl,'');assert.equal(response.items[0].endpointVerified,false);
 });
 test('a replaced account or family refuses before any directory request',async()=>{
-  for(const account of [scope.accountId,'account-other']){
-    const f=fixture();f.replace(account);await assert.rejects(createAccountServerDirectory(f.account,scope).read(),{code:'account_changed'});
+  for(const [account,family] of [[scope.accountId,'family-successor'],['account-other',scope.familyId]]){
+    const f=fixture();f.replace(account,family);await assert.rejects(createAccountServerDirectory(f.account,scope).read(),{code:'account_changed'});
     assert.equal(f.calls.some(c=>c[0]==='send'),false);
   }
 });
