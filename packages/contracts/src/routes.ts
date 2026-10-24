@@ -7353,6 +7353,7 @@ export const routes = [
     "status": 206,
     "responseContentType": "application/pdf",
     "responseStatuses": [
+      200,
       416
     ],
     "http": true,
@@ -13129,7 +13130,7 @@ export const routes = [
     "summary": "Open an authorized reading publication",
     "access": "device",
     "requires": "playback",
-    "lane": "browsing",
+    "lane": "media",
     "cost": "page_sized",
     "bodyLimit": 4096,
     "errors": [
@@ -13145,7 +13146,7 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
-    "admission": "browsing"
+    "admission": "media-body"
   },
   {
     "id": "post_saved_resources",
@@ -14828,7 +14829,7 @@ export const routes = [
     "summary": "Save the selected publication's location with compare and swap",
     "access": "device",
     "requires": "playback",
-    "lane": "browsing",
+    "lane": "media",
     "cost": "page_sized",
     "bodyLimit": 8192,
     "headers": [
@@ -14847,7 +14848,7 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
-    "admission": "browsing"
+    "admission": "media-body"
   },
   {
     "id": "put_saved_pins_kind_id",

@@ -1,14 +1,15 @@
-import test from 'node:test';
+import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {ListeningService,loadListeningSelection,listeningItemInput,parseListeningJourney,parseListeningPreferences,readListeningItem,readListeningContext,type ListeningRequest} from '../src/listening.ts';
 import type {PlaybackService} from '../src/index.ts';
+import {defaultAudioEffects,type AudioEffectsSnapshot} from '../src/audio-effects.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
 const prefs={revision:0,bookRate:1.5,passoutMinutes:0};
 const wrapped=(data:unknown,other={})=>({scope:{...scope,...other},data});
 const settle=()=>new Promise<void>(resolve=>setImmediate(resolve));
 const target={libraryId:'library',kind:'album' as const,id:'album'};
 class Engine {
- state:any={itemId:'song',intent:'playing',phase:'ready',positionSeconds:5,session:{id:'session',generation:1},intentId:1};
+ state:any={itemId:'song',intent:'playing',phase:'ready',positionSeconds:5,session:{id:'session',generation:1},intentId:1,audioEffects:{settings:defaultAudioEffects,rendering:false,rate:1,eqApplied:false,levelingApplied:false} satisfies AudioEffectsSnapshot};
  policies:any[]=[];native=false;setListeningPolicy=(policy:any)=>{this.policies.push(policy);};isNativeListening=()=>this.native;
  listeners=new Set<()=>void>();rates:number[]=[];pauses=0;
  subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>{this.listeners.delete(f);};};
@@ -18,7 +19,7 @@ class Engine {
  update(patch:unknown){this.state={...this.state,...patch as any};for(const f of this.listeners)f();}
 }
 function chapterData(){return {scope:{serverId:'server',libraryId:'library',itemId:'song',sessionId:'session',generation:1,sourceId:'source',viewerFence:'fence'},revision:'revision',status:'available',reason:null,durationMs:60000,chapters:[{id:'source:1',index:1,title:'One',startMs:0,endMs:30000,action:{id:'seek',positionMs:0}},{id:'source:2',index:2,title:'Two',startMs:30000,endMs:60000,action:{id:'seek',positionMs:30000}}],totalCount:2,nextCursor:''};}
-function setup(options:{preferences?:Partial<typeof prefs>;context?:(id:string)=>unknown;request?:ListeningRequest}={}) {
+function setup(t:TestContext,options:{preferences?:Partial<typeof prefs>;context?:(id:string)=>unknown;request?:ListeningRequest}={}) {
  const engine=new Engine();let now=0,p={...prefs,...options.preferences};const writes:unknown[]=[];
  const request:ListeningRequest=options.request??(async(path,body,method)=>{
   if(path==='/v1/listening/preferences'){if(method==='PUT'){writes.push(body);p={...body as typeof p,revision:p.revision+1};}return wrapped(p);}
@@ -26,6 +27,7 @@ function setup(options:{preferences?:Partial<typeof prefs>;context?:(id:string)=
   const id=path.split('/')[3];return wrapped(options.context?.(id)??{itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});
  });
  const service=new ListeningService(scope,request,engine as unknown as PlaybackService,()=>now);
+ t.after(()=>service.dispose());
  service.connect();return {service,engine,writes,setNow:(v:number)=>{now=v;}};
 }
 test('preferences strictly validate rates, revision and bounded inactivity choices; scope is never caller-switchable',async()=>{
@@ -36,7 +38,7 @@ test('preferences strictly validate rates, revision and bounded inactivity choic
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song',bookId:''}),scope,'song'));
 });
 test('songs stay at recorded speed; audiobook session speed survives parts without changing defaults',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:id==='song'||id==='song2'?'song':'audiobook_file'})});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:id==='song'||id==='song2'?'song':'audiobook_file'})});await settle();
  f.engine.update({playbackRun:1});
  await assert.rejects(f.service.setRate(1.25));assert.equal(f.engine.rates.at(-1),1);assert.equal(f.writes.length,0,'songs have no speed setting');
  assert.deepEqual(f.service.getSnapshot().preferences,prefs);
@@ -51,23 +53,23 @@ test('songs stay at recorded speed; audiobook session speed survives parts witho
  assert.equal(f.writes.length,0);
 });
 test('minute timer pauses the real foreground player once; manual interaction resets stop latch',async t=>{
- const f=setup();t.after(()=>f.service.dispose());await settle();await f.service.setTimer(15);
+ const f=setup(t);await settle();await f.service.setTimer(15);
  f.setNow(899999);f.service.tick();assert.equal(f.engine.pauses,0);
  f.setNow(900000);f.service.tick();f.service.tick();assert.equal(f.engine.pauses,1);assert.equal(f.service.mayAdvance(),false);assert.equal(f.service.getSnapshot().timer,null);
  f.service.interact();assert.equal(f.service.mayAdvance(),true);
 });
 test('inactivity preference is enforced and deliberate foreground interactions reset its deadline',async t=>{
- const f=setup({preferences:{passoutMinutes:30}});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{preferences:{passoutMinutes:30}});await settle();
  f.setNow(29*60000);f.service.interact();f.setNow(58*60000);f.service.tick();assert.equal(f.engine.pauses,0);
  f.setNow(59*60000);f.service.tick();assert.equal(f.engine.pauses,1);assert.match(f.service.getSnapshot().message!,/without interaction/);
 });
 test('album continuation has no listening preference switch',async t=>{
- const f=setup();t.after(()=>f.service.dispose());await settle();assert.equal(f.service.mayAdvance(),true);
+ const f=setup(t);await settle();assert.equal(f.service.mayAdvance(),true);
  await f.service.savePreferences({bookRate:2});assert.equal(f.service.mayAdvance(),true);
  assert.deepEqual(f.writes,[{revision:0,bookRate:2,passoutMinutes:0}]);
 });
 test('item timer requires an actual ended observation and book timer survives ordered parts',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});await settle();
  await f.service.setTimer('book');f.engine.update({phase:'ended'});assert.equal(f.engine.pauses,0);
  f.engine.update({itemId:'last',phase:'ready',session:{id:'last-session',generation:1}});await settle();assert.equal(f.service.getSnapshot().timer?.choice,'book');
  f.engine.update({phase:'ended'});assert.equal(f.engine.pauses,1);assert.equal(f.service.mayAdvance(),false);
@@ -75,25 +77,25 @@ test('item timer requires an actual ended observation and book timer survives or
  f.engine.update({phase:'ended'});assert.equal(f.engine.pauses,2);
 });
 test('an unavailable final part never invents an end-of-book timer',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'missing',bookEndAvailable:false})});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'missing',bookEndAvailable:false})});await settle();
  await assert.rejects(f.service.setTimer('book'),/final book part is unavailable/);assert.equal(f.service.getSnapshot().timer,null);await f.service.setTimer(30);assert.equal(f.service.getSnapshot().timer?.choice,30);
 });
 test('chapter timer uses source/session timing and does not stop on unsettled seeks',async t=>{
- const f=setup();t.after(()=>f.service.dispose());await settle();await f.service.setTimer('chapter');assert.equal(f.service.getSnapshot().timer?.endSeconds,30);
+ const f=setup(t);await settle();await f.service.setTimer('chapter');assert.equal(f.service.getSnapshot().timer?.endSeconds,30);
  f.engine.update({positionSeconds:35,pendingSeek:{revision:1}});assert.equal(f.engine.pauses,0);
  f.engine.update({pendingSeek:undefined});assert.equal(f.engine.pauses,1);assert.equal(f.service.mayAdvance(),false);
 });
 test('chapter timers clear on source generation change, while minute timers clear across named libraries',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:id==='song'?'library':'other',kind:'song'})});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:id==='song'?'library':'other',kind:'song'})});await settle();
  await f.service.setTimer('chapter');f.engine.update({session:{id:'session',generation:2}});assert.equal(f.service.getSnapshot().timer,null);
  await f.service.setTimer(30);f.engine.update({itemId:'other-song'});await settle();assert.equal(f.service.getSnapshot().timer,null);assert.equal(f.engine.pauses,0);
 });
-test('late old-profile reads and disposed clocks cannot publish or pause',async()=>{
- let resolve!:(v:unknown)=>void;const f=setup({request:()=>new Promise(r=>{resolve=r;})});f.service.dispose();resolve(wrapped(prefs));await settle();f.setNow(99*60000);f.service.tick();
+test('late old-profile reads and disposed clocks cannot publish or pause',async t=>{
+ let resolve!:(v:unknown)=>void;const f=setup(t,{request:()=>new Promise(r=>{resolve=r;})});f.service.dispose();resolve(wrapped(prefs));await settle();f.setNow(99*60000);f.service.tick();
  assert.equal(f.service.getSnapshot().phase,'disposed');assert.equal(f.service.getSnapshot().context,null);assert.equal(f.engine.pauses,0);
 });
 test('save conflict retains actual preference and demands explicit reload; context retry is real',async t=>{
- let failedContext=true;const f=setup({request:async(path,_body,method)=>{if(path==='/v1/listening/preferences'){if(method==='PUT')throw Object.assign(new Error('conflict'),{code:'listening_preferences_conflict'});return wrapped(prefs);}if(failedContext)throw new Error('offline');return wrapped({itemId:'song',libraryId:'library',kind:'song'});}});t.after(()=>f.service.dispose());await settle();
+ let failedContext=true;const f=setup(t,{request:async(path,_body,method)=>{if(path==='/v1/listening/preferences'){if(method==='PUT')throw Object.assign(new Error('conflict'),{code:'listening_preferences_conflict'});return wrapped(prefs);}if(failedContext)throw new Error('offline');return wrapped({itemId:'song',libraryId:'library',kind:'song'});}});await settle();
  assert.equal(f.service.getSnapshot().context,null);failedContext=false;f.service.retryContext();await settle();assert.equal(f.service.getSnapshot().context?.itemId,'song');
  await assert.rejects(f.service.savePreferences({bookRate:2}),/changed on another device/);assert.deepEqual(f.service.getSnapshot().preferences,prefs);assert.equal(f.service.getSnapshot().phase,'error');await f.service.refreshPreferences();assert.equal(f.service.getSnapshot().phase,'ready');
 });
@@ -117,7 +119,7 @@ test('book resume and explicit chapter selection preserve server part order and 
 });
 
 test('native policy has stable timer/activity revisions; observations cannot extend deadlines',async t=>{
- const f=setup();t.after(()=>f.service.dispose());await settle();
+ const f=setup(t);await settle();
  await f.service.setTimer(15);const armed=f.engine.policies.at(-1);assert.ok(armed.timer.wallDeadline>Date.now());
  f.engine.update({positionSeconds:10});f.service.tick();
  const observed=f.engine.policies.at(-1);assert.equal(observed.timerRevision,armed.timerRevision);assert.equal(observed.timer.wallDeadline,armed.timer.wallDeadline);assert.equal(observed.activityRevision,armed.activityRevision);
@@ -125,7 +127,7 @@ test('native policy has stable timer/activity revisions; observations cannot ext
  await f.service.setTimer('off');assert.ok(f.engine.policies.at(-1).timerRevision>armed.timerRevision);assert.equal(f.engine.policies.at(-1).timer,null);
 });
 test('native owns expiry and rate application; stale timer receipts cannot clear a replacement',async t=>{
- const f=setup();t.after(()=>f.service.dispose());await settle();f.engine.native=true;
+ const f=setup(t);await settle();f.engine.native=true;
  f.engine.update({nativeListening:{timerStopped:false,expiredTimerRevision:-1}});
  await f.service.setTimer(15);const old=f.engine.policies.at(-1).timerRevision;
  await f.service.setTimer(30);const current=f.engine.policies.at(-1).timerRevision;
@@ -136,7 +138,7 @@ test('native owns expiry and rate application; stale timer receipts cannot clear
  f.engine.update({nativeListening:{timerStopped:false,expiredTimerRevision:current}});assert.equal(f.service.getSnapshot().stopped,false);
 });
 test('transition admission respects final-item, verified chapter, minute and inactivity edges',async t=>{
- const f=setup({preferences:{passoutMinutes:30}});t.after(()=>f.service.dispose());await settle();
+ const f=setup(t,{preferences:{passoutMinutes:30}});await settle();
  assert.equal(f.service.mayTransition(10),true);assert.equal(f.service.mayTransition(NaN),false);
  await f.service.setTimer('item');assert.equal(f.service.mayTransition(1),false);
  await f.service.setTimer('chapter');assert.equal(f.service.mayTransition(1),false);
@@ -144,7 +146,7 @@ test('transition admission respects final-item, verified chapter, minute and ina
  await f.service.setTimer('off');f.service.interact();f.setNow(899000+1800000-1000);assert.equal(f.service.mayTransition(2),false);
 });
 test('end-of-book policy permits intermediate parts but prevents a prebuffered final-part escape',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});t.after(()=>f.service.dispose());await settle();await f.service.setTimer('book');assert.equal(f.service.mayTransition(2),true);
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book',lastBookItemId:'last',bookEndAvailable:true})});await settle();await f.service.setTimer('book');assert.equal(f.service.mayTransition(2),true);
  f.engine.update({itemId:'last',session:{id:'last-session',generation:1}});await settle();assert.equal(f.service.mayTransition(2),false);
 });
 
@@ -156,11 +158,12 @@ test('browsing listening entities needs no queue and rejects cross-viewer or cro
  await assert.rejects(readListeningContext(async()=>wrapped({...data,itemId:'other'}),bound,'song'));
 });
 
-test('PERF-24: a video session never asks for listening details; a listening one does, once its session is known',async()=>{
+test('PERF-24: a video session never asks for listening details; a listening one does, once its session is known',async t=>{
  const engine=new Engine();const paths:string[]=[];
  const request:ListeningRequest=async(path)=>{paths.push(path);if(path==='/v1/listening/preferences')return wrapped(prefs);const id=path.split('/')[3];return wrapped({itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});};
  engine.state={...engine.state,itemId:'movie',session:{id:'s_movie',generation:1}};
  const service=new ListeningService(scope,request,engine as unknown as PlaybackService,()=>0,(itemId,sessionId)=>!(itemId==='movie'&&sessionId==='s_movie'));
+ t.after(()=>service.dispose());
  service.connect();await settle();
  assert.equal(paths.filter(p=>p.includes('/items/')).length,0,'no /listening for the movie');
  engine.update({itemId:'song',session:undefined});await settle();
@@ -173,14 +176,14 @@ test('PERF-24: a video session never asks for listening details; a listening one
 // P1 (web, 24 Sep): an album stopped after track 1 when the listening preferences hadn't been
 // read (or couldn't be). Preference loading must not gate queue continuation.
 test('a song advances before the listening preferences are known', async t => {
- const f=setup({request:async(path)=>{if(path==='/v1/listening/preferences')throw Object.assign(new Error('unavailable'),{status:503});const id=path.split('/')[3];return wrapped({itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});}});
- t.after(()=>f.service.dispose());await settle();await settle();
+ const f=setup(t,{request:async(path)=>{if(path==='/v1/listening/preferences')throw Object.assign(new Error('unavailable'),{status:503});const id=path.split('/')[3];return wrapped({itemId:id,libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});}});
+ await settle();await settle();
  assert.equal(f.service.getSnapshot().preferences,null);
  assert.equal(f.service.mayAdvance(),true);
 });
 
 test('a long audiobook pause rewinds once, while short pauses and music do not',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});t.after(()=>f.service.dispose());const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
+ const f=setup(t,{context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
  f.engine.update({positionSeconds:300,intent:'paused'});f.setNow(300001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);assert.deepEqual(f.service.getSnapshot().rewind,{seconds:15,fromSeconds:300,toSeconds:285,messageKey:'listening.rewound'});f.engine.update({positionSeconds:286});assert.deepEqual(seeks,[285]);
  f.engine.update({intent:'paused'});f.setNow(300100);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);
 });
@@ -189,4 +192,14 @@ test('a listening journey keeps millisecond resume and drops only unknown action
  const result=parseListeningJourney({target:{libraryId:'library',kind:'book',id:'book'},actions:['play','future','play'],resume:{itemId:'part',positionMs:123500},resumeUnavailable:false},'library');
  assert.deepEqual(result.actions,['play']);
  assert.deepEqual(result.resume,{itemId:'part',positionSeconds:123.5});
+});
+
+test('listening exposes actual engine processing facts and clears them when the engine clears them',async t=>{
+ const f=setup(t);await settle();
+ assert.equal(f.service.getSnapshot().eqApplied,false);assert.equal(f.service.getSnapshot().levelingApplied,false);
+ f.engine.update({audioEffects:{...f.engine.state.audioEffects,eqApplied:true,levelingApplied:true}});
+ assert.equal(f.service.getSnapshot().eqApplied,true);assert.equal(f.service.getSnapshot().levelingApplied,true);
+ f.engine.update({phase:'ended',audioEffects:{...f.engine.state.audioEffects,eqApplied:false,levelingApplied:false}});
+ assert.equal(f.service.getSnapshot().eqApplied,false);assert.equal(f.service.getSnapshot().levelingApplied,false);
+ f.service.dispose();assert.equal(f.engine.listeners.size,0);
 });
