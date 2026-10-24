@@ -55,7 +55,7 @@ test('share links are same-server, current-row one-use results with no private n
     await assert.rejects(f.source.link(row, {signal: new AbortController().signal, isCurrent: () => false}), {name: 'AbortError'});assert.equal(f.calls.length, 1);
     await assert.rejects(f.source.link({...row, state: 'expired'}, live()));assert.equal(f.calls.length, 1);
   } finally {f.source.dispose();}
-  for (const reply of [{code, expiresAt: '2000-01-01T00:00:00Z', serverId}, {code, expiresAt: '2099-01-01T00:00:00Z', serverId: 'srv_' + 'x'.repeat(43)}]) {
+  for (const reply of [{code, expiresAt: '2000-01-01T00:00:00Z', serverId}, {code, expiresAt: '2099-01-01T00:00:00Z', serverId: 'srv_' + 'a'.repeat(42) + 'A'}]) {
     const other = fixture(() => reply);try {await assert.rejects(other.source.link(row, live()));} finally {other.source.dispose();}
   }
 });
@@ -84,7 +84,7 @@ test('creation returns its real one-time code without a list cache, and owner re
   } finally {denied.source.dispose();}
 });
 test('explicit foreign server identities fail closed without dropping rows or issuing a foreign row command', async () => {
-  const foreign = {...row, serverId: 'srv_' + 'x'.repeat(43)};
+  const foreign = {...row, serverId: 'srv_' + 'a'.repeat(42) + 'A'};
   const page = fixture(() => ({items: [foreign], limit: 40, totalCount: 137, matchedCount: 37, nextCursor: 'next'}));
   try {await assert.rejects(page.source.read(query, '', live()), /invitation_server_changed/);assert.equal(page.calls.length, 1);} finally {page.source.dispose();}
   const action = fixture(() => ({code: 'c'.repeat(43), expiresAt: row.expiresAt, serverId}));
