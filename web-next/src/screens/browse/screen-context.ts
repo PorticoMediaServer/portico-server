@@ -29,6 +29,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const assert = () => {if (!current()) throw new DOMException('Screen authority changed', 'AbortError');};
     const reportError = (error: unknown) => {if (current()) binding.current.home.effects.reportError(error);};
     const navigate = (action: Promise<void>) => {void action.catch(reportError);};
+    const entryPorts: EntryActionPorts = {api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
       scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
