@@ -56,7 +56,6 @@ async function walk(page, viewportName) {
       steps.push({name, status: 'fail', ms: Date.now() - started, detail: excerpt(String(error?.message ?? error), 400),
         console: consoleTail.slice(-12)});
     }
-    if (process.env.PORTICO_FLOW_DUMP === '1') console.log('STEP ' + viewportName + ' ' + name + ' ' + steps.at(-1).status + ' ' + JSON.stringify(steps.at(-1).detail));
     steps.at(-1).newErrors = {
       page: pageErrors.slice(before.page), console: consoleErrors.slice(before.console), failed: failedRequests.slice(before.failed),
     };
@@ -325,6 +324,7 @@ try {
   console.log(JSON.stringify({steps: report.viewports.flatMap(view => view.steps.map(step => view.viewport + ' ' + step.name + ' ' + step.status)),
     pageErrors: report.viewports.flatMap(view => view.pageErrors),
     failedRequests: report.viewports.flatMap(view => view.failedRequests), failed}, null, 2));
+  if (process.env.PORTICO_FLOW_DUMP === '1') for (const view of report.viewports) for (const step of view.steps) console.log('STEP ' + view.viewport + ' ' + step.name + ' ' + step.status + ' ' + JSON.stringify(step.detail));
   process.exitCode = failed.length ? 1 : 0;
 } finally {
   await browser.close();
