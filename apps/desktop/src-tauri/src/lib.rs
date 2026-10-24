@@ -5,6 +5,9 @@ pub mod equalizer_store;
 pub mod download_receipt;
 pub mod download_store;
 pub mod download_folder;
+pub mod folder_operations;
+#[cfg(feature="shell")]
+pub mod folder_ui;
 pub mod download_commands;
 pub mod mpv;
 pub mod network_cost;

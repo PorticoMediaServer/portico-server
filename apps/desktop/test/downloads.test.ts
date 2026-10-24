@@ -37,6 +37,23 @@ test('artwork is a native byte Blob or null; raw errors never reach UI',async()=
  const blob=await store.getArtwork(rowId);assert.equal(blob?.type,'image/png');assert.deepEqual([...new Uint8Array(await blob!.arrayBuffer())],[137,80,78,71]);store.dispose();
  assert.equal(downloadFailure(new Error('/private/path?secret=hidden')).message,'downloads_unavailable');assert.equal(downloadFailure('downloads_conflict').message,'downloads_conflict');
 });
+test('native folder read exposes only its deliberate display path; cancellation before begin ACK never opens a dialog',async()=>{
+ let finish!:(value:unknown)=>void;const cancelled:string[]=[],effects:string[]=[];
+ const folder:NonNullable<NativeDownloadsBridge['folder']>={async location(){return{displayPath:'/owned/Portico',private:'not projected'}},begin:()=>new Promise(resolve=>{finish=resolve}),async choose(token){effects.push(token)},async open(token){effects.push(token)},async cancel(token){cancelled.push(token)}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async()=>null),folder});
+ try{
+  assert.deepEqual(await store.folderLocation(new AbortController().signal),{displayPath:'/owned/Portico'});
+  const controller=new AbortController(),task=store.chooseFolder(controller.signal);controller.abort();finish('f'.repeat(64));
+  await assert.rejects(task,{name:'AbortError'});assert.deepEqual(effects,[]);assert.deepEqual(cancelled,['f'.repeat(64)]);
+ }finally{store.dispose()}
+});
+test('disposing a folder operation retires its exact native token and never publishes a late completion',async()=>{
+ let finish!:()=>void;const cancelled:string[]=[];let notices=0;
+ const folder:NonNullable<NativeDownloadsBridge['folder']>={async location(){return{displayPath:'/owned'}},async begin(){return'f'.repeat(64)},choose:()=>new Promise(resolve=>{finish=resolve}),async open(){},async cancel(token){cancelled.push(token)}};
+ const store=await DesktopDownloadStore.bind(scope,()=>true,{...bridge(async()=>null),folder});store.subscribe(()=>++notices);
+ const task=store.chooseFolder(new AbortController().signal);await new Promise(resolve=>setImmediate(resolve));store.dispose();finish();
+ await assert.rejects(task,{name:'AbortError'});assert.equal(notices,0);assert.ok(cancelled.every(token=>token==='f'.repeat(64)));assert.ok(cancelled.length>0);
+});
 
 test('MAIN group facts are complete native aggregates without first-row metadata or guessed access',async()=>{
  const revision='d'.repeat(64);let actual:Record<string,unknown>={kind:'songs',parentId:'album',groupId:'disc',count:4,bytes:32,bytesDone:16,revision,offlineAccess:'needsCheckIn'};
