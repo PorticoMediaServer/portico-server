@@ -51,7 +51,7 @@ WORKDIR /src/web
 RUN node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})"
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
-FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
+FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 WORKDIR /src/server
 COPY trust/hosted-root-public-key.pem /identity/root-public-key.pem
 COPY scripts/inspect-hosted-root.go /identity/inspect-hosted-root.go
