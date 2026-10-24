@@ -19,6 +19,8 @@ export type WebScreenDefinition = Readonly<{
   id: WebScreenId;
   component: ComponentType;
   chrome?: WebScreenChrome;
+  /** Compact phone widths may need the screen to own its bar instead of the global tab bar. */
+  phoneChrome?: 'shell' | 'standalone';
   /** Own the query schema here. The router never forwards unvalidated raw keys. */
   validateSearch?: WebScreenSearchValidator;
   /** The player module's one persistent media owner, mounted outside route outlets. */
@@ -29,6 +31,7 @@ export type WebScreenDefinition = Readonly<{
 }>;
 export function defineWebScreen<T extends WebScreenDefinition>(definition: T): Readonly<T> {
   if (!Object.hasOwn(webScreenPaths, definition.id)) throw new Error('unknown-web-screen');
+  if (definition.phoneChrome !== undefined && !['shell', 'standalone'].includes(definition.phoneChrome)) throw new Error('invalid-phone-chrome');
   if (definition.validateSearch !== undefined && typeof definition.validateSearch !== 'function') throw new Error('invalid-web-search-validator');
   if (definition.playbackHost && definition.id !== 'player') throw new Error('playback-host-must-belong-to-player');
   if (definition.retainedHost && definition.id === 'player') throw new Error('player-already-has-playback-host');
@@ -87,6 +90,7 @@ export function createWebScreenRegistry(modules: Readonly<Record<string, WebScre
     missing: () => (Object.keys(webScreenPaths) as WebScreenId[]).filter(id => !definitions.has(id)),
     chrome: (id: WebScreenId): WebScreenChrome => definitions.get(id)?.chrome
       ?? (['setup', 'signIn', 'profiles', 'servers', 'account', 'read'].includes(id) ? 'standalone' : id === 'player' ? 'player' : 'shell'),
+    phoneChrome: (id: WebScreenId): 'shell' | 'standalone' => definitions.get(id)?.phoneChrome ?? 'shell',
   });
 }
 export function webScreenIdForRoute(routeId: string): WebScreenId | undefined {

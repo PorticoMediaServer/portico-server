@@ -7,6 +7,7 @@ import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registry-view';
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
+import {useShellWidth} from './viewport';
 
 function RouteContent() {
   const content = useRef<HTMLDivElement>(null);
@@ -21,8 +22,8 @@ export function ShellRoot() {
   const onFeedback = useWebAction('feedback');
   const routeId = useRouterState({select: state => state.matches.at(-1)?.routeId ?? ''});
   const screenId = webScreenIdForRoute(routeId);
-  const viewer = binding?.shell.identity.viewer;
-  const content = !binding || !viewer || screenId && webScreens.chrome(screenId) !== 'shell' ? <RouteContent />
+  const viewer = binding?.shell.identity.viewer, phone = useShellWidth() < 600;
+  const content = !binding || !viewer || screenId && (webScreens.chrome(screenId) !== 'shell' || phone && webScreens.phoneChrome(screenId) === 'standalone') ? <RouteContent />
     : <Shell {...binding.shell} onFeedback={onFeedback}><RouteContent /></Shell>;
   return <>{content}<WebRetainedScreenHosts /></>;
 }
