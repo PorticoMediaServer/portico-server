@@ -313,9 +313,12 @@ export const schemas = {
                     "type": "object"
                   },
                   "operator": {
+                    "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {
+                    "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                  }
                 },
                 "required": [],
                 "type": "object"
@@ -2311,9 +2314,12 @@ export const schemas = {
                     "type": "object"
                   },
                   "operator": {
+                    "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {
+                    "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                  }
                 },
                 "required": [],
                 "type": "object"
@@ -3340,9 +3346,12 @@ export const schemas = {
                   "type": "object"
                 },
                 "operator": {
+                  "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                   "type": "string"
                 },
-                "value": {}
+                "value": {
+                  "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                }
               },
               "required": [],
               "type": "object"
@@ -3524,9 +3533,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -4989,9 +5001,12 @@ export const schemas = {
                   "type": "object"
                 },
                 "operator": {
+                  "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                   "type": "string"
                 },
-                "value": {}
+                "value": {
+                  "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                }
               },
               "required": [],
               "type": "object"
@@ -5173,9 +5188,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -11299,9 +11317,12 @@ export const schemas = {
                           "type": "object"
                         },
                         "operator": {
+                          "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                           "type": "string"
                         },
-                        "value": {}
+                        "value": {
+                          "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                        }
                       },
                       "required": [],
                       "type": "object"
@@ -11433,9 +11454,12 @@ export const schemas = {
                     "type": "object"
                   },
                   "operator": {
+                    "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {
+                    "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                  }
                 },
                 "required": [],
                 "type": "object"
@@ -14514,9 +14538,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -14788,9 +14815,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -30440,9 +30470,12 @@ export const schemas = {
                   "type": "object"
                 },
                 "operator": {
+                  "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                   "type": "string"
                 },
-                "value": {}
+                "value": {
+                  "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                }
               },
               "required": [],
               "type": "object"
@@ -95160,9 +95193,12 @@ export const schemas = {
                   "type": "object"
                 },
                 "operator": {
+                  "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                   "type": "string"
                 },
-                "value": {}
+                "value": {
+                  "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                }
               },
               "required": [],
               "type": "object"
@@ -122791,9 +122827,12 @@ export const schemas = {
                     "type": "object"
                   },
                   "operator": {
+                    "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {
+                    "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                  }
                 },
                 "required": [],
                 "type": "object"
@@ -125555,9 +125594,12 @@ export const schemas = {
                     "type": "object"
                   },
                   "operator": {
+                    "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                     "type": "string"
                   },
-                  "value": {}
+                  "value": {
+                    "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                  }
                 },
                 "required": [],
                 "type": "object"
@@ -125765,9 +125807,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -126044,9 +126089,12 @@ export const schemas = {
                       "type": "object"
                     },
                     "operator": {
+                      "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                       "type": "string"
                     },
-                    "value": {}
+                    "value": {
+                      "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+                    }
                   },
                   "required": [],
                   "type": "object"
@@ -148841,9 +148889,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -172500,9 +172551,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -184877,9 +184931,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -185151,9 +185208,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
@@ -186995,9 +187055,12 @@ export const schemas = {
                 "type": "object"
               },
               "operator": {
+                "description": "One of equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, within-last-days, is-present, is-missing, contains-any or contains-all. within-last-days is a date operator whose value is an integer count of days from 1 to 36500, evaluated at read time; future dates do not match.",
                 "type": "string"
               },
-              "value": {}
+              "value": {
+                "description": "A scalar for a scalar operator, an array for a list operator, null for a presence operator. within-last-days takes an integer from 1 to 36500."
+              }
             },
             "required": [],
             "type": "object"
