@@ -16,7 +16,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe'], detached: true});
   let socket, session, sequence = 0;
   const pending = new Map(), blocked = [], pageErrors = [];
-  const fontResources = new Map(); let excessiveFonts = false;
+  const fontResources = new Map(), fontRegistrations = new Map(); let excessiveFonts = false;
   function call(method, params = {}, sessionId = session) {
     const id = ++sequence;
     return new Promise((resolve, reject) => {
@@ -45,6 +45,13 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     socket = new WebSocket(endpoint); await once(socket, 'open');
     socket.addEventListener('message', async event => {
       const message = JSON.parse(event.data);
+      if (message.sessionId === session && message.method === 'CSS.fontsUpdated' && message.params.font) {
+        const {fontFamily, platformFontFamily} = message.params.font;
+        if (typeof fontFamily === 'string' && typeof platformFontFamily === 'string' && fontFamily.length <= 200 && platformFontFamily.length <= 200 && !/[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(fontFamily + platformFontFamily)) {
+          const families = fontRegistrations.get(platformFontFamily) ?? new Set();
+          families.add(fontFamily); fontRegistrations.set(platformFontFamily, families);
+        }
+      }
       if (message.sessionId === session && message.method === 'Network.responseReceived' && message.params.type === 'Font') {
         const {requestId, response} = message.params;
         const url = new URL(response.url);
@@ -74,13 +81,14 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     const {targetId} = await call('Target.createTarget', {url: 'about:blank'}, null);
     session = (await call('Target.attachToTarget', {targetId, flatten: true}, null)).sessionId;
     await call('Page.enable'); await call('Runtime.enable');
+    await call('DOM.enable'); await call('CSS.enable');
     await call('Network.enable', {maxTotalBufferSize: 32 * 1024 * 1024, maxResourceBufferSize: 8 * 1024 * 1024});
     await call('Fetch.enable', {patterns: [{urlPattern: '*'}]});
     await call('Emulation.setDeviceMetricsOverride', {...viewport, mobile: false});
     return await run({
       async navigate(url, selector) {
         if (!allowed.has(new URL(url).origin)) throw new Error('Measurement navigation origin is not allowed');
-        fontResources.clear(); excessiveFonts = false;
+        fontResources.clear(); fontRegistrations.clear(); excessiveFonts = false;
         const response = await call('Page.navigate', {url});
         if (response.errorText) throw new Error('Measurement navigation failed');
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
@@ -101,7 +109,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
           if (!resource.metadata) return {complete: false, families: []};
           families.push(resource.metadata);
         }
-        return {complete: true, families};
+        return {complete: true, families, registrations: [...fontRegistrations].flatMap(([platformFamily, aliases]) => [...aliases].map(family => ({platformFamily, family})))};
       }),
       evaluate,
       call,

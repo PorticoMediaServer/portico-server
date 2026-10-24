@@ -24,15 +24,28 @@ test('active font identity comes only from observed glyph families, preserving r
 
 test('custom legacy family names require actual resource metadata and never style-word stripping', async () => {
   const active = observer([{familyName: 'Example ExtraLight', glyphCount: 4, isCustomFont: true}]);
-  const known = await observeRenderedFonts(active, fixture(), '#screen', async () => ({complete: true, families: [{family: 'Example', platformFamilies: ['Example ExtraLight']}]}));
+  const known = await observeRenderedFonts(active, fixture(), '#screen', async () => ({complete: true, families: [{family: 'Example', nameId: 16, platformFamilies: ['Example ExtraLight']}]}));
   assert.equal(known.elements[0].style.resolvedFontFamily, 'Example');
   assert.equal(known.elements[0].style.platformFontFamily, 'Example ExtraLight');
   const unknown = await observeRenderedFonts(active, fixture(), '#screen');
   assert.equal(unknown.elements[0].style.resolvedFontFamily, undefined);
   const ambiguous = await observeRenderedFonts(active, fixture(), '#screen', async () => ({complete: true, families: [
-    {family: 'One', platformFamilies: ['Example ExtraLight']}, {family: 'Two', platformFamilies: ['Example ExtraLight']},
+    {family: 'One', nameId: 16, platformFamilies: ['Example ExtraLight']}, {family: 'Two', nameId: 16, platformFamilies: ['Example ExtraLight']},
   ]}));
   assert.equal(ambiguous.elements[0].style.resolvedFontFamily, undefined);
+});
+
+test('legacy-only metadata needs a unique observed active font registration, not a requested chain', async () => {
+  const active = observer([{familyName: 'Example ExtraLight', glyphCount: 4, isCustomFont: true}]);
+  const metadata = {complete: true, families: [{family: 'Example ExtraLight', nameId: 1, platformFamilies: ['Example ExtraLight']}],
+    registrations: [{platformFamily: 'Example ExtraLight', family: 'Registered face'}]};
+  const output = await observeRenderedFonts(active, fixture(), '#screen', async () => metadata);
+  assert.equal(output.elements[0].style.resolvedFontFamily, 'Registered face');
+  const missing = await observeRenderedFonts(active, fixture(), '#screen', async () => ({...metadata, registrations: []}));
+  assert.equal(missing.elements[0].style.resolvedFontFamily, undefined);
+  const duplicate = await observeRenderedFonts(active, fixture(), '#screen', async () => ({...metadata,
+    registrations: [...metadata.registrations, {platformFamily: 'Example ExtraLight', family: 'Other alias'}]}));
+  assert.equal(duplicate.elements[0].style.resolvedFontFamily, undefined);
 });
 test('mixed, empty, unsafe or failed observations never become the requested family', async () => {
   for (const fonts of [[], [{familyName: 'A', glyphCount: 1}, {familyName: 'B', glyphCount: 1}], [{familyName: '/private/font', glyphCount: 1}], [{familyName: 'A', glyphCount: 0}]]) {

@@ -97,7 +97,7 @@ export function fontFamilyMetadata(input) {
     if (names.length > 1) throw new Error('Ambiguous typographic family');
     return names[0];
   };
-  const family = select(16) ?? select(1);
+  const typographic = select(16), family = typographic ?? select(1);
   if (!family) throw new Error('Observed family metadata unavailable');
-  return {family, platformFamilies: [...new Set(values.map(value => value.value))]};
+  return {family, nameId: typographic ? 16 : 1, platformFamilies: [...new Set(values.map(value => value.value))]};
 }

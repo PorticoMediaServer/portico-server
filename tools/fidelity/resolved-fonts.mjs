@@ -40,7 +40,10 @@ export async function observeRenderedFonts(call, measured, selector, getMetadata
       for (const font of active) {
         if (font.isCustomFont === false) identities.add(font.familyName);
         else if (font.isCustomFont === true && metadata.complete) {
-          for (const entry of metadata.families) if (entry.platformFamilies.includes(font.familyName)) identities.add(entry.family);
+          for (const entry of metadata.families) if (entry.platformFamilies.includes(font.familyName)) {
+            if (entry.nameId === 16) identities.add(entry.family);
+            else if (entry.nameId === 1) for (const registration of metadata.registrations ?? []) if (registration.platformFamily === font.familyName) identities.add(registration.family);
+          }
         }
       }
       if (identities.size !== 1 || active.some(font => font.isCustomFont !== false && (font.isCustomFont !== true || !metadata.complete || !metadata.families.some(entry => entry.platformFamilies.includes(font.familyName))))) {

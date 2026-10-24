@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {brotliCompressSync, deflateSync} from 'node:zlib';
+import {brotliCompressSync, deflateSync, constants} from 'node:zlib';
 import {fontFamilyMetadata} from './font-family-metadata.mjs';
 
 function names(legacy = 'Example ExtraLight', family = 'Example') {
@@ -36,15 +36,23 @@ function woff(table) {
 test('observed typographic family comes from name16 without guessing from legacy style words', () => {
   for (const encode of [sfnt, woff, woff2]) {
     const bytes = encode(names()), original = Buffer.from(bytes);
-    assert.deepEqual(fontFamilyMetadata(bytes), {family: 'Example', platformFamilies: ['Example ExtraLight', 'Example']});
+    assert.deepEqual(fontFamilyMetadata(bytes), {family: 'Example', nameId: 16, platformFamilies: ['Example ExtraLight', 'Example']});
     assert.deepEqual(bytes, original);
   }
   const table = names('Important Bold', null);
   assert.equal(fontFamilyMetadata(sfnt(table)).family, 'Important Bold');
+  assert.equal(fontFamilyMetadata(sfnt(table)).nameId, 1);
 });
 test('malformed, unsafe and excessive metadata fails closed', () => {
   for (const bytes of [Buffer.alloc(0), Buffer.from('font'), sfnt(names()).subarray(0, 30), sfnt(names('file:/private/font')), Buffer.alloc(8 * 1024 * 1024 + 1)]) assert.throws(() => fontFamilyMetadata(bytes));
   const invalid = woff2(names()); invalid[49] = 128; assert.throws(() => fontFamilyMetadata(invalid));
   const transformedName = woff2(names()); transformedName[54] = 69; assert.throws(() => fontFamilyMetadata(transformedName));
   const overlap = sfnt(names()); overlap.writeUInt32BE(0, 20); assert.throws(() => fontFamilyMetadata(overlap));
+});
+
+test('Brotli expansion is bounded before font metadata can allocate excessive output', () => {
+  const valid = woff2(names()), prefix = Buffer.from(valid.subarray(0, valid.length - valid.readUInt32BE(20)));
+  const payload = brotliCompressSync(Buffer.alloc(8 * 1024 * 1024 + 1), {params: {[constants.BROTLI_PARAM_QUALITY]: 0}});
+  prefix.writeUInt32BE(prefix.length + payload.length, 8); prefix.writeUInt32BE(payload.length, 20);
+  assert.throws(() => fontFamilyMetadata(Buffer.concat([prefix, payload])), error => error.code === 'ERR_BUFFER_TOO_LARGE');
 });

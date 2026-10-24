@@ -49,9 +49,9 @@ The public frontdoor map also binds `<primary-semantic-id>/label` to
 actual text/font/run facts separately from the primary focus host's paint/box.
 The reference-only module must never be imported into an application.
 
-Native comparison uses `style.resolvedFontFamily`, the active face's observed
-typographic family (OpenType name16, or name1 when name16 is absent),
-on both sides. A DOM computed `fontFamily` is a requested CSS fallback chain,
+Native comparison uses `style.resolvedFontFamily`. Native reports the active
+shaped face's verified typographic family (OpenType name16, else name1).
+A DOM computed `fontFamily` is a requested CSS fallback chain,
 so it cannot stand in for a native resolved face. DOM-to-DOM comparison keeps
 its existing exact computed-family rule. `extractReference({resolvedFonts:true})`
 reads active rendered families through Chrome's platform-font observer and
@@ -59,7 +59,12 @@ bounded metadata from already loaded font resources, without changing the DOM
 or emitting font files/URLs. Legacy platform family names are retained only in
 unscored `style.platformFontFamily`; a style word in that name does not establish
 the rendered weight. There is no suffix stripping or guessed alias mapping.
-Custom faces must match actual loaded font metadata. Mixed/unknown families and inputs
+Custom faces must match actual loaded font metadata. Where a web resource has
+only a legacy style-linked name1, it also requires a unique observed loaded
+FontFace registration associated with that active platform face. The registered
+family is observed from Chrome's loaded-font event, never selected from the
+element's requested family chain. Missing or ambiguous association stays
+unavailable; no hard-coded family aliases are used. Mixed/unknown families and inputs
 remain unavailable. Native supplies the actual shaped run's typeface identity;
 requested/flattened styles and TextView base defaults are not observations.
 
