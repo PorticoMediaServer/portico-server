@@ -62,7 +62,8 @@ func inventoryBlobFixture(t *testing.T) (observationFixture, storage.InventoryRe
 		query string
 		args  []any
 	}{
-		{`INSERT INTO inventory_objects(id,source_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) VALUES('media',?,?, 'film.mkv',?,'{}',16,23,'available')`, []any{source.ID, source.Incarnation, revision}},
+		{`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration) VALUES('media-asset',?,16,23,'mkv','h264','aac',1920,1080,60)`, []any{f.file}},
+		{`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns,state) VALUES('media',?,'media-asset',?, 'film.mkv',?,'{}',16,23,'available')`, []any{source.ID, source.Incarnation, revision}},
 		{`INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) SELECT ?, 'media',?,revision,'pending' FROM library_scan_policies WHERE library_id=?`, []any{f.job, revision, f.library}},
 	} {
 		if _, err = f.s.db.Exec(command.query, command.args...); err != nil {
