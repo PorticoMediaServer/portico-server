@@ -59,6 +59,16 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Canonical administrators bypass membership library lists. An explicit
+	// selected-profile restriction is the real narrower content boundary.
+	get(admin.AccessToken, b.Public)
+	if _, err = dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `UPDATE direct_profiles SET allowed_libraries='["read"]',revision=revision+1 WHERE id='admin-profile'`); err != nil {
+		t.Fatal(err)
+	}
+	admin, err = f.deps.Identity.Issue("admin", "admin-profile", "local", "admin", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	allowed := get(admin.AccessToken, a.Public)
 	w = f.call("GET", "/v1/metadata/item/"+b.Public, admin.AccessToken, "")
 	if w.Code != 401 && w.Code != 403 {
@@ -96,7 +106,7 @@ func TestReadingOwnerMetadataUsesExistingRouteAndCurrentLibraryAuthority(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `UPDATE direct_memberships SET allowed_libraries='["hidden-read"]',revision=revision+1 WHERE account_id='admin'`); err != nil {
+	if _, err = dbwork.ExecWrite(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, `UPDATE direct_profiles SET allowed_libraries='["hidden-read"]',revision=revision+1 WHERE id='admin-profile'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.deps.readingMetadataResponseAuthorize(context.Background(), p, captured); err == nil {
