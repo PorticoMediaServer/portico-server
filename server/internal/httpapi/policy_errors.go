@@ -17,8 +17,6 @@ func policyErrorDefinitions() []apierror.Definition {
 		{Code: "analysis_unavailable", Status: 503, Message: publicErrorMessage("analysis_unavailable"), Retry: apierror.SameRequest},
 		{Code: "invalid_analysis", Status: 400, Message: publicErrorMessage("invalid_request"), Retry: apierror.Never},
 		{Code: "operation_expired", Status: 409, Message: "The time to undo this change has passed.", Retry: apierror.Never},
-		{Code: "playlist_capacity", Status: 409, Message: publicErrorMessage("playlist_capacity"), Retry: apierror.Never},
-		{Code: "idempotency_key_reused", Status: 409, Message: publicErrorMessage("idempotency_key_reused"), Retry: apierror.Never},
 		{Code: "invalid_channel_input", Status: 400, Message: "The playlist or guide could not be used. Check it and try again.", Retry: apierror.Never},
 		{Code: "channel_revision_conflict", Status: 409, Message: "The channel source changed. Refresh before saving.", Retry: apierror.AfterRefresh},
 		{Code: "source_lan_confirmation_required", Status: 422, Message: "Confirm the source addresses on your local network to continue.", Retry: apierror.Never},
