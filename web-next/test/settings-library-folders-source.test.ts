@@ -249,3 +249,50 @@ test('the controller keeps the caller scope it was constructed with', async () =
     assert.deepEqual(errors, []);
   } finally {folders.dispose();}
 });
+
+test('clearing and reselecting the same library ignores a retired refresh success and failure', async () => {
+  for (const outcome of ['success', 'failure'] as const) {
+    let reads = 0, settle!: (value: unknown) => void, fail!: (error: unknown) => void, retiredSignal: AbortSignal | undefined;
+    const f = fixture(async <T>(_path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+      reads++;
+      if (reads === 2) {retiredSignal = signal;return new Promise((resolve, reject) => {settle = resolve;fail = reject;}) as Promise<T>;}
+      return configuration('selected', reads === 1 ? 50 : 60, [source('only', '/media/current', '/media/current')]) as T;
+    });
+    try {
+      await f.folders.select('selected');
+      const retired = f.folders.refresh();
+      f.folders.clear();
+      await f.folders.select('selected');
+      assert.equal(retiredSignal?.aborted, true);
+      assert.equal(f.folders.config('selected')?.revision, 60);
+      if (outcome === 'success') settle(configuration('selected', 9, [source('stale', '/media/stale')]));
+      else fail(new Error('retired refresh failure'));
+      await retired;
+      assert.equal(f.folders.config('selected')?.revision, 60);
+      assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['only']);
+      assert.equal(f.folders.getSnapshot().error, undefined);
+      assert.deepEqual(f.errors, []);
+    } finally {f.folders.dispose();}
+  }
+});
+
+test('a superseded selection or a disposed controller never publishes or reports a stale error', async () => {
+  for (const close of ['select', 'dispose'] as const) {
+    let rejectRetired!: (error: unknown) => void, retiredSignal: AbortSignal | undefined;
+    const f = fixture(async <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => {
+      if (path.includes('/retired/')) {retiredSignal = signal;return new Promise((_resolve, reject) => {rejectRetired = reject;}) as Promise<T>;}
+      return configuration('current', 4, [source('only', '/media/c', '/media/c', 'current')]) as T;
+    });
+    try {
+      const retired = f.folders.select('retired');
+      if (close === 'select') await f.folders.select('current');
+      else f.folders.dispose();
+      assert.equal(retiredSignal?.aborted, true);
+      rejectRetired(new Error('retired transport failure'));
+      await retired;
+      assert.deepEqual(f.errors, []);
+      if (close === 'select') {assert.equal(f.folders.config('current')?.revision, 4);assert.equal(f.folders.getSnapshot().error, undefined);}
+      else assert.deepEqual(f.folders.getSnapshot(), {loading: false});
+    } finally {f.folders.dispose();}
+  }
+});
