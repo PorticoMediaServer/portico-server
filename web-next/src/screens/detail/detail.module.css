@@ -26,6 +26,8 @@
 
 .copy > .actions { margin: 0; }
 
+.phoneTopBar { height: 44px; display: flex; align-items: center; padding: 0 10px; }
+
 .phoneHero { position: relative; margin-bottom: 18px; }
 .phonePicture { position: relative; height: 330px; }
 .phoneHeroArt { position: absolute; inset: 0; }
