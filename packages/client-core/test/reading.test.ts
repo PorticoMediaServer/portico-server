@@ -241,8 +241,9 @@ test('constructor-absent sequential scope pulls owned bytes with one reader and 
     assert.throws(() => stream.getReader(), TypeError);
     await assert.rejects(stream.cancel(), TypeError);
     const first = reader.read();
-    await assert.rejects(reader.read(), coded('stream_busy'));
+    const duplicate = assert.rejects(reader.read(), coded('stream_busy'));
     assert.throws(() => reader.releaseLock(), TypeError);
+    await duplicate;
     const value = (await first).value!; original[0] = 99;
     assert.deepEqual(value, Uint8Array.of(1, 2, 3)); assert.equal(pulls, 1);
     assert.deepEqual((await reader.read()).value, Uint8Array.of(4, 5, 6, 7, 8));
@@ -257,18 +258,24 @@ test('constructor-absent stream handles stalled child cancel, reader cancel and 
   const f = setup(); f.manifest.sequential = true; f.manifest.size = 5;
   const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
   let cancelled = 0;
-  const replies = Array.from({length: 3}, () => new Response(new ReadableStream<Uint8Array>({pull() { return new Promise(() => {}); }, cancel() { cancelled++; }}, {highWaterMark: 0}), {headers: {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'}}));
+  const started: Promise<void>[] = [];
+  const replies = Array.from({length: 3}, () => {
+    let entered!: () => void;
+    started.push(new Promise<void>(resolve => { entered = resolve; }));
+    return new Response(new ReadableStream<Uint8Array>({pull() { entered(); return new Promise(() => {}); }, cancel() { cancelled++; }}, {highWaterMark: 0}), {headers: {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'}});
+  });
   f.hook(() => replies.shift());
   try { await withoutStreamConstructor(async () => {
     const request = new AbortController(), stream = await session.openSequential(request.signal), reader = stream.getReader();
-    const pending = reader.read(); await Promise.resolve(); request.abort();
+    const pending = reader.read(); await started[0]; request.abort();
     await assert.rejects(pending, coded('cancelled')); reader.releaseLock();
     assert.equal(cancelled, 1); assert.equal(session.signal.aborted, false);
     const second = (await session.openSequential()).getReader(), waiting = second.read();
+    await started[1];
     await second.cancel(); assert.equal((await waiting).done, true); second.releaseLock();
     assert.equal(cancelled, 2); assert.equal(session.signal.aborted, false);
     const third = (await session.openSequential()).getReader(), retired = third.read();
-    await Promise.resolve(); const before = f.calls.length; f.api.setAccessToken('replacement-token');
+    await started[2]; const before = f.calls.length; f.api.setAccessToken('replacement-token');
     await assert.rejects(retired, coded('cancelled')); third.releaseLock();
     assert.equal(cancelled, 3); assert.equal(session.signal.aborted, true);
     await assert.rejects(session.openSequential(), coded('cancelled')); assert.equal(f.calls.length, before);
