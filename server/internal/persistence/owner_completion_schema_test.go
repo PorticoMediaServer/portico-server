@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,6 +59,29 @@ func TestOwnerCompletionStoredTupleConstraintsAndFamilyCascade(t *testing.T) {
 	if _, err := db.Exec(`UPDATE authorization_family_grants SET grant_kind='future_unknown_grant' WHERE family_id='family'`); err == nil {
 		t.Fatal("unknown narrowed grant entered durable storage")
 	}
+	var count sql.NullInt64
+	var countPayload, countSignature []byte
+	if err := db.QueryRow(`SELECT m.other_people_count,c.switch_count_payload,c.switch_count_signature FROM identity_moves m JOIN identity_owner_completions c ON c.move_id=m.id WHERE c.operation_id='operation'`).Scan(&count, &countPayload, &countSignature); err != nil || count.Valid || countPayload != nil || countSignature != nil {
+		t.Fatalf("uncaptured count invented a scalar or proof: %v/%x/%x: %v", count, countPayload, countSignature, err)
+	}
+	for _, value := range []any{int64(0), int64(10000), nil} {
+		exec(`UPDATE identity_moves SET other_people_count=? WHERE id='move'`, value)
+	}
+	for _, value := range []any{int64(-1), int64(10001), 0.5} {
+		if _, err := db.Exec(`UPDATE identity_moves SET other_people_count=? WHERE id='move'`, value); err == nil {
+			t.Fatalf("invalid captured count entered storage: %v", value)
+		}
+	}
+	for _, invalid := range []struct{ payload, signature []byte }{
+		{[]byte{1}, nil}, {nil, make([]byte, 64)}, {[]byte{}, make([]byte, 64)},
+		{make([]byte, 8193), make([]byte, 64)}, {[]byte{1}, make([]byte, 63)}, {[]byte{1}, make([]byte, 65)},
+	} {
+		if _, err := db.Exec(`UPDATE identity_owner_completions SET switch_count_payload=?,switch_count_signature=? WHERE operation_id='operation'`, invalid.payload, invalid.signature); err == nil {
+			t.Fatal("partial or out-of-bounds optional count proof entered storage")
+		}
+	}
+	exec(`UPDATE identity_owner_completions SET switch_count_payload=?,switch_count_signature=? WHERE operation_id='operation'`, []byte{1}, make([]byte, 64))
+	exec(`UPDATE identity_owner_completions SET switch_count_payload=NULL,switch_count_signature=NULL WHERE operation_id='operation'`)
 	exec(`DELETE FROM authorization_session_families WHERE id='family'`)
 	for _, table := range []string{"identity_owner_completions", "authorization_family_grants"} {
 		var n int
