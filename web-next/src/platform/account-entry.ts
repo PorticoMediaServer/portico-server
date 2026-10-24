@@ -583,7 +583,7 @@ export class BrowserAccountEntry {
    for(const create of [this.ports.setupReturn,this.ports.ownerReturn]){
     if(!create)continue;
     const controller=create(),pending=await controller.pendingReturn();
-    if(!op.current())return;
+    if(!op.current()){await controller.cancel();return;}
     if(pending)choices.push({controller,pending});
    }
    if(choices.length>1)throw new CodedError('invalid_return',unreadableServerResponse);
