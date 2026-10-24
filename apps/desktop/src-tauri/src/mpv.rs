@@ -518,6 +518,30 @@ impl Mpv {
 impl Drop for Mpv {fn drop(&mut self){unsafe{(self.api.destroy)(self.handle)}}}
 
 #[cfg(test)]
+mod wavpack_tests {
+    use super::*;
+    #[test]
+    #[ignore="explicit native libmpv and runner-generated WavPack; no physical output claim"]
+    fn actual_wavpack_decoder_plays_the_owned_original_container(){
+        let library=std::env::var_os("PORTICO_TEST_MPV_LIBRARY").expect("native library required");
+        let fixture=std::env::var_os("PORTICO_TEST_WAVPACK_FIXTURE").expect("owned WavPack fixture required");
+        let engine=Mpv::new(Api::open(Path::new(&library)).unwrap(),&AudioOutput::default(),VideoTarget::Headless).unwrap();
+        assert!(engine.decoder_inventory().unwrap().iter().any(|codec|codec=="wavpack"));
+        engine.load_local(Path::new(&fixture),1,0.0,true).unwrap();
+        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+        loop {
+            let observed=engine.observation();assert_ne!(observed.state,"error");
+            if observed.position_ms>10.0{break}
+            assert!(std::time::Instant::now()<deadline,"original WavPack did not advance");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(engine.property("audio-codec-name").as_deref(),Some("wavpack"));
+        assert_eq!(engine.audio_facts().source_rate,Some(48000));
+        engine.retire().unwrap();assert!(!engine.matches_generation(1));
+    }
+}
+
+#[cfg(test)]
 mod local_source_tests {
     use super::*;
     #[test]
