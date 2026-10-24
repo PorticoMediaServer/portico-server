@@ -1,5 +1,6 @@
 import {apiRoot, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {parseBrowserCredentialRecord} from '@core/credential-format.ts';
+import {installationHeaders} from '@core/installation.ts';
 import {browserAccountOrigin} from './account-origin.ts';
 import {parseAccountSession} from '@core/hosted-security.ts';
 import {
@@ -43,6 +44,32 @@ export class BrowserCredentialStorage implements CredentialStorage<BrowserAuthor
 
 /** A double-submit CSRF token has this shape (Hosted `security.RandomID`). */
 const csrfShape=/^[A-Za-z0-9_-]{43}$/;
+
+/** The only Hosted requests that create a device row: each completes a sign-in and
+ * inserts a session family. Ordinary management reads and refresh/revoke carry no
+ * installation claim. */
+const hostedCredentialPaths: readonly RegExp[] = [
+  /^\/v1\/sessions$/,
+  /^\/v1\/registrations\/[A-Za-z0-9_-]{1,128}\/verify$/,
+  /^\/v1\/identity\/mfa\/complete$/,
+  /^\/v1\/identity\/transactions\/[A-Za-z0-9_-]{1,128}\/complete$/,
+];
+export function issuesHostedCredentials(path: string, method: string): boolean {
+  return method.toUpperCase() === 'POST' && hostedCredentialPaths.some(pattern => pattern.test(path));
+}
+/** Hosted records the installation claim under its accepted header names. The shared
+ * client facts use Device-Platform/App-Version, so map only the two names that differ. */
+export function hostedInstallationHeaders(source: Readonly<Record<string, string>> = installationHeaders()): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [from, to] of [
+    ['X-Portico-Device-Name', 'X-Portico-Device-Name'],
+    ['X-Portico-Device-Platform', 'X-Portico-Platform'],
+    ['X-Portico-App', 'X-Portico-App'],
+    ['X-Portico-App-Version', 'X-Portico-Version'],
+    ['X-Portico-Installation-Id', 'X-Portico-Installation-Id'],
+  ] as const) if (source[from]) out[to] = source[from];
+  return out;
+}
 
 export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
   readonly origin:string;
@@ -98,10 +125,11 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
   private async perform<T>(path:string,method:string,body:unknown,signal?:AbortSignal,token?:string):Promise<T> {
     if(!path.startsWith(apiRoot))throw new Error('Invalid account request.');
     const csrf=method==='GET'?undefined:this.csrfToken();
+    const installation=issuesHostedCredentials(path,method)?hostedInstallationHeaders():{};
     const response=await fetch(this.origin+path,{
       method,credentials:'include',redirect:'error',
       signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000),
-      headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})},...(body===undefined?{}:{body:transportJSON(body)}),
+      headers:{'Content-Type':'application/json',...installation,...(token?{Authorization:'Bearer '+token}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})},...(body===undefined?{}:{body:transportJSON(body)}),
     });
     this.keepCsrf(response);
     if(!response.ok){

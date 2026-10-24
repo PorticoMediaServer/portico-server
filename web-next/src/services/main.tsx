@@ -4,6 +4,7 @@ import '../kit/fonts.css';
 import '../bootstrap.css';
 import {IconSprite} from '../kit/Icon';
 import {browserAccountOrigin} from '../platform/account-origin';
+import {initializeAppInstallation} from '../platform/installation-provider';
 import {ServicesApp, ServicesInvalidLink} from './ServicesApp';
 import {captureServicesEntry} from './entry';
 import {servicesBuildMode} from './mode';
@@ -19,6 +20,8 @@ if (entry.native !== 'forwarded' && !(window as Window & {__porticoUnsupportedBr
   if (entry.native === 'invalid') createRoot(document.getElementById('root')!).render(<><IconSprite /><ServicesInvalidLink /></>);
   else {
     if (globalThis.isSecureContext && globalThis.crypto?.subtle && navigator.locks) await import('../platform/polyfills');
+    // Device metadata only: a failed claim leaves it unset and never blocks sign-in.
+    await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '').catch(() => undefined);
     createRoot(document.getElementById('root')!).render(<ServicesApp capture={entry.capture} invalidContinuation={entry.invalidContinuation} join={entry.join} signIn={entry.signIn} owner={entry.owner} />);
   }
 }
