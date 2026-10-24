@@ -214,7 +214,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		if v.Path != expected || !filepath.IsLocal(child) || filepath.Base(v.Name) != v.Name || v.Size < 0 {
 			return false, ErrAdminQuery
 		}
-		if naming.IgnorePath(filepath.ToSlash(child), v.Directory) {
+		if naming.IgnorePathWithSize(filepath.ToSlash(child), v.Directory, v.Size) {
 			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "ignored_name"}); err != nil {
 				return false, err
 			}
@@ -798,6 +798,11 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 			f.ArtworkExtra["item/poster"] = f.ArtworkKey
 		}
 		if err = s.commitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, f.ArtworkExtra); err != nil {
+			return err
+		}
+	}
+	if policy.Allows("local_metadata") && f.ArtworkCandidatesObserved && (kind == "movie" || kind == "tv" || kind == "anime") {
+		if err = s.commitInventoryArtworkCandidatesTx(ctx, tx, source, object, revision, asset, kind, f.ArtworkCandidates); err != nil {
 			return err
 		}
 	}

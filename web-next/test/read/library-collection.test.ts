@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {HttpLocalApi} from '@portico/client-core';
-import {createReadingCollection} from '../../src/screens/read/library-collection.ts';
+import {routePath} from '../../../packages/contracts/src/index.ts';
+import {createReadingCollection, createReadingContinueCollection} from '../../src/screens/read/library-collection.ts';
 import {readItemEligibility} from '../../src/screens/read/navigation.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -49,4 +50,69 @@ test('only actual versions classify Read; unavailable real versions remain Read 
   const reading = await readItemEligibility(f.client, 'unit-reading');
   assert.equal(reading?.itemId, 'unit-reading'); assert.equal(reading?.versions[0].inventoryAvailable, false);
   assert.equal(await readItemEligibility(f.client, 'unit-movie'), null);
+});
+
+function continueFixture(total = 480, options: {all?: boolean; wrongLibrary?: boolean; delayed?: boolean} = {}) {
+  const calls: URL[] = []; let release: (() => void) | undefined, cancelled = 0;
+  const api = new HttpLocalApi('http://127.0.0.1:39143', 'continue-unit-token', async (input, init = {}) => {
+    const url = new URL(String(input)); calls.push(url);
+    assert.equal(init.method, 'GET'); assert.equal(url.pathname, routePath('get_reading_continue'));
+    const cursor = url.searchParams.get('cursor'); if (cursor) assert.match(cursor, /^after_\d+$/);
+    const start = cursor ? Number(cursor.slice(6)) : 0, limit = Number(url.searchParams.get('limit'));
+    const items = Array.from({length: Math.max(0, Math.min(limit, total - start))}, (_, offset) => {
+      const index = start + offset, sourceId = `source-${index}`;
+      return {item: {id: `item-${index}`, sourceId, libraryId: options.wrongLibrary || options.all && index % 2 ? 'another-library' : 'unit-library',
+        title: `Stored title ${index}`, format: index === 0 ? 'epub' : 'pdf', inventoryAvailable: index !== 1},
+        progress: {sourceId, sourceRevision: 'b'.repeat(64), revision: index + 7, observedAt: index + 10000, stale: index === 0,
+          location: {format: 'pdf', pageIndex: index + 17, progression: .25}}};
+    });
+    const data = JSON.stringify({items, ...(start + items.length < total ? {nextCursor: `after_${start + items.length}`} : {})});
+    if (options.delayed) return new Promise<Response>(resolve => {release = () => resolve(new Response(new ReadableStream({
+      start(controller) {controller.enqueue(new TextEncoder().encode(data));}, cancel() {cancelled++;},
+    }), {headers: {'Content-Type': 'application/json'}}));});
+    return new Response(data, {headers: {'Content-Type': 'application/json'}});
+  });
+  const client = api.reading({viewer: {accountId: 'unit-account', profileId: 'unit-profile', serverId: 'unit-server', authority: 'local', role: 'member'}, isCurrent: () => true});
+  const rows = createReadingContinueCollection(client, options.all ? undefined : 'unit-library');
+  return {api, client, rows, calls, get cancelled() {return cancelled;}, release() {assert.ok(release); release();}, dispose() {rows.dispose(); client.dispose();}};
+}
+
+test('canonical Continue keeps real source/location/CAS/stale facts in a bounded sparse collection without preparing items', async t => {
+  const f = continueFixture(); t.after(() => f.dispose()); assert.equal(f.calls.length, 0);
+  const collection = f.rows.collection; collection.ensureRange(0, 12); await settle(() => !!collection.itemAt(0));
+  const row = collection.itemAt(0)!;
+  assert.equal(row.item.sourceId, 'source-0'); assert.equal(row.item.format, 'epub'); assert.equal(row.progress.stale, true);
+  assert.equal(row.progress.sourceRevision, 'b'.repeat(64)); assert.equal(row.progress.revision, 7); assert.equal(row.progress.observedAt, 10000);
+  assert.equal(row.progress.location.format, 'pdf'); assert.equal(row.progress.location.pageIndex, 17); assert.equal(row.progress.location.progression, .25);
+  assert.equal(Object.hasOwn(row.item, 'author'), false); assert.equal(Object.isFrozen(row.progress.location), true);
+  assert.equal(collection.itemAt(1)?.item.inventoryAvailable, false); assert.equal(collection.getSnapshot().totalIsLowerBound, true);
+  for (let first = 60; first < 480; first += 60) {
+    collection.ensureRange(first, first + 12); await settle(() => collection.itemAt(first) !== undefined);
+    assert.ok(collection.resident().pages <= 6); assert.ok(collection.resident().items <= 360);
+  }
+  await settle(() => collection.getSnapshot().totalIsLowerBound === false);
+  assert.equal(collection.getSnapshot().total, 480); assert.equal(collection.itemAt(479)?.item.id, 'item-479');
+  assert.ok(f.calls.length <= 10); assert.equal(f.calls[0].searchParams.get('libraryId'), 'unit-library');
+  assert.ok(f.calls.slice(1).some(url => url.searchParams.get('cursor') === 'after_60'));
+});
+
+test('profile-wide Continue omits a library filter and retains the actual library on each authorized row', async t => {
+  const f = continueFixture(2, {all: true}); t.after(() => f.dispose());
+  f.rows.collection.ensureRange(0, 1); await settle(() => !!f.rows.collection.itemAt(1));
+  assert.equal(f.calls[0].searchParams.has('libraryId'), false);
+  assert.equal(f.rows.collection.itemAt(0)?.item.libraryId, 'unit-library'); assert.equal(f.rows.collection.itemAt(1)?.item.libraryId, 'another-library');
+});
+
+test('a scoped Continue row from another library never becomes visible or selectable', async t => {
+  const f = continueFixture(1, {wrongLibrary: true}); t.after(() => f.dispose());
+  f.rows.collection.ensureRange(0, 0); await settle(() => f.rows.collection.getSnapshot().status === 'error');
+  assert.equal(f.rows.collection.itemAt(0), undefined); assert.equal(f.rows.collection.resident().items, 0);
+});
+
+test('a retired Continue capture aborts and discards a late response without publishing rows or issuing new-viewer work', async t => {
+  const f = continueFixture(1, {delayed: true}); t.after(() => f.dispose());
+  f.rows.collection.ensureRange(0, 0); await settle(() => f.calls.length === 1);
+  f.api.setAccessToken('replacement-unit-token'); assert.equal(f.client.signal.aborted, true); f.rows.dispose(); f.release();
+  await settle(() => f.cancelled === 1);
+  assert.equal(f.rows.collection.resident().items, 0); assert.equal(f.rows.collection.itemAt(0), undefined); assert.equal(f.calls.length, 1);
 });

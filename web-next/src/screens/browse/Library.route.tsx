@@ -1,10 +1,11 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {useParams, useSearch} from '@tanstack/react-router';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
 import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentView} from '@core/library-content.ts';
 import {libraryTabs} from '@core/presentation/library-tabs.ts';
 import type {SavedDefinition} from '@core/personal-saved.ts';
+import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
@@ -15,6 +16,7 @@ import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import {BrowseController} from './controller';
+import {createLibraryPlaySelection} from './play-selection';
 import {LibraryIdentity, LibraryScreen, type LibraryBindings} from './Library';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
@@ -55,13 +57,27 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   }, [context, sourceKey]);
   useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
   const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
+  const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
+  const playSelection = useMemo(() => {
+    const viewer = captured.context.session().viewer, queryRevision = state.queryRevision;
+    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
+    return createLibraryPlaySelection({source: resources.controller, api: resources.life.api, scope: context.scope,
+      principal: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
+      requestId: async () => randomId(), signal: resources.life.signal(),
+      isCurrent: () => resources.life.current() && resources.controller.getSnapshot().queryRevision === queryRevision
+        && router.state.location.href === href && runtimeRef.current === runtime,
+      playback: runtime?.cataloguePlayback()});
+  }, [captured.context, context, resources, runtime, href, state.queryRevision]);
+  useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
   const actions = (entry: ContentEntry) => ({onOpen: () => {if (!browse || resources.controller.contains(entry)) context.effects.openEntry(entry);},
     onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
       if (browse && !resources.controller.contains(entry)) return;
-      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal()).catch(context.effects.reportError);
+      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(),
+        () => resources.life.current() && (!browse || resources.controller.contains(entry))).catch(context.effects.reportError);
     } : undefined});
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 190) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
   const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
@@ -81,7 +97,7 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const bindings: LibraryBindings = {...header, controller: resources.controller,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
-    selection: {actions: member => actions(member.entry)},
+    selection: {actions: member => actions(member.entry), playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   return <>{view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>

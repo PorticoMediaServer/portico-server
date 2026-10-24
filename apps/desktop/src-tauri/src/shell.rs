@@ -1,5 +1,6 @@
 use crate::{audio::AudioOutput,boundary::{self,Command,Error,Observation,Result},mpv::{Api,Mpv}};
-use std::{path::PathBuf,sync::{Arc,Mutex,atomic::{AtomicU8,Ordering}}};
+use std::{path::PathBuf,sync::{Arc,Mutex}};
+use crate::shutdown::ShutdownState;
 use tauri::{Manager,WebviewWindow};
 use crate::{equalizer::{EqualizerChange,EqualizerSnapshot},equalizer_store::EqualizerStore};
 
@@ -14,11 +15,18 @@ pub struct EngineState(pub Mutex<std::result::Result<Arc<Mpv>,Error>>);
 pub struct EqualizerState(pub Mutex<std::result::Result<EqualizerStore,Error>>);
 pub struct InstallationState(pub Mutex<std::result::Result<crate::installation_store::InstallationStore,Error>>);
 pub struct DownloadsState(pub Arc<Mutex<std::result::Result<crate::download_commands::DownloadsSession,Error>>>);
-#[derive(Default)]
-struct ShutdownState(AtomicU8);
 fn caller(window:&WebviewWindow)->Result<()> {
-    if window.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{return Err(Error::EngineUnavailable)}
+    if !window.state::<ShutdownState>().accepts_commands(){return Err(Error::EngineUnavailable)}
     boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))
+}
+
+#[tauri::command]
+fn desktop_measurement_options(window:WebviewWindow,state:tauri::State<crate::measurement::MeasurementState>)->Result<Option<serde_json::Value>>{
+    caller(&window)?;state.options(window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str())
+}
+#[tauri::command]
+fn desktop_measurement_write(window:WebviewWindow,state:tauri::State<crate::measurement::MeasurementState>,report:serde_json::Value)->Result<()>{
+    caller(&window)?;state.write(window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),report)
 }
 
 #[cfg(test)]
@@ -87,8 +95,28 @@ async fn desktop_capabilities(window:WebviewWindow,state:tauri::State<'_,EngineS
     caller(&window)?;let native=state.0.lock().map_err(|_|Error::EngineFailure)?.clone()?;
     tauri::async_runtime::spawn_blocking(move||Ok(DecoderInventory{version:native.property("mpv-version").ok_or(Error::EngineFailure)?,decoders:native.decoder_inventory()?})).await.map_err(|_|Error::EngineFailure)?
 }
-fn request_shutdown(app:&tauri::AppHandle){
-    if app.state::<ShutdownState>().0.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire).is_err(){return}
+fn request_app_close(app:&tauri::AppHandle){
+    if !app.state::<ShutdownState>().request_web(){return}
+    crate::spike::record("close-web-requested",0);
+    let sent=app.get_webview_window("main").is_some_and(|window|window.eval("window.dispatchEvent(new Event('portico-native-close'))").is_ok());
+    if !sent{request_shutdown(app,false);return}
+    let app=app.clone();
+    std::thread::spawn(move||{
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if app.state::<ShutdownState>().waiting_for_web(){
+            crate::spike::record("close-web-timeout",-1);request_shutdown(&app,false);
+        }
+    });
+}
+#[tauri::command]
+fn desktop_app_close(window:WebviewWindow)->Result<()>{
+    // This terminal acknowledgement is idempotent even if native teardown has
+    // already started, but it never admits a foreign WebView/origin.
+    boundary::local_origin(window.label(),window.url().map_err(|_|Error::ForbiddenOrigin)?.as_str(),cfg!(debug_assertions))?;
+    request_shutdown(window.app_handle(),true);Ok(())
+}
+fn request_shutdown(app:&tauri::AppHandle,web_completed:bool){
+    if !app.state::<ShutdownState>().begin_native(){return}
     app.state::<Arc<crate::folder_operations::FolderOperations>>().cancel_all();
     crate::folder_ui::cancel_all();
     let app=app.clone();
@@ -100,7 +128,7 @@ fn request_shutdown(app:&tauri::AppHandle){
         let preferences=equalizer.0.lock().unwrap_or_else(|e|e.into_inner());
         let native=std::mem::replace(&mut *app.state::<EngineState>().0.lock().unwrap_or_else(|e|e.into_inner()),Err(Error::EngineUnavailable)).ok();
         drop(preferences);
-        let mut clean=true;
+        let mut clean=web_completed;
         if let Some(native)=native.as_ref(){
             let downloads=app.state::<DownloadsState>();
             if let Ok(mut guard)=downloads.0.lock(){if let Ok(session)=guard.as_mut(){
@@ -124,7 +152,7 @@ fn request_shutdown(app:&tauri::AppHandle){
             drop(native);
         }
         crate::spike::record("close-finished",if clean{0}else{-1});
-        app.state::<ShutdownState>().0.store(2,Ordering::Release);
+        app.state::<ShutdownState>().finish();
         app.exit(if clean{0}else{1});
     });
 }
@@ -397,9 +425,9 @@ pub fn run() {
         .manage(Arc::new(crate::folder_operations::FolderOperations::default()))
         .manage(Arc::new(crate::window::ChromeState::default()))
         .on_window_event(|window,event|{
-            if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_shutdown(window.app_handle());}}
+            if window.label()=="main"{if let tauri::WindowEvent::CloseRequested{api,..}=event{api.prevent_close();request_app_close(window.app_handle());}}
         })
-        .invoke_handler(tauri::generate_handler![desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open])
+        .invoke_handler(tauri::generate_handler![desktop_app_close,desktop_command,desktop_observe,desktop_audio_facts,desktop_network_cost,desktop_device_facts,desktop_installation,desktop_capabilities,desktop_surface,desktop_spike_report,desktop_equalizer,desktop_equalizer_change,desktop_window_state,desktop_window_action,desktop_window_chrome,desktop_downloads_bind,desktop_downloads_release,desktop_downloads_command,desktop_load_local,desktop_retire_local,desktop_downloads_retire,desktop_download_folder_location,desktop_download_folder_begin,desktop_download_folder_cancel,desktop_download_folder_choose,desktop_download_folder_open,desktop_measurement_options,desktop_measurement_write])
         .setup(|app| {
             // app_local_data_dir selects LocalAppData on Windows, not roaming/account state.
             let preference_error=||std::io::Error::other("device_preferences_unavailable");
@@ -411,8 +439,11 @@ pub fn run() {
             *app.state::<EqualizerState>().0.lock().map_err(|_|preference_error())?=Ok(store);
             let downloads=data.join("offline");
             *app.state::<DownloadsState>().0.lock().map_err(|_|preference_error())?=crate::download_commands::DownloadsSession::open(&downloads);
-            let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App("index.html".into()))
-                .title("Portico").inner_size(1440.0,900.0).min_inner_size(600.0,600.0)
+            let measurement=crate::measurement::MeasurementState::from_env().map_err(|_|std::io::Error::other("desktop_measurement_unavailable"))?;
+            let (route,width,height)=measurement.window().map_err(|_|std::io::Error::other("desktop_measurement_unavailable"))?;
+            app.manage(measurement);
+            let main=tauri::WebviewWindowBuilder::new(app,"main",tauri::WebviewUrl::App(route.trim_start_matches('/').into()))
+                .title("Portico").inner_size(width,height).min_inner_size(600.0,600.0)
                 // Linux uses the desktop's title bar. Windows keeps OS controls until the
                 // installed web caption host supplies its actual control rectangles.
                 .decorations(true)
@@ -445,7 +476,7 @@ pub fn run() {
                     let native=lib.and_then(|api|Mpv::new(api,&AudioOutput::default(),crate::mpv::VideoTarget::NativeView(0)));
                     crate::spike::record("worker-engine",if native.is_ok(){0}else{-1});
                     let equalizer=handle.state::<EqualizerState>();let preferences=equalizer.0.lock();
-                    if handle.state::<ShutdownState>().0.load(Ordering::Acquire)!=0{
+                    if !handle.state::<ShutdownState>().running(){
                         if let Ok(native)=native{let _=native.retire();}return
                     }
                     let result=native.and_then(|native|{
@@ -499,7 +530,7 @@ pub fn run() {
     match builder.build(tauri::generate_context!()){
         Ok(app)=>app.run(|handle,event|{
             if let tauri::RunEvent::ExitRequested{api,..}=event{
-                if handle.state::<ShutdownState>().0.load(Ordering::Acquire)!=2{api.prevent_exit();request_shutdown(handle);}
+                if !handle.state::<ShutdownState>().finished(){api.prevent_exit();request_app_close(handle);}
             }
         }),
         Err(_)=>eprintln!("desktop_start_failed"),

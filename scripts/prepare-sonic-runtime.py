@@ -16,6 +16,8 @@ def prepare(archive, output, target, lock):
     package = lock["packages"][target]
     if output.exists():
         raise ValueError("output already exists; never replace an installed runtime")
+    if "bytes" in package and archive.stat().st_size != package["bytes"]:
+        raise ValueError("original runtime package byte count mismatch")
     if archive.stat().st_size > 100 << 20 or hashlib.sha256(archive.read_bytes()).hexdigest() != package["sha256"]:
         raise ValueError("original runtime package SHA256 mismatch")
     if lock["license"] != "MIT" or lock["version"] != "1.20.1":

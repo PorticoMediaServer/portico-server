@@ -39,6 +39,13 @@ and `PORTICO_SONIC_MODEL_DIRECTORY`; extra runtime libraries use
 `PORTICO_SONIC_LIBRARIES`. These operator paths are never recording inputs.
 Missing installations leave ordinary playback and genre discovery available.
 
+The original Linux AArch64 1.20.1 SDK is also pinned and accepted by the staging
+tool with `--target linux-aarch64`. Its bounded archive, original MIT licence,
+third-party notices and AArch64 ELF identity have been checked. This is a
+dependency-source qualification, not ARM helper compilation or actual inference
+qualification. ARM inference and x86 CPUs without AVX2 still require their real
+out-of-process conformance runs; no installation becomes ready from this pin.
+
 Conformance jobs supply `PORTICO_SONIC_HELPER_TEST` and
 `PORTICO_SONIC_MODEL_TEST` for actual supervised inference/cancellation tests.
 The media-tier `TestSonicActualConfinedCueDecodeAndSingleAllocation` additionally

@@ -51,8 +51,13 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				repairFailure(w, metadata.ErrRepairInput)
 				return
 			}
-			authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
 			target := metadata.RepairTarget{Kind: r.PathValue("kind"), ID: r.PathValue("id")}
+			authorize := func(tx *sql.Tx) error {
+				if err := d.manualMetadataAuthorize(ctx, tx, p); err != nil {
+					return err
+				}
+				return d.readingMetadataTargetAuthorize(ctx, tx, p, target)
+			}
 			var out metadata.RepairState
 			if method == "GET" {
 				out, err = d.Metadata.RepairState(ctx, target, authorize)
@@ -82,6 +87,10 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 				return
 			}
 			out.Server = d.Identity.ID()
+			if err = d.readingMetadataResponseAuthorize(ctx, p, out); err != nil {
+				failure(w, err)
+				return
+			}
 			out.ViewerFence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
 			write(w, 200, out)
 		})

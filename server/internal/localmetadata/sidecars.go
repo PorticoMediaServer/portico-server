@@ -19,17 +19,17 @@ import (
 // the owner picks otherwise in the editor.
 //
 // Layout rules, per kind:
-//   - movie: logo.png beside the file.
-//   - tv/anime: poster.jpg/folder.jpg (.png too), fanart.jpg/backdrop.jpg and
-//     logo.png in the file's directory, then its parent (never above the
+//   - movie: stem-specific or generic backdrop and logo aliases beside the file.
+//   - tv/anime: poster/folder/show, fanart/backdrop/art/background and
+//     logo/clearlogo (jpg/jpeg/png/tbn/webp) in the file's directory, then its parent (never above the
 //     library root); season posters seasonNN.jpg, seasonNN-poster.jpg and
 //     season-specials-poster.jpg for the episode's own season number. When the
 //     file's directory is a season folder ("Season 01", "Specials") the show's
 //     images come from the parent only, and the season folder's own
 //     poster.jpg/folder.jpg is that season's poster.
-//   - music: artist.jpg and fanart.jpg/backdrop.jpg in the file's directory,
-//     then its parent (never above the root); the album's parent-folder cover
-//     is reported as album/cover for CD1/-style layouts.
+//   - music: album art is beside the tracks (above a CD1-style directory);
+//     artist art is in the album's parent. Album backgrounds fall back to the
+//     artist background. Every lookup stays below the library root.
 //
 // Only positive hits are cached by path (a show's hundred episodes share one
 // read). A miss is not remembered here; instead the scan says which names it
@@ -60,10 +60,10 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 	switch kind {
 	case "movie":
 		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-		if key := first(dirs, stem+"-fanart.jpg", stem+"-fanart.png", "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"); key != "" {
+		if key := first(dirs, videoArtworkNames(stem+"-fanart", "fanart", "backdrop", "art", "background")...); key != "" {
 			out["item/backdrop"] = key
 		}
-		if key := first(dirs, "logo.png"); key != "" {
+		if key := first(dirs, videoArtworkNames(stem+"-clearlogo", "logo", "clearlogo")...); key != "" {
 			out["item/logo"] = key
 		}
 	case "tv", "anime":
@@ -78,29 +78,31 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 		if inSeason {
 			show = dirs[1:]
 		}
-		if key := first(show, "poster.jpg", "poster.png", "folder.jpg", "folder.png"); key != "" {
+		if key := first(show, videoArtworkNames("poster", "folder", "show")...); key != "" {
 			out["show/poster"] = key
 		}
-		if key := first(show, "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"); key != "" {
+		if key := first(show, videoArtworkNames("fanart", "backdrop", "art", "background")...); key != "" {
 			out["show/backdrop"] = key
 		}
-		if key := first(show, "logo.png"); key != "" {
+		if key := first(show, videoArtworkNames("logo", "clearlogo")...); key != "" {
 			out["show/logo"] = key
 		}
 		if season >= 0 && season <= 9999 {
-			names := []string{"season" + strconv.Itoa(season) + ".jpg", "season" + strconv.Itoa(season) + ".png", "season" + twoDigits(season) + ".jpg", "season" + twoDigits(season) + ".png", "season" + twoDigits(season) + "-poster.jpg", "season" + twoDigits(season) + "-poster.png"}
+			names := videoArtworkNames("season"+strconv.Itoa(season), "season"+twoDigits(season), "season"+twoDigits(season)+"-poster", "Season"+strconv.Itoa(season), "Season"+twoDigits(season), "Season"+twoDigits(season)+"-poster")
 			if season == 0 {
-				names = append(names, "season-specials-poster.jpg")
+				names = append(names, videoArtworkNames("season-specials-poster")...)
 			}
 			key := first(dirs, names...)
 			if key == "" && inSeason {
-				key = first(dirs[:1], "poster.jpg", "poster.png", "folder.jpg", "folder.png")
+				key = first(dirs[:1], videoArtworkNames("poster", "folder")...)
 			}
 			if key != "" {
 				out["season/"+strconv.Itoa(season)+"/poster"] = key
 			}
 		}
-	case "music", "audiobook":
+	case "music":
+		return musicSidecars(root, path, first)
+	case "audiobook":
 		if key := first(dirs, "artist.jpg", "artist.png"); key != "" {
 			out["artist/portrait"] = key
 		}

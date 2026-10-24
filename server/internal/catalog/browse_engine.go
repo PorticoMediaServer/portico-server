@@ -337,6 +337,7 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 		}
 		extra += "\x00" + fence
 	}
+	extra += s.relativeBrowseFence(request.Query)
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
 }
@@ -354,6 +355,11 @@ type browseRow struct {
 
 // BrowseEntities executes one expression query and projects the page.
 func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseResult, error) {
+	var instantErr error
+	s, instantErr = s.withBrowseInstant(request.Query, request.Cursor)
+	if instantErr != nil {
+		return BrowseResult{}, instantErr
+	}
 	if !viewer.AllowsLibrary(request.Library) {
 		return BrowseResult{}, sql.ErrNoRows
 	}
@@ -410,6 +416,11 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 // selected entity rows. Ranges and keyset continuations share one compiled
 // clause, so a virtualized grid and a paged list agree about membership.
 func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow, error) {
+	var instantErr error
+	s, instantErr = s.withBrowseInstant(request.Query, request.Cursor)
+	if instantErr != nil {
+		return BrowseResult{}, nil, instantErr
+	}
 	out := BrowseResult{Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}}
 	lib, err := s.library(request.Library)
 	if err != nil {
@@ -451,7 +462,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows, rowSources: request.RowSources}
 	for _, member := range entityKindMembers(pivot) {
 		if kind, err := compactcatalog.ParseKind(member); err == nil {
 			compiler.kinds = append(compiler.kinds, int(kind))
@@ -697,7 +708,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Fingerprint: revision, Total: total, Expires: expires})
 		if err != nil {
 			return out, nil, err
 		}

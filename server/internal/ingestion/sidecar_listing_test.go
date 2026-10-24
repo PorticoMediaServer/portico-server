@@ -22,7 +22,7 @@ func TestScanRemembersWhichSidecarsADirectoryHolds(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"Show/Poster.JPG", "Show/tvshow.nfo", "Show/Season 1/notes.txt", "Show/Season 1/episode.mkv"} {
+	for _, name := range []string{"Show/Poster.JPG", "Show/clearlogo.tbn", "Show/tvshow.nfo", "Show/Season 1/notes.txt", "Show/Season 1/episode.mkv"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -73,6 +73,7 @@ func TestScanRemembersWhichSidecarsADirectoryHolds(t *testing.T) {
 	}{
 		// Seen, whatever the letter case on disk.
 		{"Show/poster.jpg", true, true},
+		{"Show/clearlogo.tbn", true, true},
 		{"Show/tvshow.nfo", true, true},
 		// Listed completely and not there.
 		{"Show/fanart.jpg", false, true},

@@ -55,8 +55,12 @@ export function savedViewSummary(definition: SavedDefinition, capabilities: Brow
         const phrase = lengthWords(own, text);
         if (phrase) {words.push(phrase);own.forEach(value => consumed.add(value));continue;}
       }
+      if (field.type === 'date' && node.operator === 'within-last-days' && typeof node.value === 'number') {
+        words.push(field.id === 'dateAdded' ? text.t('savedView.summary.addedLastDays', {count: node.value}) : text.t('savedView.summary.fieldLastDays', {field: label, count: node.value}));continue;
+      }
       if (field.id === 'dateAdded') {
-        const preset = activeRangePreset(rangePresets(field, new Date()), own);
+        const absolutePresets = rangePresets(field, new Date()).map(preset => ({...preset, predicates: preset.predicates.map(p => ({...p, operator: 'at-least' as const, value: new Date(Date.now() - Number(p.value) * 86400000).toISOString().slice(0, 10)}))}));
+        const preset = activeRangePreset(absolutePresets, own);
         const count = preset && /^last-(7|30|90|365)$/.exec(preset)?.[1];
         if (count) {words.push(text.t('savedView.summary.addedLastDays', {count: Number(count)}));own.forEach(value => consumed.add(value));continue;}
       }

@@ -1997,11 +1997,13 @@ test('device processing alone selects the renderer and preserves the actual queu
   await f.runtime.play('song_device');await f.arrive();
   const first=f.runtime.getSnapshot(), id=first.playback.session!.id, queue=first.session!.queue;
   assert.equal(first.playback.audioEffects.rendering,false);assert.equal(applied.length,0);
+  assert.equal(f.runtime.browserMediaReady(first.fence!),true);
   const web=(f.runtime as unknown as {stack:{web: import('../src/platform/playback/web-playback.ts').WebPlayback}}).stack.web;
   const enabled={enabled:true,preampDb:-3,bandsDb:Array(10).fill(2)};
   web.applyEqualizer(enabled);await settle();
   assert.deepEqual(equalizers.at(-1),enabled,'the committed device setting reaches the actual renderer seam');
   assert.equal(f.runtime.getSnapshot().playback.audioEffects.rendering,true);assert.ok(applied.includes(id));
+  assert.equal(f.runtime.browserMediaReady(f.runtime.getSnapshot().fence!),false,'the separate renderer holds the HTML media slot');
   assert.equal(f.runtime.getSnapshot().playback.session!.id,id);assert.deepEqual(f.runtime.getSnapshot().session!.queue,queue);
   assert.equal(f.runtime.audioEngineFacts(f.runtime.getSnapshot().fence!),undefined,'an unconfirmed renderer has no invented processing facts');
   web.applyEqualizer({...enabled,enabled:false});await f.arrive();
@@ -2428,4 +2430,170 @@ test('a canceled strict web queue replan cannot load a late generation or trigge
   await settle();assert.equal(f.hls.instances.length,instances);assert.deepEqual(f.runtime.getSnapshot().fence,before);
   assert.equal(f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').length,starts);
  }
+});
+
+
+test('browser media readiness follows the actual loaded HTML source and rejects seeking, retirement and native factories',async t=>{
+ const f=setup(t);await f.runtime.play('movie');
+ const loading=f.runtime.getSnapshot().fence;if(loading)assert.equal(f.runtime.browserMediaReady(loading),false);
+ await f.arrive();const first=f.runtime.getSnapshot().fence!;assert.equal(f.runtime.browserMediaReady(first),true);
+ await f.runtime.seek(first,17);assert.equal(f.runtime.browserMediaReady(first),false);f.video.land(17);await settle();assert.equal(f.runtime.browserMediaReady(first),true);
+ await f.runtime.play('other');assert.equal(f.runtime.browserMediaReady(first),false);await f.arrive();assert.equal(f.runtime.browserMediaReady(f.runtime.getSnapshot().fence!),true);
+ f.runtime.dispose();assert.equal(f.runtime.browserMediaReady(first),false);
+ const {WebMediaPlayer}=await import('../src/platform/playback/web-media-player.ts');
+ const native=setup(t,{}, {createPlayer:(video,options)=>new WebMediaPlayer(video,options),createRender:null});await native.runtime.play('movie');await native.arrive();
+ assert.equal(native.runtime.getSnapshot().playback.phase,'ready');assert.equal(native.runtime.browserMediaReady(native.runtime.getSnapshot().fence!),false,'an app-installed media factory never borrows browser transport capabilities');
+});
+
+test('AirPlay rechecks its actual source at activation instead of trusting cached availability',async t=>{
+ const f=setup(t),sender=new ControlledCastSender();let eligible=true,picks=0;
+ const controller=new PlayOnController({sender,runtime:f.runtime,isCurrent:f.source.isCurrent,reportError:error=>{throw error;},airPlay:{available:()=>eligible,subscribe:()=>()=>{},showPicker:()=>{picks++;}}});
+ t.after(()=>controller.dispose());assert.equal(controller.getSnapshot().airPlayAvailable,true);
+ eligible=false;controller.startAirPlay();assert.equal(picks,0);assert.equal(controller.getSnapshot().airPlayAvailable,false);
+ eligible=true;controller.startAirPlay();assert.equal(picks,1,'a fresh actual source may be used even before a cached availability event');
+});
+
+
+test('subtitle choices preserve the offered clock exactly and refuse fractional milliseconds before a session write',async t=>{
+ for(const [offsetUs,expected] of [['500',undefined],['-1500',undefined],['0',0],['-2000',-2],['2500',undefined]] as const){
+  const f=setup(t);
+  f.intercept(async(request,response)=>{
+   if(!request.path.includes('/playback-offers?'))return response;
+   const body=response.body as {current:{sessionId:string;generation:number;sourceId:string};controls:{id:string;enabled:boolean;reason:string}[]};
+   const current=body.current;
+   const resource={id:'s4',sourceId:current.sourceId,revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs,canManage:true,enabled:true};
+   return {...response,body:{...body,current:{...current,subtitleSelection:'track'},controls:body.controls.map(control=>control.id==='subtitles'?{...control,enabled:true,reason:''}:control),subtitlePlan:{version:1,sessionId:current.sessionId,generation:current.generation,sourceId:current.sourceId,revision:1,catalogRevision:1,
+    renderer:'external_text',mode:'track',offAvailable:true,offsetUs,selected:{...resource,pinned:true,renderer:'external_text'},documentUrl:'/v1/media/subtitles/grant/s4/1',resources:[resource],discovered:[]}}};
+  });
+  await f.runtime.play('movie');await f.arrive();const fence=f.runtime.getSnapshot().fence!;
+  assert.equal(f.runtime.getSnapshot().offers!.subtitlePlan!.resources[0]!.offsetUs,offsetUs);
+  const before=f.log.filter(request=>request.method==='PATCH').length;
+  if(expected===undefined){
+   await assert.rejects(f.runtime.selectSubtitle(fence,'s4'),/playback_subtitle_unavailable/);
+   assert.equal(f.log.filter(request=>request.method==='PATCH').length,before,'an unrepresentable resource correction cannot reach the integer-ms wire');
+   await f.runtime.selectSubtitle(fence,null);
+   const off=f.log.filter(request=>request.method==='PATCH').at(-1)!.body as {subtitles:{trackId:string|null};subtitleOffsetMs?:number};
+   assert.equal(off.subtitles.trackId,null);assert.equal(off.subtitleOffsetMs,undefined,'turning captions off does not need a correction');
+  }else{
+   await f.runtime.selectSubtitle(fence,'s4');
+   const selected=f.log.filter(request=>request.method==='PATCH').at(-1)!.body as {subtitles:{trackId:string};subtitleOffsetMs:number};
+   assert.equal(selected.subtitles.trackId,'s4');assert.equal(selected.subtitleOffsetMs,expected);
+  }
+ }
+});
+
+test('catalogue playback uses the same admitted runtime and returns the actual whole-resource QueueHeader',async t=>{
+ const {webDeclaredProfile}=await import('../../packages/client-core/src/client-profile.ts');let probes=0;
+ const f=setup(t,{}, {capabilities:async()=>{probes++;return webDeclaredProfile({app:'catalogue-test'});}});await settle();
+ const before=f.log.length,port=f.runtime.cataloguePlayback();assert.equal(port,f.runtime.cataloguePlayback());assert.equal(f.log.length,before,'obtaining the port starts no work');
+ const segments=Object.freeze([{source:{items:{ids:['movie']}}},{source:{container:{kind:'collection',id:'ordered_release'}}}]);
+ const header=await port.playSegments(segments,{signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(header.id,f.runtime.getSnapshot().queueView!.queue.id);assert.equal(header.total,13,'all server collection members remain in the queue');
+ assert.equal(f.runtime.getSnapshot().session!.queue!.queueId,header.id);assert.equal(f.runtime.getSnapshot().session!.itemId,'movie');
+ const request=f.log.find(r=>r.method==='POST'&&r.path==='/v1/queues')!;
+ assert.deepEqual((request.body as {segments:unknown}).segments,segments);assert.ok(probes>0);assert.ok(f.log.some(r=>r.method==='PUT'&&r.path.endsWith('/capabilities')));
+ assert.equal(f.log.some(r=>r.path.startsWith('/v1/home')),false,'catalogue commands do not fabricate a Home context');
+ const resumed=await port.playSegments([{source:{items:{ids:['movie']}}}],{startSeconds:33,signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(resumed.id,f.runtime.getSnapshot().session!.queue!.queueId);
+ assert.equal((f.log.filter(r=>r.method==='POST'&&r.path==='/v1/playback/sessions').at(-1)!.body as {startPositionMs:number}).startPositionMs,33000);
+});
+
+test('catalogue playback requires the original signal and currentness before changing media or issuing a request',async t=>{
+ const f=setup(t);await f.runtime.play('movie');await f.arrive();const current=f.runtime.getSnapshot().fence!,port=f.runtime.cataloguePlayback(),count=f.log.length;
+ const segments=[{source:{items:{ids:['other']}}}],abort=new AbortController();abort.abort();
+ for(const options of [undefined,{signal:new AbortController().signal},{isCurrent:()=>true},{signal:abort.signal,isCurrent:()=>true},{signal:new AbortController().signal,isCurrent:()=>false}]){
+  await assert.rejects(port.playSegments(segments,options),/stale_selection_context/);assert.equal(f.log.length,count);assert.deepEqual(f.runtime.getSnapshot().fence,current);
+ }
+ await assert.rejects(port.playSegments([],{signal:new AbortController().signal,isCurrent:()=>true}),/invalid_queue_playback_source/);
+ await assert.rejects(port.playSegments(segments,{startSeconds:NaN,signal:new AbortController().signal,isCurrent:()=>true}),/invalid_queue_playback_source/);
+ assert.equal(f.log.length,count);assert.deepEqual(f.runtime.getSnapshot().fence,current);
+ f.invalidate();await assert.rejects(port.playSegments(segments,{signal:new AbortController().signal,isCurrent:()=>true}),/playback_authority_retired/);assert.equal(f.log.length,count);
+});
+
+test('catalogue playback retains original caller guards through queue POST and adoption without stopping a newer Play',async t=>{
+ for(const retire of ['abort','member','new-play'] as const){
+  const f=setup(t),gate=deferred(),life=new AbortController();let current=true,held=false,sessionId='',signal:AbortSignal|undefined;
+  f.intercept(async(request,response)=>{if(!held&&request.method==='POST'&&request.path==='/v1/queues'){
+   held=true;signal=request.signal;sessionId=(response.body as {session:{id:string}}).session.id;await gate.hold();
+  }return response;});
+  const pending=f.runtime.cataloguePlayback().playSegments([{source:{container:{kind:'collection',id:'ordered_release'}}}],{signal:life.signal,isCurrent:()=>current});
+  const rejected=assert.rejects(pending,/AbortError|cancelled|retired|stale_selection_context/);await gate.started;
+  if(retire==='abort'){life.abort();assert.equal(signal!.aborted,true);}else if(retire==='member')current=false;
+  else{await f.runtime.play('newer');await f.arrive();}
+  const newer=retire==='new-play'?f.runtime.getSnapshot().fence:undefined;
+  gate.resolve();await rejected;await settle();
+  assert.equal(f.server.session(sessionId)!.ended,true,'the late actual session is abandoned, not left holding a lease');
+  if(newer)assert.deepEqual(f.runtime.getSnapshot().fence,newer);else assert.equal(f.runtime.getSnapshot().presentation,undefined);
+ }
+});
+
+test('catalogue playback cannot manufacture a queue when actual capability admission fails',async t=>{
+ const {webDeclaredProfile}=await import('../../packages/client-core/src/client-profile.ts');let rejected=true;
+ const f=setup(t,{}, {capabilities:async()=>{if(rejected)throw new Error('capability probe unavailable');return webDeclaredProfile({app:'catalogue-test'});}});
+ const port=f.runtime.cataloguePlayback();
+ await assert.rejects(port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true}),/playback_start_failed/);
+ assert.equal(f.log.some(r=>r.method==='POST'&&r.path==='/v1/queues'),false);
+ assert.equal(f.runtime.getSnapshot().queueView,null);assert.equal(f.runtime.getSnapshot().presentation,undefined);
+ rejected=false;const header=await port.playSegments([{source:{items:{ids:['movie']}}}],{signal:new AbortController().signal,isCurrent:()=>true});await f.arrive();
+ assert.equal(f.runtime.getSnapshot().queueView!.queue.id,header.id,'the same captured port can retry after a genuine successful admission');
+});
+
+
+const committedInfo=()=>({route:'original',routes:{picture:'original',sound:'original'},reason:{kind:'compatible'},
+ source:{video:{codec:'h264',width:1920,height:1080,interlaced:false},audio:{codec:'flac',sampleRate:96000,bitDepth:24,channels:2}},
+ delivered:{video:{codec:'h264',width:1920,height:1080,interlaced:false},audio:{codec:'flac',sampleRate:96000,bitDepth:24,channels:2}},
+ losses:[],network:'home',basis:'committed_delivery_plan'});
+
+test('Info reads a fresh authorized session without adopting it or merging output with media facts',async t=>{
+ const f=setup(t);await f.runtime.play('movie',60);await f.arrive();
+ const fence=f.runtime.getSnapshot().fence!;assert.equal(fence.kind,'queue');if(fence.kind!=='queue')return;
+ const original=f.runtime.getSnapshot().session;let report:unknown=committedInfo(),observed:unknown={audio:{handling:'decoded',channels:2,sampleRate:48000}};
+ const path=`/v1/playback/sessions/${fence.sessionId}`;
+ f.intercept(async(request,response)=>request.method==='GET'&&request.path===path?{...response,body:{...(response.body as object),playbackInfo:report,observedPlayback:observed}}:response);
+ const start=f.log.length,caller=new AbortController();
+ const first=await f.runtime.readPlaybackInfo(fence,caller.signal);assert.ok(first);assert.equal(first.isCurrent(),true);
+ assert.deepEqual(first.playbackInfo,committedInfo());assert.equal(first.playbackInfo?.delivered.audio?.sampleRate,96000);
+ assert.equal(first.observedPlayback?.audio?.sampleRate,48000);assert.equal(first.sessionRevision,original?.revision);
+ assert.equal(f.runtime.getSnapshot().session,original,'GET never adopts a report response into the queue');
+ assert.deepEqual(f.log.slice(start).map(r=>[r.method,r.path]),[['GET',path]]);
+ observed={};report=undefined;
+ const cleared=await f.runtime.readPlaybackInfo(fence,caller.signal);assert.ok(cleared);assert.equal(cleared.playbackInfo,undefined);assert.deepEqual(cleared.observedPlayback,{});
+ report={...committedInfo(),route:'not-a-route'};
+ const malformed=await f.runtime.readPlaybackInfo(fence,caller.signal);assert.ok(malformed);assert.equal(malformed.playbackInfo,undefined,'malformed optional facts never replace a valid current session');
+ await f.runtime.play('another',0);assert.equal(first.isCurrent(),false);assert.equal(cleared.isCurrent(),false);
+});
+
+test('Info rejects fresh resources outside the captured occurrence, revision, generation and selected version',async t=>{
+ const f=setup(t);await f.runtime.play('movie',60);await f.arrive();const fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing queue fence');
+ const original=f.runtime.getSnapshot().session!,path=`/v1/playback/sessions/${fence.sessionId}`;
+ for(const patch of [{id:'foreign'},{revision:String(Number(original.revision)+1)},{itemId:'foreign'},
+   {versionId:'foreign'},{role:'receiver'},{state:'ended'},
+   {presentation:{...original.presentation,generation:fence.generation+1}},
+   {queue:{...original.queue,entryId:'foreign'}},{queue:{...original.queue,queueId:'foreign'}}]){
+  f.intercept(async(request,response)=>request.method==='GET'&&request.path===path?{...response,body:{...(response.body as object),...patch,playbackInfo:committedInfo()}}:response);
+  assert.equal(await f.runtime.readPlaybackInfo(fence,new AbortController().signal),null);
+  assert.equal(f.runtime.getSnapshot().session,original);
+ }
+});
+
+test('Info discards delayed reads on original abort, authority retirement or replacement Play',async t=>{
+ for(const retire of ['abort','authority','play'] as const)await t.test(retire,async sub=>{
+  const f=setup(sub);await f.runtime.play('movie',60);await f.arrive();const fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing queue fence');
+  const path=`/v1/playback/sessions/${fence.sessionId}`,gate=deferred(),caller=new AbortController();
+  f.intercept(async(request,response)=>{if(request.method==='GET'&&request.path===path){await gate.hold();return {...response,body:{...(response.body as object),playbackInfo:committedInfo()}};}return response;});
+  const pending=f.runtime.readPlaybackInfo(fence,caller.signal).catch(error=>{assert.equal(error.name,'AbortError');return null;});
+  await gate.started;
+  if(retire==='abort')caller.abort();else if(retire==='authority')f.invalidate();else await f.runtime.play('new',0);
+  const after=f.runtime.getSnapshot().session;gate.resolve();assert.equal(await pending,null);
+  assert.equal(f.runtime.getSnapshot().session,after,'old Info cannot adopt or stop a replacement');
+ });
+});
+
+test('Info advertises no VOD report for an audio session or an already canceled caller',async t=>{
+ const f=setup(t);await f.runtime.play('movie',0);await f.arrive();let fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing queue fence');
+ const abort=new AbortController();abort.abort();let before=f.log.length;
+ assert.equal(await f.runtime.readPlaybackInfo(fence,abort.signal),null);assert.equal(f.log.length,before);
+ const old=fence;await f.runtime.play('song-one',0);await f.arrive();fence=f.runtime.getSnapshot().fence!;if(fence.kind!=='queue')throw Error('missing audio queue fence');
+ before=f.log.length;assert.equal(await f.runtime.readPlaybackInfo(fence,new AbortController().signal),null);assert.equal(f.log.length,before);
+ await assert.rejects(f.runtime.readPlaybackInfo(old,new AbortController().signal),/stale_playback_command/);
 });

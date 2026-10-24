@@ -130,3 +130,32 @@ test('a collection paged past its first page is read again through every page on
  assert(!loading.includes(true));assert.equal(s.getSnapshot().entries.length,101);assert.equal(s.getSnapshot().entries[0].id,'m90');assert.equal(s.getSnapshot().resource?.revision,2);
  s.dispose();
 });
+
+test('capturing and reopening a saved view preserves relative dates verbatim', async () => {
+ const definition={libraryId:'library',pivot:'movies',query:{field:'dateAdded',operator:'within-last-days',value:30},sort:[{field:'added',direction:'desc'}],presentation:'grid'} as const;
+ let stored:any;const writes:any[]=[];
+ const s=setup(async(p,m,b)=>{
+  if(m!=='GET'){writes.push(b);stored=structuredClone(b.definition);return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'recent',revision:1,deleted:false}};}
+  const r=resource({id:'recent',kind:'view',name:'Recent',definition:stored,actions:['pin','update','delete']});
+  return p.includes('/content')?{resource:r,browse:{pivot:'movies',applied:{query:stored.query,sort:stored.sort},entries:[],pageInfo:{start:0,total:0,totalIsLowerBound:false,revision:'browse_relative',hasMore:false,nextCursor:''},positionIndex:[]},nextCursor:''}:directory(stored?[r]:[]);
+ });
+ await s.select({view:'views'});
+ assert.equal(await s.mutate({action:'create',kind:'view',name:'Recent',definition}),true);
+ assert.deepEqual(writes[0].definition,definition);
+ await s.select({view:'resource',resourceId:'recent'});
+ assert.equal(s.getSnapshot().error,null);
+ assert.deepEqual(s.getSnapshot().resource?.definition,definition);
+ assert.deepEqual(s.getSnapshot().browse?.applied.query,definition.query);
+ s.dispose();
+});
+
+test('a saved view keeps the relative date operator verbatim through capture and reopen',async()=>{
+ const definition={libraryId:'library',pivot:'movies',query:{all:[{field:'dateAdded',operator:'within-last-days',value:30}]},sort:[{field:'added',direction:'desc'}],presentation:'grid'};
+ let written:any;
+ const s=setup(async(p,m,b)=>{if(m==='GET')return p.includes('/content')?content(resource({id:'query',kind:'view',definition,actions:['pin','update','delete']})):directory([resource({id:'query',kind:'view',definition})]);written=b;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'query',revision:2,deleted:false}};});
+ await s.select({view:'views'});
+ assert.deepEqual(s.getSnapshot().resources[0]?.definition,definition);
+ await s.mutate({action:'create',kind:'view',name:'New albums',definition:definition as never});
+ assert.deepEqual(written.definition,definition);
+ s.dispose();
+});

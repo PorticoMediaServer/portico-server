@@ -278,47 +278,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -675,6 +727,480 @@ export const schemas = {
               }
             },
             "required": [],
+            "type": "object"
+          },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
             "type": "object"
           },
           "presentation": {
@@ -1708,6 +2234,480 @@ export const schemas = {
             "required": [],
             "type": "object"
           },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
+            "type": "object"
+          },
           "presentation": {
             "properties": {
               "audioRender": {
@@ -2464,47 +3464,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -2861,6 +3913,480 @@ export const schemas = {
               }
             },
             "required": [],
+            "type": "object"
+          },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
             "type": "object"
           },
           "presentation": {
@@ -3586,48 +5112,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -3770,48 +5348,100 @@ export const schemas = {
       "applied": {
         "properties": {
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "seek": {
             "properties": {
@@ -5235,48 +6865,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -5419,48 +7101,100 @@ export const schemas = {
       "applied": {
         "properties": {
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "seek": {
             "properties": {
@@ -8344,6 +10078,480 @@ export const schemas = {
         "required": [],
         "type": "object"
       },
+      "playbackInfo": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "committed_delivery_plan"
+            ],
+            "type": "string"
+          },
+          "delivered": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "estimatedBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "losses": {
+            "items": {
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "replacement": {
+                  "properties": {
+                    "audioCodec": {
+                      "type": "string"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "dynamicRange": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "feature",
+                "replacement"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "network": {
+            "type": "string"
+          },
+          "reason": {
+            "properties": {
+              "audioCodec": {
+                "type": "string"
+              },
+              "container": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "maxBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCodec": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "route": {
+            "type": "string"
+          },
+          "routes": {
+            "properties": {
+              "picture": {
+                "type": "string"
+              },
+              "sound": {
+                "type": "string"
+              },
+              "subtitles": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "source": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [
+          "route",
+          "routes",
+          "reason",
+          "source",
+          "delivered",
+          "losses",
+          "network",
+          "basis"
+        ],
+        "type": "object"
+      },
       "presentation": {
         "properties": {
           "audioRender": {
@@ -9321,6 +11529,480 @@ export const schemas = {
               }
             },
             "required": [],
+            "type": "object"
+          },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
             "type": "object"
           },
           "presentation": {
@@ -11734,47 +14416,99 @@ export const schemas = {
                       "type": "string"
                     },
                     "query": {
-                      "additionalProperties": false,
-                      "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                      "properties": {
-                        "all": {
-                          "items": {
-                            "additionalProperties": {},
-                            "properties": {},
-                            "required": [],
-                            "type": "object"
+                      "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                          "properties": {
+                            "field": {
+                              "enum": [
+                                "releaseDate",
+                                "dateAdded",
+                                "lastPlayedAt"
+                              ],
+                              "type": "string"
+                            },
+                            "operator": {
+                              "enum": [
+                                "within-last-days"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "maximum": 36500,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
                           },
-                          "maxItems": 40,
-                          "minItems": 1,
-                          "type": "array"
-                        },
-                        "any": {
-                          "items": {
-                            "additionalProperties": {},
-                            "properties": {},
-                            "required": [],
-                            "type": "object"
-                          },
-                          "maxItems": 40,
-                          "minItems": 1,
-                          "type": "array"
-                        },
-                        "field": {
-                          "type": "string"
-                        },
-                        "not": {
-                          "additionalProperties": {},
-                          "properties": {},
-                          "required": [],
+                          "required": [
+                            "field",
+                            "operator",
+                            "value"
+                          ],
                           "type": "object"
                         },
-                        "operator": {
-                          "type": "string"
-                        },
-                        "value": {}
-                      },
-                      "required": [],
-                      "type": "object"
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "all": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "maxItems": 40,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "any": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "maxItems": 40,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "not": {
+                              "additionalProperties": {},
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "operator": {
+                              "enum": [
+                                "equals",
+                                "not-equals",
+                                "in",
+                                "not-in",
+                                "contains",
+                                "starts-with",
+                                "is-present",
+                                "is-missing",
+                                "less-than",
+                                "at-most",
+                                "greater-than",
+                                "at-least",
+                                "between",
+                                "contains-any",
+                                "contains-all"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {}
+                          },
+                          "required": [],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "sort": {
                       "items": {
@@ -11868,47 +14602,99 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -12312,6 +15098,480 @@ export const schemas = {
               }
             },
             "required": [],
+            "type": "object"
+          },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
             "type": "object"
           },
           "presentation": {
@@ -15042,48 +18302,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -15316,48 +18628,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -30972,48 +34336,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -32208,6 +35624,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "identityCode": {
+        "type": "string"
+      },
       "interfaces": {
         "items": {
           "properties": {
@@ -32240,6 +35659,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "localUrl": {
+        "type": "string"
       },
       "observedAt": {
         "type": "string"
@@ -70601,6 +74023,11 @@ export const schemas = {
             "properties": {
               "audio": {
                 "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "channels": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -70615,8 +74042,19 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "layout": {
+                    "type": "string"
+                  },
                   "objectAudio": {
                     "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "streamIndex": {
                     "maximum": 9007199254740991,
@@ -70627,6 +74065,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -70746,13 +74187,25 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
                   "codec": {
+                    "type": "string"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
                     "type": "string"
                   },
                   "dolbyVisionCompatibility": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
                   },
                   "dolbyVisionLevel": {
                     "maximum": 9007199254740991,
@@ -70764,11 +74217,30 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
                   "dynamicRange": {
                     "type": "string"
                   },
                   "frameRate": {
                     "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
                   },
                   "height": {
                     "maximum": 9007199254740991,
@@ -70782,6 +74254,12 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
                   },
                   "outputRange": {
                     "type": "string"
@@ -95692,48 +99170,100 @@ export const schemas = {
               "type": "string"
             },
             "query": {
-              "additionalProperties": false,
-              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
               "nullable": true,
-              "properties": {
-                "all": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "releaseDate",
+                        "dateAdded",
+                        "lastPlayedAt"
+                      ],
+                      "type": "string"
+                    },
+                    "operator": {
+                      "enum": [
+                        "within-last-days"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "maximum": 36500,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
                   },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "any": {
-                  "items": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
-                    "type": "object"
-                  },
-                  "maxItems": 40,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "field": {
-                  "type": "string"
-                },
-                "not": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
+                  "required": [
+                    "field",
+                    "operator",
+                    "value"
+                  ],
                   "type": "object"
                 },
-                "operator": {
-                  "type": "string"
-                },
-                "value": {}
-              },
-              "required": [],
-              "type": "object"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "enum": [
+                        "equals",
+                        "not-equals",
+                        "in",
+                        "not-in",
+                        "contains",
+                        "starts-with",
+                        "is-present",
+                        "is-missing",
+                        "less-than",
+                        "at-most",
+                        "greater-than",
+                        "at-least",
+                        "between",
+                        "contains-any",
+                        "contains-all"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              ]
             }
           },
           "required": [
@@ -109005,6 +112535,16 @@ export const schemas = {
   },
   "GetMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -109087,12 +112627,193 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
       "openSubtitlesUsername",
       "openSubtitlesPasswordConfigured",
       "openSubtitles"
+    ],
+    "type": "object"
+  },
+  "GetMusicMixesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMusicMixesResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "mixes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "artists": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2,
+                  "type": "array"
+                },
+                "covers": {
+                  "items": {
+                    "properties": {
+                      "album": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "posterUrl": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "album",
+                      "posterUrl"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "more": {
+                  "type": "boolean"
+                },
+                "nameSource": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "style",
+                          "type": "string"
+                        },
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "tag": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "version": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "tag",
+                        "model",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "artistId": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "artist",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "artistId"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "songCount": {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "tint": {
+                  "pattern": "^#[0-9a-fA-F]{6}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "nameSource",
+                "tint",
+                "covers",
+                "artists",
+                "more",
+                "songCount"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mixes"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "authority",
+          "accountId",
+          "profileId"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },
@@ -115244,6 +118965,480 @@ export const schemas = {
           }
         },
         "required": [],
+        "type": "object"
+      },
+      "playbackInfo": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "committed_delivery_plan"
+            ],
+            "type": "string"
+          },
+          "delivered": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "estimatedBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "losses": {
+            "items": {
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "replacement": {
+                  "properties": {
+                    "audioCodec": {
+                      "type": "string"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "dynamicRange": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "feature",
+                "replacement"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "network": {
+            "type": "string"
+          },
+          "reason": {
+            "properties": {
+              "audioCodec": {
+                "type": "string"
+              },
+              "container": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "maxBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCodec": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "route": {
+            "type": "string"
+          },
+          "routes": {
+            "properties": {
+              "picture": {
+                "type": "string"
+              },
+              "sound": {
+                "type": "string"
+              },
+              "subtitles": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "source": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [
+          "route",
+          "routes",
+          "reason",
+          "source",
+          "delivered",
+          "losses",
+          "network",
+          "basis"
+        ],
         "type": "object"
       },
       "presentation": {
@@ -123417,48 +127612,100 @@ export const schemas = {
           "applied": {
             "properties": {
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "seek": {
                 "properties": {
@@ -126181,48 +130428,100 @@ export const schemas = {
                 "type": "string"
               },
               "query": {
-                "additionalProperties": false,
-                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                 "nullable": true,
-                "properties": {
-                  "all": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                    "properties": {
+                      "field": {
+                        "enum": [
+                          "releaseDate",
+                          "dateAdded",
+                          "lastPlayedAt"
+                        ],
+                        "type": "string"
+                      },
+                      "operator": {
+                        "enum": [
+                          "within-last-days"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 36500,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
                     },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "any": {
-                    "items": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "maxItems": 40,
-                    "minItems": 1,
-                    "type": "array"
-                  },
-                  "field": {
-                    "type": "string"
-                  },
-                  "not": {
-                    "additionalProperties": {},
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "field",
+                      "operator",
+                      "value"
+                    ],
                     "type": "object"
                   },
-                  "operator": {
-                    "type": "string"
-                  },
-                  "value": {}
-                },
-                "required": [],
-                "type": "object"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "enum": [
+                          "equals",
+                          "not-equals",
+                          "in",
+                          "not-in",
+                          "contains",
+                          "starts-with",
+                          "is-present",
+                          "is-missing",
+                          "less-than",
+                          "at-most",
+                          "greater-than",
+                          "at-least",
+                          "between",
+                          "contains-any",
+                          "contains-all"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                ]
               },
               "sort": {
                 "items": {
@@ -126391,48 +130690,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -126670,48 +131021,100 @@ export const schemas = {
                   "type": "string"
                 },
                 "query": {
-                  "additionalProperties": false,
-                  "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                  "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
                   "nullable": true,
-                  "properties": {
-                    "all": {
-                      "items": {
-                        "additionalProperties": {},
-                        "properties": {},
-                        "required": [],
-                        "type": "object"
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                      "properties": {
+                        "field": {
+                          "enum": [
+                            "releaseDate",
+                            "dateAdded",
+                            "lastPlayedAt"
+                          ],
+                          "type": "string"
+                        },
+                        "operator": {
+                          "enum": [
+                            "within-last-days"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "maximum": 36500,
+                          "minimum": 1,
+                          "type": "integer"
+                        }
                       },
-                      "maxItems": 40,
-                      "minItems": 1,
-                      "type": "array"
-                    },
-                    "any": {
-                      "items": {
-                        "additionalProperties": {},
-                        "properties": {},
-                        "required": [],
-                        "type": "object"
-                      },
-                      "maxItems": 40,
-                      "minItems": 1,
-                      "type": "array"
-                    },
-                    "field": {
-                      "type": "string"
-                    },
-                    "not": {
-                      "additionalProperties": {},
-                      "properties": {},
-                      "required": [],
+                      "required": [
+                        "field",
+                        "operator",
+                        "value"
+                      ],
                       "type": "object"
                     },
-                    "operator": {
-                      "type": "string"
-                    },
-                    "value": {}
-                  },
-                  "required": [],
-                  "type": "object"
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "not": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "operator": {
+                          "enum": [
+                            "equals",
+                            "not-equals",
+                            "in",
+                            "not-in",
+                            "contains",
+                            "starts-with",
+                            "is-present",
+                            "is-missing",
+                            "less-than",
+                            "at-most",
+                            "greater-than",
+                            "at-least",
+                            "between",
+                            "contains-any",
+                            "contains-all"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  ]
                 },
                 "sort": {
                   "items": {
@@ -146559,6 +150962,480 @@ export const schemas = {
             "required": [],
             "type": "object"
           },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
+            "type": "object"
+          },
           "presentation": {
             "properties": {
               "audioRender": {
@@ -149561,48 +154438,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -169959,6 +174888,67 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostMusicMixesIdPlaylistRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "operationId": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name"
+    ],
+    "type": "object"
+  },
+  "PostMusicMixesIdPlaylistResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
   "PostNetworkingCertificateConfigRequest": {
     "properties": {
       "authorityId": {
@@ -173224,48 +178214,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -185089,6 +190131,16 @@ export const schemas = {
   },
   "PutMetadataSettingsRequest": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -185127,6 +190179,16 @@ export const schemas = {
   },
   "PutMetadataSettingsResponse": {
     "properties": {
+      "artworkMaxEdge": {
+        "enum": [
+          1280,
+          1920,
+          2560
+        ],
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "includeAdult": {
         "type": "boolean"
       },
@@ -185209,6 +190271,7 @@ export const schemas = {
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
+      "artworkMaxEdge",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
@@ -185605,48 +190668,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -185879,48 +190994,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -186944,6 +192111,480 @@ export const schemas = {
             "required": [],
             "type": "object"
           },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
+            "type": "object"
+          },
           "presentation": {
             "properties": {
               "audioRender": {
@@ -187817,48 +193458,100 @@ export const schemas = {
             "type": "string"
           },
           "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "description": "A predicate or all/any/not group. The parser enforces recursive vocabulary and published depth/clause bounds.",
             "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "description": "Matches dates from the evaluation instant minus N times 24 hours through that instant, inclusive. Future dates do not match. Signed continuations retain the first page's instant.",
+                "properties": {
+                  "field": {
+                    "enum": [
+                      "releaseDate",
+                      "dateAdded",
+                      "lastPlayedAt"
+                    ],
+                    "type": "string"
+                  },
+                  "operator": {
+                    "enum": [
+                      "within-last-days"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 36500,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
+                "required": [
+                  "field",
+                  "operator",
+                  "value"
+                ],
                 "type": "object"
               },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "enum": [
+                      "equals",
+                      "not-equals",
+                      "in",
+                      "not-in",
+                      "contains",
+                      "starts-with",
+                      "is-present",
+                      "is-missing",
+                      "less-than",
+                      "at-most",
+                      "greater-than",
+                      "at-least",
+                      "between",
+                      "contains-any",
+                      "contains-all"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "sort": {
             "items": {
@@ -198863,6 +204556,480 @@ export const schemas = {
         "required": [],
         "type": "object"
       },
+      "playbackInfo": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "committed_delivery_plan"
+            ],
+            "type": "string"
+          },
+          "delivered": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "estimatedBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "losses": {
+            "items": {
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "replacement": {
+                  "properties": {
+                    "audioCodec": {
+                      "type": "string"
+                    },
+                    "channels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "dynamicRange": {
+                      "type": "string"
+                    },
+                    "layout": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "feature",
+                "replacement"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "network": {
+            "type": "string"
+          },
+          "reason": {
+            "properties": {
+              "audioCodec": {
+                "type": "string"
+              },
+              "container": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "maxBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCodec": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          "route": {
+            "type": "string"
+          },
+          "routes": {
+            "properties": {
+              "picture": {
+                "type": "string"
+              },
+              "sound": {
+                "type": "string"
+              },
+              "subtitles": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "source": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "variant": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "chromaSubsampling": {
+                    "type": "string"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "conversion": {
+                    "properties": {
+                      "enhancementDiscarded": {
+                        "type": "boolean"
+                      },
+                      "felResidualDiscarded": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "sourceDolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceEnhancementType": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "sourceDolbyVisionProfile",
+                      "enhancementDiscarded",
+                      "felResidualDiscarded"
+                    ],
+                    "type": "object"
+                  },
+                  "dolbyVisionBaseLayer": {
+                    "type": "boolean"
+                  },
+                  "dolbyVisionCmVersion": {
+                    "type": "string"
+                  },
+                  "dolbyVisionCompatibility": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionEnhancementType": {
+                    "type": "string"
+                  },
+                  "dolbyVisionProfile": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dolbyVisionRpu": {
+                    "type": "boolean"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRate": {
+                    "type": "number"
+                  },
+                  "frameRateDenominator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "frameRateMode": {
+                    "type": "string"
+                  },
+                  "frameRateNumerator": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "hdr10Plus": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "interlaced": {
+                    "type": "boolean"
+                  },
+                  "masterDisplay": {
+                    "type": "string"
+                  },
+                  "maxCll": {
+                    "type": "string"
+                  },
+                  "profile": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "codec"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [
+          "route",
+          "routes",
+          "reason",
+          "source",
+          "delivered",
+          "losses",
+          "network",
+          "basis"
+        ],
+        "type": "object"
+      },
       "presentation": {
         "properties": {
           "audioRender": {
@@ -200039,6 +206206,480 @@ export const schemas = {
               }
             },
             "required": [],
+            "type": "object"
+          },
+          "playbackInfo": {
+            "properties": {
+              "basis": {
+                "enum": [
+                  "committed_delivery_plan"
+                ],
+                "type": "string"
+              },
+              "delivered": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "estimatedBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "losses": {
+                "items": {
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "replacement": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "channels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dynamicRange": {
+                          "type": "string"
+                        },
+                        "layout": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "replacement"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "network": {
+                "type": "string"
+              },
+              "reason": {
+                "properties": {
+                  "audioCodec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "maxBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "videoCodec": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "route": {
+                "type": "string"
+              },
+              "routes": {
+                "properties": {
+                  "picture": {
+                    "type": "string"
+                  },
+                  "sound": {
+                    "type": "string"
+                  },
+                  "subtitles": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "source": {
+                "properties": {
+                  "audio": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
+                        "type": "string"
+                      },
+                      "objectAudio": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "variant": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  },
+                  "subtitles": {
+                    "properties": {
+                      "format": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "type": "string"
+                      },
+                      "rendering": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "video": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "chromaSubsampling": {
+                        "type": "string"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "conversion": {
+                        "properties": {
+                          "enhancementDiscarded": {
+                            "type": "boolean"
+                          },
+                          "felResidualDiscarded": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sourceDolbyVisionProfile": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceEnhancementType": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "sourceDolbyVisionProfile",
+                          "enhancementDiscarded",
+                          "felResidualDiscarded"
+                        ],
+                        "type": "object"
+                      },
+                      "dolbyVisionBaseLayer": {
+                        "type": "boolean"
+                      },
+                      "dolbyVisionCmVersion": {
+                        "type": "string"
+                      },
+                      "dolbyVisionCompatibility": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionEnhancementType": {
+                        "type": "string"
+                      },
+                      "dolbyVisionProfile": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "dolbyVisionRpu": {
+                        "type": "boolean"
+                      },
+                      "dynamicRange": {
+                        "type": "string"
+                      },
+                      "frameRate": {
+                        "type": "number"
+                      },
+                      "frameRateDenominator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "frameRateMode": {
+                        "type": "string"
+                      },
+                      "frameRateNumerator": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "hdr10Plus": {
+                        "type": "boolean"
+                      },
+                      "height": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "interlaced": {
+                        "type": "boolean"
+                      },
+                      "masterDisplay": {
+                        "type": "string"
+                      },
+                      "maxCll": {
+                        "type": "string"
+                      },
+                      "profile": {
+                        "type": "string"
+                      },
+                      "width": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "codec"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "route",
+              "routes",
+              "reason",
+              "source",
+              "delivered",
+              "losses",
+              "network",
+              "basis"
+            ],
             "type": "object"
           },
           "presentation": {
