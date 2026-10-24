@@ -41,7 +41,7 @@ async function fixture(t: TestContext, origin = original.address) {
   const stamp = (time: number) => new Date(time).toISOString().replace('.000Z', 'Z');
   const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: cancelled && !installed ? String(BigInt(expected.localGeneration) + 1n) : expected.localGeneration},
     ...(prepared ? {operation: {...expected, revision: installed ? '5' : expected.revision}, accountId: 'account-unbound',
-      approvalRequest: {purpose: 'setup', currentSetupAccountId: '', previousSetupRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
+      approvalRequest: {purpose: 'setup', currentOwnerAccountId: '', previousOwnerRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
         publicKey: pin.publicKey, localGeneration: expected.localGeneration, name: original.name, expectedRevision: expected.revision}} : {}),
     installationAcknowledged: installed, approvalRequired: !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
     ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
