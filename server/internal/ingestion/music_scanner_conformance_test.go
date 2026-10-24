@@ -183,22 +183,26 @@ func musicConformanceScan(t *testing.T, root string) (catalog.Library, *catalog.
 		switch state.Status {
 		case "complete", "complete_with_warnings":
 			t.Logf("music scan finished %s, processed=%d warnings=%d", state.Status, state.Processed, state.Warnings)
-			if state.Warnings > 0 {
-				rows, err := db.Query(`SELECT relative_path,analysis_error FROM inventory_objects WHERE analysis_error<>'' ORDER BY relative_path LIMIT 8`)
-				if err != nil {
+			// The focused scanner below has no production deep-analysis worker,
+			// so its only permissible warning is that worker being unavailable.
+			// Any other code would mean the fixture scan itself failed to publish.
+			rows, err := db.Query(`SELECT DISTINCT analysis_error FROM inventory_objects WHERE analysis_error<>''`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rows.Next() {
+				var code string
+				if err = rows.Scan(&code); err != nil {
+					rows.Close()
 					t.Fatal(err)
 				}
-				for rows.Next() {
-					var path, code string
-					if err = rows.Scan(&path, &code); err != nil {
-						rows.Close()
-						t.Fatal(err)
-					}
-					t.Logf("scan warning %s: %s", path, code)
+				if code != "analysis_worker_unavailable" {
+					rows.Close()
+					t.Fatalf("unexpected fixture scan warning: %s", code)
 				}
-				if err = rows.Close(); err != nil {
-					t.Fatal(err)
-				}
+			}
+			if err = rows.Close(); err != nil {
+				t.Fatal(err)
 			}
 			catalogtest.New(t, db).Drain()
 			return lib, cat
