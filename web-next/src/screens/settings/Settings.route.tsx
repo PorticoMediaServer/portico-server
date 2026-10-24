@@ -20,6 +20,7 @@ import {SettingsScreen, type SettingsBindings} from './Settings';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
+import {createServerSettingsSurfaces} from './server';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
 import {readingSettingsAdapter} from './reading-adapter';
@@ -112,8 +113,11 @@ export function SettingsEntry() {
     // commands; the settings controller keeps the per-library panel only.
     const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
       ? new LibraryManagementService({api: context.api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
+    // Storage & backups owns one bounded usage sweep shared by its drawn rows.
+    const server = route.section === 'storage' ? createServerSettingsSurfaces({transport: context.api, serverId: viewer.serverId, isCurrent: current}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        const stored = server?.special(row, state); if (stored) return stored;
         const languageKind = preferredLanguageKind(row.id);
         if (languageKind) return <AudioSubtitleLanguageList row={row} state={state} locale={uiLocale} appLocale={appLocale}
           onChange={value => {if (current()) controller.change(row, value, rowContext);}} onError={reportError} />;
@@ -135,13 +139,14 @@ export function SettingsEntry() {
     const settings: SettingsBindings = {...source,
       eligible: (row, selected) => isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected),
       rowState: (row, selected) => {
+        const stored = server?.rowState(row); if (stored) return stored;
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
         return device ?? (row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();server?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
