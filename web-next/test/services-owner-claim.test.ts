@@ -48,6 +48,21 @@ test('authenticated lookup provides owner facts and never starts or approves any
   assert(Object.isFrozen(review) && Object.isFrozen(review.identity) && Object.isFrozen(review.request));
   assert.deepEqual(f.calls.map(value => [value.path, value.body]), [['/v1/server-claims/lookup', {code}]]);
 });
+test('the signed other-people count rides the authenticated lookup and stays bounded', async () => {
+  const plain = fixture(), absent = await reviewHostedOwnerClaim(plain.account, plain.request, plain.signal);
+  assert.equal('otherPeopleCount' in absent, false);
+  for (const count of [0, 1, 86, 10000]) {
+    const f = fixture(); f.patch({otherPeopleCount: count});
+    const review = await reviewHostedOwnerClaim(f.account, f.request, f.signal);
+    assert.equal(review.otherPeopleCount, count); assert(Object.isFrozen(review));
+    assert.deepEqual(f.calls.map(value => value.path), ['/v1/server-claims/lookup']);
+  }
+  const changed = fixture(); changed.patch({otherPeopleCount: 86});
+  const review = await reviewHostedOwnerClaim(changed.account, changed.request, changed.signal);
+  changed.patch({otherPeopleCount: 87});
+  await assert.rejects(decideHostedOwnerClaim(changed.account, review, 'approve', changed.signal));
+  assert.deepEqual(changed.calls.map(value => value.path), ['/v1/server-claims/lookup', '/v1/server-claims/lookup']);
+});
 test('only the reviewed current family can explicitly approve or deny the same claim', async () => {
   for (const decision of ['approve', 'deny'] as const) {
     const f = fixture(), review = await reviewHostedOwnerClaim(f.account, f.request, f.signal);

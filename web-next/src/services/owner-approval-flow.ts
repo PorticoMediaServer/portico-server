@@ -6,6 +6,8 @@ import type {scopedHostedOwnerClaim} from './owner-pending';
 type Controller = ReturnType<typeof scopedHostedOwnerClaim>;
 export type OwnerApprovalDisplay = Readonly<{
   name: string; address: string; accountName: string; requestedAt: string; expiresAt: string;
+  /** Signed other-people count when the producer supplied one; absent otherwise. */
+  otherPeopleCount?: number;
 }>;
 export type OwnerApprovalSnapshot = Readonly<{
   phase: 'loading' | 'review' | 'approved' | 'denied' | 'returning' | 'error' | 'expired';
@@ -61,7 +63,8 @@ export class OwnerApprovalFlow {
       this.identity = identity; this.review = review;
       const display = Object.freeze({name: review.name, address: review.address,
         accountName: session.account.displayName || session.account.username,
-        requestedAt: review.requestedAt, expiresAt: review.expiresAt});
+        requestedAt: review.requestedAt, expiresAt: review.expiresAt,
+        ...(review.otherPeopleCount === undefined ? {} : {otherPeopleCount: review.otherPeopleCount})});
       this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, display});
     });
   }

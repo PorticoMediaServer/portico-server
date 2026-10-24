@@ -12,6 +12,9 @@ export type HostedOwnerClaimCapture = Readonly<{request?: HostedOwnerClaimLink}>
 export type HostedOwnerClaimReview = Readonly<{
   request: HostedOwnerClaimLink; identity: AccountIdentity; serverId: string; name: string; address: string;
   transactionId: string; requestedAt: string; expiresAt: string; status: 'pending' | 'approved';
+  /** Signed informational count of the other people on the server. Absent when
+   * the producer's exact count is over its bound: never read as zero. */
+  otherPeopleCount?: number;
   registration?: Readonly<{id: string; origin: string}>;
 }>;
 const invalid = () => new ApiError(400, 'invalid_return', 'invalid_return', false);
@@ -46,6 +49,7 @@ function captureReview(value: HostedOwnerClaimReview): HostedOwnerClaimReview {
   return Object.freeze({request: captureLink(value.request), identity: Object.freeze({accountId: value.identity.accountId, familyId: value.identity.familyId}),
     serverId: value.serverId, name: value.name, address: value.address, transactionId: value.transactionId,
     requestedAt: value.requestedAt, expiresAt: value.expiresAt, status: value.status,
+    ...(value.otherPeopleCount === undefined ? {} : {otherPeopleCount: value.otherPeopleCount}),
     ...(value.registration ? {registration: Object.freeze({id: value.registration.id, origin: value.registration.origin})} : {})});
 }
 
@@ -82,6 +86,10 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
         Date.parse(claim.expiresAt) <= Date.parse(claim.requestedAt) || claim.currentOwnerUsername !== undefined || claim.previousOwnerRole !== undefined) throw invalid();
     routeBytes(claim.serverId.slice(4), 32);
     ownerOrigin(claim.address);
+    // Presentation only: the count never authorizes anything, and a value the
+    // decoder or this bound refuses is absent, never coerced to zero.
+    const otherPeopleCount = claim.otherPeopleCount;
+    if (otherPeopleCount !== undefined && (!Number.isInteger(otherPeopleCount) || otherPeopleCount < 0 || otherPeopleCount > 10000)) throw invalid();
     let registration: HostedOwnerClaimReview['registration'];
     if (claim.returnRegistration) {
       const value = claim.returnRegistration;
@@ -91,7 +99,8 @@ async function lookup(account: ServicesAccount, request: HostedOwnerClaimLink, s
     }
     const review: HostedOwnerClaimReview = Object.freeze({request, identity: Object.freeze(accountIdentity(session)),
       serverId: claim.serverId, name: claim.name, address: claim.address, transactionId: claim.ownerTransactionId,
-      requestedAt: claim.requestedAt, expiresAt: claim.expiresAt, status: claim.status, ...(registration ? {registration} : {})});
+      requestedAt: claim.requestedAt, expiresAt: claim.expiresAt, status: claim.status,
+      ...(otherPeopleCount === undefined ? {} : {otherPeopleCount}), ...(registration ? {registration} : {})});
     fresh(review, now);
     return review;
   }, expected);
@@ -104,6 +113,7 @@ export function reviewHostedOwnerClaim(account: ServicesAccount, request: Hosted
 function sameClaim(prior: HostedOwnerClaimReview, current: HostedOwnerClaimReview) {
   if (prior.serverId !== current.serverId || prior.name !== current.name || prior.address !== current.address ||
       prior.transactionId !== current.transactionId || prior.requestedAt !== current.requestedAt || prior.expiresAt !== current.expiresAt ||
+      prior.otherPeopleCount !== current.otherPeopleCount ||
       prior.registration && (!current.registration || prior.registration.id !== current.registration.id || prior.registration.origin !== current.registration.origin)) throw invalid();
 }
 

@@ -18,6 +18,7 @@ import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
 import {captureHostedSignIn, type SignInCapture} from './sign-in';
 import {captureHostedOwnerClaim, type HostedOwnerClaimCapture} from './owner-claim';
+import {OwnerApprovalPage} from './OwnerApprovalPage';
 
 type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
@@ -31,8 +32,7 @@ const device = createRoute({getParentRoute: () => root, path: '/device', compone
 const reset = createRoute({getParentRoute: () => root, path: '/reset', component: ResetRoute});
 const verify = createRoute({getParentRoute: () => root, path: '/verify-email', component: VerifyRoute});
 const invitation = createRoute({getParentRoute: () => root, path: '/join', component: JoinRoute});
-// Owner continuation has no public browser handler in the consumed MAIN contract. A missing or
-// unrecognized claim is the drawn invalid-link state; it never starts an ordinary sign-in return.
+// Owner continuation stays separate from the ordinary signed sign-in root.
 const claim = createRoute({getParentRoute: () => root, path: '/claim', component: ClaimStart});
 type ServicesRouter = ReturnType<typeof makeRouter>;
 function makeRouter(context: Context) {
@@ -107,7 +107,15 @@ function InvalidLink() {
 }
 export {InvalidLink as ServicesInvalidLink};
 function ClaimStart() {
+  const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), {session} = useAccount();
+  const [authenticating, setAuthenticating] = useState(() => !session);
+  useEffect(() => {if (!session) setAuthenticating(true);}, [session]);
   const {t} = servicesI18n();
+  if (bootstrap.getSnapshot().ownerPending) {
+    if (!session || authenticating) return <ServicesAuthForm account={account} heading={t('auth.welcomeHome')} lead={t('web.claim.signInFirst')}
+      onSignedIn={() => setAuthenticating(false)} />;
+    return <OwnerApprovalPage account={account} bootstrap={bootstrap} />;
+  }
   return <ServicesAuthStage variant="reset"><ServicesHeading>{t('web.claim.titleGeneric')}</ServicesHeading><ServicesNotice tone="info">{t('web.claim.openFromServer')}</ServicesNotice>
     <ServicesActions><Button onClick={() => location.assign('/')}>{t('web.claim.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
 }

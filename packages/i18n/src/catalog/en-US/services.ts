@@ -1,5 +1,11 @@
 /** Hosted-only copy drawn in auth/account/connect at design 69f2d45. */
 export const servicesMessages = {
+  'services.claim.switchTitle': 'Switch {server} to Portico Accounts',
+  'services.claim.switchLead': 'You asked to move this server from local sign-in. Approve with the Portico Account that will own it.',
+  'services.claim.returnHint': 'Either way, a link then takes you back to {server}.',
+  'services.claim.justNow': 'Just now',
+  'services.claim.becomesOwner': '{account} becomes the owner.',
+  'services.claim.otherPeople': 'The other {count, plural, one {# person signs in again with a Portico Account} other {# people sign in again with a Portico Account}}. Their profiles and history are kept.',
   'services.return.lead': 'Sign in with your Portico Account and you go straight back to {server}.',
   'services.return.back': 'Back to {server}',
   'services.return.signedIn': 'Signed in as {username}',

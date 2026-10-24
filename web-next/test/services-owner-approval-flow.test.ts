@@ -5,7 +5,7 @@ import type {HostedOwnerClaimReview} from '../src/services/owner-claim.ts';
 import type {scopedHostedOwnerClaim} from '../src/services/owner-pending.ts';
 import type {ServicesAccount} from '../src/services/session.ts';
 
-function fixture() {
+function fixture(options: {otherPeopleCount?: number} = {}) {
   let family = 'family', clock = Date.now(), installed = false, status: 'pending' | 'approved' = 'pending';
   const calls: string[] = [], navigations: string[] = [];
   let hold: (step: string) => Promise<void> = async () => {};
@@ -14,7 +14,8 @@ function fixture() {
     accessSession: async () => session()}} as unknown as ServicesAccount;
   const review: HostedOwnerClaimReview = Object.freeze({request: {hostedOrigin: 'https://accounts.test', code: 'private-code', operation: 'private-operation', nameHint: 'Server'},
     identity: {accountId: 'account', familyId: 'family'}, serverId: 'actual-server-id', name: 'Actual server', address: 'https://original.test',
-    transactionId: 'private-transaction', requestedAt: new Date(clock - 1000).toISOString(), expiresAt: new Date(clock + 60000).toISOString(), status: 'pending'});
+    transactionId: 'private-transaction', requestedAt: new Date(clock - 1000).toISOString(), expiresAt: new Date(clock + 60000).toISOString(), status: 'pending',
+    ...(options.otherPeopleCount === undefined ? {} : {otherPeopleCount: options.otherPeopleCount})});
   const controller: ReturnType<typeof scopedHostedOwnerClaim> = {
     review: async () => {calls.push('review'); await hold('review'); return {...review, status};},
     decide: async decision => {calls.push(decision); await hold(decision); if (decision === 'approve') status = 'approved';},
@@ -26,6 +27,16 @@ function fixture() {
     advance: () => {clock += 60001;}, intercept: (work: typeof hold) => {hold = work;}};
 }
 
+test('the drawn other-people count comes only from the reviewed preview', async () => {
+  const absent = fixture(); await absent.flow.start();
+  assert.equal('otherPeopleCount' in absent.flow.getSnapshot().display!, false); absent.flow.dispose();
+  for (const count of [0, 1, 86, 10000]) {
+    const f = fixture({otherPeopleCount: count}); await f.flow.start();
+    const display = f.flow.getSnapshot().display!;
+    assert.equal(display.otherPeopleCount, count); assert.equal(Object.isFrozen(display), true);
+    assert.deepEqual(f.calls, ['review']); assert.deepEqual(f.navigations, []); f.flow.dispose();
+  }
+});
 test('owner review is inert until started and publishes display facts without the private attempt', async () => {
   const f = fixture(); assert.deepEqual(f.calls, []);
   await f.flow.start();
