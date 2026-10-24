@@ -116015,6 +116015,186 @@
         ],
         "type": "object"
       },
+      "GetMusicMixesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetMusicMixesResponse": {
+        "properties": {
+          "data": {
+            "properties": {
+              "mixes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "artists": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 2,
+                      "type": "array"
+                    },
+                    "covers": {
+                      "items": {
+                        "properties": {
+                          "album": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "album",
+                          "posterUrl"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "type": "array"
+                    },
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    },
+                    "nameSource": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "style",
+                              "type": "string"
+                            },
+                            "model": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "tag": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "version": {
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "tag",
+                            "model",
+                            "version"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "artistId": {
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "artist",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "artistId"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "songCount": {
+                      "maximum": 200,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "tint": {
+                      "pattern": "^#[0-9a-fA-F]{6}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "nameSource",
+                    "tint",
+                    "covers",
+                    "artists",
+                    "more",
+                    "songCount"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "mixes"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "serverId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "authority",
+              "accountId",
+              "profileId"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "data"
+        ],
+        "type": "object"
+      },
       "GetNetworkingCertificateRequest": {
         "properties": {},
         "required": [],
@@ -192299,6 +192479,67 @@
           "cascades",
           "schema",
           "artworkRoles"
+        ],
+        "type": "object"
+      },
+      "PostMusicMixesIdPlaylistRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "operationId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "name"
+        ],
+        "type": "object"
+      },
+      "PostMusicMixesIdPlaylistResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entryId": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "playlistId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence",
+          "operationId",
+          "playlistId",
+          "revision",
+          "deleted"
         ],
         "type": "object"
       },
@@ -419754,6 +419995,377 @@
         ],
         "x-lane": "browsing",
         "x-scope": "library"
+      }
+    },
+    "/v1/music/mixes": {
+      "get": {
+        "operationId": "get_music_mixes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "mixes": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "artists": {
+                                "items": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 2,
+                                "type": "array"
+                              },
+                              "covers": {
+                                "items": {
+                                  "properties": {
+                                    "album": {
+                                      "properties": {
+                                        "id": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "name"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "posterUrl": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "album",
+                                    "posterUrl"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "type": "array"
+                              },
+                              "id": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "more": {
+                                "type": "boolean"
+                              },
+                              "nameSource": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "kind": {
+                                        "const": "style",
+                                        "type": "string"
+                                      },
+                                      "model": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "tag": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "version": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "tag",
+                                      "model",
+                                      "version"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "artistId": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "const": "artist",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "artistId"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "songCount": {
+                                "maximum": 200,
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "tint": {
+                                "pattern": "^#[0-9a-fA-F]{6}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "nameSource",
+                              "tint",
+                              "covers",
+                              "artists",
+                              "more",
+                              "songCount"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "mixes"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "authority": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "serverId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "authority",
+                        "accountId",
+                        "profileId"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the current profile's permitted listening mixes",
+        "x-access": "device",
+        "x-admission": "expensive",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/music/mixes/{id}/playlist": {
+      "post": {
+        "operationId": "post_music_mixes_id_playlist",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "playlistId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
+                      "type": "string"
+                    },
+                    "viewerFence": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "viewerFence",
+                    "operationId",
+                    "playlistId",
+                    "revision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Copy a permitted mix into an ordinary playlist",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
       }
     },
     "/v1/networking/certificate": {

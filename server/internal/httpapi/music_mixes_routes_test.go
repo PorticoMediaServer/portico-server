@@ -96,8 +96,8 @@ func TestMusicMixesMountedCurrentProfileFiniteCaptureAndExactPlaylistCopy(t *tes
 		t.Fatal("copy changed ordinary captured keys", actual, expected, err)
 	}
 	member, _ := f.member()
-	f.callAs(member.AccessToken, "POST", path, nil, map[string]any{"operationId": "cross-profile-copy-0001", "name": "Actual artist mix"}, 404, nil)
-	f.callAs(member.AccessToken, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "cross-profile-play-0001"}, selector, 404, nil)
+	f.callAs(member, "POST", path, nil, map[string]any{"operationId": "cross-profile-copy-0001", "name": "Actual artist mix"}, 404, nil)
+	f.callAs(member, "POST", "/v1/queues", map[string]string{"Idempotency-Key": "cross-profile-play-0001"}, selector, 404, nil)
 	f.call("GET", "/v1/music/mixes?profileId=another", nil, nil, 400, nil)
 	f.catalogTest.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES('mix-new-play',?,?,?,'Fixture',?,'mix-music',7,?,?,?,2000,1)`, f.owner.Viewer.Authority, f.owner.Viewer.AccountID, f.owner.Viewer.ProfileID, items[0].ID, items[0].Public, time.Now().Add(-time.Minute).UnixMilli(), time.Now().Add(-time.Minute).UnixMilli())
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "stale-mix-play-0001"}, selector, 404, nil)

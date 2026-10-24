@@ -287,6 +287,7 @@ export function decodeGetMetadataKindIdResponse(input: unknown): types.GetMetada
 export function decodeGetMetadataKindIdArtRoleResponse(input: unknown): types.GetMetadataKindIdArtRoleResponse { return decode("GetMetadataKindIdArtRoleResponse", input) as types.GetMetadataKindIdArtRoleResponse; }
 export function decodeGetMetadataKindIdPreviewResponse(input: unknown): types.GetMetadataKindIdPreviewResponse { return decode("GetMetadataKindIdPreviewResponse", input) as types.GetMetadataKindIdPreviewResponse; }
 export function decodeGetMetadataSettingsResponse(input: unknown): types.GetMetadataSettingsResponse { return decode("GetMetadataSettingsResponse", input) as types.GetMetadataSettingsResponse; }
+export function decodeGetMusicMixesResponse(input: unknown): types.GetMusicMixesResponse { return decode("GetMusicMixesResponse", input) as types.GetMusicMixesResponse; }
 export function decodeGetNetworkingCertificateResponse(input: unknown): types.GetNetworkingCertificateResponse { return decode("GetNetworkingCertificateResponse", input) as types.GetNetworkingCertificateResponse; }
 export function decodeGetNetworkingClaimResponse(input: unknown): types.GetNetworkingClaimResponse { return decode("GetNetworkingClaimResponse", input) as types.GetNetworkingClaimResponse; }
 export function decodeGetNetworkingRemoteResponse(input: unknown): types.GetNetworkingRemoteResponse { return decode("GetNetworkingRemoteResponse", input) as types.GetNetworkingRemoteResponse; }
@@ -539,6 +540,7 @@ export function decodePostMetadataBulkResponse(input: unknown): types.PostMetada
 export function decodePostMetadataBulkPreviewResponse(input: unknown): types.PostMetadataBulkPreviewResponse { return decode("PostMetadataBulkPreviewResponse", input) as types.PostMetadataBulkPreviewResponse; }
 export function decodePostMetadataKindIdResponse(input: unknown): types.PostMetadataKindIdResponse { return decode("PostMetadataKindIdResponse", input) as types.PostMetadataKindIdResponse; }
 export function decodePostMetadataKindIdArtRoleUploadResponse(input: unknown): types.PostMetadataKindIdArtRoleUploadResponse { return decode("PostMetadataKindIdArtRoleUploadResponse", input) as types.PostMetadataKindIdArtRoleUploadResponse; }
+export function decodePostMusicMixesIdPlaylistResponse(input: unknown): types.PostMusicMixesIdPlaylistResponse { return decode("PostMusicMixesIdPlaylistResponse", input) as types.PostMusicMixesIdPlaylistResponse; }
 export function decodePostNetworkingCertificateConfigResponse(input: unknown): types.PostNetworkingCertificateConfigResponse { return decode("PostNetworkingCertificateConfigResponse", input) as types.PostNetworkingCertificateConfigResponse; }
 export function decodePostNetworkingCertificateRetryResponse(input: unknown): types.PostNetworkingCertificateRetryResponse { return decode("PostNetworkingCertificateRetryResponse", input) as types.PostNetworkingCertificateRetryResponse; }
 export function decodePostNetworkingClaimApproveResponse(input: unknown): types.PostNetworkingClaimApproveResponse { return decode("PostNetworkingClaimApproveResponse", input) as types.PostNetworkingClaimApproveResponse; }
