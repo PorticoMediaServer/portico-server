@@ -218,6 +218,18 @@ setuptools (MIT). Compiler, OS packaging tools and GitHub workflow actions are
 build infrastructure; their upstream distributions retain their notices.
 Their use is not a claim that their code is bundled into the Portico server.
 
+## Sonic music analysis
+
+The bundled musicnn MTT model is by Jordi Pons and Xavier Serra and is
+redistributed under the author's ISC licence, included unchanged with the
+model. It was trained on MagnaTagATune (Law et al., 2009). The model is converted
+from the pinned original weights; no Essentia models are included.
+
+ONNX Runtime 1.20.1 is distributed under MIT. Its original LICENSE and
+ThirdPartyNotices.txt accompany every Sonic bundle. The portico-sonic helper
+remains GPLv3; its corresponding source and build instructions are included.
+The platform C and C++ runtime remains a system dependency, as for FFmpeg.
+
 ## External services
 
 TMDB and TheTVDB application credentials identify Portico and are intentionally
