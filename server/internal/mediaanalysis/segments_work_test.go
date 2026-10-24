@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,10 +13,117 @@ import (
 	"time"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/segmentdetect"
 	"portico.local/server/internal/segmentdetect/segmentsynth"
 )
+
+func TestSegmentCatchupEmptyServerDoesNotCreateChangingCommits(t *testing.T) {
+	c := catalogtest.Open(t)
+	s := &Service{db: c.DB}
+	ctx := context.Background()
+	if more, err := s.segmentCatchup(ctx); err != nil || more {
+		t.Fatal("initial empty pass", more, err)
+	}
+	before, err := readSegmentCatchup(ctx, c.DB)
+	if err != nil || !before.Settled {
+		t.Fatal("initial completion was not persisted", before, err)
+	}
+	commits := dbwork.ChangingCommits()
+	for i := 0; i < 30; i++ {
+		if more, err := s.segmentCatchup(ctx); err != nil || more {
+			t.Fatal("unchanged empty pass", more, err)
+		}
+	}
+	after, err := readSegmentCatchup(ctx, c.DB)
+	if err != nil || after != before || dbwork.ChangingCommits() != commits {
+		t.Fatal("empty catchup rewrote progress/published a changing commit", before, after, dbwork.ChangingCommits()-commits, err)
+	}
+}
+
+func TestSegmentCatchupKeepsNewRevisionDurableAndCancellationSilent(t *testing.T) {
+	f := newSegmentFixture(t)
+	f.episode("one", 1, 1, 0)
+	ctx := context.Background()
+	if more, err := f.service.segmentCatchup(ctx); err != nil || more {
+		t.Fatal(more, err)
+	}
+	before, err := readSegmentCatchup(ctx, f.c.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object := f.objects["one"]
+	old, err := segmentFileTx(ctx, f.c.DB, object, "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.c.Exec(`UPDATE library_sources SET generation=generation+1 WHERE library_id='tv'`)
+	f.c.Exec(`UPDATE inventory_objects SET revision='r2',analysis_revision='r2' WHERE id=?`, object)
+	f.c.Exec(`INSERT INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) SELECT source_id,'job',id,asset_id,'r2','analysis_complete','2026-10-24T00:00:00Z' FROM inventory_objects WHERE id=?`, object)
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	commits := dbwork.ChangingCommits()
+	if _, err = f.service.segmentCatchup(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled catchup did not refuse", err)
+	}
+	if state, err := readSegmentCatchup(ctx, f.c.DB); err != nil || state != before || dbwork.ChangingCommits() != commits {
+		t.Fatal("cancellation consumed durable progress", state, err)
+	}
+	if _, err := segmentFileTx(ctx, f.c.DB, object, "r1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("old generation/revision remained eligible", err)
+	}
+	// A replacement worker must resume the committed high-water mark and admit
+	// the new source revision, rather than inheriting the canceled pass.
+	restarted := &Service{db: f.c.DB}
+	if more, err := restarted.segmentCatchup(ctx); err != nil || more {
+		t.Fatal(more, err)
+	}
+	current, err := segmentFileTx(ctx, f.c.DB, object, "r2")
+	if err != nil || current.Generation <= old.Generation || current.binding() == old.binding() {
+		t.Fatal("new current source tuple was not admitted", current, old, err)
+	}
+	progress, err := readSegmentCatchup(ctx, f.c.DB)
+	if err != nil || progress.ChangeSequence <= before.ChangeSequence {
+		t.Fatal("new high-water mark was not persisted", before, progress, err)
+	}
+	commits = dbwork.ChangingCommits()
+	for i := 0; i < 30; i++ {
+		if _, err := restarted.segmentCatchup(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state, err := readSegmentCatchup(ctx, f.c.DB); err != nil || state != progress || dbwork.ChangingCommits() != commits {
+		t.Fatal("unchanged admitted work rewrote progress", progress, state, err)
+	}
+}
+
+func TestSegmentCatchupRestartsAtDurableBoundedPage(t *testing.T) {
+	f := newSegmentFixture(t)
+	for i := 0; i <= segmentCatchupPage; i++ {
+		f.episode(fmt.Sprintf("page-%03d", i), 1, i+1, 0)
+	}
+	ctx := context.Background()
+	if more, err := f.service.segmentCatchup(ctx); err != nil || !more {
+		t.Fatal("first bounded page", more, err)
+	}
+	first, err := readSegmentCatchup(ctx, f.c.DB)
+	if err != nil || first.Cursor == "" || first.Settled {
+		t.Fatal("first page not durable", first, err)
+	}
+	restarted := &Service{db: f.c.DB}
+	if more, err := restarted.segmentCatchup(ctx); err != nil || more {
+		t.Fatal("remaining page", more, err)
+	}
+	last, err := readSegmentCatchup(ctx, f.c.DB)
+	if err != nil || !last.Settled || last.Cursor != "" || last.ChangeSequence != first.ChangeSequence {
+		t.Fatal("restart lost its page/high-water boundary", first, last, err)
+	}
+	var queued int
+	if err := f.c.DB.QueryRow(`SELECT COUNT(*) FROM segment_files WHERE source_revision='r1' AND state='pending'`).Scan(&queued); err != nil || queued != segmentCatchupPage+1 {
+		t.Fatal("newly admitted catchup work lost", queued, err)
+	}
+}
 
 // fakeInput stands in for a bridged media file; the fake decoder never reads it.
 type fakeInput struct{ evidence string }
