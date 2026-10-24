@@ -21,6 +21,7 @@ import (
 
 type qualifiedBundleCohort struct {
 	manifest, ffmpeg, ffprobe string
+	hdr10plus                 bool
 }
 
 // This is product admission data for the actual MAIN Linux builds,
@@ -45,6 +46,7 @@ func qualifiedLinuxCohorts() []qualifiedBundleCohort {
 
 var exactDoviMode = regexp.MustCompile(`(?m)^\s+-mode\s+<int>.*\(from 2 to 2\).*\(default 2\)`)
 var defaultOffDoviJoin = regexp.MustCompile(`(?m)^\s+-merge_dovi\s+<boolean>.*\(default false\)`)
+var defaultOffHDR10Plus = regexp.MustCompile(`(?m)^\s+-hdr10plus\s+<boolean>.*\(default false\)`)
 
 func qualifiedBundleText(root, name string) ([]byte, error) {
 	path := filepath.Join(root, name)
@@ -72,7 +74,7 @@ func bundleDigest(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// QualifyToolchainBundle grants only the two checked CPU Dolby Vision features.
+// QualifyToolchainBundle grants only explicitly checked CPU bundle features.
 // Call after final tool selection on the background lifecycle, with facts from
 // that executable's ProbeToolchain/ProbeToolchainRuntime. Unknown/custom pairs
 // retain normal software facts and receive no bundle-only grant. It neither
@@ -83,6 +85,7 @@ func QualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts T
 
 func qualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts ToolchainFacts, cohorts []qualifiedBundleCohort, runner toolchainProbeRunner) (ToolchainFacts, error) {
 	facts.DolbyVisionProfile7To81, facts.DolbyVisionDualLayerJoin = false, false
+	facts.HDR10PlusLibX265Encode = false
 	if err := ctx.Err(); err != nil {
 		return facts, err
 	}
@@ -155,10 +158,21 @@ func qualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts T
 	if !facts.BitstreamFilters["dovi_profile"] {
 		return facts, errors.New("qualified profile filter is absent from runtime inventory")
 	}
-	for _, check := range []struct {
+	type optionCheck struct {
 		help    string
 		pattern *regexp.Regexp
-	}{{"bsf=dovi_profile", exactDoviMode}, {"demuxer=mpegts", defaultOffDoviJoin}} {
+	}
+	checks := []optionCheck{{"bsf=dovi_profile", exactDoviMode}, {"demuxer=mpegts", defaultOffDoviJoin}}
+	if cohort.hdr10plus {
+		if !facts.Encoders["libx265"] {
+			return facts, errors.New("qualified HDR10+ encoder is absent from runtime inventory")
+		}
+		if err := checkedHDR10PlusEncodeEvidence(videoRaw, *cohort); err != nil {
+			return facts, err
+		}
+		checks = append(checks, optionCheck{"encoder=libx265", defaultOffHDR10Plus})
+	}
+	for _, check := range checks {
 		bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 		text, err := runner(bounded, mediaexec.Job{Executable: ffmpeg, Args: []string{"-hide_banner", "-h", check.help}})
 		cancel()
@@ -191,7 +205,41 @@ func qualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts T
 		return facts, err
 	}
 	facts.DolbyVisionProfile7To81, facts.DolbyVisionDualLayerJoin = true, true
+	facts.HDR10PlusLibX265Encode = cohort.hdr10plus
 	return facts, nil
+}
+
+func checkedHDR10PlusEncodeEvidence(raw []byte, cohort qualifiedBundleCohort) error {
+	// Keep the zero-valued metadata counts distinguishable from omitted proof.
+	var evidence struct {
+		Encode struct {
+			Passed           bool   `json:"passed"`
+			Identical        bool   `json:"perFrameMetadataIdentical"`
+			DefaultFalse     bool   `json:"optionDefaultFalse"`
+			Encoder          string `json:"encoder"`
+			Option           string `json:"encoderOption"`
+			Fixture          string `json:"fixtureSHA256"`
+			FFmpeg           string `json:"ffmpegSHA256"`
+			FFprobe          string `json:"ffprobeSHA256"`
+			Frames           int    `json:"frames"`
+			MetadataFrames   int    `json:"metadataFrames"`
+			DefaultFrames    int    `json:"defaultOffFrames"`
+			ExplicitFrames   int    `json:"explicitOffFrames"`
+			DefaultMetadata  *int   `json:"defaultOffMetadataFrames"`
+			ExplicitMetadata *int   `json:"explicitOffMetadataFrames"`
+		} `json:"hdr10plusEncode"`
+	}
+	if err := json.Unmarshal(raw, &evidence); err != nil {
+		return err
+	}
+	e := evidence.Encode
+	if !e.Passed || !e.Identical || !e.DefaultFalse || e.Encoder != "libx265" || e.Option != "hdr10plus" ||
+		len(e.Fixture) != 64 || e.FFmpeg != cohort.ffmpeg || e.FFprobe != cohort.ffprobe || e.Frames != 24 || e.MetadataFrames != 24 ||
+		e.DefaultFrames != 24 || e.ExplicitFrames != 24 || e.DefaultMetadata == nil || e.ExplicitMetadata == nil ||
+		*e.DefaultMetadata != 0 || *e.ExplicitMetadata != 0 {
+		return errors.New("HDR10+ encode lacks qualified opt-in and default-off target proof")
+	}
+	return nil
 }
 
 func checkedDolbyBundleEvidence(profileRaw, videoRaw []byte, cohort qualifiedBundleCohort) error {

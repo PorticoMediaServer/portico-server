@@ -16,6 +16,7 @@ export type SettingsBindingSources=Readonly<{configuration?:SettingsConfiguratio
 export type SettingsBindingValue=Readonly<{current:unknown;effective:unknown;default:unknown;source:string;configOnly:boolean;applicationMode?:string}>;
 export type SettingsBindingPatch=Readonly<{form:SettingsBindingForm;values:Readonly<Record<string,unknown>>}>;
 const bindings:Readonly<Record<string,SettingsBinding>>={
+ 'remote.identityCode':{form:'connectivityStatus',key:'identityCode',readOnly:true},
  'metadata.artworkSize':{form:'metadata',key:'artworkMaxEdge',codec:'artwork-size'},
  'device.player':{form:'device',key:'playerEngine',codec:'player-engine'},
  'device.receive':{form:'device',key:'receiveFromDevices',codec:'boolean'},

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 
 	"portico.local/server/internal/connectivity"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/operations"
 )
@@ -138,7 +140,52 @@ func (d Dependencies) connectionDocument(r *http.Request) ConnectionDocument {
 
 type ConnectivityStatusDocument struct {
 	connectivity.Status
-	Connection ConnectionDocument `json:"connection"`
+	Connection   ConnectionDocument `json:"connection"`
+	IdentityCode string             `json:"identityCode,omitempty"`
+	LocalURL     string             `json:"localUrl,omitempty"`
+}
+
+// These owner-frame facts are observations, never settings or connection
+// grants. The code comes only from the protected current key publication; the
+// loopback URL was captured from the actual bound listener by root composition.
+func (d Dependencies) connectivityOwnerFacts(ctx context.Context, r *http.Request, out *ConnectivityStatusDocument) error {
+	p, err := d.owner(r)
+	if err != nil {
+		return nil
+	}
+	read, err := dbwork.BeginSnapshot(ctx, d.DB)
+	if err != nil {
+		return err
+	}
+	defer read.Rollback()
+	if err = d.ownerAuthorityTx(ctx, read.Tx(), p); err != nil {
+		return nil
+	}
+	out.LocalURL = d.LocalHTTPURL
+	code, err := connectivityIdentityCodeTx(ctx, read.Tx())
+	if err != nil {
+		return err
+	}
+	out.IdentityCode = code
+	return nil
+}
+
+func connectivityIdentityCodeTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	kind, err := identity.SignInKindTx(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	if kind != identity.SignInLocal {
+		return "", nil
+	}
+	code, err := networking.IdentityCodeTx(ctx, tx)
+	if errors.Is(err, networking.ErrStale) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return code, nil
 }
 
 func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
@@ -174,7 +221,11 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 			return ConnectivityStatusDocument{}, connectionPolicyError(err)
 		}
 		reporter := connectivity.Reporter{Advertiser: d.Access.Advertiser, Certificates: d.certificateStatus(), Custom: d.customCertificateStatus()}
-		return ConnectivityStatusDocument{Status: reporter.Report(ctx, connectivity.ProjectPolicy(document)), Connection: d.connectionDocument(r)}, nil
+		out := ConnectivityStatusDocument{Status: reporter.Report(ctx, connectivity.ProjectPolicy(document)), Connection: d.connectionDocument(r)}
+		if err := d.connectivityOwnerFacts(ctx, r, &out); err != nil {
+			return ConnectivityStatusDocument{}, err
+		}
+		return out, nil
 	}})
 }
 

@@ -18,7 +18,13 @@ GENERATED = ('config.h', 'config_components.h', 'config.asm', 'ffbuild/config.ma
              'libavcodec/codec_list.c', 'libavcodec/parser_list.c', 'libavcodec/bsf_list.c',
              'libavformat/demuxer_list.c', 'libavformat/muxer_list.c', 'libavformat/protocol_list.c',
              'libavfilter/filter_list.c', 'libavdevice/indev_list.c', 'libavdevice/outdev_list.c')
-CHANGED = 'libavformat/bluray.c'
+def changed_sources(lock):
+    paths = tuple(patch['path'] for patch in lock['ffmpeg']['postSeriesPatches'][2:])
+    bluray = 'third_party/ffmpeg/portico-bluray-playlist-minimum.patch'
+    hdr = 'third_party/ffmpeg/portico-x265-hdr10plus.patch'
+    if paths not in ((bluray,), (bluray, hdr)):
+        raise ValueError('Object reuse requires the exact qualified incremental patch sequence')
+    return {'libavformat/bluray.c'} | ({'libavcodec/libx265.c'} if len(paths) == 2 else set())
 
 
 def digest(path):
@@ -36,7 +42,8 @@ def fingerprint(cache, lock, pair=PAIR):
     source = cache / 'source'
     receipt = json.loads((source / 'portico-source-receipt.json').read_text())
     patches = lock['ffmpeg']['postSeriesPatches']
-    if (len(patches) != 3 or patches[-1]['path'] != 'third_party/ffmpeg/portico-bluray-playlist-minimum.patch' or
+    changed_sources(lock)
+    if (
             receipt['sourceCommit'] != lock['ffmpeg']['commit'] or receipt['sourceSha256'] != lock['ffmpeg']['sha256'] or
             receipt['patches'] != lock['ffmpeg']['patches'] or receipt['postSeriesPatches'] != patches[:2]):
         raise ValueError('Object reuse is confined to the exact f3 source plus the additive Blu-ray patch')
@@ -72,8 +79,8 @@ def reuse(cache, source, lock, expected, pair=PAIR):
     old = json.loads((original / 'portico-source-receipt.json').read_text())
     new = json.loads((source / 'portico-source-receipt.json').read_text())
     if (new['postSeriesPatches'] != lock['ffmpeg']['postSeriesPatches'] or set(old['files']) != set(new['files']) or
-            {name for name in old['files'] if old['files'][name] != new['files'][name]} != {CHANGED}):
-        raise ValueError('Only the checked Blu-ray source file may differ')
+            {name for name in old['files'] if old['files'][name] != new['files'][name]} != changed_sources(lock)):
+        raise ValueError('Only the checked incremental C source files may differ')
     # Configure ran afresh. Its outputs must be identical before cache reuse;
     # timestamps then preserve normal make dependency ordering, not semantics.
     for name in GENERATED:
@@ -87,12 +94,15 @@ def reuse(cache, source, lock, expected, pair=PAIR):
         os.utime(current, ns=(previous.stat().st_atime_ns, previous.stat().st_mtime_ns))
     for name in old['files']:
         previous, current = original / name, source / name
-        if name != CHANGED and not current.is_symlink():
+        if name not in changed_sources(lock) and not current.is_symlink():
             os.utime(current, ns=(previous.stat().st_atime_ns, previous.stat().st_mtime_ns))
+    changed = changed_sources(lock)
+    skipped = {str(Path(name).with_suffix(suffix)) for name in changed for suffix in ('.o', '.d')}
+    skipped |= {Path(name).parts[0] + '/' + Path(name).parts[0] + '.a' for name in changed}
     copied = 0
     for path in objects(cache):
         name = path.relative_to(original)
-        if name.as_posix() in {'libavformat/bluray.o', 'libavformat/bluray.d', 'libavformat/libavformat.a'}:
+        if name.as_posix() in skipped:
             continue
         destination = source / name
         if not destination.resolve().is_relative_to(source.resolve()) or destination.exists():
@@ -102,7 +112,7 @@ def reuse(cache, source, lock, expected, pair=PAIR):
         copied += 1
     if fingerprint(cache, lock, pair) != expected:
         raise ValueError('Read-only predecessor cache changed during reuse')
-    print('Reused %d unchanged compiler objects/dependency files; rebuilding bluray.o and relinking tools' % copied, flush=True)
+    print('Reused %d unchanged compiler objects/dependency files; rebuilding the checked changed C objects and relinking tools' % copied, flush=True)
 
 
 def main():

@@ -5,6 +5,7 @@ import {ownerStopOf} from '../src/player/owner-stop.ts';
 import {FakePlaybackServer, fakeHttp} from '../../packages/client-core/src/playback-v1/testing/fake-server.ts';
 import {WebPlayback} from '../src/playback-v1/web-playback.ts';
 import {AdminSessionsClient, NowPlayingStore} from '../../packages/client-core/src/playback-v1/admin-sessions.ts';
+import type {ListAdminSessionsResponse} from '../../packages/contracts/src/types.ts';
 
 function fakeEnv() {
   const timers: {fn: () => void; ms: number}[] = [];
@@ -78,16 +79,34 @@ test('when the feed drops it falls back to 10 s polling, and stops polling when 
 
 test('the store reads v1 sessions and Stop playback sends the trimmed message', async () => {
   const calls: {method: string; path: string; body?: unknown}[] = [];
-  const session = {id: 'ses_1', user: {id: 'a', name: 'justin'}, profile: {id: 'p', name: 'Kids'}, device: {id: 'd', name: 'Living room TV'}, item: {id: 'itm_1', title: 'Arrival'}, kind: 'vod', state: 'playing', positionMs: 1000, decision: {video: {action: 'transcode', reasons: []}, audio: {action: 'copy', reasons: []}}, bitrateKbps: 8000, bandwidthKbps: 12400, location: 'remote', startedAt: '2026-09-23T10:00:00Z'};
+  const session: ListAdminSessionsResponse['items'][number] = {
+    id: 'ses_1', protocol: 'v1', user: {id: 'a', name: 'justin'},
+    profile: {id: 'p', name: 'Kids'}, device: {id: 'd', name: 'Living room TV'},
+    item: {id: 'itm_1', title: 'Arrival', kind: 'movie', art: []},
+    kind: 'vod', state: 'playing', positionMs: 1000,
+    decision: {video: {action: 'transcode', reasons: []}, audio: {action: 'copy', reasons: []}},
+    bitrateKbps: 8000, bandwidthKbps: 12400, currentBitrateKbps: null, rateWindowMs: 5000,
+    live: false, location: 'remote', startedAt: '2026-09-23T10:00:00Z',
+  };
   let listed = [session];
   const http = {send: async (r: {method: string; path: string; body?: unknown}) => {
     calls.push({method: r.method, path: r.path, body: r.body});
-    if (r.method === 'GET') return {status: 200, headers: {}, body: {items: listed, page: {limit: 50, total: listed.length}}};
+    if (r.method === 'GET') {
+      const count = listed.length;
+      const body: ListAdminSessionsResponse = {
+        scope: {serverId: 'server', viewerFence: 'a'.repeat(64)}, observedAt: '2026-09-23T10:00:01Z',
+        items: listed, page: {limit: 50, total: count, start: 0, revision: 'sessions-1'},
+        totals: {streams: count, paused: 0, converting: count, bandwidthKbps: count * 12400, people: count, atHome: 0, away: count},
+      };
+      return {status: 200, headers: {}, body};
+    }
     listed = [];
     return {status: 204, headers: {}};
   }};
   const store = new NowPlayingStore(new AdminSessionsClient(http as never, () => 'key-1'));
   await store.refresh();
+  assert.equal(store.getSnapshot().error, undefined, 'the canonical admin session document is accepted');
+  assert.equal(store.getSnapshot().sessions.length, 1);
   const [s] = store.getSnapshot().sessions;
   assert.equal(s!.title, 'Arrival');
   assert.equal(s!.profile, 'Kids');
