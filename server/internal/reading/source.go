@@ -260,10 +260,10 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 			}
 		}
 		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return n, fmt.Errorf("reading range extent: %w", err)
 		}
-		return n, nil
+		return n, err
 	}
 	wanted := min(int64(len(b)), f.Size-offset)
 	done := 0
