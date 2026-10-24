@@ -1,0 +1,35 @@
+import {createRoot} from 'react-dom/client';
+import {IconSprite} from '../../src/kit/Icon';
+import {NeedsAttention} from '../../src/screens/metadata/NeedsAttention';
+import '../../src/kit/tokens.css';
+import '../../src/kit/fonts.css';
+import '../../src/bootstrap.css';
+
+// owner-metadata frame 2 presentation only: the drawn titles, reasons and matches as DEV
+// fixture rows. No account, server, API call, match or dismissal is installed.
+if (!import.meta.env.DEV) throw new Error('Metadata specimens require development.');
+const key = (seed: number) => seed.toString(16).padStart(64, '0');
+const candidate = (seed: number, title: string, year: number, reasons: string[], orders: {id: string; name: string}[], provider: 'tmdb' | 'tvdb' | 'anilist' = 'tmdb') => ({
+  key: key(seed), identity: {provider, type: 'show' as const, id: String(100 + seed)}, title, year, confidence: 0.8,
+  reasons, orders});
+const entries = [
+  {libraryId: 'library', entityId: 'one-piece', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['accept', 'search', 'id', 'retry', 'dismiss'],
+    title: 'One Piece', revision: 1, reason: 'ambiguous', confidence: 0.6, candidates: [
+      candidate(1, 'One Piece', 1999, ['exact_title_or_alias', 'release_year_agrees'], [{id: 'official', name: 'Official'}, {id: 'seasonal', name: 'Seasonal'}]),
+      candidate(2, 'One Piece', 2023, ['exact_title_or_alias', 'release_year_conflicts'], [{id: 'official', name: 'Official'}])]},
+  {libraryId: 'library', entityId: 'hunter', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['accept', 'search', 'id', 'retry', 'dismiss'],
+    title: 'Hunter x Hunter', revision: 1, reason: 'low_confidence', confidence: 0.4, candidates: [
+      candidate(3, 'Hunter x Hunter', 1999, ['exact_title_or_alias', 'release_year_unknown'], [{id: 'official', name: 'Official'}]),
+      candidate(4, 'Hunter x Hunter', 2011, ['exact_title_or_alias', 'release_year_unknown'], [{id: 'official', name: 'Official'}])]},
+  {libraryId: 'library', entityId: 'naruto', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['search', 'id', 'retry', 'dismiss'],
+    title: 'Naruto Shippūden', revision: 1, reason: 'no_match', confidence: 0, candidates: []},
+  {libraryId: 'library', entityId: 'episode', kind: 'item' as const, itemKind: 'episode', parentId: 'parent-show', parentTitle: 'A show with no match yet',
+    actions: ['parent', 'retry', 'dismiss'], title: 'The episode', revision: 1, reason: 'pending_children', confidence: 0, candidates: []},
+];
+const total = entries.length;
+// A read-only attention page; every command is inert so the specimen cannot pretend to work.
+const api = {request: async <T,>() => ({libraryId: 'library', total, entries, nextCursor: ''}) as T};
+function Specimen() {
+  return <div style={{padding: '32px', maxWidth: 1000}}><IconSprite /><NeedsAttention libraryId="library" api={api} /></div>;
+}
+createRoot(document.getElementById('root')!).render(<Specimen />);
