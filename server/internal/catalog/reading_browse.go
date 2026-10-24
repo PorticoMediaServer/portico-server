@@ -57,8 +57,11 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library,pivot strin
 
 func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEntry,error) {
 	ids:=make([]any,len(rows));for i,row:=range rows { ids[i]=row.entity }
+	formats:="'epub','pdf'";if r.kind=="comic" {formats="'cbz','pdf'"}
 	query:=`SELECT m.item_id,l.library_id,COALESCE(d.poster_url,''),COALESCE(m.author_value,''),
- EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_assets a ON a.id=p.asset_id JOIN inventory_item_availability available ON available.item_id=p.item_id AND available.asset_id=a.token WHERE p.item_id=m.item_id AND available.available=1)
+ EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links selected_link ON selected_link.entity_id=p.item_id AND selected_link.asset_id=p.asset_id
+ JOIN catalog_assets a ON a.id=p.asset_id JOIN inventory_item_availability available ON available.item_id=p.item_id AND available.asset_id=a.token
+ WHERE p.item_id=m.item_id AND p.format IN(`+formats+`) AND p.asset_id=`+readingPrimaryPublicationSQL("m.item_id")+` AND available.available=1)
  FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id LEFT JOIN catalog_item_details d ON d.entity_id=m.item_id
  WHERE `+r.memberScope()+` AND m.item_id IN(`+placeholders(len(ids))+`)`
 	read,err:=s.read().Query(query,ids...);if err!=nil { return nil,err };defer read.Close()
@@ -82,7 +85,7 @@ func (s *Service) readingFacetPage(viewer Viewer,request FacetRequest,r *reading
 	limit:=request.Limit;if limit<1||limit>browseFacetLimit {limit=browseFacetLimit}
 	if request.Sort!=""&&request.Sort!="title"&&request.Sort!="count" { return out,browseIssue("sort","Reading facets sort by title or count") }
 	c:=&browseCompiler{reading:r,now:s.recommendationNow(s.browseInstant),profile:viewer.Profile,restrictions:viewer.EffectiveRestrictions()}
-	clause,err:=c.compile(request.Query);if err!=nil {return out,err}
+	clause,err:=c.compile(browseAnd(request.Group,request.Query));if err!=nil {return out,err}
 	visible,va:=EntityRestrictionSQL("e.entity_id",viewer.EffectiveRestrictions())
 	field:=request.Field
 	cte:=`WITH eligible AS MATERIALIZED(SELECT m.`+field+`_key AS value_key,m.`+field+`_value AS label,m.`+field+`_source AS source
