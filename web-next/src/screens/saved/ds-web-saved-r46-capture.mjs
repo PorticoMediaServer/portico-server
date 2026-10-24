@@ -96,7 +96,7 @@ try {
       await page.waitForFunction(() => [...document.querySelectorAll('[data-artwork-status]')].every(element => ['ready', 'error'].includes(element.dataset.artworkStatus)), null, {timeout: 20000});
     } catch (error) {
       await page.screenshot({path: `${output}/saved-${tag}-failure.png`, fullPage: true}).catch(() => {});
-      throw new Error(`${tag} did not settle: ${error.message}; text=${JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 400))}; fixture=${JSON.stringify(await page.evaluate(() => { const fixture = window.__savedFixture; return fixture ? {posters: fixture.runtime.posters.getSnapshot().error, squares: fixture.runtime.squares.getSnapshot().error, route: fixture.runtime.posters.getSnapshot().route} : 'none'; }))}; errors=${JSON.stringify(report.errors.slice(0, 6))}`);
+      throw new Error(`${tag} did not settle: ${error.message}; text=${JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 400))}; fixture=${JSON.stringify(await page.evaluate(() => { const fixture = window.__savedFixture; return fixture ? {posters: fixture.runtime.posters.getSnapshot().error, squares: fixture.runtime.squares.getSnapshot().error, personal: fixture.runtime.personal.getSnapshot().error, route: fixture.runtime.posters.getSnapshot().route} : 'none'; }))}; errors=${JSON.stringify(report.errors.slice(0, 6))}`);
     }
     await page.waitForTimeout(400);
   };
