@@ -2,11 +2,25 @@ import {ReadingError, type ReadingClient} from '@portico/client-core';
 import {createWindowedCollection} from '@core/collections/windowed.ts';
 
 export type ReadingLibraryItem = Awaited<ReturnType<ReadingClient['list']>>['items'][number];
+export type ReadingContinueItem = Awaited<ReturnType<ReadingClient['continue']>>['items'][number];
 const pageSize = 60;
 
 /** Cursor breadcrumbs contain no media models. The existing sparse collection
  * alone owns resident rows (six pages); scrolling never scans the library. */
 export function createReadingCollection(client: ReadingClient, libraryId: string) {
+  return cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
+    (cursor, limit, signal) => client.list({libraryId, cursor, limit}, signal));
+}
+
+/** The canonical recent index already selects the actual progressed version.
+ * Keep its observed/CAS/stale/location facts intact; never Prepare every row. */
+export function createReadingContinueCollection(client: ReadingClient, libraryId?: string) {
+  return cursorCollection<ReadingContinueItem>(libraryId, row => row.item.id, row => row.item.libraryId,
+    (cursor, limit, signal) => client.continue({libraryId, cursor, limit}, signal));
+}
+
+function cursorCollection<T>(libraryId: string | undefined, keyOf: (item: T) => string, libraryOf: (item: T) => string,
+  fetch: (cursor: string | undefined, limit: number, signal: AbortSignal) => Promise<Readonly<{items: readonly T[]; nextCursor?: string}>>) {
   const cursors = new Map<number, string | undefined>([[0, undefined]]);
   const waiting = new Map<number, Set<() => void>>();
   let ended: number | undefined, frontier = 0, lowerBound = 0, disposed = false;
@@ -25,13 +39,14 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
     if (disposed || signal.aborted) throw new ReadingError('cancelled');
     return cursors.get(start);
   };
-  const collection = createWindowedCollection<ReadingLibraryItem>({pageSize, maxResidentPages: 6, maxConcurrent: 2, prefetchPages: 1,
-    keyOf: item => item.id,
+  const collection = createWindowedCollection<T>({pageSize, maxResidentPages: 6, maxConcurrent: 2, prefetchPages: 1,
+    keyOf,
     async fetchPage(start, count, signal) {
       const next = await cursor(start, signal);
       if (ended !== undefined && start >= ended) return {items: [], total: ended};
-      const response = await client.list({libraryId, cursor: next, limit: count}, signal);
-      if (response.items.some(item => item.libraryId !== libraryId) || response.nextCursor && (response.items.length !== count || [...cursors.values()].includes(response.nextCursor)))
+      const response = await fetch(next, count, signal);
+      if (disposed || signal.aborted) throw new ReadingError('cancelled');
+      if (libraryId !== undefined && response.items.some(item => libraryOf(item) !== libraryId) || response.nextCursor && (response.items.length !== count || [...cursors.values()].includes(response.nextCursor)))
         throw new ReadingError('invalid_document');
       if (response.nextCursor) {
         cursors.set(start + count, response.nextCursor); frontier = Math.max(frontier, start + count);

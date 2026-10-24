@@ -24,11 +24,14 @@ waits for fonts/images/two animation frames unchanged. Focus is observed, never
 modified. Two identical canonical measurements and loaded font faces are required
 before the native transport writes once. Private paths never cross IPC.
 
-DOM scoring currently requires actual DPR1. Retina DPR2, failed/unloaded fonts,
-mount failures, unstable facts and non-full-window roots remain unmeasured. No
-zoom, DPI substitution or viewport normalization is permitted. A gallery specimen
-is component evidence, not full application acceptance. The canonical React
-Native dp/pt exception does not apply to this DOM WebView transport.
+The canonical collector declares `measurement: {renderer:'dom',coordinateUnit:'css-px'}`
+and preserves actual DPR, including Retina DPR2/3. Reference dimensions stay at
+their authored logical viewport/DPR1. DOM boxes, Range rectangles and font facts
+stay in their observed CSS units; no multiplication, division, zoom or OS/display
+change is applied. This supersedes the initial Desktop DPR1-only transport guard.
+Failed/unloaded fonts, mount failures, unstable facts and non-full-window roots
+remain unmeasured. Wrong logical viewports fail the canonical comparison. A gallery
+specimen is component evidence, not full application acceptance.
 
 Use the canonical offline CLI with private reference/adapter/output files outside
 public source. Private design, references, measured output and comparisons must
