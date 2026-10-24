@@ -30,14 +30,17 @@ pkg-config --modversion gtk+-3.0 webkit2gtk-4.1 mpv
 ffmpeg -hide_banner -version
 dpkg-query -W libmpv2 libmpv-dev libwebkit2gtk-4.1-dev
 export PORTICO_TEST_MPV_LIBRARY=/usr/lib/x86_64-linux-gnu/libmpv.so.2
-export PORTICO_TEST_PCM_FIXTURE=/work/owned-48000-stereo.wav PORTICO_TEST_VIDEO_FIXTURE=/work/owned-vfr-6.mkv
+export PORTICO_TEST_PCM_FIXTURE=/work/owned-48000-stereo.wav PORTICO_TEST_VIDEO_FIXTURE=/work/owned-vfr-6.mkv PORTICO_TEST_WAVPACK_FIXTURE=/work/owned-48000-stereo.wv
 if [ "$PORTICO_NATIVE_CHECK" = retirement ]; then
   # Actual GTK object ownership, without a WebView, media engine or screen dump.
   xvfb-run -a -s "-screen 0 800x600x24" cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib shell::surface::tests -- --test-threads=1
 elif [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   python3 apps/desktop/test/native-fixtures.py
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib boundary::tests
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib download_receipt::tests
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::wavpack_tests -- --ignored --test-threads=1
 else
   python3 apps/desktop/test/native-fixtures.py
   cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib -- --test-threads=1
