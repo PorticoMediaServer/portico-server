@@ -38,7 +38,7 @@ export function guideCellProgress(cell: Pick<GuideCell, 'state' | 'start' | 'end
 /** The rows to load for a guide body that scrolls with the page (`bodyTop` is its viewport offset). */
 export function guideVisibleRows(bodyTop: number, viewportHeight: number, rowHeight: number, total: number) {
   if (!(rowHeight > 0) || total < 1) return {first: 0, last: 0};
-  const first = Math.max(0, Math.floor(-bodyTop / rowHeight) - 1);
+  const first = Math.min(total - 1, Math.max(0, Math.floor(-bodyTop / rowHeight) - 1));
   const last = Math.min(total - 1, Math.max(first, Math.ceil((viewportHeight - bodyTop) / rowHeight) + 2));
   return {first, last};
 }

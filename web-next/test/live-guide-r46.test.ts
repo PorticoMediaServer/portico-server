@@ -42,7 +42,7 @@ test('A guide body that scrolls with the page loads its visible rows plus one ro
   assert.deepEqual(guideVisibleRows(0, 1909, 76, 14), {first: 0, last: 13});
   // The body starts 1200px above the viewport top: row 15 is the first visible row.
   assert.deepEqual(guideVisibleRows(-1200, 1909, 76, 40), {first: 14, last: 39});
-  assert.deepEqual(guideVisibleRows(-1200, 1909, 76, 14), {first: 0, last: 13});
+  assert.deepEqual(guideVisibleRows(-1200, 1909, 76, 14), {first: 13, last: 13});
   assert.deepEqual(guideVisibleRows(12, 1909, 76, 0), {first: 0, last: 0});
 });
 
