@@ -92,7 +92,9 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		flag = "favorite"
 	}
 	out.Heading = ContentHeading{Key: "saved." + r.View, Fallback: heading}
-	out.Query = ContentQuery{Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit, SearchMode: "none"}
+	// The published query echoes the selected filter alone. The cursor scope below
+	// keeps filter:shape composite so a page cannot cross shape boundaries.
+	out.Query = ContentQuery{Sort: r.Sort, Direction: r.Direction, Category: r.Filter, Limit: r.Limit, SearchMode: "none"}
 	rev, e := s.homeRevision(libraries, r.Profile)
 	if e != nil {
 		return out, e

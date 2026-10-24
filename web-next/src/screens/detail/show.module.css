@@ -192,3 +192,7 @@
 .episodeRow [data-role="status"] { color: var(--color-accent-strong); font-weight: var(--type-caption-strong-weight); }
 
 .episodeRow [data-role="supplement"] { color: var(--color-text-secondary); }
+
+.relatedRows { padding: 28px 0 96px; }
+
+.relatedRows > :first-child { margin-top: 0; }

@@ -30,7 +30,7 @@ import '../../bootstrap.css';
  */
 if (!import.meta.env.DEV) throw new Error('Show specimens require the development server.');
 const frame = new URLSearchParams(location.search).get('frame');
-if (frame !== null && frame !== '4' && frame !== '5') throw new Error('The show specimen measures desktop frames 4 and 5 only.');
+if (frame !== null && frame !== '4' && frame !== '5' && frame !== '4b') throw new Error('The show specimen measures desktop frames 4, 4b and 5 only.');
 
 type SpecimenEvent = Readonly<{kind: string; at: number; value?: unknown}>;
 
@@ -167,11 +167,27 @@ function activityDocument(now: string) {
 const records: SpecimenEvent[] = [];
 const record = (kind: string, value?: unknown) => {records.push(Object.freeze({kind, at: Date.now(), ...(value === undefined ? {} : {value})}));};
 
+const cardRow = (items: readonly (readonly [string, number, string])[]) => items.map(([title, year, kind]) => {
+  const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return {id, kind, libraryId: libraryId, title, year, available: true, posterUrl: imageArt('poster', id), navigation: {view: 'item', entityId: id}, playback: {itemId: id}} as const;
+});
+const recommendationRow = (id: string, title: string, entries: readonly unknown[], subtitleText?: {code: string; fallback: string}) => ({
+  id, viewerFence, title, titleText: {code: `specimen.${id}`, fallback: title}, kind: 'recommendations', artworkShape: 'poster', endpoint: 'show-recommendations',
+  privacySensitivity: 'public', policyState: 'current', priority: id === 'more-like' ? 1 : 2, required: false, hideable: true, reorderable: false, critical: false, cursorCapable: false,
+  ...(subtitleText ? {subtitleText} : {}), entries, total: entries.length, start: 0, limit: entries.length, hasMore: false, nextCursor: '', revision: {catalog: 1, viewer: 1},
+});
+function showRecommendations() {
+  return {showId, revision: {catalog: 1, viewer: 1}, rows: [
+    recommendationRow('more-like', 'More like The Last of Us', cardRow([['Severance', 2022, 'show'], ['Silo', 2023, 'show'], ['Stranger Things', 2016, 'show'], ['The Walking Dead', 2010, 'show'], ['Slow Horses', 2022, 'show'], ['The Mandalorian', 2019, 'show'], ['The Terminator', 1984, 'movie']])),
+    recommendationRow('viewers-also-watched', 'Viewers also watched', cardRow([['Breaking Bad', 2008, 'show'], ['Game of Thrones', 2011, 'show'], ['Reacher', 2022, 'show'], ['The Gentlemen', 2024, 'show'], ['MobLand', 2025, 'show'], ['Dark Matter', 2024, 'show'], ['Lioness', 2023, 'show']]), {code: 'specimen.viewersAlsoWatchedNote', fallback: 'What people on this server played after it'}),
+  ]};
+}
 const request = async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
   const route = path.split('?')[0];
   record('request', {path: route, method});
   if (method === 'GET' && route === `/v1/libraries/${libraryId}/show-workspace`) return showWorkspace() as T;
   if (method === 'GET' && route === `/v1/containers/show/${showId}/personal-state`) return containerState() as T;
+  if (method === 'GET' && route === `/v1/shows/${showId}/recommendations`) return showRecommendations() as T;
   if (method === 'GET' && /^\/v1\/items\/ep-\d+\/detail$/.test(route)) return episodeDetail(Number(route.split('/')[3].slice(3)) - 1) as T;
   if (method === 'PUT' && route === `/v1/admin/libraries/${libraryId}/shows/${showId}/settings`) {
     const settings = (body ?? {}) as Record<string, unknown>;
@@ -260,6 +276,13 @@ createRoot(document.getElementById('root')!).render(
 let tries = 0;
 const activate = () => {
   if (++tries > 600) return;
+  if (frame === '4b') {
+    const related = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent?.trim() === defaultI18n.t('next.controls.moreLikeThis'));
+    if (!related) { requestAnimationFrame(activate); return; }
+    if (related.getAttribute('aria-selected') !== 'true') { related.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); related.click(); }
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.setAttribute('data-show-frame4b-ready', 'true'))));
+    return;
+  }
   if (frame === '5') {
     const tile = document.querySelector<HTMLElement>('button[aria-label="Long, Long Time"]');
     if (!tile) { requestAnimationFrame(activate); return; }
