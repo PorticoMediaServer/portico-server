@@ -274,7 +274,7 @@ the criteria matched nothing.
 `GET/PUT /v1/admin/backups/settings` reads or updates `backupFolder`,
 `includeArtwork` and `passphraseProtected`. The write accepts an optional
 `passphrase` (12–1024 bytes); reads return only `passphraseSet`. Turning protection
-off erases the stored sealed passphrase. Scheduled and manual backups read the
+off erases the stored sealed derived key material. Scheduled and manual backups read the
 same live policy. A chosen destination must be an existing absolute directory
 outside the data folder; the default `Backups` child is allowed. Changing it keeps
 previous destinations discoverable and preserves their copies.
@@ -289,9 +289,12 @@ Live sign-ins are scrubbed; API credentials remain subject to the existing resto
 rules.
 
 Protected backups contain `archive.pba` and a public listing summary. The archive
-uses Argon2id (three passes, 64 MiB, four lanes, independent random 16-byte salt)
-and AES-256-GCM authenticated chunks, with ordered nonces, bound headers and a
-required authenticated terminal record. Creation snapshots in private `Temp`,
+uses an Argon2id-derived 32-byte master (three passes, 64 MiB, four lanes,
+random public 16-byte KDF salt), fresh per-archive HKDF keys, and AES-256-GCM
+authenticated chunks, with ordered nonces, bound headers and a required
+authenticated terminal record. Only the derived master is sealed for scheduled
+backups; passphrase text is never persisted. Encrypted v1 archives and old
+sealed-passphrase policy blobs are refused without conversion. Creation snapshots in private `Temp`,
 then flushes and atomically publishes ciphertext on the destination. Restore
 requires the passphrase; it authenticates the complete stream and verifies the
 embedded manifest and database before staging. An exported `.pba` file restores
