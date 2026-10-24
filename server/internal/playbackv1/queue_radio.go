@@ -173,7 +173,7 @@ func (s *Service) writeRadioKeysTx(ctx context.Context, tx *sql.Tx, l *layout, r
 	keys = append(keys, refill.ids...)
 	for len(keys) > 0 {
 		take := min(len(keys), chunkKeys)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?) ON CONFLICT(snapshot_id,chunk_no) DO UPDATE SET keys=excluded.keys`, refill.snapshot, no, encodeChunk(keys[:take])); err != nil {
+		if err := writeQueueChunkTx(ctx, tx, refill.snapshot, no, encodeChunk(keys[:take]), true); err != nil {
 			return err
 		}
 		delete(l.chunks, refill.snapshot+"/"+strconv.FormatInt(no, 10))
