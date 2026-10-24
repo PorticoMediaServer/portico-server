@@ -98,6 +98,7 @@ async function bytes(response: Response, max: number, signal: AbortSignal, check
 
 function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
   if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
   const resources = m.resources ?? [], pages = m.pageNames ?? [], spine = m.spine ?? [];
   if (resources.length > 4096 || pages.length > 4096 || spine.length > 4096) fail('invalid_manifest');
@@ -234,6 +235,7 @@ export class ReadingSession {
   #client: ReadingClient;
   #life = new AbortController();
   #activeRanges = 0;
+  #activeSequential = false;
   #retire: () => void;
   constructor(client: ReadingClient, manifest: ReadingManifest) {
     this.#client = client; this.manifest = frozen(manifest); this.signal = this.#life.signal;
@@ -265,12 +267,12 @@ export class ReadingSession {
     return this.#binary(routePath('head_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'HEAD'}, signal, async (r, active, check) => {
       if (r.status !== 200) return this.#client.error(r, active, check);
       this.#etag(r);
-      if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.get('Accept-Ranges') !== 'bytes' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+      if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.get('Accept-Ranges') !== (this.manifest.sequential ? 'none' : 'bytes') || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
       check(); await discard(r);
     });
   };
   readRange = async (range: Readonly<{start: number; endExclusive: number}>, signal?: AbortSignal): Promise<Uint8Array> => {
-    if (this.manifest.format !== 'pdf') fail('invalid_format');
+    if (this.manifest.format !== 'pdf' || this.manifest.sequential) fail('invalid_format');
     const {start, endExclusive} = range, length = endExclusive - start;
     if (!integer(start, 0, this.manifest.size - 1) || !integer(endExclusive, start + 1, this.manifest.size) || length > 64 << 10) fail('invalid_range');
     if (this.#activeRanges >= 2) fail('range_busy');
@@ -283,6 +285,56 @@ export class ReadingSession {
         return bytes(r, length, active, check, length);
       });
     } finally { this.#activeRanges--; }
+  };
+  /** One genuine from-start200 stream; it is never a ranged or buffered source. */
+  openSequential = async (signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> => {
+    if (this.manifest.format !== 'pdf' || !this.manifest.sequential) fail('invalid_format');
+    this.#check();
+    if (this.#activeSequential) fail('sequential_busy');
+    this.#activeSequential = true;
+    const op = operation([this.#client.signal, this.signal, signal]);
+    let handedOff = false;
+    const release = () => { this.#activeSequential = false; op.release(); };
+    try {
+      return await this.#binary(routePath('get_reading_sessions_sessionId_source', {sessionId: this.manifest.sessionId}), {method: 'GET', headers: {Accept: 'application/pdf'}}, op.signal, async (r, active, check) => {
+        if (r.status !== 200) { if (r.status === 206) return fail('invalid_response'); return this.#client.error(r, active, check); }
+        this.#etag(r);
+        if (r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range') || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/pdf') fail('source_changed');
+        if (!r.body) return fail('stream_unsupported');
+        const reader = r.body.getReader();
+        let controller: ReadableStreamDefaultController<Uint8Array>, ended = false, total = 0;
+        const unlock = () => { try { reader.releaseLock(); } catch { /* pending read releases after cancellation */ } };
+        const end = (error?: ReadingError, consumerCancel = false) => {
+          if (ended) return;
+          ended = true; op.signal.removeEventListener('abort', abort); release();
+          if (error && ['source_changed', 'response_size', 'invalid_response'].includes(error.code)) this.retire(error);
+          if (!consumerCancel) { if (error) controller.error(error); else controller.close(); }
+          if (error || consumerCancel) void reader.cancel().catch(() => {});
+          unlock();
+        };
+        const abort = () => end(cancellation(op.signal));
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) { controller = c; op.signal.addEventListener('abort', abort, {once: true}); if (op.signal.aborted) abort(); },
+          pull: async () => {
+            if (ended) return;
+            try {
+              this.#client.check(op.signal);
+              const next = await reader.read();
+              this.#client.check(op.signal);
+              if (ended) return;
+              if (next.done) { if (total !== this.manifest.size) fail('response_size'); end(); return; }
+              if (!(next.value instanceof Uint8Array) || next.value.byteLength > 1 << 20 || total + next.value.byteLength > this.manifest.size) fail('response_size');
+              total += next.value.byteLength;
+              controller.enqueue(next.value.slice());
+            } catch (error) { end(op.signal.aborted ? cancellation(op.signal) : error instanceof ReadingError ? error : new ReadingError('network_error')); }
+            finally { if (ended) unlock(); }
+          },
+          cancel() { end(undefined, true); },
+        }, {highWaterMark: 0});
+        handedOff = true;
+        return stream;
+      });
+    } finally { if (!handedOff) release(); }
   };
   readAsset = async (path: string, signal?: AbortSignal): Promise<Uint8Array> => {
     if (this.manifest.format !== 'epub') fail('invalid_format');

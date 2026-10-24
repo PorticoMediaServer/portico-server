@@ -155,3 +155,68 @@ test('continue uses canonical bounded rows and saved locations without preparing
   f.hook(() => json({items: [row, row]})); await assert.rejects(f.client.continue(), coded('invalid_progress'));
   f.retire(); const retired = f.calls.length; await assert.rejects(f.client.continue(), coded('cancelled')); assert.equal(f.calls.length, retired);
 });
+
+test('factual sequential PDF is one backpressured200 with no range or complete-body buffer', async () => {
+  const f = setup(); f.manifest.sequential = true; f.manifest.size = 8;
+  const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  let pulls = 0;
+  f.hook(call => {
+    assert.equal(call.headers.get('If-Match'), '"' + rev + '"');
+    assert.equal(call.headers.has('Range'), false);
+    const headers = {'Content-Type': 'application/pdf', 'Content-Length': '8', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'};
+    if (call.init.method === 'HEAD') return new Response(null, {headers});
+    return new Response(new ReadableStream<Uint8Array>({pull(c) { pulls++; c.enqueue(pulls === 1 ? Uint8Array.of(1, 2, 3) : Uint8Array.of(4, 5, 6, 7, 8)); if (pulls === 2) c.close(); }}, {highWaterMark: 0}), {headers});
+  });
+  await session.headPDF();
+  const count = f.calls.length;
+  await assert.rejects(session.readRange({start: 0, endExclusive: 5}), coded('invalid_format'));
+  assert.equal(f.calls.length, count);
+  const stream = await session.openSequential(); assert.equal(pulls, 0);
+  await assert.rejects(session.openSequential(), coded('sequential_busy'));
+  const reader = stream.getReader();
+  assert.deepEqual((await reader.read()).value, Uint8Array.of(1, 2, 3)); assert.equal(pulls, 1);
+  assert.deepEqual((await reader.read()).value, Uint8Array.of(4, 5, 6, 7, 8));
+  assert.equal((await reader.read()).done, true); reader.releaseLock();
+  assert.equal(session.signal.aborted, false);
+  const ranged = setup(), rangedSession = await ranged.client.open({itemId: 'book', sourceId: 'asset'});
+  await assert.rejects(rangedSession.openSequential(), coded('invalid_format'));
+  const epub = setup('epub'); epub.manifest.sequential = true;
+  await assert.rejects(epub.client.open({itemId: 'book', sourceId: 'asset'}), coded('invalid_manifest'));
+  f.client.dispose(); ranged.client.dispose(); epub.client.dispose();
+});
+
+test('sequential request cancellation survives headers, cancels a stalled body and preserves the reader', async () => {
+  const f = setup(); f.manifest.sequential = true; f.manifest.size = 5;
+  const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+  let cancelled = 0;
+  const headers = {'Content-Type': 'application/pdf', 'Content-Length': '5', 'Accept-Ranges': 'none', ETag: '"' + rev + '"'};
+  f.hook(() => new Response(new ReadableStream<Uint8Array>({pull() { return new Promise(() => {}); }, cancel() { cancelled++; }}, {highWaterMark: 0}), {headers}));
+  const request = new AbortController(), stream = await session.openSequential(request.signal), reader = stream.getReader();
+  const pending = reader.read(); request.abort();
+  await assert.rejects(pending, coded('cancelled')); assert.equal(cancelled, 1); assert.equal(session.signal.aborted, false);
+  const second = await session.openSequential(); await second.cancel(); assert.equal(cancelled, 2);
+  const third = await session.openSequential(), held = third.getReader(), waiting = held.read();
+  const before = f.calls.length; f.api.setAccessToken('replacement-token');
+  await assert.rejects(waiting, coded('cancelled')); assert.equal(cancelled, 3); assert.equal(session.signal.aborted, true);
+  await assert.rejects(session.openSequential(), coded('cancelled')); assert.equal(f.calls.length, before);
+  assert.ok(f.calls.every(call => call.headers.get('Authorization') === 'Bearer captured-token'));
+});
+
+test('sequential206, changed revision, false length, excess bytes and oversized chunks retire without replay', async t => {
+  for (const mismatch of ['206', 'etag', 'length', 'content-range', 'short', 'excess', 'chunk'] as const) await t.test(mismatch, async () => {
+    const f = setup(); f.manifest.sequential = true; f.manifest.size = mismatch === 'chunk' ? (1 << 20) + 1 : 5;
+    const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
+    let cancelled = 0;
+    const headers: Record<string, string> = {'Content-Type': 'application/pdf', 'Content-Length': String(mismatch === 'length' ? 6 : f.manifest.size), 'Accept-Ranges': 'none', ETag: '"' + (mismatch === 'etag' ? 'b'.repeat(64) : rev) + '"'};
+    if (mismatch === 'content-range') headers['Content-Range'] = 'bytes 0-4/5';
+    f.hook(() => new Response(new ReadableStream<Uint8Array>({start(c) { c.enqueue(new Uint8Array(mismatch === 'short' ? 4 : mismatch === 'excess' ? 6 : f.manifest.size)); if (mismatch === 'short') c.close(); }, cancel() { cancelled++; }}), {status: mismatch === '206' ? 206 : 200, headers}));
+    const before = f.calls.length;
+    if (['short', 'excess', 'chunk'].includes(mismatch)) {
+      const reader = (await session.openSequential()).getReader();
+      await assert.rejects(async () => { while (!(await reader.read()).done) { /* consume until exact EOF is verified */ } }, coded('response_size'));
+    } else await assert.rejects(session.openSequential(), error => error instanceof ReadingError);
+    assert.equal(session.signal.aborted, true); assert.equal(f.calls.length, before + 1);
+    if (mismatch !== 'short') assert.equal(cancelled, 1);
+    f.client.dispose();
+  });
+});
