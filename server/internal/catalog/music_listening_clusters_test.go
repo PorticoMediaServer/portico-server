@@ -102,6 +102,24 @@ func TestListeningClustersUseOnlyCurrentProfilePermittedCompletedPlays(t *testin
 			t.Fatal("non-authorized history shaped a cluster", item.Public)
 		}
 	}
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, item := range songs {
+			for index := 0; index < sonic.TagCount; index++ {
+				score := 0.0
+				if index == 7 { // Exact original MTT rock index.
+					score = .8
+				}
+				if _, err := tx.ExecContext(ctx, `INSERT INTO music_sonic_tags(result_id,entity_id,tag_index,score) SELECT result_id,entity_id,?,? FROM music_sonic_embeddings WHERE entity_id=?`, index, score, item.ID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	row, err := service.MusicMixRow(viewer, at)
+	if err != nil || len(row) != 2 || row[0].NameSource.Style == nil || row[0].NameSource.Style.Tag != "rock" || row[0].NameSource.Style.Model != sonic.ModelID || row[0].NameSource.Artist != nil || row[1].NameSource.Style != nil || row[1].NameSource.Artist == nil {
+		t.Fatal("duplicate strongest style did not fall back to actual top artist", row, err)
+	}
 	c.Exec(`UPDATE music_sonic_embeddings SET model_sha256='old' WHERE entity_id=?`, songs[0].ID)
 	stale := read()
 	if stale.EligibleTracks != 12 || stale.AnalyzedTracks != 11 {

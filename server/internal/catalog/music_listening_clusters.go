@@ -2,7 +2,9 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"sort"
@@ -16,12 +18,14 @@ import (
 // playback grant. Names come from actual credited artists; the original MTT
 // head is not mislabeled as the different MSD style-tag head.
 type MusicListeningCluster struct {
-	Tracks       []string
-	Artists      []ContentEntityRef
-	CoverAlbums  []ContentEntityRef
-	Weight       float64
-	Tags         []MusicClusterTag
-	TaggedTracks int
+	Tracks        []string
+	Artists       []ContentEntityRef
+	CoverAlbums   []ContentEntityRef
+	Weight        float64
+	Tags          []MusicClusterTag
+	TaggedTracks  int
+	HistoryDigest string
+	MoreArtists   bool
 }
 
 // MusicClusterTag is the actual original MTT output index and weighted score.
@@ -153,11 +157,13 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 		})
 		group := MusicListeningCluster{Tracks: []string{}, Artists: []ContentEntityRef{}, CoverAlbums: []ContentEntityRef{}, Tags: []MusicClusterTag{}, Weight: cluster.Weight}
 		var tagSums [sonic.TagCount]float64
+		inputs := [][]any{}
 		weights := map[int64]float64{}
 		albums := map[string]bool{}
 		for _, id := range members {
 			track := tracks[id]
 			group.Tracks = append(group.Tracks, track.public)
+			inputs = append(inputs, []any{track.public, track.result, track.weight})
 			if track.tags != nil {
 				group.TaggedTracks++
 				for index, score := range track.tags {
@@ -179,6 +185,9 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 				group.Tags = append(group.Tags, MusicClusterTag{Index: index, Score: sum / cluster.Weight})
 			}
 		}
+		encoded, _ := json.Marshal(inputs)
+		digest := sha256.Sum256(encoded)
+		group.HistoryDigest = hex.EncodeToString(digest[:])
 		artists := []rankedArtist{}
 		for id, weight := range weights {
 			artists = append(artists, rankedArtist{id, weight})
@@ -190,7 +199,7 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 			return artists[i].id < artists[j].id
 		})
 		ids := []int64{}
-		for _, artist := range artists[:min(2, len(artists))] {
+		for _, artist := range artists {
 			ids = append(ids, artist.id)
 			needed[artist.id] = true
 		}
@@ -226,7 +235,12 @@ func (s *Service) ListeningClusters(viewer Viewer, at time.Time) (MusicListening
 	for n, ids := range groupArtists {
 		for _, id := range ids {
 			if ref, ok := refs[id]; ok {
-				out.Groups[n].Artists = append(out.Groups[n].Artists, ref)
+				if len(out.Groups[n].Artists) < 2 {
+					out.Groups[n].Artists = append(out.Groups[n].Artists, ref)
+				} else {
+					out.Groups[n].MoreArtists = true
+					break
+				}
 			}
 		}
 	}

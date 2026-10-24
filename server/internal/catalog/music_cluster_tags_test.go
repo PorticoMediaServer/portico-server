@@ -43,7 +43,7 @@ func TestListeningClustersAggregateOnlyCompleteCurrentOriginalTagHeads(t *testin
 		}
 		// A different source result can legally have another cue entity in its
 		// composite key. It must never replace this entity's current tag head.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO music_sonic_embeddings(result_id,entity_id,model_id,model_version,model_sha256,source_start_us,source_end_us,vector) SELECT other.result_id,own.entity_id,own.model_id,own.model_version,own.model_sha256,own.source_start_us,own.source_end_us,own.vector FROM music_sonic_embeddings own CROSS JOIN music_sonic_embeddings other WHERE own.entity_id=? AND other.entity_id=?`, a.ID, b.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO music_sonic_embeddings(result_id,entity_id,model_id,model_version,model_sha256,source_start_us,source_end_us,dimensions,vector) SELECT other.result_id,own.entity_id,own.model_id,own.model_version,own.model_sha256,own.source_start_us,own.source_end_us,own.dimensions,own.vector FROM music_sonic_embeddings own CROSS JOIN music_sonic_embeddings other WHERE own.entity_id=? AND other.entity_id=?`, a.ID, b.ID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO music_sonic_tags(result_id,entity_id,tag_index,score) SELECT tag.result_id,?,tag.tag_index,1 FROM music_sonic_tags tag WHERE tag.entity_id=?`, a.ID, b.ID)

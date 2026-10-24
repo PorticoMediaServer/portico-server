@@ -28,7 +28,7 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 	c.Attributes(items[7].ID, "label", "private")
 	c.Drain()
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
-		for n, item := range items[:6] {
+		for n, item := range append(append([]catalogtest.Item{}, items[:6]...), items[:6]...) {
 			_, err := tx.ExecContext(ctx, `INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES(?,'local','account','profile','Fixture',?,'music',7,?,?,?,100000,1)`, fmt.Sprint(n), item.ID, item.Public, at.Add(-time.Hour).UnixMilli(), at.Add(-time.Hour).UnixMilli())
 			if err != nil {
 				return err
@@ -47,6 +47,15 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 	if err != nil || !reflect.DeepEqual(keys, got.Mixes[0].Cluster.Tracks) {
 		t.Fatal(keys, got, err)
 	}
+	row, err := s.MusicMixRow(viewer, at)
+	if err != nil || len(row) != 1 || row[0].ID != id || row[0].NameSource.Artist == nil || row[0].NameSource.Style != nil || len(row[0].Covers) != 3 || len(row[0].Artists) != 1 || row[0].SongCount != 6 || row[0].More {
+		t.Fatal("missing-head artist fallback or finite row facts changed", row, err)
+	}
+	for _, cover := range row[0].Covers {
+		if cover.Album.ID != got.Mixes[0].Cluster.CoverAlbums[0].ID || row[0].Tint != musicMixTint(cover.Album.ID) {
+			t.Fatal("fabricated cover sample or tint", row)
+		}
+	}
 	other := viewer
 	other.Profile = identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "other"})
 	if _, err := s.MusicMixKeys(other, at, id); !errors.Is(err, sql.ErrNoRows) {
@@ -57,6 +66,15 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 	if _, err := s.MusicMixKeys(other, at, id); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("old permission fence resolved mix", err)
 	}
+	c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES('new-play','local','account','profile','Fixture',?,'music',7,?,?,?,100000,1)`, items[0].ID, items[0].Public, at.Add(-time.Minute).UnixMilli(), at.Add(-time.Minute).UnixMilli())
+	if _, err := s.MusicMixKeys(viewer, at, id); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("changed listening retained old mix identity", err)
+	}
+	got, err = s.MusicMixes(viewer, at)
+	if err != nil || len(got.Mixes) != 1 || got.Mixes[0].ID == id {
+		t.Fatal("new play did not address new selection", got, err)
+	}
+	id = got.Mixes[0].ID
 	// Even when played tracks remain analyzed, unplayed stale source facts
 	// reduce actual library coverage. Never substitute history's 100 percent.
 	c.Exec(`UPDATE music_sonic_embeddings SET model_sha256='old' WHERE entity_id=?`, items[6].ID)
@@ -82,12 +100,12 @@ func TestMusicMixesSeparateHistoryCoverageAndExpirePrivateSelections(t *testing.
 func TestMusicMixIDsBindOrderedMembersAndExactModel(t *testing.T) {
 	v := Viewer{Profile: "profile", Fence: "fence"}
 	model := sonic.Identity{ID: sonic.ModelID, Version: sonic.ModelVersion, SHA256: sonic.ModelSHA256}
-	first := musicMixID(v, model, []string{"one", "two"})
-	if len(first) != 47 || first != musicMixID(v, model, []string{"one", "two"}) || first == musicMixID(v, model, []string{"two", "one"}) {
+	first := musicMixID(v, model, []string{"one", "two"}, "history")
+	if len(first) != 47 || first != musicMixID(v, model, []string{"one", "two"}, "history") || first == musicMixID(v, model, []string{"two", "one"}, "history") || first == musicMixID(v, model, []string{"one", "two"}, "new play") {
 		t.Fatal("unstable or order-insensitive identity", first)
 	}
 	model.Version = "next"
-	if first == musicMixID(v, model, []string{"one", "two"}) {
+	if first == musicMixID(v, model, []string{"one", "two"}, "history") {
 		t.Fatal("model change retained mix identity")
 	}
 }

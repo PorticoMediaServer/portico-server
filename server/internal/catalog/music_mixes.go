@@ -29,11 +29,11 @@ type MusicMixes struct {
 	Mixes                                []MusicMix
 }
 
-func musicMixID(viewer Viewer, model sonic.Identity, tracks []string) string {
+func musicMixID(viewer Viewer, model sonic.Identity, tracks []string, history string) string {
 	// IDs never authorize a read. Including the exact personal key and viewer
 	// fence also prevents another profile's identical listening from naming
 	// this selection. No global history or artist mean participates.
-	data, _ := json.Marshal([]any{viewer.Profile, viewer.Fence, model, tracks})
+	data, _ := json.Marshal([]any{viewer.Profile, viewer.Fence, model, tracks, history})
 	digest := sha256.Sum256(data)
 	return "mix-" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
@@ -84,7 +84,7 @@ func (s *Service) MusicMixes(viewer Viewer, at time.Time) (MusicMixes, error) {
 	}
 	if out.Model != nil {
 		for _, cluster := range clusters.Groups {
-			out.Mixes = append(out.Mixes, MusicMix{ID: musicMixID(viewer, *out.Model, cluster.Tracks), Cluster: cluster})
+			out.Mixes = append(out.Mixes, MusicMix{ID: musicMixID(viewer, *out.Model, cluster.Tracks, cluster.HistoryDigest), Cluster: cluster})
 		}
 	}
 	return out, nil
@@ -101,8 +101,11 @@ func (s *Service) MusicMixKeys(viewer Viewer, at time.Time, id string) ([]string
 	if err != nil {
 		return nil, err
 	}
+	if !musicMixesEligible(mixes) {
+		return nil, sql.ErrNoRows
+	}
 	for _, mix := range mixes.Mixes {
-		if mix.ID == id {
+		if mix.ID == id && musicMixEligible(mix) {
 			return append([]string(nil), mix.Cluster.Tracks...), nil
 		}
 	}
