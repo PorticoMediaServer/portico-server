@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -121,8 +123,9 @@ func (i invocationSourceInputs) OpenSubtitleInput(ctx context.Context, item, sou
 }
 
 type invocationRenderInput struct {
-	validate func(context.Context) error
-	closed   *int
+	validate   func(context.Context) error
+	closed     *int
+	afterClose func()
 }
 
 func (*invocationRenderInput) Evidence() string { return "representation" }
@@ -131,7 +134,13 @@ func (*invocationRenderInput) ReadExtent(context.Context, int64, int64) ([]byte,
 	return nil, ErrUnsupported
 }
 func (i *invocationRenderInput) Validate(ctx context.Context) error { return i.validate(ctx) }
-func (i *invocationRenderInput) Close() error                       { *i.closed++; return nil }
+func (i *invocationRenderInput) Close() error {
+	*i.closed++
+	if i.afterClose != nil {
+		i.afterClose()
+	}
+	return nil
+}
 
 func TestSelectedPlaybackSourceCarriesActualInvocationAfterCommit(t *testing.T) {
 	f := newSubtitleFixture(t)
@@ -178,5 +187,143 @@ func TestPlaybackSourceInvocationCancellationDoesNotAuthorize(t *testing.T) {
 	cancel()
 	if err := checkPlaybackInvocation(ctx, f.db, i); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled invocation became a read grant", err)
+	}
+}
+
+func TestPlaybackSourceRetainsInputAuthorityThroughPublication(t *testing.T) {
+	f := newSubtitleFixture(t)
+	i := capturePlaybackInvocation(t, f)
+	closed := 0
+	current := true
+	err := i.Retain(func(context.Context, *sql.Tx) error {
+		if !current {
+			return ErrConflict
+		}
+		return nil
+	}, func() error { closed++; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), playbackSourceInvocationKey{}, i)
+	check := func() error {
+		snapshot, err := dbwork.BeginSnapshot(ctx, f.db)
+		if err != nil {
+			return err
+		}
+		defer snapshot.Rollback()
+		return checkPlaybackSourcePublicationTx(ctx, snapshot.Tx())
+	}
+	if err := check(); err != nil {
+		t.Fatal(err)
+	}
+	if closed != 0 {
+		t.Fatal("input lease closed before publication")
+	}
+	current = false
+	if err := check(); !errors.Is(err, ErrConflict) {
+		t.Fatal("publication lost physical continuation", err)
+	}
+	// A permissive physical continuation still cannot replace actor authority.
+	current, f.allowed = true, false
+	if err := check(); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatal("physical continuation replaced actor authority", err)
+	}
+	closePlaybackSourceContext(ctx)
+	closePlaybackSourceContext(ctx)
+	if closed != 1 {
+		t.Fatal("lease cleanup was not exactly once", closed)
+	}
+	if err := i.Retain(func(context.Context, *sql.Tx) error { return nil }, func() error { return nil }); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("closed invocation retained a new lease", err)
+	}
+}
+
+func TestPlaybackSourceCancellationClosesRetainedChildren(t *testing.T) {
+	f := newSubtitleFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	snapshot, p, err := f.s.readTx(ctx, f.p, f.item.Public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := sessionTx(ctx, snapshot.Tx(), p, f.item.Public, "session")
+	snapshot.Rollback()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := f.s.playbackSourceContext(ctx, p, f.item.Public, "session", scope)
+	i, _ := PlaybackSourceInvocationFromContext(selected)
+	closed := make(chan struct{})
+	var closes atomic.Int32
+	if err := i.Retain(func(context.Context, *sql.Tx) error { return nil }, func() error {
+		if closes.Add(1) == 1 {
+			close(closed)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("cancellation did not close retained children")
+	}
+	closePlaybackSourceContext(selected)
+	if closes.Load() != 1 {
+		t.Fatal("cancellation cleanup repeated", closes.Load())
+	}
+	if err := checkPlaybackInvocation(context.Background(), f.db, i); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("cancelled owner lifetime revived through a new child context", err)
+	}
+}
+
+func TestSelectedPlaybackSourceRechecksLeaseAfterDecoderInputCloses(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "current", true: "changed before publication"}[changed], func(t *testing.T) {
+			f := newSubtitleFixture(t)
+			ctx := context.Background()
+			receipt, err := f.s.Mutate(ctx, f.p, f.item.Public, uploadMutation("retained-source", plainSubtitle, f.item.Token))
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.catalog.Exec(`UPDATE subtitle_render_revisions SET source_evidence='representation' WHERE resource_id=?`, receipt.ResourceID)
+			f.catalog.Exec(`INSERT INTO subtitle_remote_sessions(session_id,evidence) VALUES('session','representation')`)
+			inputClosed, leaseClosed, checks := 0, 0, 0
+			current := true
+			f.s.SourceInputs = invocationSourceInputs{open: func(read context.Context, item, source, session string) (RenderInput, error) {
+				i, ok := PlaybackSourceInvocationFromContext(read)
+				if !ok {
+					t.Fatal("missing selected invocation")
+				}
+				if err := i.Retain(func(context.Context, *sql.Tx) error {
+					checks++
+					if inputClosed != 1 || leaseClosed != 0 {
+						t.Error("publication lost real lease lifetime", inputClosed, leaseClosed)
+					}
+					if !current {
+						return ErrConflict
+					}
+					return nil
+				}, func() error { leaseClosed++; return nil }); err != nil {
+					t.Fatal(err)
+				}
+				return &invocationRenderInput{closed: &inputClosed, validate: func(context.Context) error { return nil }, afterClose: func() { current = !changed }}, nil
+			}}
+			plan, err := f.s.Select(ctx, f.p, f.item.Public, "session", SelectRequest{OperationID: "select-retained-source", Generation: 1, ExpectedRevision: 1, Mode: "track", ResourceID: receipt.ResourceID, ResourceRevision: receipt.Revision, OffsetUS: "0"})
+			if changed {
+				if !errors.Is(err, ErrConflict) {
+					t.Fatal("retired source published a selection", plan, err)
+				}
+				var operations int
+				if err := f.db.QueryRow(`SELECT count(*) FROM subtitle_selection_operations WHERE operation_id='select-retained-source'`).Scan(&operations); err != nil || operations != 0 {
+					t.Fatal("refused selection published a receipt", operations, err)
+				}
+			} else if err != nil || plan.Selected == nil || plan.Selected.ID != receipt.ResourceID {
+				t.Fatal("current retained source failed", plan, err)
+			}
+			if checks < 1 || inputClosed != 1 || leaseClosed != 1 {
+				t.Fatal("source continuation/cleanup not retained through publication", checks, inputClosed, leaseClosed)
+			}
+		})
 	}
 }

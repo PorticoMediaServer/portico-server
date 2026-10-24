@@ -154,12 +154,15 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 	if e = gated.Commit(); e != nil {
 		return PlaybackPlan{}, e
 	}
+	publicationContext := ctx
 	// Remote representation evidence is distinct from .strm descriptor size/mtime.
 	if resource.sourceEvidence != "" {
 		if s.SourceInputs == nil {
 			return PlaybackPlan{}, ErrUnavailable
 		}
 		inputContext := s.playbackSourceContext(ctx, p, item, session, scope)
+		defer closePlaybackSourceContext(inputContext)
+		publicationContext = inputContext
 		input, e := s.SourceInputs.OpenSubtitleInput(inputContext, item, scope.source, session)
 		if e != nil {
 			return PlaybackPlan{}, e
@@ -187,6 +190,6 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 		prepared.resource = &resource
 	}
 
-	out, e := s.selectCommit(ctx, p, item, session, m, prepared)
+	out, e := s.selectCommit(publicationContext, p, item, session, m, prepared)
 	return out, e
 }
