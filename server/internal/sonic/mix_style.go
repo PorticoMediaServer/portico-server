@@ -17,6 +17,16 @@ var mixStyles = []struct {
 
 const MixStyleMinimumScore = .2
 
+// MixStyleTags is the current exact head's schema/presentation allow-list.
+// Return a copy so no projection can mutate the model's naming policy.
+func MixStyleTags() []string {
+	out := make([]string, len(mixStyles))
+	for index, style := range mixStyles {
+		out[index] = style.tag
+	}
+	return out
+}
+
 // MixStyle returns a model fact, never presentation text. Callers translate the
 // allowed tag and the sentence pattern separately. A duplicate strongest tag
 // falls back to the artist rather than selecting a weaker, misleading style.

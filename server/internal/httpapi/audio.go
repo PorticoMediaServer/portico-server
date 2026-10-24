@@ -10,6 +10,7 @@ import (
 func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 	d.listeningRoutes(mux)
 	d.sonicAnalysisRoutes(mux)
+	d.musicMixesRoutes(mux)
 	d.httpHandle(mux, "GET /v1/items/{id}/similar", func(w http.ResponseWriter, r *http.Request) {
 		out, e := d.sonicSimilarRequest(r)
 		if e != nil {
