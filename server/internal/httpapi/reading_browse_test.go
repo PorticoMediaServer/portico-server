@@ -68,7 +68,7 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllFourSurfaces(t *testing.T)
 	if _, err = r.f.id.EditDirectProfile(ctx, owner.AccountToken, child.ID, identity.DirectProfileEdit{ExpectedRevision: child.Revision, Policy: &identity.ProfilePolicy{AllowedLibraries: []string{}}}); err != nil {
 		t.Fatal(err)
 	}
-	check(selected.Session.AccessToken, 403, true)
+	check(selected.Session.AccessToken, http.StatusNotFound, true)
 	if err = r.f.id.LogoutToken(ctx, r.f.owner.AccessToken); err != nil {
 		t.Fatal(err)
 	}
