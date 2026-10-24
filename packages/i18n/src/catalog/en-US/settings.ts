@@ -674,6 +674,8 @@ export const settingsMessages = {
   'web.metadata.lockEverything': 'Lock everything',
   'web.metadata.unlockEverything': 'Unlock everything',
   'web.metadata.noHistory': 'No changes yet.',
+  'metadata.attention.openAlbum': 'Open the album',
+  'metadata.attention.openBook': 'Open the book',
   'metadata.attention.useMatch': 'Use this match',
   'metadata.attention.searchByHand': 'Search by hand',
   'metadata.attention.enterProviderId': 'Enter a provider ID',

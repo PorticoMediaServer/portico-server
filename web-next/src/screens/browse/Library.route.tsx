@@ -112,6 +112,9 @@ function BoundLibrary({captured, library, search}: {captured: ProtectedLibrarySc
   const unmatched = requested?.shows === 'unmatched';
   const openAttention = (entry: {kind: string; itemKind: string; entityId: string; parentId: string}) => {
     if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
+    else if (entry.kind === 'album') navigate({view: 'album', entityId: entry.entityId});
+    else if (entry.kind === 'song') navigate({view: 'album', entityId: entry.parentId});
+    else if (entry.kind === 'book') navigate({view: 'book', entityId: entry.entityId});
     else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
   };
   return <>{unmatched ? <NeedsAttention libraryId={library.id} api={resources.life.api} onOpen={openAttention}/>
