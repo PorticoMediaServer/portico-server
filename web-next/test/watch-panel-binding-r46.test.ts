@@ -70,9 +70,9 @@ test('same-title replacement and refreshed original metadata invalidate old row 
  ]){const f=fixture(),model=f.model()!;f.set(mutate(f));assert.equal(model.isCurrent(),false);await assert.rejects(model.selectAudio('a3'),{name:'AbortError'});assert.deepEqual(f.calls,[]);}
 });
 
-test('an unknown selected audio ID stays unselected, and absent automatic step retains the genuine Original state',()=>{
+test('an unknown selected audio stays unselected while Automatic uses the actual bound offer rung',()=>{
  const f=fixture();f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,audioTrackId:undefined,quality:{mode:'automatic'}}}});
- const model=f.model()!;assert.ok(model.audio.every(row=>!row.selected));assert.equal(model.audioLabel,undefined);assert.equal(model.qualityLabel,'Original');
+ const model=f.model()!;assert.ok(model.audio.every(row=>!row.selected));assert.equal(model.audioLabel,undefined);assert.equal(model.qualityLabel,'720p');assert.equal(model.automatic,true);assert.equal(model.quality.find(row=>row.id==='auto')?.selected,true);
 });
 
 
@@ -84,4 +84,12 @@ test('Off availability and Options applicability remain real command preconditio
  await assert.rejects(model.selectSubtitle('off'),/unavailable/);await assert.rejects(model.selectQuality('auto'),/unavailable/);assert.deepEqual(f.calls,[]);
  f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,quality:{mode:'automatic',id:'original'}}}});
  assert.equal(f.model()!.qualityLabel,'Original');
+});
+
+
+test('an unreported rung never becomes Original, while an explicit Original remains known',()=>{
+ const f=fixture();f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,quality:{mode:'automatic'}}},
+  offers:{...f.live.offers!,current:{...f.live.offers!.current!,qualityId:'unreported'}}});
+ const model=f.model()!;assert.equal(model.qualityLabel,undefined);assert.equal(model.qualityAccessibleLabel,undefined);assert.equal(model.automatic,true);
+ f.set({...f.live,offers:{...f.live.offers!,current:{...f.live.offers!.current!,qualityId:'original'}}});assert.equal(f.model()!.qualityLabel,'Original');
 });

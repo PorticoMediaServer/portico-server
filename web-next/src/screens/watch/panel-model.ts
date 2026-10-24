@@ -51,8 +51,9 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   }
  }
  const selected=qualityChoiceOf(session.presentation.quality),qualityRows:WatchRadioChoice[]=[],qualityIds=new Map<string,QualityChoice>();
- const actualStep=fixedQuality(session.presentation.quality.id);
- const qualityLabel=actualStep?heightLabel(actualStep.height,t):selected==='original'||selected==='automatic'&&(session.presentation.quality.id===undefined||session.presentation.quality.id==='original')?t('next.kit.quality.original'):undefined;
+ // Requested mode chooses the radio; only an actual bound rung names the chip.
+ const actualId=session.presentation.quality.id??current.qualityId,actualStep=fixedQuality(actualId);
+ const qualityLabel=actualStep?heightLabel(actualStep.height,t):actualId==='original'?t('next.kit.quality.original'):undefined;
  for(const offer of source.qualities){
   const choice=offer.kind==='automatic'?'automatic':offer.kind==='original'?'original':isQualityChoice(offer.id)?offer.id:undefined;
   if(!choice)continue;qualityIds.set(offer.id,choice);
