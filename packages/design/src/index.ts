@@ -25,6 +25,8 @@ export const colors = {
   raisedSoft: "#0c1a25",
   /** Player notices; the approved Undo and Up next contexts apply their own alpha. */
   playerNotice: "#0c1923",
+  /** The dark player-side panel used by the live programme and DVR sheets. */
+  panel: "#0b1822",
   /**
    * Sheets, dialogs, menus, popovers and the expanded rail. Opaque by
    * decision V-1 / X-16: text behind an overlay must never show through.
@@ -53,6 +55,9 @@ export const colors = {
   /** Boundary of an input or other control at rest: ≥ 3:1 on canvas and slate (X-11). */
   lineControl: "#637580",
   danger: "#f38b88",
+  /** Lighter danger text on a danger-tinted surface (live flags and conflicts). */
+  dangerText: "#f9b1b1",
+  dangerTextStrong: "#f6a3a3",
   focus: "#d5efff",
   scrim: "#071018E8",
   material: "#10212DF2",

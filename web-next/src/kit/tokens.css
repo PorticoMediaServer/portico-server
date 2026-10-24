@@ -11,6 +11,7 @@
   --color-raised-bright: #1d3848;
   --color-raised-soft: #0c1a25;
   --color-player-notice: #0c1923;
+  --color-panel: #0b1822;
   --color-overlay-surface: #132634;
   --color-overlay-surface-translucent: #132634F5;
   --color-ambient: #153749;
@@ -27,6 +28,8 @@
   --color-line-strong: #3b5668;
   --color-line-control: #637580;
   --color-danger: #f38b88;
+  --color-danger-text: #f9b1b1;
+  --color-danger-text-strong: #f6a3a3;
   --color-focus: #d5efff;
   --color-scrim: #071018E8;
   --color-material: #10212DF2;
