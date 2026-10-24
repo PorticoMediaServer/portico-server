@@ -143,7 +143,9 @@ func (s *Service) tvdbPageArtwork(ctx context.Context, id int64) []discoveredArt
 // into provider='local' candidates: show posters, backdrops and logos,
 // season posters, artist portraits and backdrops, movie logos. Only rows whose
 // entity still exists seed anything, so deleted entities leave no candidates.
-// It reports whether every accepted slot reached a short page in this call.
+// The primary upserts and the accepted-alternative page share one budget of
+// localArtworkCandidatePage candidate writes per call. It reports whether every
+// accepted slot reached a short page in this call.
 func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, now string) (bool, error) {
 	switch t.Kind {
 	case "show", "season", "artist", "item":
@@ -177,13 +179,18 @@ func seedLocalArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, fence, no
 	if err != nil {
 		return false, err
 	}
+	writes := 0
 	for _, v := range locals {
+		if writes >= localArtworkCandidatePage {
+			break
+		}
 		origin := "local:" + v.key
 		if err = seedArtworkCandidate(ctx, tx, t, v.role, "", "local", publicationDigest(origin), origin, artworkAttribution("local"), fence, now, 0); err != nil {
 			return false, err
 		}
+		writes++
 	}
-	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now)
+	return seedLocalArtworkAlternatives(ctx, tx, t, entity, fence, now, localArtworkCandidatePage-writes)
 }
 
 // localArtworkCandidatePage bounds the materialization work of one discovery
@@ -202,7 +209,7 @@ const (
 // else does — it never replaces a choice. One worker call advances at most one
 // slot by one page; the caller keeps the target's dirty row until every slot
 // reports a short page, so later calls continue from committed progress.
-func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string) (bool, error) {
+func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, fence, now string, budget int) (bool, error) {
 	if t.Kind != "item" && t.Kind != "show" && t.Kind != "season" {
 		return true, nil
 	}
@@ -215,7 +222,7 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 			complete = false
 			break
 		}
-		done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now)
+		done, count, err := seedLocalArtworkCandidateCall(ctx, tx, t, entity, role, fence, now, budget)
 		if err != nil {
 			return false, err
 		}
@@ -237,11 +244,7 @@ func seedLocalArtworkAlternatives(ctx context.Context, tx *sql.Tx, t RepairTarge
 // committed candidate rows are the whole continuation state: a later call (or a
 // restarted process) rederives the first unseeded ordered tuple from them, so no
 // cursor column, filename guess or private position is stored.
-func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string) (bool, int, error) {
-	materialized, err := localArtworkMaterializedKeys(ctx, tx, t, entity, role)
-	if err != nil {
-		return false, 0, err
-	}
+func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence, now string, budget int) (bool, int, error) {
 	var after *catalog.LocalArtworkCandidateCursor
 	page := []catalog.LocalArtworkCandidateCursor{}
 	index := -1
@@ -250,8 +253,12 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 		if err != nil {
 			return false, 0, err
 		}
+		seeded, err := localArtworkPageSeeded(ctx, tx, t, entity, role, fence, page)
+		if err != nil {
+			return false, 0, err
+		}
 		for n, candidate := range page {
-			if !materialized[candidate.Key] {
+			if !seeded[candidate.Key] {
 				index = n
 				break
 			}
@@ -270,8 +277,8 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	}
 	remaining := len(page) - index
 	seed := remaining
-	if seed > localArtworkCandidatePage {
-		seed = localArtworkCandidatePage
+	if seed > budget {
+		seed = budget
 	}
 	for _, candidate := range page[index : index+seed] {
 		origin := "local:" + candidate.Key
@@ -282,18 +289,29 @@ func seedLocalArtworkCandidateCall(ctx context.Context, tx *sql.Tx, t RepairTarg
 	if err = queueAcceptedLocalArtworkDefaultTx(ctx, tx, t, role, fence, now); err != nil {
 		return false, 0, err
 	}
-	return len(page) < localArtworkCandidateLocate && remaining <= localArtworkCandidatePage, seed, nil
+	return len(page) < localArtworkCandidateLocate && remaining <= seed, seed, nil
 }
 
-// localArtworkMaterializedKeys is this slot's committed provider='local' image
-// identity set: "local:hash" candidates already written for the accepted images.
-func localArtworkMaterializedKeys(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role string) (map[string]bool, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT origin FROM artwork_candidates WHERE kind=? AND entity_id=? AND role=? AND provider='local'`, t.Kind, entity, role)
+// localArtworkPageSeeded reports which of one locate page's keys are already
+// committed under the current source fence. A key retained under an older fence
+// is deliberately not seeded, so a later call refreshes it within the same
+// eight-write budget. Only this page's keys are read, never the slot's history.
+func localArtworkPageSeeded(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, role, fence string, page []catalog.LocalArtworkCandidateCursor) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(page) == 0 {
+		return out, nil
+	}
+	args := []any{t.Kind, entity, role, fence}
+	marks := make([]string, 0, len(page))
+	for _, candidate := range page {
+		marks = append(marks, "?")
+		args = append(args, "local:"+candidate.Key)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT origin FROM artwork_candidates WHERE kind=? AND entity_id=? AND role=? AND provider='local' AND source_fence=? AND origin IN (`+strings.Join(marks, ",")+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]bool{}
 	for rows.Next() {
 		var origin string
 		if err = rows.Scan(&origin); err != nil {

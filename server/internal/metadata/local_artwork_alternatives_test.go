@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 )
 
@@ -545,22 +546,31 @@ func TestSeedLocalArtworkKeepsDirtyUntilEverySlotCompletes(t *testing.T) {
 	if dirtyRows() != 1 {
 		t.Fatal("the dirty row was cleared before every slot completed")
 	}
-	// The first pass materializes the primary plus one bounded alternative page;
-	// every later pass materializes at most one page.
-	first, _ := localCandidates(t, db, movie.ID, "poster")
-	if len(first) > localArtworkCandidatePage+1 {
-		t.Fatalf("first pass materialized %d candidates (primary plus page)", len(first))
+	// Every pass keeps its candidate writes, primary upserts included, inside
+	// the one eight-write budget.
+	dbwork.ProfileStatements(true)
+	defer dbwork.ProfileStatements(false)
+	inserts := func() int64 {
+		var count int64
+		for _, statement := range dbwork.StatementProfile() {
+			if strings.HasPrefix(statement.Shape, "INSERT INTO artwork_candidates") {
+				count += statement.Count
+			}
+		}
+		return count
 	}
-	previous := len(first)
+	first := true
 	for call := 0; call < 64; call++ {
+		dbwork.ProfileStatements(true)
 		if err := s.seedArtwork(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		committed, _ := localCandidates(t, db, movie.ID, "poster")
-		if grew := len(committed) - previous; grew > localArtworkCandidatePage {
-			t.Fatalf("call %d materialized %d candidates", call+2, grew)
+		if wrote := inserts(); wrote > int64(localArtworkCandidatePage) {
+			t.Fatalf("call %d wrote %d candidates including the primary", call+1, wrote)
+		} else if first && wrote != int64(localArtworkCandidatePage) {
+			t.Fatalf("first call wrote %d candidates, want the combined budget", wrote)
 		}
-		previous = len(committed)
+		first = false
 		if dirtyRows() == 0 {
 			break
 		}
@@ -590,4 +600,25 @@ func localArtworkJobIDs(t *testing.T, db *sql.DB, entity int64, role string) ([]
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// An accepted image already retained under an older source fence is refreshed
+// under the current one by the ordinary bounded page, without a duplicate row.
+func TestSeedLocalArtworkRefreshesAKeyRetainedUnderAnOldFence(t *testing.T) {
+	db, movie := openAlternativesFixture(t, "altfence")
+	key := strings.Repeat("a", 64)
+	seedScannedAlternatives(t, db, "altfence", movie, "poster", key)
+	fence := seedLocalArtworkToCompletion(t, db, "item", movie)
+	mustExec(t, db, `UPDATE artwork_candidates SET source_fence='stale-fence' WHERE kind='item' AND entity_id=? AND role='poster' AND origin=?`, movie.ID, "local:"+key)
+	if refreshed := seedLocalArtworkToCompletion(t, db, "item", movie); refreshed != fence {
+		t.Fatalf("fence changed across the refresh: %q then %q", fence, refreshed)
+	}
+	var stored string
+	if err := db.QueryRow(`SELECT source_fence FROM artwork_candidates WHERE kind='item' AND entity_id=? AND role='poster' AND origin=?`, movie.ID, "local:"+key).Scan(&stored); err != nil || stored != fence {
+		t.Fatalf("retained key kept fence %q, want %q (%v)", stored, fence, err)
+	}
+	var rows int
+	if err := db.QueryRow(`SELECT count(*) FROM artwork_candidates WHERE kind='item' AND entity_id=? AND role='poster' AND origin=?`, movie.ID, "local:"+key).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("refresh duplicated the candidate: %d (%v)", rows, err)
+	}
 }
