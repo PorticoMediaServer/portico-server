@@ -135,7 +135,7 @@ try {
         font: style.font, letterSpacing: style.letterSpacing, color: style.color, background: style.backgroundColor, radius: style.borderRadius};
     };
     return Object.fromEntries(Object.entries(list).map(([name, selector]) => {
-      const element = document.querySelector(selector);
+      const element = selector ? document.querySelector(selector) : null;
       return [name, element ? box(element) : null];
     }));
   }, selectors);
