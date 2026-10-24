@@ -256,6 +256,9 @@ type TitleClaim struct {
 	Locator string
 	// Provider identities, when a name hint, local metadata or a match gave one.
 	Provider []ProviderIdentity
+	// SourceEdition is the explicit nearest show-folder edition. It scopes
+	// automatic show identity only; movie editions remain file versions.
+	SourceEdition string
 
 	// Facts for a title that has to be created.
 	Title string
@@ -271,13 +274,28 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 	if c.Library == 0 || c.Kind < 1 || len(c.Keys) == 0 && c.Locator == "" && len(c.Provider) == 0 || len(c.Provider) > 12 {
 		return 0, false, fmt.Errorf("a title claim needs a library, a kind and at least one identity")
 	}
+	if c.SourceEdition != "" && c.Kind != Show {
+		return 0, false, ErrIdentityConflict
+	}
 	providers := make([]ProviderIdentity, len(c.Provider))
 	for i, p := range c.Provider {
 		if providers[i], err = normalizedProvider(p); err != nil {
 			return 0, false, err
 		}
-		p = providers[i]
-		held, e := FindByProviderTx(ctx, tx, c.Library, c.Kind, p)
+	}
+	ownerAlias := false
+	if c.Kind == Show {
+		id, err = mergedShowAliasTx(ctx, tx, c, providers)
+		if err != nil {
+			return 0, false, err
+		}
+		ownerAlias = id != 0
+	}
+	for _, p := range providers {
+		if ownerAlias {
+			break
+		}
+		held, e := findClaimProviderTx(ctx, tx, c.Library, c.Kind, p, c.SourceEdition)
 		if e != nil {
 			return 0, false, e
 		}
@@ -289,6 +307,18 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		}
 	}
 	compatible := func(candidate int64) (bool, error) {
+		if candidate == 0 {
+			return true, nil
+		}
+		if c.Kind == Show && !(ownerAlias && candidate == id) {
+			var edition string
+			if err := tx.QueryRowContext(ctx, `SELECT source_edition FROM catalog_shows WHERE entity_id=?`, candidate).Scan(&edition); err != nil {
+				return false, err
+			}
+			if edition != c.SourceEdition {
+				return false, nil
+			}
+		}
 		for _, p := range providers {
 			ok, e := providerCompatibleTx(ctx, tx, candidate, p)
 			if e != nil || !ok {
@@ -353,10 +383,18 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		if len(providers) > 0 {
 			p := providers[0]
 			primary = ProviderKey(p.Provider, p.Kind, p.ID)
+			if c.Kind == Show {
+				primary = ShowEditionIdentityKey(primary, c.SourceEdition)
+			}
 		}
 		// A name held by a live title of another kind or library cannot be shared.
 		if id, created, err = EnsureEntityTx(ctx, tx, Entity{Library: c.Library, Kind: c.Kind, Parent: c.Parent, Key: primary, Title: c.Title, Year: c.Year, Added: c.Added}); err != nil {
 			return 0, false, err
+		}
+		if created && c.Kind == Show && c.SourceEdition != "" {
+			if err = SetFactsTx(ctx, tx, id, map[string]any{"source_edition": c.SourceEdition, "local_key": primary}); err != nil {
+				return 0, false, err
+			}
 		}
 	} else {
 		// A title that had left browse and search because it lost its last

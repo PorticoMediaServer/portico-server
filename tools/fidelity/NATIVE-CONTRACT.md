@@ -26,6 +26,28 @@ its actual positive deviceScaleFactor, including Retina DPR2/3. DOM rectangles
 come unchanged from getBoundingClientRect/Range and the viewport from
 innerWidth/innerHeight: these APIs already report CSS logical pixels. RN window
 and layout APIs report Android dp or Apple pt; use those actual logical values.
+`sameLogicalExtent(a,b,measurement)` accepts exact equality, plus an exact
+float32 projection in either direction for declared RN logical extents only
+(`a === Math.fround(b)` or its inverse). This handles float32 host sizes versus
+float64 window dimensions without changing serialized values or applying an
+epsilon. DOM equality and the 2-logical-unit element tolerance are unchanged.
+Use that same relation when deriving native `fullViewport`; an already emitted
+false flag remains a validation failure and is never silently replaced.
+
+Comparison reports include `assessment`: coverage has separate declared facts,
+emitted unavailable measurements, missing observed font/paint properties, invalid
+input, calibration and state failures. `findings` counts measured, missing,
+extra, ambiguous, cardinality and missing-content-slot findings separately.
+Absent observed values are coverage gaps, never requested-style defaults.
+`productFindingsReady` stays false and `measuredVerdict` is `WITHHELD` until
+coverage and matching prerequisites are complete. Raw `verdict`, differences
+and their count remain the complete harness result, not a product-defect count.
+A complete controlled specimen is still not a full application/flow verdict.
+
+The public frontdoor map also binds `<primary-semantic-id>/label` to
+`primary-action-label`. The existing comparison content slot measures its
+actual text/font/run facts separately from the primary focus host's paint/box.
+The reference-only module must never be imported into an application.
 Do not divide either producer's logical rectangles by density a second time.
 Only genuinely physical measurements may be converted by their producer using
 its measured physical-to-logical API relationship; never infer that relationship

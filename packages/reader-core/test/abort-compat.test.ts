@@ -49,6 +49,16 @@ test('progressive PDF disposal cancels an in-flight stream without reason or thr
   parent.abort();await running;await sequential.dispose();assert.equal(cancelled,1);assert.equal(received,1);assert.equal(count(),0);
 });
 
+test('search factory throw releases controller operation links',async()=>{
+  const parent=new AbortController(),count=counted(parent.signal),location={format:'pdf' as const,page:0,progression:0};
+  const adapter:ReaderAdapter<{}>={format:'pdf',async open(){return {id:'pdf',revision:'v1',format:'pdf',metadata:{pageCount:1},toc:[],
+    async mount(){return {async navigate(){},async resize(){},async applyPreferences(){},getLocation(){return location;},dispose(){}};},
+    search(){throw new Error('factory failed');},dispose(){}};}};
+  const reader=new ReaderController({adapters:[adapter],preferences:{}});
+  await reader.open({source:{id:'pdf',revision:'v1',size:1},format:'pdf',container:{} as HTMLElement,viewport:{width:100,height:100}});
+  try{await assert.rejects((async()=>{for await(const _hit of reader.search('a',{signal:parent.signal,limit:2})){}})(),/factory failed/);assert.equal(count(),0);}
+  finally{await reader.close();}
+});
 test('controller previews and early-ended searches release operation links without signal.any',async()=>{
   const parent=new AbortController(),count=counted(parent.signal),location={format:'pdf' as const,page:0,progression:0};
   const adapter:ReaderAdapter<{}>={format:'pdf',async open(){return {id:'pdf',revision:'v1',format:'pdf',metadata:{pageCount:2},toc:[],

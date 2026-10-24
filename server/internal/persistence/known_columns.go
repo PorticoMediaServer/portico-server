@@ -2250,6 +2250,8 @@ inventory_artwork_candidates.entity_id
 inventory_artwork_candidates.kind
 inventory_artwork_candidates.object_id
 inventory_artwork_candidates.role
+inventory_artwork_candidates.source_name
+inventory_artwork_candidates.source_rank
 inventory_artwork_candidates.source_revision
 inventory_artwork_sources.art_key
 inventory_artwork_sources.asset_id

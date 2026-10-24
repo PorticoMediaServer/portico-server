@@ -141,7 +141,7 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
 	if err = rows.Close(); err != nil {
 		return out, err
 	}
-	err = readingOwnerProjectionTx(ctx, tx, out.Items)
+	err = readingAttributionProjectionTx(ctx, tx, out.Items)
 	return out, err
 }
 

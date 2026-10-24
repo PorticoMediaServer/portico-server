@@ -8,6 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_SERVER_URL?: string;
 }
 declare module 'virtual:portico-kit-families' {
-  const loaders: readonly (() => Promise<{default: import('./dev/gallery-registry').GalleryFamily}>)[];
+  const loaders: readonly ((() => Promise<{default: import('./dev/gallery-registry').GalleryFamily}>) & {readonly familyId: string})[];
   export default loaders;
 }

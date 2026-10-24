@@ -12,6 +12,7 @@ import {rejectXmlEntities, secureMarkup, secureCss} from './security.ts';
 import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 import {validateEpubRaster} from './media.ts';
 import {epubFontKey} from './font-obfuscation.ts';
+import {metadataLanguage, metadataText} from './metadata.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
@@ -28,14 +29,6 @@ interface Paginator extends HTMLElement {
   getContents(): {doc: Document; index: number}[];
 }
 export type EpubAdapterOptions = Readonly<{fonts: Readonly<{literata: Blob; manrope: Blob}>}>;
-function metadataText(value: unknown): string | undefined {
-  if (typeof value === 'string') return value || undefined;
-  if (Array.isArray(value)) return value.map(metadataText).filter(Boolean).join(', ') || undefined;
-  if (value && typeof value === 'object') {
-    const record = value as Record<string,unknown>;
-    return metadataText(record.name) ?? metadataText(Object.values(record).find(v=>typeof v==='string'));
-  }
-}
 function cfiAt(book: Book, index: number, range?: Range): string {
   return range ? joinIndir(book.sections[index].cfi, fromRange(range)) : book.sections[index].cfi;
 }
@@ -142,7 +135,7 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       });
       const b=book;
       const metadata:ReaderMetadata=Object.freeze({title:metadataText(b.metadata?.title),author:metadataText(b.metadata?.author),
-        language:metadataText(b.metadata?.language),...(b.dir==='rtl'||b.dir==='ltr'?{direction:b.dir}:{})});
+        language:metadataLanguage(b.metadata?.language),...(b.dir==='rtl'||b.dir==='ltr'?{direction:b.dir}:{})});
       const tocBySection=new Map<number,{label:string;cfi:string}[]>();
       async function mapToc(items:readonly Toc[]):Promise<readonly ReaderTocItem[]> {
         const result:ReaderTocItem[]=[];
@@ -238,7 +231,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
     if(dead||signal.aborted)return;cleanupDoc();const {doc,index}=(event as CustomEvent<{doc:Document;index:number}>).detail;
     const iframe=doc.defaultView?.frameElement;
     if(mount.metadata?.title)iframe?.setAttribute('title',mount.metadata.title);
-    doc.documentElement.lang ||= metadataText(book.metadata?.language)??'';
+    doc.documentElement.lang ||= metadataLanguage(book.metadata?.language)??'';
     const listenerAbort=new AbortController(),opts={signal:listenerAbort.signal};cleanupDoc=()=>listenerAbort.abort();
     const selection=()=>{
       if(dead||signal.aborted)return;const selected=doc.defaultView?.getSelection();

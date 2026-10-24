@@ -23,11 +23,25 @@ func readerFixture(t *testing.T) *sql.DB {
 
 func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) {
 	db := readerFixture(t)
+	// ReaderLifetimes is process-wide, and another fixture can still be
+	// physically releasing a reader after its test has returned: database/sql
+	// rolls a canceled transaction back from a goroutine, so joining the test's
+	// own goroutines does not join that cleanup. Measure this fixture's scope so
+	// a foreign lease cannot move the baseline under the assertions.
+	scope := readerScopeForTest(t, db)
 	ctx := context.Background()
-	baseline := ReaderLifetimes().Snapshots
+	baseline := scope.stats().Snapshots
+	if baseline != 0 {
+		t.Fatalf("fixture scope began with%d snapshots", baseline)
+	}
+	defer func() {
+		if t.Failed() {
+			t.Logf("reader lifetime baseline=%d final=%+v", baseline, scope.stats())
+		}
+	}()
 	check := func(want int) {
 		t.Helper()
-		if stats := ReaderLifetimes(); stats.Snapshots != baseline+want {
+		if stats := scope.stats(); stats.Snapshots != baseline+want {
 			t.Fatalf("snapshot lifetime: %+v, want%d", stats, baseline+want)
 		}
 	}
@@ -76,7 +90,7 @@ func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) 
 	}
 	check(1)
 	cancel()
-	waitReaderCondition(t, func() bool { return ReaderLifetimes().Snapshots == baseline })
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
 	tx, err = db.Begin() // Legacy/default transactions also own a snapshot.
 	if err != nil {
 		t.Fatal(err)
@@ -152,4 +166,125 @@ func TestReaderLifetimesCoverImplicitRowsPreparedRowsAndErrors(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestReaderLifetimeScopeIsolatesForeignFixture(t *testing.T) {
+	fixture := readerFixture(t)
+	foreign := readerFixture(t)
+	scope := readerScopeForTest(t, fixture)
+	foreignScope := readerScopeForTest(t, foreign)
+	baseline := scope.stats().Snapshots
+
+	_, closeForeign, err := BeginRead(context.Background(), foreign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeForeign()
+	if stats := foreignScope.stats(); stats.Snapshots != 1 {
+		t.Fatalf("foreign snapshot lifetime: %+v, want1", stats)
+	}
+	if stats := scope.stats(); stats.Snapshots != baseline {
+		t.Fatalf("foreign lease entered the fixture scope: %+v, want%d", stats, baseline)
+	}
+	if stats := ReaderLifetimes(); stats.Snapshots < baseline+1 {
+		t.Fatalf("process-wide lifetime missed the foreign lease: %+v", stats)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tx, err := fixture.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if stats := scope.stats(); stats.Snapshots != baseline+1 {
+		t.Fatalf("fixture snapshot lifetime: %+v, want%d", stats, baseline+1)
+	}
+	cancel()
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	// The foreign lease is deliberately still held: convergence here proves the
+	// fixture measures its own scope, not the process-wide aggregate that made
+	// the old baseline non-deterministic.
+	if stats := foreignScope.stats(); stats.Snapshots != 1 {
+		t.Fatalf("foreign snapshot ended during fixture convergence: %+v", stats)
+	}
+	if stats := ReaderLifetimes(); stats.Snapshots < baseline+1 {
+		t.Fatalf("process-wide lifetime lost the foreign lease: %+v", stats)
+	}
+}
+
+func TestReaderLifetimeDirectTransactionCancellationLateRelease(t *testing.T) {
+	db := readerFixture(t)
+	scope := readerScopeForTest(t, db)
+	baseline := scope.stats().Snapshots
+	check := func(want int) {
+		t.Helper()
+		if stats := scope.stats(); stats.Snapshots != baseline+want {
+			t.Fatalf("snapshot lifetime: %+v, want%d", stats, baseline+want)
+		}
+	}
+
+	// A context that is already canceled must be refused before any connection
+	// admits a reader lease.
+	cancelled, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancel()
+	if tx, err := db.BeginTx(cancelled, &sql.TxOptions{ReadOnly: true}); !errors.Is(err, context.Canceled) {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+		t.Fatalf("already-canceled BeginTx: tx=%v err=%v", tx, err)
+	}
+	check(0)
+
+	// Cancel after a successful read. database/sql releases the snapshot from
+	// its context goroutine; an explicit late Rollback/Commit must not touch the
+	// already-released lease or resurrect the count.
+	ctx, cancelTx := context.WithCancel(context.Background())
+	defer cancelTx()
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM sample`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("canceled fixture read count%d, want2", count)
+	}
+	check(1)
+	cancelTx()
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	if err = tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Fatalf("late rollback: %v", err)
+	}
+	check(0)
+	if err = tx.Commit(); !errors.Is(err, sql.ErrTxDone) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("late commit: %v", err)
+	}
+	check(0)
+
+	// The reverse race: release explicitly at the same moment the cancellation
+	// watchdog would. Either owner may win; the lease must still be released
+	// exactly once and the scope must neither leak nor go below its baseline.
+	ctx, cancelTx = context.WithCancel(context.Background())
+	defer cancelTx()
+	tx, err = db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	check(1)
+	cancelTx()
+	if err = tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Fatalf("racing rollback: %v", err)
+	}
+	waitReaderCondition(t, func() bool { return scope.stats().Snapshots == baseline })
+	check(0)
 }
