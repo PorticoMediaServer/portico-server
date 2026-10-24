@@ -222,7 +222,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   const [directory, setDirectory] = useState<readonly DirectoryFacts[]>([]);
   const alive = useRef(true), loading = useRef<AbortController>(undefined), record = useRef<AppSessionRecord>(undefined), currentChoices = useRef(choices);
   const lockRef = useRef<AttemptLock | undefined>(undefined), attemptRef = useRef<MobileChooserAttempt | undefined>(attempt), retryDelay = useRef(20);
-  const lock = (lockRef.current ??= new AttemptLock());
+  lockRef.current ??= new AttemptLock();
   currentChoices.current = choices; attemptRef.current = attempt;
   const accountId = accountState.session?.account.id, familyId = accountState.session?.familyId;
   useEffect(() => {
@@ -263,9 +263,10 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   useEffect(() => {
     alive.current = true; void refresh();
     const off = observeBrowserSessionChanges(() => {void refresh();});
-    return () => {alive.current = false; lock.cancel(); loading.current?.abort(); record.current = undefined; off();};
-  }, [refresh, lock]);
+    return () => {alive.current = false; lockRef.current?.cancel(); loading.current?.abort(); record.current = undefined; off();};
+  }, [refresh]);
   const openServer = useCallback(async (row: MobileChooserRow) => {
+    const lock = lockRef.current!;
     const saved = record.current?.servers.find(value => value.connection.pin.serverId === row.id);
     if (!alive.current || lock.running || !saved || !currentChoices.current.some(value => value.id === row.id)) return;
     const token = lock.begin();
@@ -297,7 +298,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
       if (result.snapshot || result.server) {setAttempt(undefined); setMode('entry');} else fail(result.error);
     } catch (failure) {fail(failure);}
     finally {if (lock.settle(token) && alive.current) setWorking(false);}
-  }, [entry, form, lock]);
+  }, [entry, form]);
   useEffect(() => {
     if (attempt?.kind !== 'waiting') return;
     const step = waitingStep(attempt, 'timer', document.visibilityState === 'visible');
@@ -322,13 +323,13 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
     return () => document.removeEventListener('visibilitychange', wake);
   }, [openServer]);
   const close = () => {form.clear(); entry.cancel(); void router.navigate({to: '/'});};
-  const other = () => {lock.cancel(); setWorking(false); entry.cancel(); setAttempt(undefined); setError(undefined);};
+  const other = () => {lockRef.current?.cancel(); setWorking(false); entry.cancel(); setAttempt(undefined); setError(undefined);};
   const checkNow = () => {
     if (attempt?.kind === 'waiting' || attempt?.kind === 'unreachable') {retryDelay.current = 20; void openServer(attempt.row);}
   };
   const differentAccount = () => {
-    if (busy || lock.running || !alive.current) return;
-    lock.cancel(); setAttempt(undefined); form.clear(); entry.cancel(); setWorking(true); setError(undefined);
+    if (busy || lockRef.current?.running || !alive.current) return;
+    lockRef.current?.cancel(); setAttempt(undefined); form.clear(); entry.cancel(); setWorking(true); setError(undefined);
     void signOutBrowserPorticoAccount().then(() => {
       if (!alive.current) return;
       location.assign(new URL('/', browserAccountOrigin(import.meta.env, location)).href);
