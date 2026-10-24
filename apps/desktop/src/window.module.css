@@ -4,6 +4,6 @@
 .caption button.close:hover,.caption button.close[data-hover=true] {background:#c42b1c;color:#fff;}
 .caption[data-focused=false] button {color:rgba(255,255,255,.42);}
 .caption button svg {display:block;}
-.caption button:focus-visible {outline:3px solid var(--focus);outline-offset:-3px;}
+.caption button:focus-visible {outline:3px solid var(--color-focus);outline-offset:-3px;}
 .shade {display:none;position:fixed;z-index:55;top:0;left:84px;right:0;height:52px;pointer-events:none;background:linear-gradient(180deg,rgba(7,16,24,.9) 0,rgba(7,16,24,.66) 30px,rgba(7,16,24,0) 52px);}
 @media (min-width:600px) and (max-width:1023px) {.shade {display:block;}}

@@ -1,4 +1,5 @@
 import {createRoot} from 'react-dom/client';
+import '../../../web-next/src/kit/tokens.css';
 import {WindowChrome} from '../src/WindowChrome';
 import type {WindowSnapshot,ChromeUpdate} from '../src/window';
 

@@ -75,7 +75,8 @@ try{
     await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
    }
    const actions=await evaluate('window.__captionFixture.actions');
-   keyboard={actions,focused:await evaluate(`document.activeElement?.tagName`),passed:JSON.stringify(actions)===JSON.stringify(['toggleMaximize','toggleMaximize'])};
+   const focus=await evaluate(`(()=>{const element=document.activeElement,style=getComputedStyle(element);return{visible:element.matches(':focus-visible'),width:style.outlineWidth,style:style.outlineStyle,color:style.outlineColor}})()`);
+   keyboard={actions,focused:await evaluate(`document.activeElement?.tagName`),focus,passed:JSON.stringify(actions)===JSON.stringify(['toggleMaximize','toggleMaximize'])&&focus.visible&&focus.width==='3px'&&focus.style==='solid'&&focus.color==='rgb(213, 239, 255)'};
   }
   const blank=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('blank navigation timeout')),10000);events.set('Page.loadEventFired',()=>{clearTimeout(timer);resolve();});});
   await send('Page.navigate',{url:'about:blank'});await blank;
