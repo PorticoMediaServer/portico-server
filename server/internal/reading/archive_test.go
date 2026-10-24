@@ -200,3 +200,33 @@ func (r *countReader) ReadAt(b []byte, o int64) (int, error) {
 	r.max = max(r.max, len(b))
 	return r.ReaderAt.ReadAt(b, o)
 }
+
+type interruptedArchiveReader struct {
+	io.ReaderAt
+	err error
+}
+
+func (r *interruptedArchiveReader) ReadAt(b []byte, offset int64) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	return r.ReaderAt.ReadAt(b, offset)
+}
+
+func TestArchiveMemberSourceFailureIsNotMalformedContent(t *testing.T) {
+	raw := fixtureZIP(t, [][2]string{{"original.txt", "Original authored member bytes."}})
+	r := &interruptedArchiveReader{ReaderAt: bytes.NewReader(raw)}
+	a, err := openArchive(r, int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted := errors.New("temporary source refusal")
+	r.err = interrupted
+	if _, err = a.read(context.Background(), "original.txt", 1024); !errors.Is(err, interrupted) || errors.Is(err, ErrInvalid) {
+		t.Fatal("source failure was replaced by a format error", err)
+	}
+	r.err = nil
+	if body, err := a.read(context.Background(), "original.txt", 1024); err != nil || string(body) != "Original authored member bytes." {
+		t.Fatal("temporary source failure poisoned the archive", string(body), err)
+	}
+}
