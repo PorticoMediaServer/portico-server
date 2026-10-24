@@ -1,6 +1,6 @@
 /** Read active rendered families from Chrome, never from a requested CSS chain.
  * The application/DOM is untouched. Inputs and mixed/unknown faces stay unavailable. */
-export async function observeRenderedFonts(call, measured, selector) {
+export async function observeRenderedFonts(call, measured, selector, getMetadata = async () => ({complete: false, families: []})) {
   if (measured?.measurement?.renderer !== 'dom') throw new Error('A genuine DOM measurement is required');
   const result = structuredClone(measured);
   const text = result.elements.filter(node => node.ownText || node.input && (!node.input.type || ['text', 'password', 'email', 'search', 'tel', 'url', 'number', 'textarea'].includes(node.input.type)));
@@ -13,7 +13,8 @@ export async function observeRenderedFonts(call, measured, selector) {
   }
   result.unavailable = (result.unavailable ?? []).filter(fact => fact.property !== 'resolvedFontFamily' || !ids.has(fact.element));
   const unavailable = (node, reason) => result.unavailable.push({element: node.id, property: 'resolvedFontFamily', reason});
-  for (const node of text) delete node.style.resolvedFontFamily;
+  for (const node of text) {delete node.style.resolvedFontFamily; delete node.style.platformFontFamily;}
+  const metadata = await getMetadata();
   let root;
   try {
     await call('DOM.enable'); await call('CSS.enable');
@@ -28,13 +29,24 @@ export async function observeRenderedFonts(call, measured, selector) {
       const nodeId = path ? (await call('DOM.querySelector', {nodeId: root, selector: ':scope' + path})).nodeId : root;
       if (!nodeId) {unavailable(node, 'Rendered font node did not remain mounted'); continue;}
       const {fonts} = await call('CSS.getPlatformFontsForNode', {nodeId});
-      const families = [...new Set((fonts ?? []).filter(font => Number.isFinite(font.glyphCount) && font.glyphCount > 0)
-        .map(font => font.familyName))];
+      const active = (fonts ?? []).filter(font => Number.isFinite(font.glyphCount) && font.glyphCount > 0);
+      const families = [...new Set(active.map(font => font.familyName))];
       const name = families[0];
       if (families.length !== 1 || typeof name !== 'string' || !name.trim() || name.length > 200 || /[\r\n/\\]|(?:https?|file):|url\s*\(/i.test(name)) {
         unavailable(node, 'A single safe active rendered family is not observable'); continue;
       }
-      node.style.resolvedFontFamily = name;
+      node.style.platformFontFamily = name;
+      const identities = new Set();
+      for (const font of active) {
+        if (font.isCustomFont === false) identities.add(font.familyName);
+        else if (font.isCustomFont === true && metadata.complete) {
+          for (const entry of metadata.families) if (entry.platformFamilies.includes(font.familyName)) identities.add(entry.family);
+        }
+      }
+      if (identities.size !== 1 || active.some(font => font.isCustomFont !== false && (font.isCustomFont !== true || !metadata.complete || !metadata.families.some(entry => entry.platformFamilies.includes(font.familyName))))) {
+        unavailable(node, 'Active font cannot be associated with verified typographic family metadata'); continue;
+      }
+      node.style.resolvedFontFamily = [...identities][0];
     } catch {unavailable(node, 'Active rendered family is not exposed by this observer');}
   }
   if (!result.unavailable.length) delete result.unavailable;

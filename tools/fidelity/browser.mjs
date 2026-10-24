@@ -4,6 +4,7 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {measureScreen} from './measure-screen.mjs';
 import {observeRenderedFonts} from './resolved-fonts.mjs';
+import {fontFamilyMetadata} from './font-family-metadata.mjs';
 
 /** An owned, isolated measurement browser. No cookies, auth state, or screenshots. */
 export async function withMeasurementBrowser({scratch, executable, viewport, allowedOrigins}, run) {
@@ -15,6 +16,7 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], {stdio: ['ignore', 'ignore', 'pipe'], detached: true});
   let socket, session, sequence = 0;
   const pending = new Map(), blocked = [], pageErrors = [];
+  const fontResources = new Map(); let excessiveFonts = false;
   function call(method, params = {}, sessionId = session) {
     const id = ++sequence;
     return new Promise((resolve, reject) => {
@@ -43,6 +45,19 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     socket = new WebSocket(endpoint); await once(socket, 'open');
     socket.addEventListener('message', async event => {
       const message = JSON.parse(event.data);
+      if (message.sessionId === session && message.method === 'Network.responseReceived' && message.params.type === 'Font') {
+        const {requestId, response} = message.params;
+        const url = new URL(response.url);
+        if ((allowed.has(url.origin) || url.protocol === 'data:') && response.status >= 200 && response.status < 300) {
+          if (fontResources.size >= 32) excessiveFonts = true;
+          else fontResources.set(requestId, {complete: false});
+        }
+      }
+      if (message.sessionId === session && message.method === 'Network.loadingFinished' && fontResources.has(message.params.requestId)) {
+        const resource = fontResources.get(message.params.requestId);
+        resource.complete = true; resource.size = message.params.encodedDataLength;
+      }
+      if (message.sessionId === session && message.method === 'Network.loadingFailed') fontResources.delete(message.params.requestId);
       if (message.method === 'Runtime.exceptionThrown') pageErrors.push({kind: 'page-exception'});
       if (message.method === 'Fetch.requestPaused') {
         const {requestId, request} = message.params, url = new URL(request.url);
@@ -59,17 +74,35 @@ export async function withMeasurementBrowser({scratch, executable, viewport, all
     const {targetId} = await call('Target.createTarget', {url: 'about:blank'}, null);
     session = (await call('Target.attachToTarget', {targetId, flatten: true}, null)).sessionId;
     await call('Page.enable'); await call('Runtime.enable');
+    await call('Network.enable', {maxTotalBufferSize: 32 * 1024 * 1024, maxResourceBufferSize: 8 * 1024 * 1024});
     await call('Fetch.enable', {patterns: [{urlPattern: '*'}]});
     await call('Emulation.setDeviceMetricsOverride', {...viewport, mobile: false});
     return await run({
       async navigate(url, selector) {
         if (!allowed.has(new URL(url).origin)) throw new Error('Measurement navigation origin is not allowed');
+        fontResources.clear(); excessiveFonts = false;
         const response = await call('Page.navigate', {url});
         if (response.errorText) throw new Error('Measurement navigation failed');
         await evaluate(`new Promise((resolve,reject)=>{const end=performance.now()+15000;const check=()=>{if(document.querySelector(${JSON.stringify(selector)}))document.fonts.ready.then(resolve);else if(performance.now()>end)reject(new Error('Screen root did not mount'));else requestAnimationFrame(check)};check()})`);
       },
       measure: (selector, anchors = {}, repeats = []) => evaluate(`(${measureScreen.toString()})(${JSON.stringify({selector, expectedViewport: viewport, anchors, repeats})})`),
-      observeRenderedFonts: (screen, selector) => observeRenderedFonts(call, screen, selector),
+      observeRenderedFonts: (screen, selector) => observeRenderedFonts(call, screen, selector, async () => {
+        if (excessiveFonts) return {complete: false, families: []};
+        const families = [];
+        for (const [requestId, resource] of fontResources) {
+          if (!resource.complete || resource.size > 8 * 1024 * 1024) return {complete: false, families: []};
+          if (resource.metadata === undefined) {
+            try {
+              const response = await call('Network.getResponseBody', {requestId});
+              if (!response.base64Encoded || response.body.length > 12 * 1024 * 1024) throw new Error('Unbounded font response');
+              resource.metadata = fontFamilyMetadata(Buffer.from(response.body, 'base64'));
+            } catch {resource.metadata = null;}
+          }
+          if (!resource.metadata) return {complete: false, families: []};
+          families.push(resource.metadata);
+        }
+        return {complete: true, families};
+      }),
       evaluate,
       call,
       blocked,

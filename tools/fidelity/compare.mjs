@@ -182,5 +182,5 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   }
   for (const item of ambiguous) differences.push({kind: 'ambiguous-match', ...item});
   return {policy, matchedElements: matches.length, expectedElements: expected.length, actualElements: observed.length, matches, differences, diagnostics,
-    unscoredProperties: unscored, referenceOnly, actualContentOnly, cascadeRoots, verdict: differences.length ? 'FAIL' : 'PASS'};
+    unscoredProperties: [...unscored, 'platformFontFamily', ...(actual.measurement?.renderer === 'react-native' ? [] : ['resolvedFontFamily'])], referenceOnly, actualContentOnly, cascadeRoots, verdict: differences.length ? 'FAIL' : 'PASS'};
 }

@@ -14,12 +14,25 @@ const observer = fonts => async (method, params) => {
 };
 test('active font identity comes only from observed glyph families, preserving requested/raw facts', async () => {
   const input = fixture(), raw = JSON.stringify(input);
-  const output = await observeRenderedFonts(observer([{familyName: 'Observed face', glyphCount: 3, postScriptName: '/private/font-file'}]), input, '#screen');
+  const output = await observeRenderedFonts(observer([{familyName: 'Observed face', glyphCount: 3, isCustomFont: false, postScriptName: '/private/font-file'}]), input, '#screen');
   assert.equal(output.elements[0].style.resolvedFontFamily, 'Observed face');
   assert.equal(output.elements[0].style.fontFamily, 'Requested, serif');
   assert.equal(JSON.stringify(input), raw); assert.ok(!JSON.stringify(output).includes('/private/'));
   assert.equal(output.elements[1].style.resolvedFontFamily, undefined);
   assert.equal(output.unavailable.length, 1); assert.equal(output.unavailable[0].element, '0.2');
+});
+
+test('custom legacy family names require actual resource metadata and never style-word stripping', async () => {
+  const active = observer([{familyName: 'Example ExtraLight', glyphCount: 4, isCustomFont: true}]);
+  const known = await observeRenderedFonts(active, fixture(), '#screen', async () => ({complete: true, families: [{family: 'Example', platformFamilies: ['Example ExtraLight']}]}));
+  assert.equal(known.elements[0].style.resolvedFontFamily, 'Example');
+  assert.equal(known.elements[0].style.platformFontFamily, 'Example ExtraLight');
+  const unknown = await observeRenderedFonts(active, fixture(), '#screen');
+  assert.equal(unknown.elements[0].style.resolvedFontFamily, undefined);
+  const ambiguous = await observeRenderedFonts(active, fixture(), '#screen', async () => ({complete: true, families: [
+    {family: 'One', platformFamilies: ['Example ExtraLight']}, {family: 'Two', platformFamilies: ['Example ExtraLight']},
+  ]}));
+  assert.equal(ambiguous.elements[0].style.resolvedFontFamily, undefined);
 });
 test('mixed, empty, unsafe or failed observations never become the requested family', async () => {
   for (const fonts of [[], [{familyName: 'A', glyphCount: 1}, {familyName: 'B', glyphCount: 1}], [{familyName: '/private/font', glyphCount: 1}], [{familyName: 'A', glyphCount: 0}]]) {
