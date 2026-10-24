@@ -152,7 +152,7 @@ test('the existing Settings panel loads only its actual record and dispatches ch
 });
 
 const sonic: LibrarySonicDocument = {libraryId: 'selected', available: true, defaultEnabled: true, enabled: false, revision: 3, policyAllows: false, state: 'disabled', done: 2, total: 4, policyRevision: 5, observedAtMs: 1000};
-test('Sonic requires both the producer hint and actual readiness; Reset awaits the canonical semantic binding', async () => {
+test('Sonic requires the producer hint and actual readiness, and reads the canonical factory default', async () => {
   for (const offered of [false, true]) for (const available of [false, true]) {
     const calls: string[] = [];
     const f = fixture(async <T>(path: string) => {
@@ -163,10 +163,30 @@ test('Sonic requires both the producer hint and actual readiness; Reset awaits t
       await f.source.select('selected');
       assert.equal(calls.filter(path => path.endsWith('/sonic-analysis')).length, offered ? 1 : 0);
       const value = f.source.read('selected', 'libraries.sonicAnalysis');
-      assert.equal(!!value, offered && available);assert.equal(value?.default, undefined);
-      assert.equal(await f.source.reset('selected', 'libraries.sonicAnalysis'), false);
-      if (!offered || !available) assert.equal(await f.source.change('selected', 'libraries.sonicAnalysis', true), false);
+      assert.equal(!!value, offered && available);assert.equal(value?.default, offered && available ? sonic.defaultEnabled : undefined);
+      if (!offered || !available) {
+        assert.equal(await f.source.reset('selected', 'libraries.sonicAnalysis'), false);
+        assert.equal(await f.source.change('selected', 'libraries.sonicAnalysis', true), false);
+      }
       assert.equal(calls.length, offered ? 2 : 1);
+    } finally {f.source.dispose();}
+  }
+});
+
+test('Sonic Reset follows either actual factory choice at the Sonic revision and status excludes model text', async () => {
+  for (const defaultEnabled of [true, false]) {
+    let saved: unknown;
+    const f = fixture(async <T>(path: string, method?: string, body?: unknown) => {
+      if (path.endsWith('/settings')) return {...document('selected'), libraryKind: 'music', eligibleControls: ['libraries.sonicAnalysis', 'libraries.sonicStatus']} as T;
+      if (method === 'PUT') saved = body;
+      return {...sonic, defaultEnabled, enabled: method === 'PUT' ? defaultEnabled : !defaultEnabled, revision: method === 'PUT' ? 4 : 3, model: {id: 'runtime-model', version: 'v1', sha256: 'a'.repeat(64)}} as T;
+    });
+    try {
+      await f.source.select('selected');assert.equal(await f.source.reset('selected', 'libraries.sonicAnalysis'), true);
+      assert.deepEqual(saved, {enabled: defaultEnabled, expectedRevision: 3});assert.equal(f.source.document('selected')?.revision, 7);
+      assert.deepEqual(f.source.sonicStatus('selected'), {state: 'disabled', done: 2, total: 4, observedAtMs: 1000});
+      assert.equal(f.source.read('selected', 'libraries.sonicStatus'), undefined);
+      await assert.rejects(f.source.change('selected', 'libraries.sonicStatus', true));
     } finally {f.source.dispose();}
   }
 });

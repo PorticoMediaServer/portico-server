@@ -421,7 +421,10 @@ export class BrowserAccountEntry {
  /** Canonical return controllers already remembered a signed-in result. Only
   * reread its exact admitted selection; never repeat accept/remember here. */
  private async discardReturn(api:HttpLocalApi,session:LocalSession){
-  try{await this.ports.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);}
+  const pin=api.getRouteConnection()?.pin;
+  try{await this.ports.store.connectionStorage(session.viewer.serverId).change(current=>
+   current&&pin&&sameServerPin(current.pin,pin)&&current.session.sessionFamilyId===session.sessionFamilyId&&
+   current.session.viewer.serverId===session.viewer.serverId&&current.session.viewer.authority===session.viewer.authority&&current.session.viewer.accountId===session.viewer.accountId?undefined:current);}
   finally{try{await this.retire(api,session);}finally{api.getRouteConnection()?.dispose();}}
  }
  private async admittedCompletion({api,result}:AdmittedCompletion,op:ReturnType<BrowserAccountEntry['operation']>){

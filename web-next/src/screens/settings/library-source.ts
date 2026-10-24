@@ -1,9 +1,9 @@
 import type {LibraryAdminDocument} from '@core/administration.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
-import {patchLibrarySettingsBinding, readLibrarySettingsBinding} from '@core/presentation/settings-bindings.ts';
+import {patchLibrarySettingsBinding, readLibrarySettingsBinding, patchLibrarySonicSettingsBinding, readLibrarySonicSettingsBinding} from '@core/presentation/settings-bindings.ts';
 import {randomId} from '@core/random-id.ts';
 import {readLibrarySettings, saveLibrarySettings} from '@core/server-admin/libraries.ts';
-import {librarySonicAvailable, readLibrarySonic, retryLibrarySonic, saveLibrarySonic, type LibrarySonicDocument} from '@core/server-admin/library-sonic.ts';
+import {readLibrarySonic, retryLibrarySonic, saveLibrarySonic, type LibrarySonicDocument} from '@core/server-admin/library-sonic.ts';
 
 export type SettingsLibrarySnapshot = Readonly<{libraryId?: string; document?: LibraryAdminDocument; sonic?: LibrarySonicDocument; loading: boolean; saving: boolean; error?: unknown}>;
 const empty: SettingsLibrarySnapshot = Object.freeze({loading: false, saving: false});
@@ -44,9 +44,14 @@ export class SettingsLibrarySource {
     const document = this.document(libraryId);
     if (rowId === 'libraries.sonicAnalysis') {
       const sonic = this.state.sonic;
-      return document && this.offersSonic(document) && sonic && librarySonicAvailable(sonic) ? {current: sonic.enabled, effective: sonic.enabled, default: undefined, source: 'library', configOnly: false} : undefined;
+      return document && sonic ? readLibrarySonicSettingsBinding(rowId, document, sonic) : undefined;
     }
     return document && readLibrarySettingsBinding(rowId, document);
+  };
+  /** Raw status is data for the future approved presenter, never generic JSON row copy. */
+  sonicStatus = (libraryId: string) => {
+    const document = this.document(libraryId), sonic = this.state.sonic;
+    return document && sonic ? readLibrarySonicSettingsBinding('libraries.sonicStatus', document, sonic)?.current : undefined;
   };
   async change(libraryId: string, rowId: string, value: unknown): Promise<boolean> {
     if (rowId === 'libraries.sonicAnalysis') {
@@ -74,11 +79,12 @@ export class SettingsLibrarySource {
   retrySonic = (libraryId: string) => this.sonicCommand(libraryId);
   private async sonicCommand(libraryId: string, enabled?: boolean): Promise<boolean> {
     const document = this.document(libraryId), sonic = this.state.sonic;
-    if (!document || !this.offersSonic(document) || !sonic || this.state.loading || this.state.saving || enabled !== undefined && !librarySonicAvailable(sonic)) return false;
+    if (!document || !sonic || this.state.loading || this.state.saving || !readLibrarySonicSettingsBinding('libraries.sonicAnalysis', document, sonic)) return false;
+    const patch = enabled === undefined ? undefined : patchLibrarySonicSettingsBinding('libraries.sonicAnalysis', enabled, document, sonic);
     const request = new AbortController();this.request = request;
     this.publish({...this.state, saving: true});
     try {
-      const next = enabled === undefined ? await retryLibrarySonic(this.api, libraryId, request.signal) : await saveLibrarySonic(this.api, sonic, enabled, request.signal);
+      const next = patch ? await saveLibrarySonic(this.api, sonic, patch.enabled, request.signal) : await retryLibrarySonic(this.api, libraryId, request.signal);
       if (this.owns(request, libraryId)) {this.publish({libraryId, document, sonic: next, loading: false, saving: false});return true;}
     } catch (error) {
       if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error});throw error;}
