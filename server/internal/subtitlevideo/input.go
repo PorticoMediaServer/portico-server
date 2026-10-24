@@ -248,6 +248,16 @@ func (p *remoteInput) Close() error {
 	return p.descriptor.Close()
 }
 func (r *Runtime) OpenSubtitleInput(ctx context.Context, item, source, session string) (subtitles.RenderInput, error) {
+	if invocation, selected := subtitles.PlaybackSourceInvocationFromContext(ctx); selected {
+		facts := invocation.Facts()
+		if item != facts.ItemID || source != facts.AssetID || session != "" && session != facts.SessionID {
+			return nil, subtitles.ErrConflict
+		}
+		// Extract passes no public session argument. A real selected extraction
+		// still retains the exact session and its physical pin, never a new
+		// current asset/source selected by path.
+		session = facts.SessionID
+	}
 	s, e := r.selection(ctx, item, source, session)
 	if e != nil {
 		return nil, e
