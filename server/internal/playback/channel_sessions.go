@@ -406,29 +406,28 @@ type ChannelState struct {
 // its source.
 func (c *ChannelSessions) ReadTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string) (ChannelState, error) {
 	var out ChannelState
-	var selection, transport string
 	var position sql.NullInt64
 	var ack sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT selection_json,transport_json,status,stage,error_code,confirmed_position_us,acknowledged_seek_id,seek_error FROM playback_channel_sessions WHERE session_id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&selection, &transport, &out.Status, &out.Stage, &out.ErrorCode, &position, &ack, &out.SeekError)
+	err := tx.QueryRowContext(ctx, `SELECT status,stage,error_code,confirmed_position_us,acknowledged_seek_id,seek_error FROM playback_channel_sessions WHERE session_id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&out.Status, &out.Stage, &out.ErrorCode, &position, &ack, &out.SeekError)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, controlFault("not_found", 404)
 	}
 	if err != nil {
 		return out, err
 	}
-	var selected LinearSelection
-	if err = json.Unmarshal([]byte(selection), &selected); err != nil {
-		return out, err
-	}
-	if err = json.Unmarshal([]byte(transport), &out.Desired); err != nil {
-		return out, err
-	}
 	if !c.Configured() {
 		return out, controlFault("channel_runtime_unavailable", 503)
 	}
-	if err = c.linear.CheckTx(ctx, tx, p, selected); err != nil {
+	// v1 supplies the session's viewer key, not a complete principal. Reuse
+	// the retained authority path used by transport controls and producers:
+	// it rechecks the bound family, current lease and selected source before
+	// exposing delivery state. Never infer an owner role from the viewer key.
+	w, err := c.linearWorkTx(ctx, tx, id, true)
+	if err != nil {
 		return out, err
 	}
+	selected := w.Selection
+	out.Desired = w.Desired
 	out.Channel, out.Name, out.Next, out.LogoItemID = selected.Reference, selected.Name, selected.Next, selected.LogoItemID
 	if selected.EntryID != "" {
 		out.Programme = &LinearProgramme{ID: selected.EntryID, ItemID: selected.ItemID, Title: selected.Title, StartMS: selected.EntryStartMS, EndMS: selected.EntryEndMS}
