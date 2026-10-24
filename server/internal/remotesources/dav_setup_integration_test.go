@@ -88,11 +88,11 @@ func ownedRcloneChildren(t *testing.T) int {
 func TestDedicatedDAVSetupRunsBoundedOriginChecksAfterPhysicalStop(t *testing.T) {
 	program := lockedRcloneFixture(t)
 	t.Setenv("PORTICO_RCLONE", program)
-	for _, mode := range []string{"supported", "ignored", "wrong", "timeout"} {
+	for _, mode := range []string{"supported", "ignored", "wrong", "timeout", "revoked"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			f, _, identities, owner, _, _ := nativeSaveFixture(t)
+			f, _, identities, owner, family, _ := nativeSaveFixture(t)
 			authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
 			var gets atomic.Int32
 			selectedMode := atomic.Value{}
@@ -156,6 +156,16 @@ func TestDedicatedDAVSetupRunsBoundedOriginChecksAfterPhysicalStop(t *testing.T)
 				var count int
 				if err = f.s.db.QueryRow(`SELECT count(*) FROM remote_sources WHERE name='Private DAV'`).Scan(&count); err != nil || count != 0 {
 					t.Fatal("timeout published source", count, err)
+				}
+				return
+			}
+			if mode == "revoked" {
+				if err == nil || gets.Load() != 1 {
+					t.Fatal("revoked owner completed range setup", gets.Load(), err)
+				}
+				var count int
+				if e := f.s.db.QueryRow(`SELECT count(*) FROM remote_sources WHERE name='Private DAV'`).Scan(&count); e != nil || count != 0 {
+					t.Fatal("revoked owner published setup", count, e)
 				}
 				return
 			}

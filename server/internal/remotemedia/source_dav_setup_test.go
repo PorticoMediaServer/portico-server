@@ -2,6 +2,7 @@ package remotemedia
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -207,4 +208,55 @@ func TestSourceDAVSetupNeverListAndNoGenericDescriptorGrant(t *testing.T) {
 	if support, err := dav.DiagnoseSetupRanges(context.Background(), DAVEntry{Relative: "one.bin", Size: 64}, nil, 2, 0, func(ctx context.Context) error { return ctx.Err() }); err == nil || support != SetupRangeUnknown {
 		t.Fatal("generic descriptor became setup authority", support, err)
 	}
+}
+
+func TestSourceDAVSetupReresolvesBeforeEveryOriginRequest(t *testing.T) {
+	hold, err := NewOperationBudget(context.Background(), 1).AcquireTest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Close()
+	var resolverMu sync.Mutex
+	resolver := setupChangingResolver{mu: &resolverMu}
+	calls := 0
+	server := privateSetupServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var start, end int64
+		fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end)
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/64", start, end))
+		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		w.WriteHeader(206)
+		_, _ = w.Write([]byte(strings.Repeat("x", int(end-start+1))))
+		resolverMu.Lock()
+		resolver.address = netip.MustParseAddr("169.254.169.254")
+		resolverMu.Unlock()
+	}))
+	host, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver.address = netip.MustParseAddr(host)
+	config, err := ValidateSourceDAVConfig(context.Background(), DAVConfig{Root: "http://source.fixture:" + port + "/", InsecureLocal: true}, &resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dav, err := NewSourceDAV(config, &resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	support, err := dav.DiagnoseSetupRanges(hold.Context(), DAVEntry{Relative: "one.bin", Size: 64}, hold, 50, 0, func(ctx context.Context) error { return ctx.Err() })
+	if !errors.Is(err, ErrPolicy) || support != SetupRangeUnknown || calls != 1 || hold.Operations().Counts().Active != 0 {
+		t.Fatal("rebound origin reused its approval", support, calls, err)
+	}
+}
+
+type setupChangingResolver struct {
+	mu      *sync.Mutex
+	address netip.Addr
+}
+
+func (r *setupChangingResolver) LookupNetIP(ctx context.Context, _, _ string) ([]netip.Addr, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return []netip.Addr{r.address}, ctx.Err()
 }
