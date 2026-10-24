@@ -31,19 +31,22 @@ try {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(350);
   await page.evaluate(() => document.activeElement?.blur());
-  await page.screenshot({path: `${output}/implementation.jpg`, type: 'jpeg', quality: 90});
+  const implementationImage = await page.screenshot({path: `${output}/implementation.jpg`, type: 'jpeg', quality: 90});
   const build = await page.evaluate(() => [...document.querySelectorAll('h1,[role=tablist],article,aside,aside h2,aside footer,aside h3')].map(element => ({text: element.textContent, box: element.getBoundingClientRect().toJSON()})));
   const source = await readFile(`${reference}/design/ui-v1/desktop-live.html`, 'utf8');
   const kit = await readFile(`${reference}/design/ui-v1/kit.css`, 'utf8');
   const css = source.match(/<style>([\s\S]*?)<\/style>/)[1];
   const frame = source.slice(source.indexOf('<div class="screen" id="live-rules"'), source.indexOf('<p class="cap"><b>Watching live'));
-  const sprite = source.match(/<body>\s*(<svg[\s\S]*?<\/svg>)/)[1];
+  const sprite = [...source.matchAll(/<svg width="0" height="0" style="position:absolute">[\s\S]*?<\/svg>/g)].map(match => match[0]).join('');
   const referenceHtml = `<!doctype html><html><head><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nbody{margin:0;padding:0}</style></head><body class="p">${sprite}${frame.replace('assets/wordmark.svg', origin + '/src/shell/wordmark.svg')}</body></html>`;
   await page.route('**/__series-rules-reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
   await page.goto(`${origin}/__series-rules-reference__`);
   await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({path: `${output}/frame.jpg`, type: 'jpeg', quality: 90});
+  const frameImage = await page.screenshot({path: `${output}/frame.jpg`, type: 'jpeg', quality: 90});
   const drawn = await page.evaluate(() => [...document.querySelectorAll('h1,.tabs,.rule,aside,.sh-title,.sh-foot,.sh-h')].map(element => ({text: element.textContent, box: element.getBoundingClientRect().toJSON()})));
+  await page.setViewportSize({width: 2880, height: 950});
+  await page.setContent(`<body style="margin:0;display:flex"><img width="1440" height="950" src="data:image/jpeg;base64,${implementationImage.toString('base64')}"><img width="1440" height="950" src="data:image/jpeg;base64,${frameImage.toString('base64')}"></body>`);
+  await page.screenshot({path: `${output}/comparison.jpg`, type: 'jpeg', quality: 90});
   await writeFile(`${output}/browser.log`, JSON.stringify({result, build, drawn}, null, 2));
   console.log(JSON.stringify(result));
 } finally {
