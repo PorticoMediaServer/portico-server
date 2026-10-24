@@ -15,16 +15,19 @@ def public_root(path):
     return base64.urlsafe_b64encode(der[12:]).decode().rstrip('=')
 
 
-def require_current_main(repo, commit):
+def require_current_main(repo, commit, frozen=False):
     published = subprocess.check_output(['git', '-C', str(repo), 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], text=True).splitlines()
-    if published != [commit + '\trefs/heads/main']:
+    if not frozen and published != [commit + '\trefs/heads/main']:
         raise ValueError('review cutoff must equal the actual published origin/main head')
+    if frozen:
+        subprocess.run(['git', '-C', str(repo), 'fetch', 'origin', 'main'], check=True)
     subprocess.run(['git', '-C', str(repo), 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('commit')
+    p.add_argument('--frozen-main', action='store_true', help='use an explicitly frozen published MAIN ancestor while later commits land')
     p.add_argument('--web-only', action='store_true', help='build only the web client for a compatible existing server')
     p.add_argument('--host', choices=['netcup', 'contabo'], default='netcup')
     p.add_argument('--repo', required=True, type=Path)
@@ -34,7 +37,7 @@ def main():
     a = p.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', a.commit):
         p.error('full published MAIN commit required')
-    require_current_main(a.repo, a.commit)
+    require_current_main(a.repo, a.commit, a.frozen_main)
     node = subprocess.check_output(['git', '-C', str(a.repo), 'show', a.commit + ':.node-version'], text=True).strip()
     go_mod = subprocess.check_output(['git', '-C', str(a.repo), 'show', a.commit + ':server/go.mod'], text=True)
     go = re.search(r'^go (\d+\.\d+\.\d+)$', go_mod, re.M).group(1)

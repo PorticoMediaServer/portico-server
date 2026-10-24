@@ -22,11 +22,13 @@ def main():
     parser.add_argument("--cycle", required=True)
     parser.add_argument("--stage-only", action="store_true")
     parser.add_argument("--activate-only", action="store_true")
+    parser.add_argument("--attempt", help="safe retry name; keep the same state and preserve earlier rollback backups")
     parser.add_argument("--runtime-root", help="installed qualified full Linux bundle for this fresh stage")
     parser.add_argument('--browser-repo', type=Path)
     parser.add_argument('--runner', type=Path)
     parser.add_argument('--private-review', type=Path)
     parser.add_argument('--smoke-output', type=Path)
+    parser.add_argument('--smoke-host', choices=['netcup', 'contabo'], default='netcup')
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         parser.error("a full published MAIN commit is required")
@@ -38,6 +40,9 @@ def main():
         parser.error("runtime root must be a safe installed bundle used only with --stage-only")
     if args.activate_only and not all((args.browser_repo, args.runner, args.private_review, args.smoke_output)):
         parser.error('activation requires the real browser smoke repo, runner, private review file and output')
+    if args.attempt and (not args.activate_only or not re.fullmatch(r'[a-z0-9-]{1,24}', args.attempt)):
+        parser.error('attempt names apply only to activation retries')
+    backup_cycle = args.cycle + ('-' + args.attempt if args.attempt else '')
     directory = "/opt/portico/demo-releases/" + args.cycle
     state = "/var/lib/portico-" + args.cycle
     environment = "/etc/portico-" + args.cycle + ".env"
@@ -67,14 +72,13 @@ install -d -o portico -g portico -m700 "$2" "$2/cache-home"
                             "tar -xf - --no-same-owner -C " + shlex.quote(directory + "/web")], stdin=stream, check=True)
         remote(STAGE, directory, state, environment, args.commit, digest, args.runtime_root or "")
     else:
-        remote(ACTIVATE, directory, state, environment, args.commit, args.cycle)
-        try:
-            subprocess.run(['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
-                            '--repo', str(args.browser_repo), '--runner', str(args.runner),
-                            '--credentials', str(args.private_review), '--output', str(args.smoke_output)], check=True)
-        except BaseException:
-            remote(ROLLBACK, args.cycle)
-            raise
+        command = ['python3', str(Path(__file__).with_name('smoke-review.py')), args.commit,
+                   '--repo', str(args.browser_repo), '--runner', str(args.runner),
+                   '--credentials', str(args.private_review), '--output', str(args.smoke_output),
+                   '--host', args.smoke_host, '--activate-cycle', args.cycle]
+        if args.attempt:
+            command += ['--attempt', args.attempt]
+        subprocess.run(command, check=True)
 
 
 STAGE = r'''set -euo pipefail

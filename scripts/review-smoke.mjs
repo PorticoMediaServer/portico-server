@@ -1,8 +1,9 @@
 import fs from 'node:fs';
+import {createInterface} from 'node:readline';
 import {createHash} from 'node:crypto';
 const origin=process.env.PORTICO_REVIEW_ORIGIN,commit=process.env.PORTICO_REVIEW_COMMIT;
 const {privacy,safePath}=await import('file://'+process.env.PORTICO_RUNNER_SECONDARY_SOURCE+'/scripts/review-smoke-privacy.mjs');
-const privateValues=[];
+const privateValues=[];const channel=createInterface({input:process.stdin,terminal:false,crlfDelay:Infinity});const lines=channel[Symbol.asyncIterator]();const nextInput=async()=>{const row=await lines.next();if(row.done)throw Error('private-input-closed');return row.value;};
 const {chromium}=await import(process.env.TMPDIR+'/browser/node_modules/playwright/index.mjs');
 let browser,page,step='launch',credentialPhase=false;const consoleEvents=[],requests=[],responses=[];const pendingResponses=[];const out=process.env.PORTICO_RUNNER_OUTPUT;const failures=[];const authFacts={profileSelectionPOSTOccurred:false,me:[],refresh:[]};const pendingAuth=[];const safeRole=value=>['account','owner','admin','member'].includes(value)?value:'unobserved';
 try {
@@ -20,6 +21,7 @@ try {
   if(path!=='/v1/me')pendingAuth.push((async()=>{const body=await response.json();entry.grantRole=safeRole(body.session?.viewer?.role??body.viewer?.role);if(path==='/v1/direct/sign-in'){entry.accountScoped=body.session?.viewer?.role==='account';entry.profilesCount=Array.isArray(body.profiles)?body.profiles.length:null;}})().catch(()=>{authFacts.responseMetadataUnavailable=true;}));
  });
  page.on('pageerror',()=>failures.push({pageError:true}));
+ if(process.env.PORTICO_REVIEW_AWAIT_ACTIVATION==='1'){console.log('BROWSER_ADMITTED');if(await nextInput()!=='PUBLIC_ACTIVATED')throw Error('activation-control');}
  step='source-cutoff';const stamp=await(await page.request.get(origin+'/portico-build.json')).json();if(stamp.commit!==commit || (stamp.serverCommit && stamp.serverCommit!==commit))throw Error('source-cutoff');
  step='signed-out-root';await page.goto(origin+'/',{waitUntil:'networkidle'});
  await page.locator('input[name="username"]').waitFor();await page.locator('input[name="password"]').waitFor();
@@ -28,14 +30,13 @@ try {
  if(response.status()!==200 || !response.headers()['content-type'].includes('text/html'))throw Error('document');
  await page.reload({waitUntil:'networkidle'});await page.locator('input[name="password"]').waitFor();
  await page.screenshot({path:out+'/sign-in.png'});console.log('PASS /sign-in document and reload');console.log(JSON.stringify({event:'/sign-in document and reload',utc:new Date().toISOString(),origin,commit}));console.log('PRIVATE_STDIN_READY');
- let input='';for await(const chunk of process.stdin){input+=chunk;if(input.includes('\n'))break;}
- const credentials=JSON.parse(input);input='';credentialPhase=true;privateValues.push(credentials.username,credentials.password);
+ const credentials=JSON.parse(await nextInput());credentialPhase=true;privateValues.push(credentials.username,credentials.password);
  step='owner-sign-in';await page.locator('input[name="username"]').fill(credentials.username);await page.locator('input[name="password"]').fill(credentials.password);credentials.password='';
  await page.locator('form button[type="submit"]').click();
  await page.waitForFunction(()=>location.pathname==='/' || location.pathname==='/profiles');
  if(new URL(page.url()).pathname==='/profiles'){await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/justin/i}).first().click();}
- const trigger=page.getByRole('button',{name:/Switch profile or server/});await trigger.waitFor();
- await page.getByRole('link',{name:'Home',exact:true}).waitFor();await page.locator('[data-home-document]').waitFor();if(new URL(page.url()).pathname!=='/')throw Error('home-route');
+ step='owner-home-account-control';const trigger=page.getByRole('button',{name:/^Switch profile or server(?:,|$)|, account menu$/});await trigger.waitFor();
+ step='owner-home-navigation';await page.getByRole('link',{name:'Home',exact:true}).waitFor();step='owner-home-document';await page.locator('[data-home-document]').waitFor();if(new URL(page.url()).pathname!=='/')throw Error('home-route');
  await page.screenshot({path:out+'/owner-home.png'});console.log('PASS owner sign-in -> Home');console.log(JSON.stringify({event:'owner sign-in -> Home',utc:new Date().toISOString(),origin,commit}));
  step='second-profile';const profileDocument=await page.goto(origin+'/profiles',{waitUntil:'networkidle'});if(profileDocument.status()!==200 || !profileDocument.headers()['content-type'].includes('text/html'))throw Error('profile-document');await page.reload({waitUntil:'networkidle'});await page.getByRole('button').filter({hasText:/Review/}).first().click();await page.locator('[data-home-document]').waitFor();
  await trigger.waitFor();await trigger.click();await page.getByRole('menuitem',{name:/justin/i}).waitFor();
@@ -55,5 +56,5 @@ finally {
    await Promise.allSettled([...pendingResponses,...pendingAuth]);const cookies=await browser.contexts()[0].cookies();authFacts.cookies={present:cookies.length>0,flags:cookies.map(c=>({secure:c.secure,httpOnly:c.httpOnly,sameSite:c.sameSite}))};console.log(JSON.stringify({diagnosis:{authFacts,responses,visibility:await page.evaluate(()=>document.visibilityState),url:new URL(page.url()).origin+safePath(new URL(page.url()).pathname),title:await page.title(),console:consoleEvents.map(event=>({...event,text:privacy({kind:'text',value:event.text,privateValues})})),requests,failures}}));try{await page.screenshot({path:out+'/final-page.png',timeout:5000});}catch{console.log('Diagnostic screenshot unavailable; DOM and console retained.');}
   }catch{console.log('Diagnostic page unavailable after browser failure');}
  }
- if(browser)await browser.close();
+ channel.close();if(browser)await browser.close();
 }
