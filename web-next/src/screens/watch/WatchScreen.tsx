@@ -56,7 +56,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const current = useRef({binding, snapshot, expanded});
   current.current = {binding, snapshot, expanded};
   const presentation = snapshot.presentation, fence = snapshot.fence;
-  const playbackKey = settledPlaybackKey(fence?.playback), itemKey = fence?.itemId ?? '';
+  const playbackKey = settledPlaybackKey(fence?.playback);
   const settledPlayback = useRef<SettledPlayback | undefined>(undefined);
   const sourceKey = fence ? JSON.stringify(fence) : '';
   const valid = !snapshot.disposed && !!presentation && !!fence && sameFence(fence, presentation.fence)
