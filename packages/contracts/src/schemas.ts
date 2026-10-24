@@ -171902,6 +171902,9 @@ export const schemas = {
       "revision": {
         "type": "string"
       },
+      "sequential": {
+        "type": "boolean"
+      },
       "sessionId": {
         "type": "string"
       },
