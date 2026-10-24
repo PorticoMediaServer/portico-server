@@ -6,6 +6,7 @@ import {reorderLibraries} from '@core/server-admin/libraries.ts';
 import {Button} from '../../../kit/controls';
 import {Menu} from '../../../kit/overlays/Popover';
 import {Icon} from '../../../kit/Icon';
+import {router} from '../../router';
 import {StateView} from '../../../kit/states';
 import styles from './libraries.module.css';
 import {libraryRows, movedIds} from './model';
@@ -71,6 +72,9 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
         ...(row.canScan && !row.scanning ? [{id: 'scan', label: t('next.settingsSpec.server.libraries.groups.0.rows.0.control.itemActions.0.label'), onSelect: () => {
           const library = libraries.find(value => value.id === row.id); if (library) void scan(library);
         }}] : []),
+        {id: 'unmatched', label: t('next.settings.libraries.unmatched'), onSelect: () => {
+          void router.navigate({to: '/library/$libraryId', params: {libraryId: row.id}, search: {unmatched: true}}).catch(onError);
+        }},
         {id: 'up', label: t('next.settings.moveUp', {name: row.name}), disabled: !row.canMoveUp, onSelect: () => {
           const library = libraries.find(value => value.id === row.id); if (library) void move(library, -1);
         }},

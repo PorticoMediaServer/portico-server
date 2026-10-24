@@ -205,9 +205,11 @@ async function walk(page, viewportName) {
     await page.goto(base + '/settings?scope=server&section=libraries', {waitUntil: 'domcontentloaded'});
     await settle(1800);
     if (!(await page.getByRole('button', {name: /^Actions$/i}).count())) {
-      const entry = page.getByText('Libraries', {exact: true}).first();
-      if (await entry.count()) { await entry.click(); await settle(1500); }
+      const entry = page.getByRole('button', {name: /^Libraries$/i}).first();
+      if (await entry.count()) { await entry.click(); await settle(2000); }
     }
+    if (!(await page.getByRole('button', {name: /^Actions$/i}).count()))
+      throw new Error('the compact Settings did not reach the Libraries list: ' + excerpt(await text(), 300));
     await page.getByRole('button', {name: /^Actions$/i}).first().click();
     await page.getByText('Edit', {exact: true}).first().click();
     const foldersTab = page.getByRole('tab', {name: /^Folders$/i}).first();

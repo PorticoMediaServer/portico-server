@@ -27,6 +27,7 @@ export const settingsMessages = {
   'next.settings.libraries.checkFolder': 'Check availability',
   'next.settings.libraries.editFolder': 'Edit folder',
   'next.settings.libraries.removeFolderTitle': 'Remove folder',
+  'next.settings.libraries.unmatched': 'Unmatched items',
   'next.settings.libraries.saveFolder': 'Save folder',
   'next.settings.loading': 'Loading…',
   'next.settings.loadMore': 'Show more',
