@@ -39,7 +39,7 @@ async function navigate(url, selector) {
   await evaluate('document.fonts.ready.then(()=>true)');
 }
 async function screenshot(clip) {return (await page.send('Page.captureScreenshot', {format: 'jpeg', quality: 95, captureBeyondViewport: true, clip: {...clip, scale: 1}})).data;}
-const metrics = selector => evaluate(`(() => {const node=document.querySelector(${JSON.stringify(selector)}), r=node.getBoundingClientRect(), s=getComputedStyle(node);return {text:node.textContent,x:r.x,y:r.y,width:r.width,height:r.height,font:s.fontFamily,size:s.fontSize,weight:s.fontWeight,lineHeight:s.lineHeight};})()`);
+const metrics = (selector, parent) => evaluate(`(() => {const node=document.querySelector(${JSON.stringify(selector)}), r=node.getBoundingClientRect(), p=document.querySelector(${JSON.stringify(parent)}).getBoundingClientRect(), s=getComputedStyle(node);return {text:node.textContent,x:r.x-p.x,y:r.y-p.y,width:r.width,height:r.height,font:s.fontFamily,size:s.fontSize,weight:s.fontWeight,lineHeight:s.lineHeight};})()`);
 try {
   vite = await createVite({root: path.join(root, 'web-next'), configFile: path.join(root, 'web-next/vite.config.ts'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   await vite.listen();const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
@@ -63,7 +63,7 @@ try {
     await navigate(`${referenceOrigin}/auth.html`, ref);
     await evaluate(`document.querySelector(${JSON.stringify(ref)}).scrollIntoView({block:'start',inline:'start'})`);
     const bounds = await evaluate(`(() => {const r=document.querySelector(${JSON.stringify(ref)}).getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY};})()`);
-    const referenceMetrics = await metrics(`${ref} .au h1`);
+    const referenceMetrics = await metrics(`${ref} .au h1`, ref);
     const left = await screenshot({...bounds, width: 720, height: 900});
     await navigate(`${origin}/src/dev/entries/accounts.html?frame=${frame}`, '[data-account-specimen] h1');
     if (frame === '20c') {
@@ -75,7 +75,7 @@ try {
       await evaluate('document.querySelector(\'input[name="new-password"]\').focus()');
     }
     await pause(100);
-    const buildMetrics = await metrics('[data-auth-content] h1');
+    const buildMetrics = await metrics('[data-auth-content] h1', '[data-account-specimen]');
     const strength = frame === '20c' ? await evaluate('({bars:document.querySelector("[data-level]")?.dataset.level,label:document.querySelector("[data-level]")?.textContent,inputCharacters:document.querySelector(\'input[name="new-password"]\').value.length})') : undefined;
     const right = await screenshot({x: 0, y: 0, width: 720, height: 900});
     const pair = `<!doctype html><html><head><style>*{box-sizing:border-box}html,body{margin:0;width:1440px;height:900px;overflow:hidden}body{display:flex}img{display:block;width:720px;height:900px;flex:none}</style></head><body><img src="data:image/jpeg;base64,${left}"><img src="data:image/jpeg;base64,${right}"></body></html>`;
