@@ -2368,3 +2368,34 @@ test('no app local attachment is installed without a genuine captured family', t
   setup(t, {}, {attachLocalQueue: () => {attachments++;return () => {};}});
   assert.equal(attachments, 0);
 });
+
+
+test('late canceled local adoption releases only its own preparation and preserves the newer local queue', async t => {
+  const port = new ControlledLocalMedia(), pending = deferred();
+  port.gate = source => source.preparationId === 'actual_preparation' ? pending.hold() : Promise.resolve();
+  const f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  const life = new AbortController();let oldReleased = 0, newReleased = 0;
+  const old = f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {oldReleased++;}}, {signal: life.signal, isCurrent: () => true});
+  await pending.started;
+  const rejected = assert.rejects(old, /retired|stale_selection_context/);
+  life.abort();
+  await f.runtime.playLocalQueue({preparation: {...localPreparation(), preparationId: 'replacement_preparation'}, release: async () => {newReleased++;}},
+    {signal: new AbortController().signal, isCurrent: () => true});
+  const current = f.runtime.getSnapshot().fence!, unloads = port.unloads;
+  pending.resolve();await rejected;await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);assert.equal(port.unloads, unloads);
+  assert.equal(f.runtime.getSnapshot().presentation!.playing, true);assert.equal(oldReleased, 1);assert.equal(newReleased, 0);
+  f.runtime.dispose();await settle();assert.equal(newReleased, 1);
+});
+
+test('foreign-family or already canceled local preparations cannot replace current playback', async t => {
+  const port = new ControlledLocalMedia(), f = setup(t, {}, {createPlayer: () => port, createRender: null}, localScope);
+  await f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {}}, {signal: new AbortController().signal, isCurrent: () => true});
+  const current = f.runtime.getSnapshot().fence!, loads = port.loads.length;let released = 0;
+  await assert.rejects(f.runtime.playLocalQueue({preparation: {...localPreparation(), scope: {...localScope, sessionFamilyId: 'foreign_family'}}, release: async () => {released++;}},
+    {signal: new AbortController().signal, isCurrent: () => true}), /local_playback_unavailable/);
+  const life = new AbortController();life.abort();
+  await assert.rejects(f.runtime.playLocalQueue({preparation: localPreparation(), release: async () => {released++;}},
+    {signal: life.signal, isCurrent: () => true}), /stale_selection_context/);
+  assert.deepEqual(f.runtime.getSnapshot().fence, current);assert.equal(port.loads.length, loads);assert.equal(released, 2);
+});
