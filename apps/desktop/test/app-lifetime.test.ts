@@ -5,7 +5,7 @@ test('real app viewers retire before native platform installers, once, including
  const owner=createDesktopAppLifetime(),events:string[]=[];let complete!:(value:{disposeApp():void})=>void;
  owner.retain(()=>{events.push('platform')});owner.retain(()=>{events.push('broker')});
  void owner.importWebApp(()=>new Promise(resolve=>{complete=resolve}));
- const close=owner.dispose(),again=owner.dispose();assert.equal(close,again);assert.equal(owner.signal.aborted,true);assert.deepEqual(events,[]);
+ const close=owner.dispose(),again=owner.dispose();assert.equal(close,again);assert.equal(owner.signal.aborted,true);assert.equal(events.length,0);
  complete({disposeApp(){events.push('viewers')}});await close;assert.deepEqual(events,['viewers','broker','platform']);
  assert.throws(()=>owner.importWebApp(async()=>({disposeApp(){}})),{name:'AbortError'});assert.throws(()=>owner.retain(()=>{}),{name:'AbortError'});
 });
