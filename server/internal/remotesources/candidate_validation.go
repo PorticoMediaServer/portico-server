@@ -16,18 +16,24 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+type sourceTestScope struct {
+	done   chan struct{}
+	life   context.Context
+	cancel context.CancelFunc
+}
+
 // Source tests queue new operations even when the source has no live process.
 // An existing process keeps its exact epoch and readers; only its operation
 // budget drains. No physical reader/session is force-retired for a test.
 func (s *Service) waitSourceTest(ctx context.Context, source string) (bool, error) {
 	s.serveMu.Lock()
-	done := s.sourceTests[source]
+	scope := s.sourceTests[source]
 	s.serveMu.Unlock()
-	if done == nil {
+	if scope == nil {
 		return false, nil
 	}
 	select {
-	case <-done:
+	case <-scope.done:
 		return true, nil
 	case <-ctx.Done():
 		return true, ctx.Err()
@@ -41,14 +47,19 @@ func (s *Service) beginCandidateTest(ctx context.Context, current *mounts.Mount,
 	}
 	s.serveMu.Lock()
 	if s.sourceTests == nil {
-		s.sourceTests = map[string]chan struct{}{}
+		s.sourceTests = map[string]*sourceTestScope{}
+	}
+	if s.serveClosed {
+		s.serveMu.Unlock()
+		return nil, nil, storage.ErrRemoteOffline
 	}
 	if s.sourceTests[source] != nil {
 		s.serveMu.Unlock()
 		return nil, nil, storage.ErrBusy
 	}
-	done := make(chan struct{})
-	s.sourceTests[source] = done
+	life, cancel := context.WithCancel(ctx)
+	scope := &sourceTestScope{done: make(chan struct{}), life: life, cancel: cancel}
+	s.sourceTests[source] = scope
 	slot := s.serveLeases[source]
 	var process *rcloneprogram.ServeProcess
 	if slot != nil {
@@ -57,13 +68,21 @@ func (s *Service) beginCandidateTest(ctx context.Context, current *mounts.Mount,
 	s.serveMu.Unlock()
 	var once sync.Once
 	finish := func() {
-		once.Do(func() { s.serveMu.Lock(); delete(s.sourceTests, source); close(done); s.serveMu.Unlock() })
+		once.Do(func() {
+			scope.cancel()
+			s.serveMu.Lock()
+			if s.sourceTests[source] == scope {
+				delete(s.sourceTests, source)
+			}
+			close(scope.done)
+			s.serveMu.Unlock()
+		})
 	}
 	if slot != nil && process == nil {
 		finish()
 		return nil, nil, storage.ErrBusy
 	}
-	budget := remotemedia.NewOperationBudget(ctx, limits.Connections)
+	budget := remotemedia.NewOperationBudget(life, limits.Connections)
 	if process != nil {
 		var err error
 		budget, err = process.SharedOperations(ctx)
@@ -76,7 +95,7 @@ func (s *Service) beginCandidateTest(ctx context.Context, current *mounts.Mount,
 			return nil, nil, storage.ErrRemoteChanged
 		}
 	}
-	hold, err := budget.AcquireTest(ctx)
+	hold, err := budget.AcquireTest(life)
 	if err != nil {
 		finish()
 		if errors.Is(err, remotemedia.ErrBusy) {

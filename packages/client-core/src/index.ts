@@ -299,7 +299,9 @@ export class HttpLocalApi {
   ) {
     this.baseUrl = routeOrigin(baseUrl);
     this.token = token;
-    this.rawFetcher = fetcher;
+    // Native Window.fetch accepts a value call, not this API as its receiver.
+    // An explicitly bound injected transport retains its own receiver.
+    this.rawFetcher = (input, init) => fetcher(input, init);
     this.fetcher = (input,init) => this.rawFetcher(input,{...init,redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
     const routes = sessionRoute(token); if (routes) this.useRoutes(routes);
   }

@@ -366,6 +366,7 @@ type artworkWork struct {
 	role, subject, candidate, origin, provider, fence, actor string
 	revision                                                 int64
 	preview                                                  bool
+	sizeRefresh                                              bool
 	locked                                                   bool
 	attempts                                                 int
 }
@@ -414,7 +415,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	// transaction, and a sort of every due job held the write gate for as long
 	// as the queue was long. A due retry is taken in the order its retry time
 	// came round.
-	err = tx.QueryRowContext(ctx, artworkJobClaimSQL, stamp).Scan(&j.id, &j.target.Kind, &entity, &j.role, &j.subject, &j.candidate, &j.origin, &j.provider, &j.fence, &j.revision, &j.actor, &j.locked, &j.attempts, &j.preview)
+	err = tx.QueryRowContext(ctx, artworkJobClaimSQL, stamp).Scan(&j.id, &j.target.Kind, &entity, &j.role, &j.subject, &j.candidate, &j.origin, &j.provider, &j.fence, &j.revision, &j.actor, &j.locked, &j.attempts, &j.preview, &j.sizeRefresh)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -570,7 +571,7 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	if err = linkArtworkBuckets(ctx, tx, a, b); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=excluded.actor,observed_at=excluded.observed_at`, j.target.Kind, entity, j.role, j.subject, j.candidate, a.digest, b.digest, j.locked, 1, j.actor, stamp); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO artwork_selections VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,role,subject) DO UPDATE SET candidate_id=excluded.candidate_id,digest=excluded.digest,thumbnail_digest=excluded.thumbnail_digest,locked=excluded.locked,revision=artwork_selections.revision+1,actor=CASE WHEN ? THEN artwork_selections.actor ELSE excluded.actor END,observed_at=excluded.observed_at`, j.target.Kind, entity, j.role, j.subject, j.candidate, a.digest, b.digest, j.locked, 1, j.actor, stamp, j.sizeRefresh); err != nil {
 		return err
 	}
 	if err = projectSelectedArtwork(ctx, tx, j.target, j.role); err != nil {
@@ -594,6 +595,14 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 // slot was taken or by a seeder that did not check. A job the owner asked for,
 // a local image and a preview are not automatic provider art and are never held.
 func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int64) (bool, error) {
+	if j.sizeRefresh {
+		if j.actor != "" || j.preview || j.provider == "generated" {
+			return true, nil
+		}
+		var exact bool
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections WHERE kind=? AND entity_id=? AND role=? AND subject=? AND candidate_id=? AND revision=? AND locked=?)`, j.target.Kind, entity, j.role, j.subject, j.candidate, j.revision, j.locked).Scan(&exact)
+		return !exact, err
+	}
 	if j.actor != "" || j.provider == "local" || j.preview {
 		return false, nil
 	}
@@ -877,10 +886,10 @@ func (s *Service) nextArtworkDirectoryBatch() ([]os.FileInfo, error) {
 	return entries, err
 }
 
-var artworkJobClaimSQL = `SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview FROM (
- SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END) AS prime,created_at AS created FROM artwork_jobs INDEXED BY artwork_jobs_claim WHERE status='pending' AND (CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END)=0 AND next_attempt<=?1 ORDER BY created_at,id LIMIT 1)
- UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_claim WHERE status='pending' AND (CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END)=1 AND next_attempt<=?1 ORDER BY created_at,id LIMIT 1)
- UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_due WHERE status='retry' AND next_attempt<=?1 ORDER BY next_attempt LIMIT 1)
- UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_due WHERE status='running' AND lease_until<=?1 ORDER BY created_at,id LIMIT 1)
- UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_storage_retry WHERE status='failed' AND error='storage_unavailable' AND next_attempt<=?1 ORDER BY next_attempt LIMIT 1)
+var artworkJobClaimSQL = `SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh FROM (
+ SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END) AS prime,created_at AS created FROM artwork_jobs INDEXED BY artwork_jobs_claim WHERE status='pending' AND (CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END)=0 AND next_attempt<=?1 ORDER BY created_at,id LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_claim WHERE status='pending' AND (CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END)=1 AND next_attempt<=?1 ORDER BY created_at,id LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_due WHERE status='retry' AND next_attempt<=?1 ORDER BY next_attempt LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_due WHERE status='running' AND lease_until<=?1 ORDER BY created_at,id LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT id,kind,entity_id,role,subject,candidate_id,origin,provider,source_fence,selection_revision,actor,locked,attempts,preview,size_refresh,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at FROM artwork_jobs INDEXED BY artwork_jobs_storage_retry WHERE status='failed' AND error='storage_unavailable' AND next_attempt<=?1 ORDER BY next_attempt LIMIT 1)
 ) ORDER BY prime,created,id LIMIT 1`

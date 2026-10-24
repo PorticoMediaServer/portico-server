@@ -50,7 +50,7 @@ type Service struct {
 	commands            sync.Mutex
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
-	sourceTests         map[string]chan struct{}
+	sourceTests         map[string]*sourceTestScope
 	readLeases          map[string]map[int64]*SourceReadLease
 	serveClosed         bool
 	serveLife           context.Context

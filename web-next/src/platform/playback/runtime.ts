@@ -1193,9 +1193,11 @@ export class WebShellPlaybackRuntime {
     const stack = this.require(fence), plan = stack.subtitles?.getSnapshot().plan ?? this.snapshot.offers?.subtitlePlan;
     const track = trackId === null ? null : plan?.resources.find(resource => resource.id === trackId && resource.sourceId === fence.sourceId && resource.enabled);
     if (!plan || trackId !== null && !track) problem('playback_subtitle_unavailable');
-    // Phase 1 owns text delivery, not the Phase 4 styled/image renderer. The real session is
-    // asked for its ordinary server-selected delivery; no unsupported client drawing is claimed.
-    await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: Math.round(Number(track.offsetUs) / 1000)} : {})});
+    const offsetMs = track ? Number(track.offsetUs) / 1000 : undefined;
+    // The replan wire is integer milliseconds. Preserve the actual signed correction
+    // exactly, including zero; a fractional correction cannot be rounded into another clock.
+    if (track && !Number.isSafeInteger(offsetMs)) problem('playback_subtitle_unavailable');
+    await stack.service.changePlayback({subtitleTrackId: trackId, ...(track ? {subtitleOffsetMs: offsetMs} : {})});
     if (this.current(stack)) this.sync();
   }
   /** Drawn temporary choices for this actual subject; music and live have no speed picker. */
@@ -1219,6 +1221,15 @@ export class WebShellPlaybackRuntime {
     const next = direction === 1 ? offered.find(value => value > rate) : [...offered].reverse().find(value => value < rate);
     if (next !== undefined) this.setSpeed(fence, next);
   }
+  /** Browser transports belong only to this loaded, unheld HTML-media source.
+   * A native factory or the separate music renderer cannot lend its idle video. */
+  browserMediaReady(fence: PlaybackFence): boolean {
+    if (!this.matches(fence) || fence.kind === 'local' || this.env.createPlayer || this.stack.mode !== 'server') return false;
+    const slot = this.stack.web.slot, observed = slot.observe();
+    return slot.loaded === fence.generation && !slot.settling && observed.generation === fence.generation
+      && ['playing', 'paused', 'buffering'].includes(observed.state) && this.snapshot.dock.remote?.phase !== 'playing';
+  }
+
   /** The ordinary browser has no qualified frame primitive. A platform command still owns
    * its actual decoder/entry readiness and may refuse without publishing a guessed clock. */
   canStepFrame(fence: PlaybackFence): boolean {
