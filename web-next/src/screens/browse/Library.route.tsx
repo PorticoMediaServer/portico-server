@@ -74,7 +74,12 @@ function LibraryShow({context, libraryId, search}: {context: ScreenContext; libr
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  // The offer needs the library's own online metadata agent, read from the server; unknown is false.
+  // The offer needs this exact library's own online metadata agent. The fact is keyed to the
+  // library and screen scope that produced it, so a stale read can never enable another library
+  // or survive a scope change; unknown, reset and failed reads all withhold the tab.
+  const [agentFact, setAgentFact] = useState<Readonly<{key: string; online: boolean}>>();
+  const agentKey = JSON.stringify([context.scope.serverId, context.scope.viewerId, library.id, library.kind]);
+  const onlineAttention = agentFact?.key === agentKey && agentFact.online === true;
   const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
@@ -90,8 +95,20 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   }, [context, sourceKey]);
   useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
   const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
-  const [onlineAttention, setOnlineAttention] = useState(false);
-  useEffect(() => {let live = true; void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {if (live) setOnlineAttention(parseMetadataAgent(raw).agent === 'online');}, () => {}); return () => {live = false;};}, [resources, library.id]);
+  useEffect(() => {
+    if (!resources.life.current()) return;
+    let live = true;
+    const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, online: false});};
+    void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {
+      if (!live || !resources.life.current()) return;
+      let agent;
+      try {agent = parseMetadataAgent(raw);} catch {withhold(); return;}
+      // A read that answers for another library or kind is not this library's fact.
+      if (agent.libraryId !== library.id || agent.libraryKind !== library.kind) {withhold(); return;}
+      setAgentFact({key: agentKey, online: agent.agent === 'online'});
+    }, withhold).catch(withhold);
+    return () => {live = false;};
+  }, [resources, library.id, library.kind, agentKey]);
   const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
   const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
   const playSelection = useMemo(() => {
