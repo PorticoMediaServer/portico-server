@@ -181,7 +181,7 @@ function HomeRowView(props: HomeRowProps) {
     if (!liveCurrent) { refreshLive(); return; }
     return selection.registerWindow(row, rowIndex, range[0], range[1]);
   }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
-  return <div ref={interest.ref} className={styles.rowSlot}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
+  return <div ref={interest.ref} className={styles.rowSlot} data-home-row={props.row.id}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
 }
 function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};

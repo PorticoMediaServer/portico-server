@@ -5,6 +5,8 @@
 .rows { position: relative; z-index: var(--layer-content); padding-bottom: 72px; }
 .rows[data-with-hero='true'] { margin-top: -40px; }
 .rowSlot + .rowSlot { margin-top: 44px; }
+/* Listen next's shorter square cards centre in the line set by its drawn continuation card. */
+.rowSlot[data-home-row='listen_next'] [class*='track'] { align-items: center; }
 .collection { margin: 0 var(--shell-gutter, var(--gutter-desktop)) 0; }
 .rowGuide { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: normal; color: var(--color-text-tertiary); cursor: pointer; }
 .rowGuide:hover { color: var(--color-text-secondary); }
