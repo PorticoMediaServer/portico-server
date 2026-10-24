@@ -389,3 +389,89 @@ test('contains accepts only the exact resident objects of this generation', asyn
     assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
   } finally { controller.dispose(); }
 });
+
+// Queue item 1 — aggregate replacement, group order and view races on the real DVRModel.
+test('the newest summary reply wins even when an older one settles last', async () => {
+  const older = held<unknown>(), newer = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => pathname(call) === '/v1/dvr/summary'
+    ? (served++ === 0 ? older.promise : newer.promise) : pageOf([]));
+  const controller = controllerFor(api);
+  try {
+    const first = controller.readSummary();
+    const second = controller.readSummary();
+    const newest = {upcoming: 1, recorded: 2, rules: 3, conflicts: 4, groups: 5, unwatched: 6};
+    newer.resolve(newest);
+    assert.deepEqual(await second, newest);
+    older.resolve({upcoming: 99, recorded: 99, rules: 99, conflicts: 99, groups: 99, unwatched: 99});
+    await assert.rejects(first, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    assert.deepEqual(controller.getSnapshot().summary, newest);
+  } finally { controller.dispose(); }
+});
+
+test('a same-order groups refresh keeps only the newest genuine page', async () => {
+  const older = held<unknown>(), newer = held<unknown>();
+  let served = 0;
+  const {api} = fixtureServer(call => pathname(call) === '/v1/dvr/groups'
+    ? (served++ === 0 ? older.promise : newer.promise) : pageOf([]));
+  const controller = controllerFor(api);
+  try {
+    const first = controller.readGroups('recent');
+    const second = controller.readGroups('recent');
+    newer.resolve(groupsFact('recent', 'newest-token'));
+    await second;
+    assert.equal(controller.getSnapshot().groups?.nextCursor, 'newest-token');
+    older.resolve(groupsFact('recent', 'stale-token'));
+    await assert.rejects(first, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.groupsSort, 'recent');
+    assert.equal(snapshot.groups?.nextCursor, 'newest-token');
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+  } finally { controller.dispose(); }
+});
+
+test('an aggregate authority failure fences a page reply that lands later', async () => {
+  const pageReply = held<unknown>();
+  let deny = false;
+  const {api, calls} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') { if (deny) throw {status: 401};return summaryFact; }
+    return pageReply.promise;
+  });
+  const controller = controllerFor(api);
+  try {
+    const loading = controller.load({view: 'recorded'});
+    deny = true;
+    await assert.rejects(controller.readSummary(), failure => (failure as {status?: number}).status === 401);
+    pageReply.resolve(pageOf([recording(hex(64, '1'))], '', 4));
+    await loading;
+    const snapshot = controller.getSnapshot();
+    assert.equal(calls.filter(call => pathname(call) === '/v1/dvr').length, 1);
+    assert.equal(snapshot.page, null, 'the page reply settled after the authority epoch changed');
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.accessDenied, true);
+    assert.notEqual(snapshot.phase, 'retired');
+  } finally { controller.dispose(); }
+});
+
+test('a view change keeps the server aggregates that are not page facts', async () => {
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryFact;
+    if (pathname(call) === '/v1/dvr/groups') return groupsFact('title', 'group-next');
+    return params(call).get('state') === 'recorded'
+      ? pageOf([recording(hex(64, '1'))], '', 1) : pageOf([recording(hex(64, '2'))], '', 2);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    await controller.readSummary();
+    await controller.readGroups('title');
+    await controller.load({view: 'history'});
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.deepEqual(snapshot.summary, summaryFact, 'the summary is the server total, not the old page');
+    assert.equal(snapshot.groupsSort, 'title');
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(snapshot.groups?.nextCursor, 'group-next');
+  } finally { controller.dispose(); }
+});
