@@ -106,6 +106,8 @@ pub fn relocate(connection:&mut Connection,source:&Path,selected:&Path,current:i
         directory(source)?;let parent=fs::canonicalize(selected).map_err(unavailable)?;directory(&parent)?;text(&parent)?;
         if !current(){return Err(Error::DownloadsConflict)}
         let files=names(connection,source)?;
+        let required=files.iter().try_fold(0u64,|sum,name|sum.checked_add(fs::symlink_metadata(source.join(name)).map_err(unavailable)?.len()).ok_or(Error::DownloadsUnavailable))?;
+        if required>crate::download_store::disk_space(&parent)?.1{return Err(Error::StorageFull)}
         let mut nonce=[0u8;16];SystemRandom::new().fill(&mut nonce).map_err(unavailable)?;
         let nonce=nonce.iter().map(|byte|format!("{byte:02x}")).collect::<String>();
         let destination=parent.join(format!("Portico-{nonce}"));

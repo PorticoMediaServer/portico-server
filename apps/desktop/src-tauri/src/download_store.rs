@@ -253,7 +253,7 @@ pub struct DownloadArtwork {
     pub mime: String,
     pub bytes: Vec<u8>,
 }
-fn disk_space(path: &Path) -> Result<(u64, u64)> {
+pub(super) fn disk_space(path: &Path) -> Result<(u64, u64)> {
     #[cfg(unix)]
     {
         use std::{ffi::CString, os::unix::ffi::OsStrExt};
