@@ -29,6 +29,10 @@ export type NativeDownloadsBridge = Readonly<{
   command(lease:string,operation:Readonly<Record<string,unknown>>):Promise<unknown>;
   loadLocal?(lease:string,source:NativeLocalLoadRequest):Promise<unknown>;
   retireLocal?(lease:string,generation:number):Promise<void>;
+  folder?:Readonly<{
+    location(lease:string):Promise<unknown>;begin(lease:string):Promise<unknown>;
+    choose(token:string):Promise<void>;open(token:string):Promise<void>;cancel(token:string):Promise<void>;
+  }>;
 }>;
 export const nativeDownloadsBridge:NativeDownloadsBridge = Object.freeze({
   bind:scope=>invoke<string>('desktop_downloads_bind',{scope}),
@@ -36,6 +40,13 @@ export const nativeDownloadsBridge:NativeDownloadsBridge = Object.freeze({
   command:(lease,operation)=>invoke<unknown>('desktop_downloads_command',{lease,operation}),
   loadLocal:(lease,source)=>invoke<unknown>('desktop_load_local',{lease,source}),
   retireLocal:(lease,generation)=>invoke<void>('desktop_retire_local',{lease,generation}),
+  folder:{
+    location:lease=>invoke<unknown>('desktop_download_folder_location',{lease}),
+    begin:lease=>invoke<unknown>('desktop_download_folder_begin',{lease}),
+    choose:token=>invoke<void>('desktop_download_folder_choose',{token}),
+    open:token=>invoke<void>('desktop_download_folder_open',{token}),
+    cancel:token=>invoke<void>('desktop_download_folder_cancel',{token}),
+  },
 });
 const fixedCodes = new Set(['downloads_unavailable','downloads_conflict','download_not_ready','download_verification_failed','invalid_receipt','storage_full','invalid_command','forbidden_origin','unsupported']);
 export function downloadFailure(error:unknown):Error {
@@ -111,6 +122,7 @@ export class DesktopDownloadStore {
   private readonly localLoads=new Map<number,Promise<unknown>>();
 
   private readonly listeners=new Set<()=>void>();
+  private readonly folderCancels=new Set<()=>void>();
   private readonly preparations=new WeakMap<PreparedLocalQueue,{lease:string;retired:boolean}>();
   private constructor(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge){this.scope=checkScope(scope);this.isCurrent=isCurrent;this.bridge=bridge;}
   static async bind(scope:DownloadScope,isCurrent:()=>boolean,bridge:NativeDownloadsBridge=nativeDownloadsBridge,signal?:AbortSignal):Promise<DesktopDownloadStore>{
@@ -121,6 +133,28 @@ export class DesktopDownloadStore {
   private guard(signal?:AbortSignal){if(this.disposed||!this.isCurrent()||signal?.aborted)aborted();}
   assertCurrent(signal?:AbortSignal):void{this.guard(signal);}
   subscribe(listener:()=>void):()=>void{this.guard();this.listeners.add(listener);return()=>{this.listeners.delete(listener);};}
+  async folderLocation(signal:AbortSignal):Promise<Readonly<{displayPath:string}>>{
+    this.guard(signal);const folder=this.bridge.folder;if(!folder)throw new Error('unsupported');
+    try{
+      const value=object(await folder.location(this.lease));this.guard(signal);const displayPath=text(value.displayPath,32768);
+      if(!displayPath)return invalid();return Object.freeze({displayPath});
+    }catch(error){this.guard(signal);throw downloadFailure(error);}
+  }
+  private async folderAction(action:'choose'|'open',signal:AbortSignal):Promise<void>{
+    this.guard(signal);const folder=this.bridge.folder;if(!folder)throw new Error('unsupported');
+    let token:string|undefined,cancelled=false;
+    const cancel=()=>{cancelled=true;if(token)void folder.cancel(token).catch(()=>{});};
+    this.folderCancels.add(cancel);signal.addEventListener('abort',cancel,{once:true});
+    try{
+      token=digest(await folder.begin(this.lease));this.guard(signal);if(cancelled)aborted();
+      await folder[action](token);this.guard(signal);if(cancelled)aborted();
+      if(action==='choose')for(const listener of [...this.listeners]){try{listener();}catch{/* Committed native pointer remains authoritative. */}}
+      this.guard(signal);
+    }catch(error){if(token)await folder.cancel(token).catch(()=>{});this.guard(signal);throw downloadFailure(error);}
+    finally{signal.removeEventListener('abort',cancel);this.folderCancels.delete(cancel);}
+  }
+  chooseFolder(signal:AbortSignal){return this.folderAction('choose',signal);}
+  openFolder(signal:AbortSignal){return this.folderAction('open',signal);}
   async prepareLocalQueue(input:LocalSelection,signal:AbortSignal):Promise<PreparedLocalQueue>{
     this.guard(signal);
     const selection=input.kind==='entry'?{kind:'entry',entryId:digest(input.entryId),expectedRevision:integer(input.expectedRevision)}:
@@ -276,7 +310,7 @@ export class DesktopDownloadStore {
     return Object.freeze(value.map(raw=>{const v=object(raw);return Object.freeze({playId:id(v.playId),itemId:id(v.itemId),positionMs:integer(v.positionMs),ended:boolean(v.ended),observedMs:integer(v.observedMs)});}));
   },signal);}
   acknowledgePlay(play:Pick<PendingPlay,'playId'|'observedMs'>,signal?:AbortSignal){return this.request({action:'acknowledgePlay',playId:id(play.playId),observedMs:integer(play.observedMs)},'done',()=>undefined,signal);}
-  dispose(){if(this.disposed)return;this.disposed=true;this.listeners.clear();const lease=this.lease;this.lease='';
+  dispose(){if(this.disposed)return;this.disposed=true;for(const cancel of this.folderCancels)cancel();this.folderCancels.clear();this.listeners.clear();const lease=this.lease;this.lease='';
     if(!lease)return;
     const prepared=this.currentPreparation;
     const release=()=>prepared?this.releaseLocalQueue(prepared).catch(()=>{}).then(()=>this.bridge.release(lease)):this.bridge.release(lease);
