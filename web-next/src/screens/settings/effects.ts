@@ -34,6 +34,12 @@ const preferenceEffects = new Set([
      rec_title.go gate activity sharing; social/privacy.go hides Watch Together membership; and
      catalog/search_history.go stops keeping recent searches. */
   'privacy.pauseWatchHistory', 'privacy.showActivityToMembers', 'privacy.includeInWatchTogether', 'search.rememberHistory',
+  /* Account Music: the web audio engine reads these through music-preferences.ts and
+     applies them in DecodeAudioRender (gapless, crossfade, smooth transitions, leveling
+     and never-boost). music.qualityAway is the server's music delivery policy for the
+     away network class, and music.dsdGainDb is the server's audio-conversion gain. */
+  'music.audioNormalization', 'music.crossfadeMs', 'music.gapless',
+  'music.smoothTransitions', 'music.neverBoost', 'music.qualityAway', 'music.dsdGainDb',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;

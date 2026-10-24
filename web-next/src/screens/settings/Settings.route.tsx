@@ -37,6 +37,7 @@ import {DeviceRowControl} from './device-rows';
 import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
 import {AudioSubtitleLanguageList, SubtitlePreview, isSubtitlePreview, preferredLanguageKind} from './audio-subtitles-rows';
 import {subtitlePreviewPaint} from './audio-subtitles-model';
+import {MusicEqualizerRow, musicEqualizerAvailable} from './account-music/MusicEqualizerRow';
 import {browserAccountOrigin} from '../../platform/account-origin';
 import {SettingsInvitations} from './invitations';
 
@@ -77,6 +78,7 @@ export function SettingsEntry() {
     // own missing binding never decides for the rows it sets.
     const engine = (row: Parameters<SettingsController['eligible']>[0]) => {
       if (privacy.eligible(row)) return true;
+      if (row.id === 'music.eq') return musicEqualizerAvailable(platform);
       const binding = settingsBinding(row.id);
       if (!binding) return row.id === 'device.name' && !!platform?.device?.getSnapshot().facts.name || row.id === 'device.appVersion' && !!platform?.device?.getSnapshot().facts.appVersion;
       if (binding.form === 'preferences') return hasWebPreferenceEffect(row);
@@ -143,6 +145,7 @@ export function SettingsEntry() {
             text={defaultI18n.t('next.settingsSpec.account.audio-subtitles.groups.2.rows.0.control.text')} />;
         }
         if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
+        if (row.id === 'music.eq') return <MusicEqualizerRow platform={platform} isCurrent={current}/>;
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
@@ -158,7 +161,7 @@ export function SettingsEntry() {
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
-      eligible: (row, selected) => server?.eligible(row) ?? (row.id === 'libraries.folders' ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => server?.eligible(row) ?? (row.id === 'libraries.folders' ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
@@ -166,7 +169,7 @@ export function SettingsEntry() {
         if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
-        return server?.rowState(row) ?? device ?? (row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
+        return server?.rowState(row) ?? device ?? (row.id === 'music.eq' ? {present: current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform)} : row.id === 'people.table' ? {present: !!people && current() && controller.sectionVisible(selected.section)} : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? {present: current() && controller.sectionVisible(selected.section)} : source.rowState(row, selected));
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
