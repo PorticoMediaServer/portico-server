@@ -4,11 +4,13 @@ import {createDetailBindings} from '../detail/bindings';
 import {createShowBindings} from '../detail/show-bindings';
 import {SEARCH_CHIPS} from '@core/presentation/search-model.ts';
 import type {SearchGroupResult} from '@core/search.ts';
+import {SearchGenresController} from './genres';
 
 /** One session is retained by the parent while Search is off screen; never browser storage. */
 export function createSearchBindings(context: ScreenContext) {
   const life = screenLifetime(context);
   const service = new SearchService({api: life.api, scope: context.scope});
+  const genres = new SearchGenresController({api: life.api, signal: life.signal(), isCurrent: life.current, slot: 'backdrop', limit: 8});
   const topTitle = createDetailBindings(context), topShow = createShowBindings(context);
   let text = '', group: SearchGroup | undefined;
   let resultKey = '';
@@ -24,10 +26,12 @@ export function createSearchBindings(context: ScreenContext) {
     for (const result of state.groups) for (const entry of result.items) visible.add(entry);
   });
   const select = async (q: string, options: Omit<SearchQuery, 'q'> = {}) => {
-    life.assert(); text = q; group = options.group; await service.select(q, options.group || options.groups ? options : {...options, groups: SEARCH_CHIPS.flatMap(chip => chip.id === 'all' ? [] : [chip.id])});
+    life.assert(); text = q; group = options.group;
+    if (q.trim()) genres.cancel();
+    await service.select(q, options.group || options.groups ? options : {...options, groups: SEARCH_CHIPS.flatMap(chip => chip.id === 'all' ? [] : [chip.id])});
   };
   return {
-    context, service, select, topTitle, topShow,
+    context, service, genres, select, topTitle, topShow,
     session: () => ({text, group}),
     summary: () => {
       const data = service.getSnapshot().data;
@@ -45,7 +49,7 @@ export function createSearchBindings(context: ScreenContext) {
       if (service.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
       await context.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0}, life.signal());
     },
-    dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
+    dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); genres.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type SearchBindings = ReturnType<typeof createSearchBindings>;

@@ -75,6 +75,8 @@ test('domain factory creation is inert and disposal erases all private snapshots
   assert.equal(show.personal.getSnapshot(), undefined);
   assert.equal(person.getSnapshot().page, undefined);
   assert.equal(search.service.getSnapshot().data, null);
+  assert.equal(search.genres.getSnapshot().phase, 'idle');
+  assert.deepEqual(search.genres.getSnapshot().genres, []);
   assert.deepEqual(search.session(), {text: '', group: undefined});
 });
 
