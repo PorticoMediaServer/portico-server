@@ -43,8 +43,8 @@ function EntryPickerSurface({destination, target, ports, anchor, canCreate, onCl
     try {
       const operationId = await ports.requestId();
       if (!ports.isCurrent()) return;
-      if (destination === 'playlist') await ports.api.request(routePath('post_playlists_id_entries').replace('{id}', encodeURIComponent(id)), 'POST', {operationId, itemIds: [target.itemId]});
-      else await ports.api.request(routePath('post_collections_id_items_batch').replace('{id}', encodeURIComponent(id)), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
+      if (destination === 'playlist') await ports.api.request(routePath('post_playlists_id_entries', {id}), 'POST', {operationId, itemIds: [target.itemId]});
+      else await ports.api.request(routePath('post_collections_id_items_batch', {id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
       if (!ports.isCurrent()) return;
       finish(id, label);
     } catch { if (ports.isCurrent()) setError(t('next.selection.pickerFailed')); }
@@ -62,7 +62,7 @@ function EntryPickerSurface({destination, target, ports, anchor, canCreate, onCl
         if (ports.isCurrent()) finish(made.playlistId, value);
       } else {
         const made = await ports.api.request<{id: string}>(`/v1/libraries/${encodeURIComponent(target.libraryId)}/collections`, 'POST', {name: value});
-        await ports.api.request(routePath('post_collections_id_items_batch').replace('{id}', encodeURIComponent(made.id)), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
+        await ports.api.request(routePath('post_collections_id_items_batch', {id: made.id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
         if (ports.isCurrent()) finish(made.id, value);
       }
     } catch { if (ports.isCurrent()) setError(t('next.selection.pickerFailed')); }
