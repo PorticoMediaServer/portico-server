@@ -26,6 +26,11 @@ import (
 // owned copy/mux -> private publisher path beyond the configured startup
 // buffer. A finite three-second probe cannot establish this continuation.
 func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
+	t.Run("mpegts", func(t *testing.T) { rollingLiveCapture(t, false) })
+	t.Run("fragmented-mp4", func(t *testing.T) { rollingLiveCapture(t, true) })
+}
+
+func rollingLiveCapture(t *testing.T, fragmented bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
 	defer cancel()
 	ffmpeg, ffprobe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
@@ -89,7 +94,7 @@ func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer buffer.Close()
-	publisher, err := buffer.Publisher(linearbuffer.Producer{ID: 1}, func() error { return ctx.Err() })
+	publisher, err := buffer.Publisher(linearbuffer.Producer{ID: 1, Fragmented: fragmented}, func() error { return ctx.Err() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +110,7 @@ func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
 	work, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- decoder.RunLinearHLS(work, supervisor, "rolling-live-capture", ffmpeg, gateway.URL(), output, decoder.LinearEncoding{HLSInput: true, Video: true, Audio: true}, reservation, nil, libraries...)
+		done <- decoder.RunLinearHLS(work, supervisor, "rolling-live-capture", ffmpeg, gateway.URL(), output, decoder.LinearEncoding{HLSInput: true, Video: true, Audio: true, Fragmented: fragmented}, reservation, nil, libraries...)
 	}()
 	defer func() { stop(); <-done }()
 	for {
