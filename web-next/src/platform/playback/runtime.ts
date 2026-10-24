@@ -4,6 +4,7 @@ import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.
 import {parseMediaItem} from '@core/media-item.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
+import {SessionsClient} from '@core/playback-v1/sessions.ts';
 import {QueueClient, type SegmentInput} from '@core/playback-v1/queue.ts';
 import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
@@ -41,7 +42,7 @@ import {captureQueueSource, type WebPlaybackQueueSource} from './queue-source.ts
 import {currentPolicyQueue, type WebPlaybackPolicyAction} from './policy.ts';
 import type {WebPlaybackVersionChoices, WebPlaybackVersionChoice} from './versions.ts';
 import type {VideoLike} from './web-media-player.ts';
-import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
+import type {WebPlaybackInfoRead, WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart, WebPlaybackVersionStart, WebPlaybackScreenTarget, WebPlaybackScreenLifetime} from './types.ts';
 
 type ChannelTarget = Readonly<{channel: GuideChannel}>;
 type LocalQueueLease = {preparation: WebLocalQueuePreparation; release(): Promise<void>; retired: boolean; released: boolean};
@@ -499,6 +500,32 @@ export class WebShellPlaybackRuntime {
       reportError: () => {if (this.current(stack)) {this.runtimeProblem = 'local_playback_failed';this.sync();}}});
     stack.local = {controller, lease};stack.offs.push(controller.subscribe(this.sync));
     return controller;
+  }
+
+  /** Info reads the current committed report afresh. It neither adopts a session nor
+   * substitutes capabilities/options for source, delivery or renderer measurements. */
+  async readPlaybackInfo(expected:QueuePlaybackFence,signal:AbortSignal):Promise<WebPlaybackInfoRead|null> {
+    if(expected.kind!=='queue'||signal.aborted)return null;
+    const fence=playbackFence(expected),stack=this.require(fence),captured=this.snapshot.session;
+    if(stack.mode!=='server'||!captured||captured.kind!=='vod'||captured.state==='ended'
+      ||captured.id!==fence.sessionId||captured.itemId!==fence.itemId
+      ||captured.presentation.generation!==fence.generation||captured.queue?.entryId!==fence.entryId)return null;
+    const isCurrent=()=>!signal.aborted&&this.current(stack)&&this.matches(fence)
+      &&this.snapshot.session?.revision===captured.revision
+      &&this.snapshot.session?.state!=='ended';
+    if(!isCurrent())return null;
+    const retired=new AbortController(),off=this.subscribe(()=>{if(!isCurrent())retired.abort();});
+    try {
+      const fresh=await new SessionsClient(stack.http).get(fence.sessionId,AbortSignal.any([signal,stack.life.signal,this.life.signal,retired.signal]));
+      if(!isCurrent()||fresh.id!==captured.id||fresh.revision!==captured.revision
+        ||fresh.kind!==captured.kind||fresh.role!==captured.role||fresh.state==='ended'
+        ||fresh.itemId!==fence.itemId||fresh.versionId!==captured.versionId
+        ||fresh.presentation.generation!==fence.generation
+        ||fresh.queue?.queueId!==captured.queue?.queueId||fresh.queue?.entryId!==fence.entryId)return null;
+      return Object.freeze({fence,sessionRevision:fresh.revision,
+        ...(fresh.playbackInfo!==undefined?{playbackInfo:fresh.playbackInfo}:{}),
+        ...(fresh.observedPlayback!==undefined?{observedPlayback:fresh.observedPlayback}:{}),isCurrent});
+    } finally {off();}
   }
 
   /** A chooser reads real current options without stopping the playing source. Its owner keeps
