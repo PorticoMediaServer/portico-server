@@ -78,12 +78,19 @@ try {
   browser = await chromium.launch({executablePath, headless: true, args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--renderer-process-limit=1']});
   const context = await browser.newContext({viewport, deviceScaleFactor: 1, colorScheme: 'dark', reducedMotion: 'reduce', locale: 'en-US', timezoneId: 'UTC'});
   const page = await context.newPage();
-  page.on('pageerror', error => report.errors.push(error.message));
+  page.on('pageerror', error => report.errors.push('pageerror: ' + error.message));
+  page.on('console', message => { if (message.type() === 'error') report.errors.push('console: ' + message.text()); });
+  page.on('requestfailed', request => report.errors.push('requestfailed: ' + request.url().replace(/^https?:\/\/[^/]+/, '') + ' ' + (request.failure()?.errorText ?? '')));
 
-  const settle = async (minimum) => {
+  const settle = async (minimum, tag) => {
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(count => document.querySelectorAll('article[data-card-kind]').length >= count, minimum, {timeout: 20000});
-    await page.waitForFunction(() => [...document.images].every(image => image.complete), null, {timeout: 20000});
+    try {
+      await page.waitForFunction(count => document.querySelectorAll('article[data-card-kind]').length >= count, minimum, {timeout: 20000});
+      await page.waitForFunction(() => [...document.images].every(image => image.complete), null, {timeout: 20000});
+    } catch (error) {
+      await page.screenshot({path: `${output}/saved-${tag}-failure.png`, fullPage: true}).catch(() => {});
+      throw new Error(`${tag} did not settle: ${error.message}; text=${JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 400))}; errors=${JSON.stringify(report.errors.slice(0, 6))}`);
+    }
     await page.waitForTimeout(400);
   };
   const measure = async (selectors) => page.evaluate((list) => {
@@ -100,7 +107,7 @@ try {
 
   // The genuine screen over its controlled source fixture.
   await page.goto(`${origin}/src/screens/saved/ds-web-saved-r46-preview.html?${state}`, {waitUntil: 'domcontentloaded'});
-  await settle(14);
+  await settle(14, 'build');
   report.build = await page.evaluate(buildMeasure);
   report.buildText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.build = 'saved-build.png';
@@ -118,7 +125,7 @@ try {
   const referenceHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}\n${css}\nhtml,body{margin:0;background:#071018}.screen{overflow:visible}nav{visibility:hidden}</style></head><body class="p">${sprite}${source.slice(start, end)}</body></html>`;
   await page.route('**/__saved_reference__', route => route.fulfill({contentType: 'text/html', body: referenceHtml}));
   await page.goto(`${origin}/__saved_reference__`, {waitUntil: 'domcontentloaded'});
-  await settle(14);
+  await settle(14, 'frame');
   report.reference = await measure(referenceSelectors);
   report.referenceText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.reference = 'saved-frame.png';
