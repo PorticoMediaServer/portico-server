@@ -12,9 +12,10 @@ import (
 // original Signed/Request wire formats remain unchanged. Runtime registration
 // must verify and atomically freeze both complete envelopes before handoff.
 type PendingRequest struct {
-	Payload    string  `json:"payload"`
-	Signature  string  `json:"signature"`
-	OwnerStart *Signed `json:"ownerStart,omitempty"`
+	Payload          string  `json:"payload"`
+	Signature        string  `json:"signature"`
+	OwnerStart       *Signed `json:"ownerStart,omitempty"`
+	OwnerSwitchCount *Signed `json:"ownerSwitchCount,omitempty"`
 }
 
 func (q PendingRequest) Original() Signed { return Signed{Payload: q.Payload, Signature: q.Signature} }
@@ -23,7 +24,7 @@ func (PendingRequest) GoString() string   { return "[pending claim redacted]" }
 
 func (q *PendingRequest) UnmarshalJSON(raw []byte) error {
 	*q = PendingRequest{}
-	fields, e := wirejson.Object(raw, "payload", "signature", "ownerStart")
+	fields, e := wirejson.Object(raw, "payload", "signature", "ownerStart", "ownerSwitchCount")
 	if e != nil {
 		return ErrInvalid
 	}
@@ -42,6 +43,20 @@ func (q *PendingRequest) UnmarshalJSON(raw []byte) error {
 			return e
 		}
 		next.OwnerStart = &start
+	}
+	if rawCount, ok := fields["ownerSwitchCount"]; ok {
+		if next.OwnerStart == nil {
+			return ErrInvalid
+		}
+		countFields, e := wirejson.Object(rawCount, "payload", "signature")
+		if e != nil {
+			return ErrInvalid
+		}
+		count, e := pendingSigned(countFields)
+		if e != nil {
+			return e
+		}
+		next.OwnerSwitchCount = &count
 	}
 	*q = next
 	return nil
@@ -71,6 +86,7 @@ func (PendingRequest) JSONSchema() map[string]any {
 		props[name] = field
 	}
 	props["ownerStart"] = signed
+	props["ownerSwitchCount"] = signed
 	owner := map[string]any{"type": "object", "properties": props, "required": []string{"payload", "signature", "ownerStart"}, "additionalProperties": false}
 	return map[string]any{"oneOf": []any{signed, owner}}
 }
