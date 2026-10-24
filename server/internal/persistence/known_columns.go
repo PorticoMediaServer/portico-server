@@ -1396,6 +1396,7 @@ catalog_shows.network
 catalog_shows.original_title
 catalog_shows.overview
 catalog_shows.provider_match_status
+catalog_shows.source_edition
 catalog_shows.studio
 catalog_shows.tagline
 catalog_shows.tags
