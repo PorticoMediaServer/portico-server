@@ -1,0 +1,21 @@
+/** Reference names drawn in desktop-live.html frame 6; served to the gallery only. */
+export const liveRulesFixtures = {
+  'next.dev.live.source': 'Synthetic Live TV',
+  'next.dev.live.guideThrough': 'Saturday',
+  'next.dev.live.clockmakers': 'The Clockmakers',
+  'next.dev.live.worldTonight': 'World Tonight',
+  'next.dev.live.summitFootball': 'Summit Football',
+  'next.dev.live.wildPlains': 'Wild Plains',
+  'next.dev.live.atlas': 'Atlas Documentaries',
+  'next.dev.live.northwindNews24': 'Northwind News 24',
+  'next.dev.live.summitSports': 'Summit Sports',
+  'next.dev.live.crossedWires': 'Crossed Wires',
+  'next.dev.live.openDoors': 'Open Doors',
+  'next.dev.live.movies': 'Movies',
+  'next.dev.live.tvShows': 'TV Shows',
+  'next.dev.live.anime': 'Anime',
+  'next.dev.live.music': 'Music',
+  'next.dev.live.audiobooks': 'Audiobooks',
+  'next.dev.live.profileName': 'Demo',
+  'next.dev.live.profileInitial': 'D',
+} as const;

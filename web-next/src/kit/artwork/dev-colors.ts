@@ -11,3 +11,12 @@ export const referenceArtworkColors = {
   // auth.html 13/15/16/22 inline bases, deliberately different from owner-people's semantic map.
   authProfileTints: {demo: '#2f86bb', jules: '#8a7a3a'} as Readonly<Record<string, string>>,
 } as const;
+
+/** desktop-live.html frame 6 channel tints and header glow. Imported only by the serve-only live gallery. */
+export const referenceDvrTints = {
+  clockmakers: '#2f6250',
+  worldTonight: '#6e3446',
+  summitFootball: '#7d5a2a',
+  wildPlains: '#2f6250',
+  ambient: ['#2f5f73', '#7a3b3b', '#2f6250'],
+} as const;
