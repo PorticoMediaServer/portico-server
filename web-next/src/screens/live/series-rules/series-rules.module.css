@@ -189,7 +189,7 @@
   background: var(--sheet-bg);
   overflow: hidden;
   line-height: normal;
-  -webkit-font-smoothing: auto;
+  -webkit-font-smoothing: subpixel-antialiased;
   box-shadow: -40px 0 80px -20px color-mix(in srgb, var(--color-shadow) 75%, transparent),
     inset 1px 0 0 color-mix(in srgb, var(--color-text) 7%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--color-text) 7%, transparent);

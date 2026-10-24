@@ -75,7 +75,7 @@ function FrameChrome() {
       <a className={shellStyles.icon} href="#" aria-label={t('next.home.shell.search')} onClick={event => event.preventDefault()}><Icon name="i-search" size={22}/></a>
       <a className={shellStyles.icon} href="#" aria-label={t('next.home.shell.saved')} onClick={event => event.preventDefault()}><Icon name="i-bookmark" size={22}/></a>
       <a className={shellStyles.icon} href="#" aria-label={t('next.home.shell.unread', {count: 3})} onClick={event => event.preventDefault()}><Icon name="i-bell" size={22}/><span className={shellStyles.dot}/></a>
-      <button type="button" className={activityStyles.trigger} data-streams="true" aria-label={t('next.shell.activityLabel', {count: 2})} aria-haspopup="dialog" aria-expanded="false">
+      <button type="button" className={activityStyles.trigger} data-busy="true" data-streams="true" aria-label={t('next.shell.activityLabel', {count: 2})} aria-haspopup="dialog" aria-expanded="false">
         <Icon name="i-act" size={22}/><span className={activityStyles.streamCount}>{2}</span>
       </button>
       <span className={shellStyles.avatar}><ProfileAvatarFace initial={f['next.dev.live.profileInitial']} art="blue" size={34}/></span>
