@@ -17,10 +17,7 @@ func TestOpenAPILibraryKindsMatchServer(t *testing.T) {
 			RequestBody struct {
 				Content map[string]struct {
 					Schema struct {
-						Properties map[string]struct {
-							Type string
-							Enum []string
-						}
+						Properties map[string]json.RawMessage
 					}
 				}
 			}
@@ -29,7 +26,13 @@ func TestOpenAPILibraryKindsMatchServer(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	kind := doc.Paths["/v1/libraries"]["post"].RequestBody.Content["application/json"].Schema.Properties["kind"]
+	var kind struct {
+		Type string
+		Enum []string
+	}
+	if err = json.Unmarshal(doc.Paths["/v1/libraries"]["post"].RequestBody.Content["application/json"].Schema.Properties["kind"], &kind); err != nil {
+		t.Fatal(err)
+	}
 	if kind.Type != "string" || len(kind.Enum) != 7 {
 		t.Fatal("library creation has no complete kind vocabulary")
 	}
