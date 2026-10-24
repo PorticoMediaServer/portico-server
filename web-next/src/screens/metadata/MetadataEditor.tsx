@@ -19,7 +19,7 @@ function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
   // Only a type the server actually matches online has a Matching tab (frame 10); a local-only
   // book has none because there is nothing to match against (frame 13).
   // Frame 9: credits exist only where the type carries them; an empty list is not a tab.
-  if (data && data.snapshot.relationships.length) tabs.push('people');
+  if (data && data.snapshot.relationships.some(row => row.kind === 'credit')) tabs.push('people');
   if (data && (data.snapshot.identity || data.candidates.length)) tabs.push('matching');
   tabs.push('history');
   return tabs;
@@ -79,7 +79,8 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
-      {shown === 'people' ? <People data={data} busy={state.phase === 'saving'} onRemove={index => void run({action: 'edit_relationships', relationships: data.snapshot.relationships.filter((_, at) => at !== index)})} /> : null}
+      {shown === 'people' ? <People data={data} target={target} busy={state.phase === 'saving'}
+        onCommit={rows => void run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})} /> : null}
       {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
@@ -219,13 +220,38 @@ function Matching({data, busy, onSearch, onUse}: {
 }
 
 
-/** Frame 9: one row per credit from the server's own relationship list. Removal sends the
- * remaining list back unchanged; adding a person needs the producer's new-relationship shape,
- * so it is not drawn as a dead button here. */
-function People({data, busy, onRemove}: {data: RepairData; busy: boolean; onRemove: (index: number) => void}) {
-  return <div className={styles.fields}>{data.snapshot.relationships.map((row, index) =>
-    <div key={`${row.kind}:${row.targetId}:${row.ordinal}:${index}`} className={styles.candidate}>
-      <div><b>{row.label}</b><small>{[row.department, row.role].filter(Boolean).join(' · ')}{row.source ? ` · ${row.source}` : ''}{row.locked ? ` · ${t('web.metadata.locked')}` : ''}</small></div>
-      <Button size="small" disabled={busy || row.locked} onClick={() => onRemove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
-    </div>)}</div>;
+/** Frame 9. Credits are replaced as one list through the real producer: existing rows keep
+ * their recordId/provider/target tuple, and a name-only row is created by omitting recordId.
+ * Only `credit` rows are sent, never genre or hierarchy families, and only for an item. */
+function People({data, target, busy, onCommit}: {
+  data: RepairData; target: RepairTarget; busy: boolean;
+  onCommit: (rows: RepairData['snapshot']['relationships']) => void;
+}) {
+  const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
+  const [name, setName] = useState(''), [role, setRole] = useState(''), [department, setDepartment] = useState('');
+  const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
+  const valid = target.kind === 'item' && credits.length < 100 && name.trim() !== '' && [...name].length <= 300 && [...role].length <= 500 && [...department].length <= 200 && clean(name) && clean(department);
+  const remove = (index: number) => onCommit(credits.filter((_, at) => at !== index));
+  const add = () => {
+    if (!valid) return;
+    onCommit([...credits, {
+      kind: 'credit', targetKind: 'scoped_credit', targetId: '', label: name.trim(), role: role.trim(), department: department.trim(),
+      ordinal: credits.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true,
+    } as RepairData['snapshot']['relationships'][number]]);
+    setName(''); setRole(''); setDepartment('');
+  };
+  return <div className={styles.fields}>
+    {credits.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${row.ordinal}:${index}`} className={styles.candidate}>
+      <div><b>{row.label}</b><small>{[row.department, row.role].filter(Boolean).join(' · ')}{row.locked ? ` · ${t('web.metadata.locked')}` : ''}</small></div>
+      <Button size="small" disabled={busy} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+    </div>)}
+    {target.kind === 'item' && credits.length < 100 ? <div className={styles.candidate}>
+      <div className={styles.creditNew}>
+        <TextField label={t('web.metadata.field.name')} value={name} onChange={event => setName(event.currentTarget.value)} maxLength={300} />
+        <TextField label={t('web.metadata.field.role')} value={role} onChange={event => setRole(event.currentTarget.value)} maxLength={500} />
+        <TextField label={t('web.metadata.field.department')} value={department} onChange={event => setDepartment(event.currentTarget.value)} maxLength={200} />
+      </div>
+      <Button size="small" disabled={busy || !valid} onClick={add}>{t('web.metadata.addPerson')}</Button>
+    </div> : null}
+  </div>;
 }
