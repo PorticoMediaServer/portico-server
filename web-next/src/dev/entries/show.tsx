@@ -107,7 +107,7 @@ function showWorkspace() {
   return {
     scope: {serverId, libraryId, viewerFence}, revision,
     show: {id: showId, libraryId, title: 'The Last of Us', year: 2023, libraryKind: 'tv', providerMatchStatus: 'matched', // lint-strings-allow
-      overview, network: 'HBO', studio: 'PlayStation Productions', country: 'United States', contentRating: 'TV-MA', // lint-strings-allow
+      overview, network: 'HBO', studio: 'PlayStation Productions', contentRating: 'TV-MA', // lint-strings-allow
       status: 'Continuing', firstAired: '2023-01-15', originalLanguage: 'en', addedAt: '2026-10-17T00:00:00Z', episodeCount: episodes.length,
       posterUrl: artPath(showId, 'poster', 'w=600'), backdropUrl: artPath(showId, 'backdrop', 'w=1920'),
       genres: ['Drama']}, // lint-strings-allow
