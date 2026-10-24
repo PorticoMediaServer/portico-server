@@ -20,7 +20,7 @@ async function fixture(t: TestContext, origin = original.address) {
   setInstallationIdentity({installationId: installation, name: 'Browser', platform: 'web', app: 'portico', appVersion: '1'});
   t.after(() => setInstallationIdentity(undefined));
   const pin = {serverId: original.serverId, publicKey: original.publicKey, fingerprint: routeBase64(await webRouteCrypto.sha256(routeBytes(original.publicKey, 32)))};
-  let now = Date.parse('2030-01-02T03:04:07Z'), saved: Pending, secure = true, installed = false, prepared = false;
+  let now = Date.parse('2030-01-02T03:04:07Z'), saved: Pending, secure = true, installed = false, prepared = false, cancelled = false;
   const oldSession: LocalSession = {accessToken: 'old-access-' + suffix, refreshToken: routeBase64(new Uint8Array(32).fill(4)), sessionFamilyId: 'old-family-' + suffix, tokenGeneration: '1',
     expiresAt: '2030-01-02T04:00:00Z', authorizationHorizon: '2030-02-02T04:00:00Z', viewer: {serverId: pin.serverId, accountId: 'local-owner', profileId: 'main', authority: 'local', role: 'owner'}};
   let record: AppSessionRecord = {version: 1, revision: 7, selectedServerId: pin.serverId, servers: [{signIn: 'local', connection: {version: '1', selectionId: 'x'.repeat(32),
@@ -38,18 +38,22 @@ async function fixture(t: TestContext, origin = original.address) {
   const sent: {path: string; method: string; body: any; authorization: string | null}[] = [], retired: string[] = [];
   let hook = async (_path: string) => {}, lost = false, failStorage = false;
   const stamp = (time: number) => new Date(time).toISOString().replace('.000Z', 'Z');
-  const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: expected.localGeneration},
+  const status = () => ({state: installed ? 'installed' : prepared ? 'prepared' : 'unconfigured', identity: {serverId: pin.serverId, localGeneration: cancelled && !installed ? String(BigInt(expected.localGeneration) + 1n) : expected.localGeneration},
     ...(prepared ? {operation: {...expected, revision: installed ? '5' : expected.revision}, accountId: 'account-unbound',
       approvalRequest: {purpose: 'switch', currentOwnerAccountId: '', previousOwnerRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
         publicKey: pin.publicKey, localGeneration: expected.localGeneration, name: original.name, expectedRevision: expected.revision}} : {}),
     installationAcknowledged: installed, approvalRequired: !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
-    ...(installed ? {ownerContinuation: {transactionId, phase: 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
+    ...(installed ? {ownerContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
   const fetcher: typeof fetch = async (input, init) => {
     const path = new URL(String(input)).pathname, body = init?.body ? JSON.parse(String(init.body)) : undefined;
     sent.push({path, method: init?.method ?? 'GET', body, authorization: new Headers(init?.headers).get('Authorization')});
     let response: unknown;
     if (path === '/v1/networking/claim/prepare') {assert.equal(body.purpose, 'switch'); prepared = true; response = status();}
     else if (path === '/v1/networking/claim') response = status();
+    else if (path === '/v1/networking/claim/cancel') {
+      assert.deepEqual(body.expected, {...expected, revision: installed ? '5' : expected.revision});
+      cancelled = true; if (!installed) prepared = false; response = status();
+    }
     else if (path === '/v1/networking/claim/web-approval') {
       if (firstOwnerStart) assert.deepEqual(body.ownerStart, firstOwnerStart, 'retry must freeze the original PKCE/state/installation');
       firstOwnerStart = body.ownerStart;
@@ -105,6 +109,18 @@ test('owner initiation journals full signed binding before returning the actual 
 });
 test('insecure context refuses before private reads/writes or network', async t => {
   const f = await fixture(t); f.insecure(); await assert.rejects(f.prepare(), /secure storage/); assert.equal(f.sent.length, 0); assert.equal(f.pending(), undefined);
+});
+test('preparation captures the actual selected bearer instead of an API mutable bearer or recovery policy', async t => {
+  const f = await fixture(t); f.api.setAccessToken('unrelated-bearer');
+  f.api.setAuthRecovery({token: async () => {throw new Error('generic renewal must not run');}, recover: async () => {throw new Error('generic retry must not run');}});
+  await f.prepare(); assert.ok(f.sent.every(value => value.authorization === 'Bearer ' + f.oldSession.accessToken));
+});
+for (const installed of [false, true]) test('explicit operation cancellation uses the latest guarded revision ' + (installed ? 'after install' : 'before install'), async t => {
+  const f = await fixture(t); await f.prepare(); if (installed) f.install();
+  await f.flow.cancelOperation(f.api); assert.equal(f.pending(), undefined);
+  assert.equal(f.sent.filter(value => value.path.endsWith('/cancel')).length, 1);
+  assert.equal(f.sent.some(value => value.path.endsWith('/exchange') || value.path === '/v1/servers/leave'), false);
+  assert.equal((await f.sessions.selected())?.signIn, 'local', 'no local authority/kind rewrite by the client');
 });
 test('a transaction-only URL never selects owner without the actual protected owner KIND', async t => {
   const f = await fixture(t); await f.prepare(); f.install(); const count = f.sent.length;

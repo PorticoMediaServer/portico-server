@@ -72,14 +72,34 @@ export class BrowserOwnerClaim {
       Date.parse(record.expiresAt) <= this.now() || Date.parse(record.expiresAt) > record.createdAt + 300_000 || Date.parse(session.expiresAt) <= this.now()) throw cancelled();
     return selected;
   }
-  /** Forget this browser attempt only. Server move cancellation remains the
-   * existing explicit AccountMoveClient action; installed claims never roll back. */
+  /** Forget this browser attempt only. Explicit Server cancellation is a
+   * separate command below; installed claims never implicitly roll back. */
   async cancel() {
     ++this.epoch; this.controller?.abort();
     const id = this.attemptId; this.attemptId = undefined;
     if (id) await this.ports.journal.change(old => old?.attemptId === id ? undefined : old);
   }
   async dispose() {await this.cancel();}
+  /** Existing guarded claim cancel: before install the Server persists its
+   * original-key denial; after install it retires only the continuation. This
+   * never performs a signed leave or changes kind on the client's authority. */
+  async cancelOperation(api: HttpLocalApi): Promise<void> {
+    this.ports.journal.assertAvailable(); const operation = this.operation();
+    try {
+      const record = await this.ports.journal.read(), routes = api.getRouteConnection();
+      if (record?.kind !== 'owner' || !record.expected || api.baseUrl !== record.origin || !routes || !sameServerPin(routes.pin, record.pin)) throw invalid();
+      const selected = await this.current(record, operation);
+      const captured = new HttpLocalApi(record.origin, selected.session.accessToken); captured.useRoutes(routes);
+      const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), record.pin);
+      await this.current(record, operation);
+      if (!status.operation || status.operation.operationId !== record.expected.operationId || status.operation.localGeneration !== record.expected.localGeneration || !status.actions.includes('cancel')) throw invalid();
+      parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected: status.operation}, operation.signal), record.pin);
+      // Cancellation may advance the Server generation. Do not compare that
+      // terminal identity with the old operation or clear a successor journal.
+      await this.ports.journal.change(old => same(old, record) ? undefined : old);
+      if (this.attemptId === record.attemptId) this.attemptId = undefined;
+    } finally {this.busy = false;}
+  }
   /** Same-origin private preparation only, after the actual move confirmation.
    * Ambiguous network failures retain the exact verifier/proofs for that attempt. */
   async prepare(api: HttpLocalApi, hostedOrigin: string): Promise<string> {
@@ -92,6 +112,9 @@ export class BrowserOwnerClaim {
       const state = await this.ports.sessions.read(), selected = this.selected(state, route.pin);
       if (!operation.current()) throw cancelled();
       assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(state)});
+      // Capture exactly the durable selected family, without inheriting a
+      // caller API's mutable bearer or generic refresh/retry policy.
+      const captured = new HttpLocalApi(origin, selected.session.accessToken); captured.useRoutes(route);
       let pending = await this.ports.journal.read();
       if (!pending) {
         const verifier = routeBase64(crypto.getRandomValues(new Uint8Array(32))), createdAt = this.now();
@@ -107,10 +130,10 @@ export class BrowserOwnerClaim {
       this.attemptId = pending.attemptId;
       await this.current(pending, operation);
       if (!pending.expected) {
-        let status = parseClaimStatus(await api.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), pending.pin);
+        let status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), pending.pin);
         await this.current(pending, operation);
         if (status.actions.includes('prepare')) {
-          status = parseClaimStatus(await api.request(routePath('post_networking_claim_prepare'), 'POST', {purpose: 'switch', expected: status.identity}, operation.signal), pending.pin);
+          status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST', {purpose: 'switch', expected: status.identity}, operation.signal), pending.pin);
           await this.current(pending, operation);
         }
         if (status.state !== 'prepared' || !status.operation || status.approvalRequest?.purpose !== 'switch' || status.approvalRequest.currentOwnerAccountId !== '' ||
@@ -121,7 +144,7 @@ export class BrowserOwnerClaim {
       }
       const binding = {pin: pending.pin, origin, hostedOrigin, operationId: pending.expected!.operationId, localGeneration: pending.expected!.localGeneration,
         state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId};
-      return await (this.ports.prepare ?? prepareOwnerClaimHandoff)(api, pending.expected!, binding, {
+      return await (this.ports.prepare ?? prepareOwnerClaimHandoff)(captured, pending.expected!, binding, {
         assertPendingCurrent: async () => {await this.current(pending!, operation);},
         bindPending: async handoff => {
           await this.current(pending!, operation);
