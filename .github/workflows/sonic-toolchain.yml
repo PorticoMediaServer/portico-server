@@ -8,6 +8,8 @@ concurrency:
   cancel-in-progress: false
 env:
   CI: '1'
+  PIP_NO_CACHE_DIR: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
   OMP_NUM_THREADS: '1'
   TF_NUM_INTRAOP_THREADS: '1'
   TF_NUM_INTEROP_THREADS: '1'
@@ -21,6 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export UV_CACHE_DIR="$RUNNER_TEMP/uv-cache" UV_PYTHON_INSTALL_DIR="$RUNNER_TEMP/python"
           python3 -m venv "$RUNNER_TEMP/bootstrap"
           "$RUNNER_TEMP/bootstrap/bin/pip" install --quiet --disable-pip-version-check uv==0.9.3
           "$RUNNER_TEMP/bootstrap/bin/uv" venv --quiet --python 3.11.11 "$RUNNER_TEMP/converter"
