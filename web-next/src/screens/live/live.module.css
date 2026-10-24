@@ -29,7 +29,7 @@
 .guideTabs { margin-top: 26px; }
 .guideTabList { padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
 .guideTabs .guideTabList button { font-size: calc(var(--type-tab-size) + 1.5px); }
-.guideTabNote { margin-left: 10px; font-size: var(--type-caption-size); font-weight: 700; color: var(--color-record); }
+.guideTabNote { margin-left: 10px; font-size: var(--type-caption-size); font-weight: var(--type-row-heading-weight); color: var(--color-record); }
 .guideChips { position: relative; display: flex; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; overflow-x: auto; scrollbar-width: none; }
 .guideChips::-webkit-scrollbar { display: none; }
 .guideChips .guideChip { height: 38px; padding: 0 14px; gap: 7px; border-radius: 10px; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-chip-weight); color: var(--color-text-secondary); }
@@ -42,7 +42,7 @@
 .guideTime .guideSort:hover:not(:disabled) { background: var(--color-raised-high); }
 .guideRight { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .guideStepper { display: inline-flex; align-items: center; height: 40px; border-radius: 10px; background: var(--color-raised-high); padding: 3px; gap: 2px; }
-.guideStep { height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: none; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font); font-size: calc(var(--type-body-size) - 1px); font-weight: 700; color: var(--color-text-secondary); white-space: nowrap; cursor: pointer; }
+.guideStep { height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: none; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font); font-size: calc(var(--type-body-size) - 1px); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); white-space: nowrap; cursor: pointer; }
 .guideStep:hover { background: var(--color-raised-bright); color: var(--color-text); }
 .guideStep:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .guideNow { color: var(--color-text); padding: 0 14px; }
@@ -55,8 +55,8 @@
 .guideCornerNow { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
 .guideLane { position: relative; flex: 1; min-width: 0; height: 100%; overflow: hidden; }
 .guideTick { position: absolute; top: 8px; bottom: 8px; display: flex; align-items: center; padding-left: 10px; border-left: 1px solid var(--color-line); white-space: nowrap; color: var(--color-text-tertiary); font-size: var(--type-caption-size); font-weight: var(--type-caption-strong-weight); font-variant-numeric: tabular-nums; }
-.guideTick[data-kind='hour'], .guideTick[data-kind='day'] { color: var(--color-text-secondary); font-weight: 700; }
-.guideNowPill { position: absolute; top: 10px; transform: translateX(-50%); padding: 4px 9px; border-radius: 6px; background: var(--color-accent-strong); color: var(--color-action-ink); font-size: var(--type-label-size); font-weight: 800; white-space: nowrap; z-index: var(--layer-content); }
+.guideTick[data-kind='hour'], .guideTick[data-kind='day'] { color: var(--color-text-secondary); font-weight: var(--type-row-heading-weight); }
+.guideNowPill { position: absolute; top: 10px; transform: translateX(-50%); padding: 4px 9px; border-radius: 6px; background: var(--color-accent-strong); color: var(--color-action-ink); font-size: var(--type-label-size); font-weight: var(--type-lockup-weight); white-space: nowrap; z-index: var(--layer-content); }
 .guideBody { position: relative; }
 .guidePastShade { position: absolute; left: var(--guide-column); top: 0; bottom: 0; pointer-events: none; z-index: var(--layer-content);
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-ink) 38%, transparent), color-mix(in srgb, var(--color-ink) 12%, transparent)); }
@@ -84,7 +84,7 @@
 .guideCell:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; z-index: var(--layer-content); }
 .guideCell[data-kind='gap'] { cursor: default; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-text) 3.5%, transparent) 0 7px, transparent 7px 14px); box-shadow: inset 0 0 0 1px var(--color-line); }
 .guideCell[data-wide-gap] { padding-left: 18px; }
-.guideCellTitle { position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(var(--type-body-size) - .5px); font-weight: 700; }
+.guideCellTitle { position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }
 .guideCell[data-kind='gap'] .guideCellTitle { font-size: calc(var(--type-caption-size) + .5px); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); white-space: nowrap; }
 .guideCellName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guideCellDetail { position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: calc(var(--type-caption-size) - .5px); color: var(--color-text-tertiary); }
@@ -93,8 +93,8 @@
 .guideClip { flex: none; color: var(--color-text-tertiary); margin: 0 -3px 0 -6px; }
 .guideRecordDot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); }
 .guideRecordDot[data-pulse] { animation: guidePulse 2s ease-in-out infinite; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-record) 22%, transparent); }
-.guideRecording { color: var(--color-record); font-weight: 700; }
-.guideFlag { flex: none; padding: 2px 7px; border-radius: 5px; font-size: calc(var(--type-micro-size) + .5px); font-weight: 800; line-height: normal; }
+.guideRecording { color: var(--color-record); font-weight: var(--type-row-heading-weight); }
+.guideFlag { flex: none; padding: 2px 7px; border-radius: 5px; font-size: calc(var(--type-micro-size) + .5px); font-weight: var(--type-lockup-weight); line-height: normal; }
 .guideFlag[data-flag='new'] { background: var(--color-accent); color: var(--color-action-ink); }
 .guideFlag[data-flag='live'] { background: color-mix(in srgb, var(--color-record) 18%, transparent); color: color-mix(in srgb, var(--color-record) 58%, var(--color-white)); }
 .guideFlag[data-flag='premiere'] { box-shadow: inset 0 0 0 1.5px var(--color-accent-strong); color: var(--color-accent-strong); }
