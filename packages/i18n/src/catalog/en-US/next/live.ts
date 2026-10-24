@@ -45,6 +45,7 @@ export const liveMessages = {
   'next.live.livePicture': 'Live picture',
   'next.live.then': 'Then {title}',
   'next.live.watching': 'Watching',
+  'next.live.behindMinutes': '{count} min',
   'next.live.nextAt': 'Next {time}',
   'next.live.openFullGuide': 'Open the full guide',
   'next.live.miniGuideHint': 'Up and down to move, Enter to watch',

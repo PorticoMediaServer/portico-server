@@ -42,9 +42,7 @@ function Right() {
   return <>
     <button type="button" className={live.control} aria-label={t('player.mute')}><Icon name="i-vol" size={22}/></button>
     <span style={{width: 84, height: 4, borderRadius: 2, background: 'rgba(237,245,250,.2)', marginRight: 12}}><span style={{display: 'block', width: '70%', height: '100%', borderRadius: 2, background: 'var(--color-text)'}}/></span>
-    <button type="button" className={live.control} aria-label={t('player.opt.subtitles')}><Icon name="i-cc" size={24}/></button>
-    <button type="button" className={live.control} style={{width: 'auto', padding: '0 12px', borderRadius: 17, fontSize: 13.5, fontWeight: 700, gap: 6}} aria-label={t('player.opt.quality')}><span style={{color: 'var(--color-text-tertiary)', fontWeight: 600}}>{t('next.controls.auto')}</span>720p</button>
-    <button type="button" className={live.control} aria-label={t('player.pictureInPicture')}><Icon name="i-pip" size={24}/></button>
+        <button type="button" className={live.control} aria-label={t('player.pictureInPicture')}><Icon name="i-pip" size={24}/></button>
     <button type="button" className={live.control} aria-label={t('next.states.shortcut.fullscreen')}><Icon name="i-full" size={24}/></button>
   </>;
 }
@@ -54,7 +52,7 @@ createRoot(document.getElementById('root')!).render(<><IconSprite />
     <div style={{position: 'absolute', inset: 0, background: 'radial-gradient(70% 80% at 58% 45%, #7d5a2a55, transparent 75%), radial-gradient(50% 60% at 12% 88%, #2f625055, transparent 70%), #081219'}}>
       <span style={{position: 'absolute', left: '41%', top: '50%', transform: 'translate(-50%,-50%)', padding: '5px 11px', borderRadius: 6, fontSize: 13, fontWeight: 700, background: 'rgba(7,16,24,.6)', color: 'var(--color-text-tertiary)'}}>{t('next.live.livePicture')}</span>
     </div>
-    <LiveChrome port={port} playing={false} initialMiniGuideOpen
+    <LiveChrome port={port} playing={true} initialMiniGuideOpen
       onCollapse={() => {}} onStop={() => {}} onPlayPause={() => {}} onSkip={() => {}} onSeek={() => {}} onMore={() => {}}
       right={<Right/>} reportError={() => {}}/>
   </main></>);

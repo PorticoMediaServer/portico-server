@@ -27,7 +27,8 @@ export function liveTimeRange(startMs: number, endMs: number, format: (ms: numbe
 
 export function liveBehindLabel(seconds: number): string | undefined {
   if (!(seconds > 2)) return undefined;
-  return t('player.live.behindLive', {duration: formatBehindSec(seconds)});
+  const duration = seconds < 3600 && seconds % 60 === 0 ? t('next.live.behindMinutes', {count: seconds / 60}) : formatBehindSec(seconds);
+  return t('player.live.behindLive', {duration});
 }
 
 export function liveRecordLabel(programme: LiveChromePort['programme']): string {
