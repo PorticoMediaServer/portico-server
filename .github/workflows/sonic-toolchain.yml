@@ -90,7 +90,7 @@ jobs:
           export PATH="$RUNNER_TEMP/build-tools/bin:$PATH"
           scripts/build-sonic-runtime.sh "$PWD/.sonic-build/sdk" "$PWD/.sonic-build/cmake" "$PWD/.sonic-build/portico-sonic"
           tag="$(python3 -c "import json;print(json.load(open('third_party/portico-sonic/runtime.lock.json'))['releaseTag'])")"
-          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct HEAD)}"
           archive=".sonic-output/portico-sonic-${tag}-${BUNDLE_TARGET}.tar.xz"
           python3 scripts/sonic-bundle.py package "$archive" --helper .sonic-build/portico-sonic --sdk .sonic-build/sdk --model .sonic-model/musicnn-mtt --target "$BUNDLE_TARGET" --source-revision "$GITHUB_SHA"
           python3 scripts/sonic-bundle.py extract .sonic-build/verified --archive "$archive" --target "$BUNDLE_TARGET"

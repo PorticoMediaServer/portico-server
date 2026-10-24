@@ -370,7 +370,9 @@ def main():
             verify_installed(args.output, args.target)
         else:
             verify(args.output, args.target)
-    except (OSError, ValueError, KeyError, tarfile.TarError, subprocess.CalledProcessError):
+    except ValueError as error:
+        parser.exit(1, 'Sonic bundle verification failed: ' + str(error) + '\n')
+    except (OSError, KeyError, tarfile.TarError, subprocess.CalledProcessError):
         parser.exit(1, 'Sonic bundle verification failed; no bundle published.\n')
     print('Sonic bundle ' + args.command + ' passed (' + args.target + ').')
 
