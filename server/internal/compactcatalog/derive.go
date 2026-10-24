@@ -769,7 +769,7 @@ func acknowledgeDerived(ctx context.Context, tx *sql.Tx, domain int, id, revisio
 // steps are the derived workers that keep their own job tables (fed by
 // triggers on the derived tables above them). They run round-robin when no
 // domain has work it can finish.
-var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles}
+var steps = [...]func(context.Context, *sql.Tx, int) (int, error){StepCollectionVisibleCounts, StepCategoryVisibility, StepVisibilitySortBuckets, StepPersonalSortBuckets, StepBookContextEvidence, StepBookGroupVisibleCounts, StepContentEligible, StepRecProfiles, StepReadingAttribution}
 
 func (w *Worker) runSteps(ctx context.Context, tx *sql.Tx, limit int) (int, int, error) {
 	w.mu.Lock()

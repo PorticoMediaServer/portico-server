@@ -8299,3 +8299,136 @@ INSERT INTO maintenance_retention VALUES('trickplay',365),('prepared',90),('conv
 INSERT INTO maintenance_windows(id,name,enabled,cadence,start_minute,duration_minutes,timezone) VALUES('heavy','Heavy background work',0,'nightly',60,300,'');
 INSERT INTO maintenance_window_days(window_id,day) VALUES('heavy','monday'),('heavy','tuesday'),('heavy','wednesday'),('heavy','thursday'),('heavy','friday'),('heavy','saturday'),('heavy','sunday');
 INSERT INTO maintenance_window_tasks(window_id,task) VALUES('heavy','analysis'),('heavy','trickplay');
+
+-- Reading attribution is a complete generation per library. Invalidation never
+-- walks titles; it only advances scope inputs. Members have no item FK: source
+-- deletion must invalidate before bounded cleanup, never cascade a ready member.
+CREATE TABLE reading_attribution_state(
+ namespace INTEGER PRIMARY KEY AUTOINCREMENT,
+ library_id INTEGER NOT NULL UNIQUE REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ input_generation INTEGER NOT NULL DEFAULT 1 CHECK(input_generation>0),
+ ready_generation INTEGER NOT NULL DEFAULT 0 CHECK(ready_generation>=0 AND ready_generation<=input_generation),
+ build_generation INTEGER NOT NULL DEFAULT 0 CHECK(build_generation>=0 AND build_generation<=input_generation),
+ after_item INTEGER NOT NULL DEFAULT 0 CHECK(after_item>=0),
+ phase TEXT NOT NULL DEFAULT 'scan' CHECK(phase IN('scan','cleanup','ready')),
+ served_ms INTEGER NOT NULL DEFAULT 0,
+ CHECK(phase<>'ready' OR (ready_generation=input_generation AND build_generation=input_generation))) STRICT;
+CREATE TABLE reading_attribution_members(
+ library_id INTEGER NOT NULL REFERENCES reading_attribution_state(library_id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),
+ item_id INTEGER NOT NULL CHECK(item_id>0),
+ author_value TEXT,author_key TEXT,author_source TEXT CHECK(author_source IN('owner','file-metadata','file-name','folder')),
+ series_value TEXT,series_key TEXT,series_id TEXT,series_source TEXT CHECK(series_source IN('owner','file-metadata','file-name','folder')),
+ numbered_order INTEGER NOT NULL CHECK(numbered_order IN(0,1)),
+ number_value REAL NOT NULL CHECK(number_value>=0 AND number_value<=1.7976931348623157e308),
+ sort_key TEXT NOT NULL,
+ PRIMARY KEY(library_id,generation,item_id),
+ CHECK((author_value IS NULL AND author_key IS NULL AND author_source IS NULL) OR (author_value IS NOT NULL AND author_key IS NOT NULL AND author_source IS NOT NULL)),
+ CHECK((series_value IS NULL AND series_key IS NULL AND series_id IS NULL AND series_source IS NULL) OR (series_value IS NOT NULL AND series_key IS NOT NULL AND series_id IS NOT NULL AND series_source IS NOT NULL)),
+ CHECK(numbered_order=0 OR number_value=0)) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_attribution_series_seek ON reading_attribution_members(library_id,generation,series_id,numbered_order,number_value,sort_key COLLATE BINARY,item_id);
+CREATE INDEX reading_attribution_author_facet ON reading_attribution_members(library_id,generation,author_key,item_id);
+CREATE INDEX reading_attribution_series_facet ON reading_attribution_members(library_id,generation,series_key,item_id);
+CREATE TRIGGER reading_attribution_namespace_immutable BEFORE UPDATE OF namespace,library_id ON reading_attribution_state BEGIN
+ SELECT RAISE(ABORT,'reading attribution namespace is immutable'); END;
+CREATE TRIGGER reading_attribution_ready_insert BEFORE INSERT ON reading_attribution_members
+ WHEN EXISTS(SELECT 1 FROM reading_attribution_state s WHERE s.library_id=NEW.library_id AND s.input_generation=s.ready_generation AND s.ready_generation=NEW.generation)
+ BEGIN SELECT RAISE(ABORT,'reading attribution ready members are immutable'); END;
+CREATE TRIGGER reading_attribution_ready_update BEFORE UPDATE ON reading_attribution_members
+ WHEN EXISTS(SELECT 1 FROM reading_attribution_state s WHERE (s.library_id=OLD.library_id AND s.ready_generation=OLD.generation OR s.library_id=NEW.library_id AND s.ready_generation=NEW.generation) AND s.input_generation=s.ready_generation)
+ BEGIN SELECT RAISE(ABORT,'reading attribution ready members are immutable'); END;
+CREATE TRIGGER reading_attribution_ready_delete BEFORE DELETE ON reading_attribution_members
+ WHEN EXISTS(SELECT 1 FROM reading_attribution_state s WHERE s.library_id=OLD.library_id AND s.input_generation=s.ready_generation AND s.ready_generation=OLD.generation)
+ BEGIN SELECT RAISE(ABORT,'reading attribution ready members are immutable'); END;
+CREATE TRIGGER reading_attribution_library_insert AFTER INSERT ON catalog_libraries WHEN EXISTS(SELECT 1 FROM libraries l WHERE l.id=NEW.library_id AND l.kind IN('book','comic')) BEGIN
+ INSERT INTO reading_attribution_state(library_id) VALUES(NEW.id); END;
+CREATE TRIGGER reading_attribution_entity_delete BEFORE DELETE ON catalog_entities BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(OLD.library_id);
+END;
+CREATE TRIGGER reading_attribution_entity_update BEFORE UPDATE OF library_id,kind,title,sort_title,sort_key,retired,public_id,id ON catalog_entities BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(OLD.library_id,NEW.library_id);
+END;
+CREATE TRIGGER reading_attribution_entity_insert BEFORE INSERT ON catalog_entities BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(NEW.library_id);
+END;
+CREATE TRIGGER reading_attribution_library_delete BEFORE DELETE ON catalog_libraries BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=OLD.id;
+END;
+CREATE TRIGGER reading_attribution_library_update BEFORE UPDATE OF library_id,root,kind,retired ON catalog_libraries BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id=OLD.id OR library_id=NEW.id;
+END;
+CREATE TRIGGER reading_attribution_library_kind AFTER UPDATE OF kind ON catalog_libraries WHEN EXISTS(SELECT 1 FROM libraries l WHERE l.id=NEW.library_id AND l.kind IN('book','comic')) BEGIN
+ INSERT INTO reading_attribution_state(library_id) VALUES(NEW.id) ON CONFLICT(library_id) DO NOTHING; END;
+CREATE TRIGGER reading_attribution_reading_publications_insert BEFORE INSERT ON reading_publications BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publications_delete BEFORE DELETE ON reading_publications BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_publications_update BEFORE UPDATE ON reading_publications BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_source_values_insert BEFORE INSERT ON reading_source_values BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_source_values_delete BEFORE DELETE ON reading_source_values BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
+END;
+CREATE TRIGGER reading_attribution_reading_source_values_update BEFORE UPDATE ON reading_source_values BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_catalog_asset_links_insert BEFORE INSERT ON catalog_asset_links BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
+END;
+CREATE TRIGGER reading_attribution_catalog_asset_links_delete BEFORE DELETE ON catalog_asset_links BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id));
+END;
+CREATE TRIGGER reading_attribution_catalog_asset_links_update BEFORE UPDATE ON catalog_asset_links BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
+END;
+CREATE TRIGGER reading_attribution_metadata_owner_fields_insert BEFORE INSERT ON metadata_owner_fields WHEN (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
+END;
+CREATE TRIGGER reading_attribution_metadata_owner_fields_delete BEFORE DELETE ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id));
+END;
+CREATE TRIGGER reading_attribution_metadata_owner_fields_update BEFORE UPDATE OF kind,entity_id,field,value,locked ON metadata_owner_fields WHEN (OLD.kind='item' AND OLD.field IN('author','series','seriesNumber')) OR (NEW.kind='item' AND NEW.field IN('author','series','seriesNumber')) BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.entity_id));
+END;
+CREATE TRIGGER reading_attribution_inventory_objects_insert BEFORE INSERT ON inventory_objects BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=NEW.source_id));
+END;
+CREATE TRIGGER reading_attribution_inventory_objects_delete BEFORE DELETE ON inventory_objects BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=OLD.source_id));
+END;
+CREATE TRIGGER reading_attribution_inventory_objects_update BEFORE UPDATE OF id,source_id,asset_id,root_incarnation,relative_path,revision,state,retired,unsupported_reason ON inventory_objects BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=OLD.source_id)) OR (library_id IN(SELECT cl.id FROM catalog_libraries cl JOIN library_sources src ON src.library_id=cl.library_id WHERE src.id=NEW.source_id));
+END;
+CREATE TRIGGER reading_attribution_source_insert BEFORE INSERT ON library_sources BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(NEW.library_id));
+END;
+CREATE TRIGGER reading_attribution_source_delete BEFORE DELETE ON library_sources BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(OLD.library_id));
+END;
+CREATE TRIGGER reading_attribution_source_update BEFORE UPDATE OF library_id,kind,id,root,configured_root,generation,incarnation,root_identity,identity_confirmed,health,enabled ON library_sources BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(OLD.library_id,NEW.library_id));
+END;
+CREATE TRIGGER reading_attribution_asset_delete BEFORE DELETE ON catalog_assets BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE 1;
+END;
+CREATE TRIGGER reading_attribution_asset_update BEFORE UPDATE OF token,path,available,id ON catalog_assets BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE 1;
+END;
+CREATE TRIGGER reading_attribution_dvr_insert BEFORE INSERT ON dvr_catalog_retirements BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_dvr_delete BEFORE DELETE ON dvr_catalog_retirements BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
+END;
+CREATE TRIGGER reading_attribution_dvr_update BEFORE UPDATE ON dvr_catalog_retirements BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
+END;
+CREATE TRIGGER reading_attribution_public_library BEFORE UPDATE OF id,kind,root ON libraries BEGIN
+ UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(OLD.id,NEW.id)); END;
+CREATE TRIGGER reading_attribution_public_kind AFTER UPDATE OF kind ON libraries WHEN NEW.kind IN('book','comic') BEGIN
+ INSERT INTO reading_attribution_state(library_id) SELECT id FROM catalog_libraries WHERE library_id=NEW.id ON CONFLICT(library_id) DO NOTHING; END;
