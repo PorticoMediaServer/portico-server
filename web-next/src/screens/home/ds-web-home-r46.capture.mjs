@@ -170,6 +170,12 @@ async function shot(name, selector, pageWidth) {
   if (!rect) throw new Error(`Element not found: ${selector}`);
   await setViewport(pageWidth, rect.y + rect.height);
   await wait(300);
+  // The pinned sheet is taller than any window; a real reader scrolls it, which is what
+  // starts the genuine lazy artwork. Sweep the whole screen, then return to the top.
+  const total = await evaluate('document.documentElement.scrollHeight');
+  for (let y = 0; y < total; y += 600) { await evaluate(`window.scrollTo(0, ${y})`); await wait(120); }
+  await evaluate('window.scrollTo(0, 0)');
+  await wait(300);
   await settle();
   await call('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 4, y: 4, button: 'none'}, sessionId);
   await wait(300);
@@ -208,6 +214,9 @@ if (only !== 'reference') {
   await open(`${buildOrigin}/src/screens/home/ds-web-home-r46.html?assets=${encodeURIComponent(frameOrigin + '/')}`, '[data-home-document]');
   report.actual.rect = await shot('web-home-r46-actual', '[data-home-document]', viewportWidth);
   report.actual.pointer = await evaluate(`({hover: matchMedia('(hover: hover)').matches, fine: matchMedia('(pointer: fine)').matches})`);
+  report.actual.artwork = await evaluate(`(()=>{const all=[...document.querySelectorAll('[data-artwork-status]')],counts={};for(const node of all){const key=node.dataset.artworkStatus;counts[key]=(counts[key]??0)+1;}
+    const fetches=performance.getEntriesByType('resource').filter(entry=>entry.name.includes('/assets/')).map(entry=>entry.name.split('/assets/')[1]);
+    return {total:all.length,counts,images:document.images.length,fetches:fetches.length,first:fetches.slice(0,3),sample:all.slice(0,3).map(node=>({status:node.dataset.artworkStatus,hasImage:!!node.querySelector('img')}))}})()`);
   report.actual.collection = await evaluate(`(()=>{const el=document.querySelector('[data-home-document] [data-card-kind="collectionBanner"]');if(!el)return null;const r=el.getBoundingClientRect();
     const copy=el.querySelector('[class*="collectionCopy"]'),minis=el.querySelector('[class*="collectionMinis"]');
     const action=el.querySelector('[class*="collectionAction"]');
