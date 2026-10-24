@@ -70,7 +70,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
     <header className={styles.editorHead}><h2>{heading}</h2><Button size="small" onClick={onClose}>{t('action.close')}</Button></header>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
       {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
-        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : 'web.metadata.tabHistory')}</button>)}
+        {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
     {state.error ? <HostedError error={state.error} /> : null}
@@ -113,7 +113,7 @@ function fieldError(spec: RepairFieldSpec, value: string): string {
   }
   if (spec.type === 'date' && value && Number.isNaN(Date.parse(value))) return t('web.metadata.dateError', {label});
   if (spec.type === 'enum' && value && spec.allowed && !spec.allowed.includes(value)) return t('web.metadata.enumError', {label});
-  if (spec.maxLength !== undefined && [...value].length > spec.maxLength) return t('web.metadata.textTooLong', {label, max: spec.maxLength});
+  if (spec.maxLength !== undefined && value.length > spec.maxLength) return t('web.metadata.textTooLong', {label, max: spec.maxLength});
   return '';
 }
 
@@ -230,7 +230,7 @@ function People({data, target, busy, onCommit}: {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
   const [name, setName] = useState(''), [role, setRole] = useState(''), [department, setDepartment] = useState('');
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
-  const valid = target.kind === 'item' && credits.length < 100 && name.trim() !== '' && [...name].length <= 300 && [...role].length <= 500 && [...department].length <= 200 && clean(name) && clean(department);
+  const valid = target.kind === 'item' && credits.length < 100 && name.trim() !== '' && name.length <= 300 && role.length <= 500 && department.length <= 200 && clean(name) && clean(role) && clean(department);
   const remove = (index: number) => onCommit(credits.filter((_, at) => at !== index));
   const add = () => {
     if (!valid) return;
@@ -243,7 +243,7 @@ function People({data, target, busy, onCommit}: {
   return <div className={styles.fields}>
     {credits.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${row.ordinal}:${index}`} className={styles.candidate}>
       <div><b>{row.label}</b><small>{[row.department, row.role].filter(Boolean).join(' · ')}{row.locked ? ` · ${t('web.metadata.locked')}` : ''}</small></div>
-      <Button size="small" disabled={busy} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+      <Button size="small" disabled={busy || row.locked} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
     </div>)}
     {target.kind === 'item' && credits.length < 100 ? <div className={styles.candidate}>
       <div className={styles.creditNew}>
