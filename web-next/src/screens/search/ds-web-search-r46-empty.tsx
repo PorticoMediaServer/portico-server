@@ -77,7 +77,7 @@ const binding = createSearchBindings(context);
 
 function Specimen() {
   return <FreshnessProvider api={api as unknown as HttpLocalApi} viewerId="profile" serverId={serverId} events={null}>
-    <SearchScreen binding={binding} />
+    <SearchScreen binding={binding} onOpenLive={() => {}} />
   </FreshnessProvider>;
 }
 createRoot(document.getElementById('root')!).render(<Specimen />);
