@@ -25,11 +25,12 @@ const frame = id => {
   const end = source.indexOf('<div class="frame"', start + 10);
   return source.slice(start, end < 0 ? source.indexOf('<p class="cap"', start) : end)
     .replace('<div class="frame" data-f="' + id + '">', '')
-    .replace(/\s*<span class="ptag">Proposed<\/span>/, '');
+    .replace(/\s*<span class="ptag">Proposed<\/span>/, '')
+    .replace(/\s*<div class="bw"[\s\S]*?<\/div>/, '');
 };
 const wordmark = await readFile(`${design}/design/ui-v1/assets/wordmark.svg`).then(bytes => `data:image/svg+xml;base64,${bytes.toString('base64')}`);
 const referenceHtml = id => `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/src/kit/fonts.css">
-  <style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018;overflow:hidden}</style></head><body>${sprite}${frame(id).replaceAll('assets/wordmark.svg', wordmark)}</body></html>`;
+  <style>${kit}\n${css}\nhtml,body{margin:0;padding:0;background:#071018;overflow:hidden}\nbody .pg{inset:0}</style></head><body class="p">${sprite}${frame(id).replaceAll('assets/wordmark.svg', wordmark)}</body></html>`;
 
 let browser;
 const shots = [];
@@ -53,8 +54,10 @@ try {
     const build = await page.evaluate(() => [...document.querySelectorAll('h1,p,label,button,[role="radio"],[role="group"],small')].map(element => ({tag: element.tagName, text: element.textContent, box: element.getBoundingClientRect().toJSON(), font: getComputedStyle(element).font})));
     shots.push({name, build});
     const a = await readFile(join(output, `${name}-build.jpg`)), b = await readFile(join(output, `${name}-frame.jpg`));
+    await page.setViewportSize({width: viewport.width * 2, height: viewport.height});
     await page.setContent(`<body style="margin:0;display:flex;background:#111"><img width="${viewport.width}" src="data:image/jpeg;base64,${a.toString('base64')}"><img width="${viewport.width}" src="data:image/jpeg;base64,${b.toString('base64')}"></body>`);
-    await page.screenshot({path: join(output, `${name}-pair.jpg`), type: 'jpeg', quality: 92, clip: {x: 0, y: 0, width: viewport.width * 2, height: viewport.height}});
+    await page.screenshot({path: join(output, `${name}-pair.jpg`), type: 'jpeg', quality: 92});
+    await page.setViewportSize(viewport);
   };
   await capture('setup-1', {width: 1440, height: 860}, '1');
   await capture('setup-1c', {width: 1440, height: 1130}, '1c', async () => {
