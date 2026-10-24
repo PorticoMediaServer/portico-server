@@ -52,6 +52,8 @@ export const settingsMessages = {
   'next.settings.recordsOlder': 'Older',
   'next.settings.done': 'Done',
   'next.settings.administratorsSee': 'Administrators can see this',
+  'next.settings.troubleshootingFeedback': 'Feedback',
+  'next.settings.troubleshootingReports': 'Reports',
   'next.settings.chooseSelected': 'Choose {count, plural, one {# folder} other {# folders}}',
   'next.settings.folderPath': 'Folder path',
   'next.settings.folderBreadcrumbs': 'Folder location',

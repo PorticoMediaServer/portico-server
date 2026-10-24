@@ -2,7 +2,8 @@ import {createRoot} from 'react-dom/client';
 import {createI18n, deviceRegion, resolveRegion} from '@i18n';
 import {setServiceI18n} from '@core/presentation/service-text.ts';
 import {IconSprite} from '../../kit/Icon';
-import {ReportsPanel} from '../../screens/settings/server/troubleshooting/Reports';
+import {TroubleshootingPage} from '../../screens/settings/server/troubleshooting';
+import {SettingsFeedbackSource} from '../../screens/settings/server/troubleshooting/feedback-source';
 import {SettingsReportsSource} from '../../screens/settings/server/troubleshooting/reports-source';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
@@ -37,6 +38,16 @@ const records = [
   {sequence: 1842, at: '2026-10-22T18:58:02Z', lane: 'runtime', severity: 'info', component: 'backups', code: 'backup_finished', fields: {kept: 7}},
   {sequence: 1841, at: '2026-10-22T19:03:00Z', lane: 'runtime', severity: 'warn', component: 'remote_access', code: 'port_mapping_failed'},
 ];
+const feedback = [
+  {id: 'feedback-1', createdAt: '2026-10-22T18:20:00Z', updatedAt: '2026-10-22T18:20:00Z', revision: 1, status: 'open', category: 'playback',
+   message: 'Playback stopped twice during the second episode.', itemId: 'item-1', contextAvailable: true, diagnostic: {platform: 'ios', state: 'playing', online: true}},
+  {id: 'feedback-2', createdAt: '2026-10-21T23:05:00Z', updatedAt: '2026-10-22T17:00:00Z', revision: 2, status: 'in-progress', category: 'subtitles',
+   message: 'The subtitles are about a second ahead of the picture.', contextAvailable: true, diagnostic: {platform: 'tvos', state: 'playing', online: false}},
+  {id: 'feedback-3', createdAt: '2026-10-20T20:15:00Z', updatedAt: '2026-10-21T09:00:00Z', revision: 3, status: 'resolved', category: 'metadata',
+   message: 'The poster for this film is wrong.', itemId: 'item-2', contextAvailable: false},
+  {id: 'feedback-4', createdAt: '2026-10-19T18:40:00Z', updatedAt: '2026-10-20T10:00:00Z', revision: 2, status: 'closed', category: 'other',
+   message: 'Thanks for the update.', contextAvailable: false},
+];
 const setAside = {failures: [
   {domain: 1, title: 'Severance, season 1', reason: 'The provider answered too slowly to finish the match.', attempts: 3, failedAt: '2026-10-22T17:10:00Z'},
   {domain: 1, title: 'Neagley', reason: 'The artwork could not be read as an image.', attempts: 2, failedAt: '2026-10-22T17:10:00Z'},
@@ -45,6 +56,11 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/console/diagnostics/')) return {scope: {serverId, viewerFence: fence}, data: {items: records, nextCursor: ''}};
   if (path.includes('/catalogue/failures')) return setAside;
   if (method === 'DELETE') return undefined;
+  if (path.includes('/admin/feedback/')) {
+    const id = path.split('/').pop();
+    return {scope: {serverId, viewerFence: fence}, data: feedback.find(item => item.id === id) ?? feedback[0]};
+  }
+  if (path.includes('/admin/feedback')) return {scope: {serverId, viewerFence: fence}, data: {items: feedback, nextCursor: ''}};
   if (path.includes('client-logs/')) return envelope({...report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912), body: 'The app closed while opening a title.'});
   return envelope({items: [
     report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912),
@@ -53,10 +69,12 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   ], limit: 25, nextCursor: ''});
 };
 const transport = {request: <T,>(path: string, method?: string) => request(path, method) as Promise<T>};
-const source = new SettingsReportsSource(transport, serverId, 'specimen-viewer', () => true);
+const reports = new SettingsReportsSource(transport, serverId, 'specimen-viewer', () => true);
+const feedbackSource = new SettingsFeedbackSource(transport, serverId, 'specimen-viewer', () => true);
+const subscribe = (listener: () => void) => {const a = reports.subscribe(listener), b = feedbackSource.subscribe(listener);return () => {a();b();};};
 
 createRoot(document.getElementById('root')!).render(<div style={{minHeight: '100vh', background: '#071018', padding: '40px 32px'}}>
   <div style={{maxWidth: 952, margin: '0 auto'}}><IconSprite />
-    <ReportsPanel source={source} subscribe={source.subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}} />
+    <TroubleshootingPage reports={reports} feedback={feedbackSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}} />
   </div>
 </div>);
