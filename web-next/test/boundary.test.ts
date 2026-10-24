@@ -2,15 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join, relative, resolve, sep} from 'node:path';
 import {parseSync} from 'rolldown/utils';
 import {lintBoundary} from '../scripts/lint-boundary.mjs';
 function fixture(t: import('node:test').TestContext) {
-  const repo = mkdtempSync(join(tmpdir(), 'portico-boundary-'));
+  const base = mkdtempSync(join(tmpdir(), 'portico-boundary-'));
+  const repo = join(base, 'ui-2026', 'repo');
+  mkdirSync(repo, {recursive: true});
   const app = join(repo, 'web-next'), src = join(app, 'src');
   mkdirSync(src, {recursive: true}); mkdirSync(join(repo, 'web/src'), {recursive: true});
   writeFileSync(join(repo, 'web/src/Forbidden.tsx'), 'export const Forbidden = () => null;');
-  t.after(() => rmSync(repo, {recursive: true, force: true}));
+  t.after(() => rmSync(base, {recursive: true, force: true}));
   const write = (name: string, code: string) => { const p = join(src, name); mkdirSync(join(p, '..'), {recursive: true}); writeFileSync(p, code); };
   const lint = (paths = {'@/*': ['./src/*']}) => lintBoundary({repo, app, paths, entries: [src]});
   return {repo, app, src, write, lint};
@@ -140,4 +142,27 @@ test('import type queries resolve aliases, traversal and external-to-scan symlin
     f.write('query.ts', `type Query = ${keyword}import('./missing').Missing;`);
     assert.match(f.lint().join('\n'), /query\.ts: unresolved/);
   }
+});
+const privateAsset = (repo: string) => resolve(repo, '../../design-ui-v1/design/ui-v1/assets/missing.jpg');
+const importSpec = (from: string, target: string) => relative(dirname(from), target).split(sep).join('/') + '?url';
+test('a genuine DEV family may omit the private design asset checkout', t => {
+  const f = fixture(t), file = join(f.src, 'dev/families/artwork.tsx');
+  f.write('dev/families/artwork.tsx', `import privateArt from '${importSpec(file, privateAsset(f.repo))}';`);
+  assert.deepEqual(f.lint(), []);
+});
+test('a production caller may not use the same missing private design asset path', t => {
+  const f = fixture(t), file = join(f.src, 'screens/bad.ts');
+  f.write('screens/bad.ts', `import privateArt from '${importSpec(file, privateAsset(f.repo))}';`);
+  assert.match(f.lint().join('\n'), /screens\/bad\.ts: unresolved local import/);
+});
+test('a nested src/dev path outside the app DEV root is not a DEV importer', t => {
+  const f = fixture(t), file = join(f.src, 'screens/src/dev/spoof.ts');
+  f.write('screens/src/dev/spoof.ts', `import privateArt from '${importSpec(file, privateAsset(f.repo))}';`);
+  assert.match(f.lint().join('\n'), /screens\/src\/dev\/spoof\.ts: unresolved local import/);
+});
+test('a DEV importer cannot escape the fixed private asset root', t => {
+  const f = fixture(t), file = join(f.src, 'dev/families/artwork.tsx');
+  const escaped = importSpec(file, privateAsset(f.repo)).replace(/missing\.jpg\?url$/, '../../outside.ts?url');
+  f.write('dev/families/artwork.tsx', `import outside from '${escaped}';`);
+  assert.match(f.lint().join('\n'), /dev\/families\/artwork\.tsx: unresolved local import/);
 });

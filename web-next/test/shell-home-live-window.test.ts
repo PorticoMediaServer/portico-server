@@ -21,7 +21,7 @@ const loader = registerHooks({load(url, context, next) {
   if (url.endsWith('/src/router.tsx')) return module(`export const router=globalThis.${key}.router;`);
   if (url.endsWith('/shell/viewport.ts')) return module(`export const useShellWidth=()=>globalThis.${key}.width;`);
   if (url.endsWith('/platform/freshness.ts')) return module(`export const usePooledService=(_key,make)=>{const service=make();return {service,snapshot:service.getSnapshot()}};export const useQuietRefresh=(_name,refresh)=>{globalThis.${key}.quiet=refresh};export const useFreshness=()=>({});`);
-  const leaves: Record<string, string[]> = {'layout': ['Hero','HeroFacts','Shelf'], 'artwork': ['Artwork','AmbientArt','GeneratedArt'], 'cards': ['CollectionBanner','LiveCard','PosterCard','RankedCard','SquareCard','WideCard'], 'controls': ['Button'], 'states': ['HomeSkeleton','StateLayout','Skeleton'], 'selection': ['SelectionCircle']};
+  const leaves: Record<string, string[]> = {'layout': ['Hero','HeroFacts','Shelf'], 'artwork': ['Artwork','AmbientArt','ColourBackdrop','GeneratedArt'], 'cards': ['CollectionBanner','LiveCard','PosterCard','RankedCard','SquareCard','WideCard'], 'controls': ['Button','Switch'], 'states': ['HomeSkeleton','StateLayout','Skeleton'], 'selection': ['SelectionCircle']};
   for (const [area, names] of Object.entries(leaves)) if (url.endsWith(`/kit/${area}/index.ts`)) return module(names.map(name=>`export const ${name}=${JSON.stringify(name)};`).join(''));
   if (url.endsWith('/shell/SelectionSurfaces.tsx')) return module("export const SelectionSurfaces='SelectionSurfaces',SelectionPhoneBar='SelectionPhoneBar';");
   if (url.endsWith('.tsx')) {

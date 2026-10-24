@@ -1,5 +1,5 @@
 import {existsSync, readdirSync, readFileSync, realpathSync, statSync} from 'node:fs';
-import {resolve, dirname, relative, extname, isAbsolute} from 'node:path';
+import {resolve, dirname, relative, extname, isAbsolute, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createRequire, isBuiltin} from 'node:module';
 import {parseSync} from 'rolldown/utils';
@@ -74,7 +74,7 @@ function cssImports(text) {
 }
 export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, paths} = {}) {
   repo = resolve(repo); app = resolve(app);
-  const old = resolve(repo, 'web'), oldReal = canonical(old), failures = [], visited = new Set();
+  const old = resolve(repo, 'web'), oldReal = canonical(old), devRoot = resolve(app, 'src/dev'), devRootReal = canonical(devRoot), privateAssets = resolve(repo, '../../design-ui-v1/design/ui-v1/assets'), privateAssetsReal = canonical(privateAssets), failures = [], visited = new Set();
   const configPaths = paths ?? JSON.parse(readFileSync(resolve(app, 'tsconfig.json'), 'utf8')).compilerOptions.paths;
   const aliases = Object.entries(configPaths).map(([key, values]) => ({key: key.replace(/\/\*$/, ''), star: key.endsWith('/*'), target: resolve(app, values[0].replace(/\/\*$/, ''))})).sort((a, b) => b.key.length - a.key.length);
   function reject(path, from, specifier) {
@@ -105,7 +105,17 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
     const target = local(spec, from);
     if (!target || reject(target, from, spec)) return;
     const file = extensions.map(extension => target + extension).find(candidate => existsSync(candidate) && statSync(candidate).isFile());
-    if (!file) { failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return; }
+    if (!file) {
+      // The DEV gallery consumes private design frames and artwork by relative
+      // path. Public source archives do not contain that sibling checkout; its
+      // absence is not a product UI boundary violation, but only a genuine
+      // importer inside the app's real src/dev tree gets that allowance.
+      const fromReal = canonical(from);
+      const devImporter = relative(app, from).startsWith(`src${sep}dev${sep}`) && (fromReal === devRootReal || fromReal.startsWith(devRootReal + sep));
+      const devAsset = within(privateAssets, target) && within(privateAssetsReal, canonical(target));
+      if (!existsSync(target) && devImporter && devAsset) return;
+      failures.push(`${relative(repo, from)}: unresolved local import ${spec}`); return;
+    }
     if (reject(file, from, spec)) return;
     if (!file.includes('/node_modules/')) visit(file);
   }
