@@ -54,9 +54,31 @@ if (profileDir) {
 const evidence = new Evidence(out);
 const steps = [];
 const net = [];
+const timings = [];
 page.on('response', response => {
   const url = new URL(response.url());
   if (!/^\/(v1|auth|setup)\b/.test(url.pathname)) return;
+  // Timing evidence for the campaign record: issue and expiry, proof and return, bounded fields
+  // only. Ids are reduced to a prefix; nothing from a grant or a body is kept.
+  if (/^\/(v1\/setup(\/resume)?|v1\/networking\/claim(\/prepare|\/web-approval)?|v1\/server-returns|auth\/portico-return)$/.test(url.pathname)) {
+    const stamp = {at: new Date().toISOString(), status: response.status(), method: response.request().method(), path: url.pathname};
+    if (response.status() < 300 && response.request().method() !== 'GET') {
+      response.json().then(body => {
+        for (const key of ['expiresAt', 'issuedAt', 'revision', 'generation', 'state']) {
+          if (body && body[key] !== undefined) stamp[key] = body[key];
+        }
+        const id = body && (body.setupId || body.claimId || body.registrationId || body.id);
+        if (typeof id === 'string') stamp.idPrefix = id.slice(0, 6);
+      }).catch(() => {});
+    }
+    if (response.status() >= 400) {
+      response.json().then(body => {
+        const code = body && body.error && typeof body.error.code === 'string' ? body.error.code.slice(0, 60) : undefined;
+        if (code) stamp.errorCode = code;
+      }).catch(() => {});
+    }
+    timings.push(stamp);
+  }
   const entry = {status: response.status(), method: response.request().method(), host: url.host, path: url.pathname};
   if (response.status() >= 400) {
     // Only a bounded, known identifier: error.code. No message text, no body, no headers.
@@ -103,7 +125,7 @@ async function clickControl(pattern, label) {
 function stepError(error, name) {
   const message = String(error && error.message ? error.message : error);
   const record = {failedAt: name, url: page.url(), message};
-  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, result: 'FAIL', ...record}, null, 2));
+  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, timings, result: 'FAIL', ...record}, null, 2));
   console.log(`\nFAIL ${name}: ${message}`);
   return record;
 }
@@ -212,13 +234,13 @@ try {
     throw new Error(`setup did not complete: /v1/system still reports setupRequired=${stillRequired}`);
   }
   result = 'PASS';
-  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, system, result}, null, 2));
+  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, timings, system, result}, null, 2));
   console.log(`\njourney finished: ${result}; setupRequired now ${stillRequired}`);
 } catch (error) {
   stepError(error, steps.length ? steps[steps.length - 1].name : 'start');
   result = 'FAIL';
 } finally {
-  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, result}, null, 2));
+  writeFileSync(join(out, 'journey.json'), JSON.stringify({steps, net, timings, result}, null, 2));
   // A persistent profile is left intact on purpose; only ephemeral contexts are torn down.
   if (!profileDir) {
     await context.close();
