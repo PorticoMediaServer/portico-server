@@ -46,10 +46,15 @@ func TestReadingDiscoverRowsFromAcceptedFacts(t *testing.T) {
 			t.Fatalf("series item attribution=%+v", row)
 		}
 	}
-	// The bounded window says so rather than inventing completeness.
-	small, err := r.s.Discover(ctx, r.p, r.library, reading.DiscoverLimits{Recent: 2, Series: 1, SeriesItems: 1, Scan: 2})
-	if err != nil || len(small.Recent) != 2 || len(small.Series) != 1 || len(small.Series[0].Items) != 1 || !small.SeriesLowerBound {
-		t.Fatalf("bounded discover=%+v %v", small, err)
+	// Value caps apply to the row, and a filled scan window admits it may be
+	// incomplete instead of pretending the row is whole.
+	small, err := r.s.Discover(ctx, r.p, r.library, reading.DiscoverLimits{Recent: 2, Series: 1, SeriesItems: 1})
+	if err != nil || len(small.Recent) != 2 || len(small.Series) != 1 || len(small.Series[0].Items) != 1 || small.SeriesLowerBound {
+		t.Fatalf("capped discover=%+v %v", small, err)
+	}
+	window, err := r.s.Discover(ctx, r.p, r.library, reading.DiscoverLimits{Scan: 2})
+	if err != nil || !window.SeriesLowerBound {
+		t.Fatalf("scan window=%+v %v", window, err)
 	}
 	// A series id is library-scoped, so an all-library request has no series row.
 	all, err := r.s.Discover(ctx, r.p, "", reading.DiscoverLimits{})
