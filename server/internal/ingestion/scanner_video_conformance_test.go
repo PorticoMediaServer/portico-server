@@ -2,10 +2,16 @@ package ingestion
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 )
@@ -185,21 +191,27 @@ func TestPlex45SubtitleSidecarsStoreFlagsWithoutBecomingItems(t *testing.T) {
 }
 
 // Plex's TV guide says a show folder's {edition-...} is a separate show with
-// separate watch state. This is the known catalogue gap: reproduction only, no
-// compactcatalog or provider-identity redesign here.
-func TestPlex45ShowFolderEditionSeparatesShowsAndWatchState(t *testing.T) {
+// separate watch state, while the owner's explicit merge still wins and must
+// survive a rescan. This is the known catalogue gap and the acceptance case for
+// it: no compactcatalog or provider-identity redesign here.
+func TestPlex45ShowFolderEditionSeparatesShowsThenOwnerMergePersists(t *testing.T) {
 	f := newLoopFixture(t, "tv",
 		"Babylon 5 (1994) {tvdb-1234}/Season 01/Babylon 5 - s01e01 - Midnight on the Firing Line.mkv",
 		"Babylon 5 (1994) {edition-Bluray Remaster} {tvdb-1234}/Season 01/Babylon 5 - s01e01 - Midnight on the Firing Line.mkv",
 	)
 	f.finish(f.queue())
 
-	var shows, episodes, links int
-	if err := f.db.QueryRow(`SELECT (SELECT count(*) FROM catalog_entities WHERE kind=2 AND retired=0),
-		(SELECT count(*) FROM catalog_episodes),
-		(SELECT count(*) FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE e.kind=4)`).Scan(&shows, &episodes, &links); err != nil {
-		t.Fatal(err)
+	counts := func() (shows, episodes, links int) {
+		t.Helper()
+		err := f.db.QueryRow(`SELECT (SELECT count(*) FROM catalog_entities WHERE kind=2 AND retired=0),
+			(SELECT count(*) FROM catalog_episodes),
+			(SELECT count(*) FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE e.kind=4)`).Scan(&shows, &episodes, &links)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return shows, episodes, links
 	}
+	shows, episodes, links := counts()
 	if shows != 2 {
 		t.Fatalf("show-folder edition scope: shows=%d episodes=%d episode_links=%d; want 2 shows with 1 episode each: the shared tvdb id coalesced the plain and {edition-Bluray Remaster} folders into one show (§45 addendum 4)", shows, episodes, links)
 	}
@@ -209,38 +221,104 @@ func TestPlex45ShowFolderEditionSeparatesShowsAndWatchState(t *testing.T) {
 	if n := f.count(`SELECT count(*) FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE e.kind=4 AND l.edition=?`, "Bluray Remaster"); n != 1 {
 		t.Fatalf("edition episode labels: %d; want 1", n)
 	}
-	rows, err := f.db.Query(`SELECT ep.show_id,ep.entity_id FROM catalog_episodes ep ORDER BY ep.show_id`)
+
+	type episodeOwner struct{ show, item int64 }
+	var plain, edition episodeOwner
+	rows, err := f.db.Query(`SELECT ep.show_id,ep.entity_id,l.edition FROM catalog_episodes ep JOIN catalog_asset_links l ON l.entity_id=ep.entity_id ORDER BY ep.show_id`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ids, itemIDs []int64
 	for rows.Next() {
-		var show, item int64
-		if err = rows.Scan(&show, &item); err != nil {
+		var owner episodeOwner
+		var label string
+		if err = rows.Scan(&owner.show, &owner.item, &label); err != nil {
 			rows.Close()
 			t.Fatal(err)
 		}
-		ids, itemIDs = append(ids, show), append(itemIDs, item)
+		if label == "" {
+			plain = owner
+		} else {
+			edition = owner
+		}
 	}
 	rows.Close()
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 2 || ids[0] == ids[1] {
-		t.Fatalf("episodes belong to shows %v; want two distinct shows", ids)
+	if plain.show == 0 || edition.show == 0 || plain.show == edition.show {
+		t.Fatalf("episode owners plain=%+v edition=%+v; want two distinct shows", plain, edition)
 	}
-	for _, item := range itemIDs {
-		if n := f.count(`SELECT count(*) FROM catalog_asset_links WHERE entity_id=?`, item); n != 1 {
-			t.Fatalf("edition episode %d has %d file links; want one", item, n)
+	for _, owner := range []episodeOwner{plain, edition} {
+		if n := f.count(`SELECT count(*) FROM catalog_asset_links WHERE entity_id=?`, owner.item); n != 1 {
+			t.Fatalf("edition episode %d has %d file links; want one", owner.item, n)
 		}
 	}
-	// Watch state is per episode, so separate shows keep it separate.
-	f.exec(`INSERT INTO personal_items(profile_id,item_id,revision,watched) VALUES('profile',?,1,1)`, itemIDs[0])
-	var watched int
-	if err = f.db.QueryRow(`SELECT COALESCE((SELECT watched FROM personal_items WHERE profile_id='profile' AND item_id=?),0)`, itemIDs[1]).Scan(&watched); err != nil {
+
+	// Watched state is the real per-profile state, not a second store.
+	cat := catalogtest.New(t, f.db)
+	plainEpisode, editionEpisode := cat.Public(plain.item), cat.Public(edition.item)
+	watched := true
+	if _, err = f.s.catalog.SetPersonal("account", "profile", plainEpisode, catalog.PersonalMutation{OperationID: "watch-plain-edition", Watched: &watched}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if watched != 0 {
-		t.Fatal("watch state followed the other edition")
+	if state, err := f.s.catalog.Personal("profile", plainEpisode); err != nil || !state.Watched {
+		t.Fatalf("watched episode state %+v err=%v", state, err)
+	}
+	if state, err := f.s.catalog.Personal("profile", editionEpisode); err != nil || state.Watched {
+		t.Fatalf("edition independently watched? %+v err=%v", state, err)
+	}
+
+	// The owner's MergeTitles is the real service path, with a hook that checks
+	// the merge targets are shows in this catalogue transaction.
+	from, into := cat.Public(edition.show), cat.Public(plain.show)
+	authorize := func(tx *sql.Tx) error {
+		for _, public := range []string{from, into} {
+			entity, err := entityid.Resolve(context.Background(), tx, public)
+			if err != nil {
+				return err
+			}
+			var kind int
+			if err = tx.QueryRow(`SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind); err != nil {
+				return err
+			}
+			if compactcatalog.Kind(kind) != compactcatalog.Show {
+				return fmt.Errorf("merge target %q is not a show", public)
+			}
+		}
+		return nil
+	}
+	if err = f.s.catalog.MergeTitles(context.Background(), from, into, authorize); err != nil {
+		t.Fatal(err)
+	}
+	if shows, episodes, links = counts(); shows != 1 || episodes != 1 || links != 2 {
+		t.Fatalf("after the owner merge: shows=%d episodes=%d episode_links=%d; want one show with one episode and two files", shows, episodes, links)
+	}
+	if n := f.count(`SELECT count(*) FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE e.kind=4 AND l.edition=''`); n != 1 {
+		t.Fatalf("after the owner merge plain episode labels: %d; want 1", n)
+	}
+	if n := f.count(`SELECT count(*) FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id WHERE e.kind=4 AND l.edition=?`, "Bluray Remaster"); n != 1 {
+		t.Fatalf("after the owner merge edition episode labels: %d; want 1", n)
+	}
+
+	// An unchanged rescan keeps the owner's decision.
+	f.finish(f.queue())
+	if shows, episodes, links = counts(); shows != 1 || episodes != 1 || links != 2 {
+		t.Fatalf("after the rescan: shows=%d episodes=%d episode_links=%d; want the owner merge to persist", shows, episodes, links)
+	}
+}
+
+// Two ordinary folders of one show with the same provider ID still coalesce as
+// today; edition scoping must not turn every duplicate folder into a new show.
+func TestPlex45PlainShowFoldersWithSameProviderCoalesce(t *testing.T) {
+	f := newLoopFixture(t, "tv",
+		"Babylon 5 (1994) {tvdb-1234}/Season 01/Babylon 5 - s01e01 - Midnight on the Firing Line.mkv",
+		"Babylon 5 (1994) [tvdb-1234]/Season 01/Babylon 5 - s01e02 - Soul Mates.mkv",
+	)
+	f.finish(f.queue())
+	if shows := f.count(`SELECT count(*) FROM catalog_entities WHERE kind=2 AND retired=0`); shows != 1 {
+		t.Fatalf("plain folders with one provider: shows=%d; want 1", shows)
+	}
+	if episodes := f.count(`SELECT count(*) FROM catalog_episodes`); episodes != 2 {
+		t.Fatalf("plain folders with one provider: episodes=%d; want 2", episodes)
 	}
 }
