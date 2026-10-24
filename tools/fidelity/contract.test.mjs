@@ -1,13 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compareMeasurements} from './compare-files.mjs';
-import {validateMeasurement} from './contract.mjs';
+import {validateMeasurement, sameLogicalExtent} from './contract.mjs';
 
 const fixture = () => ({version: 1, scope: 'screen', fullViewport: true,
   root: {x: 0, y: 0, width: 390, height: 844}, viewport: {width: 390, height: 844, deviceScaleFactor: 1}, anchorIssues: [], repeatedLists: [], strings: [],
   elements: ['title', 'caption'].map((frame, index) => ({id: String(index), parent: null, frame, tag: 'Text', role: 'text', leaf: true, ownText: frame, normalizedText: frame,
     box: {x: 16, y: 20 + index * 40, width: 200, height: 30}, textRects: [{x: 16, y: 20 + index * 40, width: 100, height: 25}], focused: index === 0,
     effectiveOpacity: 1, effectiveBackgroundColor: 'rgb(7, 16, 24)', style: {fontFamily: 'Example', fontSize: '24px', fontWeight: '700', color: 'rgb(237, 245, 250)'}}))});
+
+test('native viewport consistency accepts exact float32 representation without changing raw bounds or geometry policy', () => {
+  const reference = fixture(), actual = fixture();
+  for (const screen of [reference, actual]) {
+    screen.root.width = screen.viewport.width = 411.42857142857144;
+    screen.root.height = screen.viewport.height = 914.2857142857143;
+  }
+  actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'dp'};
+  actual.viewport.deviceScaleFactor = 2.625;
+  actual.root.width = Math.fround(actual.viewport.width); actual.root.height = Math.fround(actual.viewport.height);
+  const raw = JSON.stringify(actual);
+  assert.deepEqual(validateMeasurement(actual), []);
+  assert.equal(compareMeasurements(reference, actual).verdict, 'PASS');
+  assert.equal(JSON.stringify(actual), raw);
+  actual.fullViewport = false;
+  assert.deepEqual(validateMeasurement(actual), ['fullViewport']);
+  actual.fullViewport = true;
+  assert.ok(compareMeasurements(fixture(), actual).differences.some(value => value.kind === 'screen-state'));
+  actual.elements[0].box.x += 2.01;
+  assert.ok(compareMeasurements(reference, actual).differences.some(value => value.property === 'box.x'));
+  actual.root.width += .001;
+  assert.ok(validateMeasurement(actual).includes('root.viewport'));
+  assert.equal(sameLogicalExtent(411.42856, 411.42857, actual.measurement), false);
+  assert.equal(sameLogicalExtent(411.42857142857144, Math.fround(411.42857142857144), {renderer: 'dom', coordinateUnit: 'css-px'}), false);
+});
 
 test('one shared contract compares native logical geometry without falsifying physical pixel ratio', () => {
   const reference = fixture(), actual = fixture(); actual.measurement = {renderer: 'react-native', platform: 'android', coordinateUnit: 'dp'}; actual.viewport.deviceScaleFactor = 3;
