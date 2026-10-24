@@ -32,7 +32,9 @@ def main():
         payload = struct.pack("<" + "f" * len(values), *values)
         outputs = []
         for command in (native, emulated):
-            result = subprocess.run(command, input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180, check=True)
+            result = subprocess.run(command, input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+            if result.returncode != 0:
+                raise RuntimeError(f"CPU helper exited {result.returncode}: {result.stderr.decode(errors='replace')[:2048]}")
             assert len(result.stdout) == 8 + 250 * 4 and result.stdout[:8] == b"PSNC0001"
             numeric = struct.unpack("<250f", result.stdout[8:])
             assert all(math.isfinite(value) for value in numeric)
