@@ -5666,6 +5666,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,

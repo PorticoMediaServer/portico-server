@@ -34602,6 +34602,21 @@ export const schemas = {
               },
               "type": "array"
             },
+            "facetSource": {
+              "properties": {
+                "endpoint": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "endpoint",
+                "field"
+              ],
+              "type": "object"
+            },
             "filters": {
               "items": {
                 "type": "string"
@@ -34848,6 +34863,21 @@ export const schemas = {
               "type": "string"
             },
             "type": "array"
+          },
+          "facetSource": {
+            "properties": {
+              "endpoint": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "endpoint",
+              "field"
+            ],
+            "type": "object"
           },
           "filters": {
             "items": {
@@ -99436,6 +99466,21 @@ export const schemas = {
               },
               "type": "array"
             },
+            "facetSource": {
+              "properties": {
+                "endpoint": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "endpoint",
+                "field"
+              ],
+              "type": "object"
+            },
             "filters": {
               "items": {
                 "type": "string"
@@ -99682,6 +99727,21 @@ export const schemas = {
               "type": "string"
             },
             "type": "array"
+          },
+          "facetSource": {
+            "properties": {
+              "endpoint": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "endpoint",
+              "field"
+            ],
+            "type": "object"
           },
           "filters": {
             "items": {
