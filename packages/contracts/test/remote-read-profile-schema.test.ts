@@ -53,7 +53,7 @@ test('read-profile GET requires captured settings without inventing saved values
   }
 });
 
-test('legacy and source-operation receipts share the optional non-null read-profile shape', () => {
+test('receipts preserve additive response projection and validate present read-profile facts', () => {
   const names = [
     'GetStorageSourceOperationsIdResponse', 'PostStorageSourcesWebdavResponse',
     'PutStorageSourcesWebdavIdResponse', 'DeleteStorageSourcesWebdavIdResponse',
@@ -63,7 +63,9 @@ test('legacy and source-operation receipts share the optional non-null read-prof
     assert.doesNotThrow(() => decode(name, {scope, receipt}));
     const decoded = decode(name, {scope, receipt: {...receipt, readSettings: settings}}) as {receipt: {readSettings: typeof settings}};
     assert.equal(decoded.receipt.readSettings.values.bytesPerSecond, 0);
-    assert.throws(() => decode(name, {scope, receipt: {...receipt, readSettings: null}}));
+    const absent = decode(name, {scope, receipt: {...receipt, readSettings: null, futureFact: true}}) as {receipt: Record<string, unknown>};
+    assert.equal(Object.hasOwn(absent.receipt, 'readSettings'), false);
+    assert.equal(Object.hasOwn(absent.receipt, 'futureFact'), false);
     assert.throws(() => decode(name, {scope, receipt: {...receipt, readSettings: {sourceId: 'source'}}}));
     assert.throws(() => decode(name, {scope, receipt: {...receipt, readSettings: {...settings, values: {...values, wholeFileReads: 'false'}}}}));
   }

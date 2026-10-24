@@ -51,8 +51,3 @@ func (SourceReadSettingsChange) JSONSchema() map[string]any {
 	properties["expectedRevision"].(map[string]any)["minimum"] = 0
 	return schema
 }
-
-func (Receipt) JSONSchema() map[string]any {
-	type wire Receipt
-	return readSettingsWireSchema[wire]()
-}
