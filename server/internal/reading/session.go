@@ -203,6 +203,16 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err != nil {
 		return nil, Publication{}, f.StopAndRecheck(err)
 	}
+	// Catalogue identity is authoritative; do not resurrect package creators.
+	// This is a current authorized DB snapshot, with no added provider Stat or
+	// archive read and no positive eligibility cache.
+	values, err := s.publicationAttributions(ctx, p, document.Selection)
+	if err != nil {
+		return nil, Publication{}, err
+	}
+	if values.Author != nil {
+		document.Metadata.Author = values.Author.Value
+	}
 	session, err := s.captureSession(p, f)
 	return session, document, err
 }

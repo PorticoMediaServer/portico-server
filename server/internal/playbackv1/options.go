@@ -223,6 +223,7 @@ type Service struct {
 	RadioKeys          func(context.Context, *sql.Tx, identity.Principal, catalog.RadioBatchRequest) (catalog.RadioBatch, error)
 	MixKeys            func(context.Context, *sql.Tx, identity.Principal, string) ([]string, error)
 	JourneyKeys        func(context.Context, *sql.Tx, identity.Principal, JourneySelector) ([]string, error)
+	SmoothOrder        func(context.Context, *sql.Tx, identity.Principal, []string) (catalog.MusicSmoothOrder, error)
 	LibraryCheck       LibraryCheck
 	Visibility         Visibility
 	// Unrestricted says the caller's item fence admits every item (every
