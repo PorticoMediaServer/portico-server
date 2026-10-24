@@ -83,12 +83,11 @@ func TestMusicShuffleMountedReadCapturesAnUnvisitedWindowBeforeReturningIt(t *te
 	var q playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "music-shuffle-two-windows-001"}, map[string]any{
 		"segments": []any{
-			map[string]any{"source": map[string]any{"items": map[string]any{"ids": ids[:256]}}},
+			map[string]any{"source": map[string]any{"items": map[string]any{"ids": ids[:256]}}, "order": map[string]any{"mode": "shuffle", "seed": "42"}},
 			map[string]any{"source": map[string]any{"items": map[string]any{"ids": ids[256:]}}},
 		},
-		"shuffle": map[string]any{"seed": "42"},
 	}, 201, &q)
-	if q.Queue.Total != int64(len(ids)) {
+	if q.Queue.Total != int64(len(ids)) || q.Queue.Shuffle == nil {
 		t.Fatal(q)
 	}
 	var before int
