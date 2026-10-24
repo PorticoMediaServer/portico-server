@@ -18,9 +18,13 @@ func TestAccountRestoreUsesAccountScopeUntilExplicitProfileSelection(t *testing.
 	const installation = "66a2cf74-34a1-49aa-984f-76547f54b76e"
 	call := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		t.Helper()
-		raw, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal("test request encoding failed")
+		var raw []byte
+		if body != nil {
+			var err error
+			raw, err = json.Marshal(body)
+			if err != nil {
+				t.Fatal("test request encoding failed")
+			}
 		}
 		defer clear(raw)
 		r := httptest.NewRequest(method, "http://127.0.0.1:11111"+path, bytes.NewReader(raw))
