@@ -159,7 +159,8 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 		if s.SourceInputs == nil {
 			return PlaybackPlan{}, ErrUnavailable
 		}
-		input, e := s.SourceInputs.OpenSubtitleInput(ctx, item, scope.source, session)
+		inputContext := s.playbackSourceContext(ctx, p, item, session, scope)
+		input, e := s.SourceInputs.OpenSubtitleInput(inputContext, item, scope.source, session)
 		if e != nil {
 			return PlaybackPlan{}, e
 		}

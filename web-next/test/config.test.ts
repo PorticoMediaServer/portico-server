@@ -42,7 +42,7 @@ test('gallery discovery creates sorted on-demand public loaders and no productio
   assert.doesNotMatch(source, /import\(["']\/src\/dev\/families\//);
   assert.doesNotMatch(source, /notes\.md/);
   const plugin = kitFamilies(); plugin.configResolved({root, command: 'build'});
-  assert.equal(plugin.load('\0virtual:portico-kit-families'), 'export default [];');
+  assert.match(plugin.load('\0virtual:portico-kit-families'), /^export default \[\];export async function loadGalleryInputs\(\)\{throw/);
   assert.match(read('../src/router.tsx'), /import\.meta\.env\.DEV\s*\?/);
 });
 test('capture query dimensions are bounded integral CSS pixels with safe identifiers', () => {

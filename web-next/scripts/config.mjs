@@ -1,6 +1,6 @@
-import {readFileSync, readdirSync, existsSync} from 'node:fs';
+import {readFileSync, readdirSync, existsSync, realpathSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {join, relative} from 'node:path';
+import {join, relative, resolve, isAbsolute} from 'node:path';
 const at = path => fileURLToPath(new URL(path, import.meta.url));
 export const browserFloor = ['chrome111', 'edge111', 'firefox113', 'safari16.4', 'ios16.4'];
 export const aliases = {'@core': at('../../packages/client-core/src'), '@design': at('../../packages/design/src/index.ts'), '@i18n': at('../../packages/i18n/src/index.ts'), '@': at('../src')};
@@ -30,6 +30,55 @@ export function familyImports(root) {
   // module is requested only when the registry calls this public loader.
   return `const families=${JSON.stringify(families)};const load=url=>import(/* @vite-ignore */ url);export default families.map(([familyId,url])=>Object.assign(()=>load(url),{familyId}));`;
 }
+const inputKeys = {
+  layout: ['referenceHtml', 'searchHtml', 'tvHtml', 'phoneHtml', 'browseJson', 'browseHtml', 'readHtml', 'phoneReadHtml'],
+  browse: ['movieCapabilities', 'musicCapabilities', 'songResponse', 'drawnListen', 'drawnTv', 'drawnBrowse', 'drawnRead', 'drawnPhone', 'albumResponse'],
+};
+const inputPrefix = '/__portico_gallery_inputs/';
+const inside = (root, path) => { const part = relative(root, path); return part === '' || !part.startsWith('..' + '/') && part !== '..' && !isAbsolute(part); };
+const keysAre = (value, keys) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+function readBounded(path, limit) {
+  if (!statSync(path).isFile() || statSync(path).size > limit) throw new Error('invalid input file');
+  const bytes = readFileSync(path);
+  if (bytes.length > limit) throw new Error('invalid input file');
+  return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+}
+/** Explicit local DEV carrier only. No private source names or default root. */
+export function readGalleryInputs(manifestPath, family, publicRoot) {
+  if (!Object.hasOwn(inputKeys, family) || typeof manifestPath !== 'string' || !isAbsolute(manifestPath)) throw new Error('gallery inputs unavailable');
+  const repo = realpathSync(resolve(publicRoot, '..')), manifestFile = realpathSync(manifestPath);
+  if (inside(repo, manifestFile)) throw new Error('gallery inputs unavailable');
+  const manifest = JSON.parse(readBounded(manifestFile, 64 * 1024));
+  if (!keysAre(manifest, ['version', 'root', 'families']) || manifest.version !== 1 || typeof manifest.root !== 'string' || !isAbsolute(manifest.root)) throw new Error('gallery inputs unavailable');
+  const root = realpathSync(manifest.root);
+  if (inside(repo, root) || inside(root, repo) || !manifest.families || typeof manifest.families !== 'object' || Array.isArray(manifest.families) || Object.keys(manifest.families).some(key => !Object.hasOwn(inputKeys, key))) throw new Error('gallery inputs unavailable');
+  const files = manifest.families[family], keys = inputKeys[family];
+  if (!keysAre(files, keys)) throw new Error('gallery inputs unavailable');
+  let total = 0;
+  return Object.fromEntries(keys.map(key => {
+    const name = files[key];
+    if (typeof name !== 'string' || isAbsolute(name) || !/\.(html|json)$/.test(name)) throw new Error('gallery inputs unavailable');
+    const lexical = resolve(root, name);
+    if (!inside(root, lexical)) throw new Error('gallery inputs unavailable');
+    const file = realpathSync(lexical);
+    if (!inside(root, file)) throw new Error('gallery inputs unavailable');
+    const value = readBounded(file, 4 * 1024 * 1024);
+    total += Buffer.byteLength(value);
+    if (total > 24 * 1024 * 1024) throw new Error('gallery inputs unavailable');
+    return [key, value];
+  }));
+}
+function inputLoader(development) {
+  if (!development) return 'export async function loadGalleryInputs(){throw new Error("gallery inputs unavailable");}';
+  return `const inputKeys=${JSON.stringify(inputKeys)};export async function loadGalleryInputs(family){
+    if(!Object.hasOwn(inputKeys,family))throw new Error('gallery inputs unavailable');
+    const response=await fetch(${JSON.stringify(inputPrefix)}+family,{credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw new Error('gallery inputs unavailable');
+    const value=await response.json(),keys=inputKeys[family];
+    if(!value||Array.isArray(value)||Object.keys(value).length!==keys.length||!keys.every(key=>Object.hasOwn(value,key)&&typeof value[key]==='string'))throw new Error('gallery inputs unavailable');
+    return value;
+  }`;
+}
 export function kitFamilies() {
   const id = 'virtual:portico-kit-families';
   let root, development;
@@ -37,8 +86,24 @@ export function kitFamilies() {
     name: 'portico-kit-families',
     configResolved(config) { root = config.root; development = config.command === 'serve'; },
     resolveId(source) { if (source === id) return '\0' + id; },
-    load(source) { if (source === '\0' + id) return development ? familyImports(root) : 'export default [];'; },
+    load(source) { if (source === '\0' + id) return (development ? familyImports(root) : 'export default [];') + inputLoader(development); },
     configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const url = request.url ?? '';
+        if (!url.startsWith(inputPrefix)) return next();
+        response.setHeader('Cache-Control', 'no-store');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+        response.setHeader('Content-Type', 'application/json');
+        const family = url.slice(inputPrefix.length);
+        if (!development || request.method !== 'GET' || !Object.hasOwn(inputKeys, family)) { response.statusCode = 404; return response.end('{"error":"gallery inputs unavailable"}'); }
+        // This private local carrier must not bypass Vite's later host guard.
+        const host = request.headers?.host;
+        if (typeof host !== 'string' || !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?$/.test(host)) { response.statusCode = 403; return response.end('{"error":"gallery inputs unavailable"}'); }
+        const origin = request.headers?.origin;
+        if (origin && origin !== 'http://' + host && origin !== 'https://' + host || request.headers?.['sec-fetch-site'] === 'cross-site') { response.statusCode = 403; return response.end('{"error":"gallery inputs unavailable"}'); }
+        try { response.end(JSON.stringify(readGalleryInputs(process.env.PORTICO_GALLERY_INPUT_MANIFEST, family, root))); }
+        catch { response.statusCode = 503; response.end('{"error":"gallery inputs unavailable"}'); }
+      });
       const directory = join(root, 'src/dev/families');
       server.watcher.add(directory);
       const changed = path => {
