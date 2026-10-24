@@ -6,23 +6,23 @@ export const frontdoorReferences = {
     selector: '.frame[data-f="39"] > .screen > .col:nth-of-type(1) .phone',
     windowViewport: {width: 1440, height: 1010, deviceScaleFactor: 1},
     viewport: {width: 390, height: 844, deviceScaleFactor: 1},
-    anchors: {title: 'h1', 'primary-action': '.btn.play', 'secondary-action': '.btn.glass'},
+    anchors: {backdrop: ':scope > .gen.top', 'brand-mark': 'img.mk', title: 'h1', 'primary-action': '.btn.play', 'secondary-action': '.btn.glass'},
   },
   androidTV: {
     selector: '.frame[data-f="40"] > .screen.tv',
     windowViewport: {width: 1920, height: 1080, deviceScaleFactor: 1},
     viewport: {width: 1920, height: 1080, deviceScaleFactor: 1},
-    anchors: {screen: '$root', title: 'h1', 'primary-action': '.btns .btn.play', 'secondary-action': '.btns .btn.glass'},
+    anchors: {screen: '$root', backdrop: ':scope > .gen', 'brand-mark': 'img.wm', title: 'h1', 'primary-action': '.btns .btn.play', 'secondary-action': '.btns .btn.glass'},
   },
 };
 
 /** App-side public IDs; private selectors/IDs stay exclusively in this tool. */
 export const frontdoorStateAdapters = {
-  phone: {anchors: {'accounts-welcome-title': 'title', 'accounts-welcome-portico': 'primary-action', 'accounts-welcome-portico/label': 'primary-action-label',
+  phone: {anchors: {'colour-backdrop': 'backdrop', 'accounts-welcome-wordmark': 'brand-mark', 'accounts-welcome-title': 'title', 'accounts-welcome-portico': 'primary-action', 'accounts-welcome-portico/label': 'primary-action-label',
     'accounts-welcome-local': 'secondary-action', 'accounts-welcome-local/label': 'secondary-action-label'},
     comparison: {textHandledBySlots: ['primary-action', 'secondary-action'], actualContentOnly: ['primary-action-label', 'secondary-action-label'],
       contentSlots: ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-label'}))}},
-  androidTV: {anchors: {'tv-front-door': 'screen', 'tv-front-door-title': 'title', 'tv-front-door-portico': 'primary-action', 'tv-front-door-portico/label': 'primary-action-label',
+  androidTV: {anchors: {'tv-front-door': 'screen', 'colour-backdrop': 'backdrop', 'tv-front-door-wordmark': 'brand-mark', 'tv-front-door-title': 'title', 'tv-front-door-portico': 'primary-action', 'tv-front-door-portico/label': 'primary-action-label',
     'tv-front-door-local': 'secondary-action', 'tv-front-door-local/label': 'secondary-action-label'},
     comparison: {focus: {frame: 'primary-action'}, textHandledBySlots: ['primary-action', 'secondary-action'], actualContentOnly: ['primary-action-label', 'secondary-action-label'],
       contentSlots: ['primary', 'secondary'].map(name => ({reference: name + '-action', actual: name + '-action-label'}))}},
@@ -35,8 +35,11 @@ export function annotateFrontdoorReference(measured, platform) {
   if (!spec || measured?.measurement?.sourceRole !== 'reference-frame' || validateMeasurement(measured, {reference: true}).length ||
     measured.anchorIssues.length || measured.viewport.width !== spec.viewport.width || measured.viewport.height !== spec.viewport.height)
     throw new Error('A complete validated cached frontdoor reference at its authored size is required');
-  const result = structuredClone(measured), bound = new Map();
-  const predicates = {title: node => node.tag === 'h1',
+  const result = structuredClone(measured), bound = new Map(), roots = result.elements.filter(node => node.parent == null);
+  if (roots.length !== 1) throw new Error('Cached frontdoor root must be unique');
+  const predicates = {backdrop: node => node.parent === roots[0].id && node.tag === 'div' && node.classes?.includes('gen') && (platform === 'androidTV' || node.classes.includes('top')),
+    'brand-mark': node => node.tag === 'img' && node.image?.kind === 'image' && node.classes?.includes(platform === 'phone' ? 'mk' : 'wm'),
+    title: node => node.tag === 'h1',
     'primary-action': node => node.classes?.includes('btn') && node.classes.includes('play'),
     'secondary-action': node => node.classes?.includes('btn') && node.classes.includes('glass')};
   if (platform === 'androidTV') predicates.screen = node => node.parent == null && node.box?.x === 0 && node.box?.y === 0 &&
