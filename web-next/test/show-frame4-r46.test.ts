@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {readFileSync} from 'node:fs';
 import {transformTsx} from './transform-tsx.mjs';
 import type {ShowWorkspaceData, WorkspaceShowCredit} from '@core/show-workspace.ts';
 
@@ -119,4 +120,13 @@ test('a non-owner sees no Server panel and no settings command', () => {
   const html = renderToStaticMarkup(createElement(ShowDetails, {binding, data, owner: false}));
   assert.doesNotMatch(html, /Show settings|Owner only|Episode display|Change/);
   assert.match(html, /Cast and crew/);
+});
+
+test('the long-running show specimen keeps the drawn 36-season frame facts', () => {
+  const entry = readFileSync(new URL('../src/dev/entries/show.tsx', import.meta.url), 'utf8');
+  assert.match(entry, /frame !== '6'/);
+  assert.match(entry, /seasonTotalCount: 36/);
+  assert.match(entry, /watchedCount: 4, unwatchedCount: 20/);
+  assert.match(entry, /data-show-frame6-ready/);
+  assert.match(entry, /FreshnessProvider/);
 });
