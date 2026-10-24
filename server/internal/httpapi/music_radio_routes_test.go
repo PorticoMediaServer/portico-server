@@ -67,10 +67,12 @@ func TestMusicRadioHTTPRefillsPastChunkBoundaryAndReopens(t *testing.T) {
 	base := "/v1/queues/" + q.Queue.ID
 	stale := q.Queue.Revision
 	f.call("POST", base+"/segments", map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"placement": "end", "source": queueItems(items[1].Public)}, 200, &q)
-	if len(q.Window) != 4 || q.Window[3].ItemID != items[1].Public {
-		t.Fatal("manual end placement changed", q.Window)
+	var inserted playbackv1.EntryPage
+	f.call("GET", base+"/entries?from=0&limit=4", nil, nil, 200, &inserted)
+	if len(inserted.Items) != 4 || inserted.Items[3].ItemID != items[1].Public {
+		t.Fatal("manual end placement changed", inserted.Items)
 	}
-	manual := q.Window[3].EntryID
+	manual := inserted.Items[3].EntryID
 	for n := 0; n < 265; n++ {
 		f.call("POST", base+":advance", map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"reason": "next"}, 200, &q)
 		if q.Queue.Current == nil || q.Queue.Current.Position != int64(n+1) {
