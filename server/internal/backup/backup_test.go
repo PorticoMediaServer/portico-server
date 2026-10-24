@@ -143,6 +143,17 @@ func TestBackupDuringConcurrentWrites(t *testing.T) {
 	if err = openReadOnly(t, storagepaths.Path(state, BackupsDir, id, DatabaseName)).QueryRow(`SELECT value FROM configuration WHERE key='backup_write_probe'`).Scan(&probe); err != nil {
 		t.Fatal(err)
 	}
+	// The copy suspends the writer's checkpoint backstop while its snapshot is
+	// open; it must always be put back.
+	var backstop int
+	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		return tx.QueryRow(`PRAGMA wal_autocheckpoint`).Scan(&backstop)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if backstop == 0 {
+		t.Fatal("backup left the writer checkpoint backstop disabled")
+	}
 }
 
 // Backups list newest first, delete removes, and prune keeps the newest keep

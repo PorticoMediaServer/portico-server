@@ -279,10 +279,17 @@ type Service struct {
 	operations map[string]string
 	running    *Job
 	lastBackup *BackupResult
+
+	// checkpointMu serializes the writer's automatic-checkpoint hold shared by
+	// overlapping backups; the writer is one connection per service.
+	checkpointMu    sync.Mutex
+	checkpointHolds int
+	checkpointPrior int
 }
 
 // New opens the service on state. db is the live database handle the online
-// backup reads from; it never takes the write gate.
+// backup reads from; the copy itself never takes the write gate, and only the
+// short checkpoint-guard pragmas around it do.
 func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion int) *Service {
 	return &Service{
 		state:         state,
@@ -545,6 +552,11 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 			job.report("snapshot", done, max64(total, estimate))
 		}
 	}
+	// The backup's snapshot pins checkpoint progress, so keep the writer's
+	// automatic checkpoint off the gate for the whole copy and drain the log
+	// from the maintenance connection before restoring it.
+	releaseCheckpoint := s.holdWriterCheckpoint(ctx)
+	defer releaseCheckpoint()
 	if err = copyDatabase(ctx, s.db, filepath.Join(partial, DatabaseName), report); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
