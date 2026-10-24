@@ -1,6 +1,7 @@
 #!/bin/bash
 # Linux-hosted Windows target check. No VM, execution, HDR or signing claim.
 set -eu
+export CI=1
 cd "$(dirname "$0")/../../.."
 job="desktop-r29-windows-check-$(date +%s)-$$"
 image="portico/$job"
@@ -17,7 +18,7 @@ PRECHECK
 # with the already pinned Tauri CLI, without modifying any source pixels/styles.
 node apps/desktop/node_modules/@tauri-apps/cli/tauri.js icon apps/desktop/src-tauri/icons/icon.png --output "$TMPDIR/windows-icons"
 cp "$TMPDIR/windows-icons/icon.ico" apps/desktop/src-tauri/icons/icon.ico
-docker build --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-windows-check.Dockerfile .
+docker build --quiet --network=host --label portico=desktop-r29 --tag "$image" --file apps/desktop/test/native-windows-check.Dockerfile .
 mkdir -p "$TMPDIR/windows-check/home"
 docker_user=(--user "$(id -u):$(id -g)")
 case "$(docker info --format '{{json .SecurityOptions}}')" in *name=rootless*) docker_user=(--user 0:0) ;; esac
@@ -29,6 +30,6 @@ set -eu
 mkdir -p "$TMPDIR"
 cd /source
 rustc --version
-cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --target x86_64-pc-windows-gnu
+cargo check --quiet --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --target x86_64-pc-windows-gnu
 printf "%s\n" "Windows GNU target source check only; no Windows execution/output/HDR acceptance"
 '
