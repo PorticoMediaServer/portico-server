@@ -18,6 +18,26 @@ ABI = {"avcodec": 62, "avformat": 62, "avutil": 60, "avfilter": 11,
 SYSTEM = ("/System/Library/", "/usr/lib/")
 
 
+def verify_source_receipt(receipt, lock, receipt_sha):
+    source = lock["ffmpeg"]
+    patches = receipt.get("patches")
+    if (lock.get("schemaVersion") != 2
+            or receipt.get("sourceCommit") != source["sourceCommit"]
+            or receipt.get("sourceSha256") != source["sourceSha256"]
+            or not isinstance(patches, list)
+            or len(patches) != source["requiredPatches"]
+            or any(not isinstance(patch, dict) or not re.fullmatch(r"[a-f0-9]{64}", patch.get("sha256", "")) for patch in patches)
+            or receipt.get("postSeriesPatches") != source["postSeriesPatches"]
+            or receipt_sha != source["preparedReceiptSha256"]):
+        raise ValueError("prepared source does not match the pinned desktop cohort")
+
+
+def dylib_headers(value):
+    records = [line.split() for line in value.splitlines()
+               if line.strip().startswith(("MH_MAGIC", "MH_CIGAM"))]
+    return bool(records) and all("DYLIB" in record for record in records)
+
+
 def run(*argv):
     return subprocess.check_output(argv, text=True, stderr=subprocess.STDOUT).strip()
 
@@ -54,12 +74,12 @@ def main():
         parser.error("output must be a new owned directory")
     receipt = json.loads(args.ffmpeg_receipt.read_text())
     lock = json.loads(args.lock.read_text())
-    if (receipt.get("sourceCommit") != "253db2a7b0a8045c54ce68ce33d7f601229b1822"
-            or receipt.get("sourceSha256") != "87bedcefc860cd234cdeddbebdcd3ce45aeedc81d0fbb258ed839ff778be3140"
-            or len(receipt.get("patches", [])) != 100
-            or any(not re.fullmatch(r"[a-f0-9]{64}", p.get("sha256", "")) for p in receipt["patches"])
-            or sha(args.ffmpeg_receipt) != lock["ffmpeg"]["preparedReceiptSha256"]):
+    try:
+        verify_source_receipt(receipt, lock, sha(args.ffmpeg_receipt))
+    except (ValueError, KeyError, TypeError):
         parser.error("the prepared source receipt does not match the desktop source input")
+    if not 0 < args.maximum_bytes <= lock["packageLimits"]["installedBytes"]:
+        parser.error("native closure limit exceeds the pinned package bound")
     roots = [args.ffmpeg_prefix / "lib", args.dependency_directory]
     queue = [("libmpv.2.dylib", args.mpv),
              ("libMoltenVK.dylib", args.dependency_directory / "libMoltenVK.dylib")]
@@ -71,6 +91,8 @@ def main():
             continue
         if not source.is_file() or "arm64" not in run("/usr/bin/lipo", "-archs", str(source)).split():
             parser.error("missing arm64 native dependency: " + name)
+        if not dylib_headers(run("/usr/bin/otool", "-hv", str(source))):
+            parser.error("native dependency is not a dynamic library: " + name)
         byte_count += source.stat().st_size
         if byte_count > args.maximum_bytes:
             parser.error("native closure exceeds the installed-size budget")
@@ -83,7 +105,8 @@ def main():
             if not re.fullmatch(r"lib[A-Za-z0-9_.+-]+\.dylib", leaf):
                 parser.error("unresolved non-system dependency: " + leaf)
             av = re.fullmatch(r"lib(avcodec|avformat|avutil|avfilter|avdevice|swscale|swresample)\.(\d+)(?:\.[\d.]+)?\.dylib", leaf)
-            if av and (int(av[2]) != ABI[av[1]] or not (roots[0] / leaf).is_file()):
+            if av and (int(av[2]) != ABI[av[1]] or not (roots[0] / leaf).is_file()
+                       or not (roots[0] / leaf).resolve().is_relative_to(roots[0].resolve())):
                 parser.error("foreign FFmpeg ABI or missing canonical shared library: " + leaf)
             candidate = next((root / leaf for root in roots if (root / leaf).is_file()), None)
             if candidate is None:
