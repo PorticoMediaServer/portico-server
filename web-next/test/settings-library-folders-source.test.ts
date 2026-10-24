@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {LibraryAdminDocument, LibrarySettings} from '@core/administration.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
-import {SettingsLibraryFoldersSource} from '../src/screens/settings/library-folders-source.ts';
+import {SettingsLibraryFoldersSource, type SettingsLibraryFolderEdit} from '../src/screens/settings/library-folders-source.ts';
 import {SettingsLibrarySource} from '../src/screens/settings/library-source.ts';
 
 const scope = {serverId: 'server', viewerId: 'owner'};
@@ -26,10 +26,10 @@ test('the folder configuration is inert until a library is explicitly selected',
     () => {throw new Error('unexpected notification');}, () => {throw new Error('unexpected read failure');});
   try {
     assert.equal(calls, 0);
-    assert.deepEqual(folders.getSnapshot(), {loading: false});
+    assert.deepEqual(folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.equal(folders.config(), undefined);assert.equal(folders.config('selected'), undefined);
     await folders.select();await folders.refresh();
-    assert.equal(calls, 0);assert.deepEqual(folders.getSnapshot(), {loading: false});
+    assert.equal(calls, 0);assert.deepEqual(folders.getSnapshot(), {loading: false, mutation: 'idle'});
   } finally {folders.dispose();}
 });
 
@@ -75,7 +75,7 @@ test('the folder configuration carries the inventory revision, never the Setting
     // The existing write contract already states expectedRevision is inventory-config.revision, never settings.revision.
     assert.equal(f.folders.config('selected')?.revision, 41);
     assert.deepEqual(calls, ['/v1/admin/libraries/selected/settings', '/v1/admin/libraries/selected/inventory-config']);
-    assert.deepEqual(Object.keys(f.folders.getSnapshot()).sort(), ['config', 'libraryId', 'loading']);
+    assert.deepEqual(Object.keys(f.folders.getSnapshot()).sort(), ['config', 'libraryId', 'loading', 'mutation']);
   } finally {f.folders.dispose();library.dispose();}
 });
 
@@ -121,7 +121,7 @@ test('clearing or disposing during a read aborts it and suppresses the late conf
       assert.equal(signal?.aborted, true);
       release(configuration());
       await pending;
-      assert.deepEqual(f.folders.getSnapshot(), {loading: false});
+      assert.deepEqual(f.folders.getSnapshot(), {loading: false, mutation: 'idle'});
       assert.equal(f.folders.config('selected'), undefined);
       assert.deepEqual(f.errors, []);
     } finally {f.folders.dispose();}
@@ -137,7 +137,7 @@ test('a retired caller lifetime cannot start reads or publish a late answer', as
     release(configuration());
     await pending;
     assert.equal(calls, 1);
-    assert.deepEqual(f.folders.getSnapshot(), {loading: false});
+    assert.deepEqual(f.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.equal(f.folders.config('selected'), undefined);
     await f.folders.select('selected');await f.folders.refresh();
     assert.equal(calls, 1);assert.deepEqual(f.errors, []);
@@ -223,7 +223,7 @@ test('two controllers over one transport keep independent state, aborts and scop
     assert.deepEqual(calls.map(call => call.path), ['/v1/admin/libraries/held/inventory-config', '/v1/admin/libraries/other/inventory-config']);
     const firstNotified = first.notified(), secondNotified = second.notified();
     second.folders.dispose();
-    assert.deepEqual(second.folders.getSnapshot(), {loading: false});
+    assert.deepEqual(second.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     assert.equal(calls[0].signal?.aborted, false);
     release(configuration('held', 8, [source('only', '/media/held', '/media/held', 'held')]));
     await reading;
@@ -292,7 +292,7 @@ test('a superseded selection or a disposed controller never publishes or reports
       await retired;
       assert.deepEqual(f.errors, []);
       if (close === 'select') {assert.equal(f.folders.config('current')?.revision, 4);assert.equal(f.folders.getSnapshot().error, undefined);}
-      else assert.deepEqual(f.folders.getSnapshot(), {loading: false});
+      else assert.deepEqual(f.folders.getSnapshot(), {loading: false, mutation: 'idle'});
     } finally {f.folders.dispose();}
   }
 });
@@ -323,3 +323,64 @@ test('the canonical inventory projection passes through without reordering, merg
     assert.deepEqual(f.errors, []);
   } finally {f.folders.dispose();}
 });
+
+const edit: SettingsLibraryFolderEdit = {name: 'New folder', path: '/media/new', classification: 'local', followSymlinks: false, intervalSeconds: 900, acceptReplacement: false};
+
+test('adding a folder captures the inventory revision, serializes commands and publishes only the confirmed reread', async () => {
+  let reads = 0, release!: () => void;
+  const gate = {hold: undefined as Promise<void> | undefined};
+  const calls: {path: string; method: string; body?: unknown}[] = [];
+  const f = fixture(async <T>(path: string, method = 'GET', body?: unknown) => {
+    calls.push({path, method, body});
+    if (method === 'POST') {await gate.hold;return source('added', '/media/new', '/media/new') as T;}
+    reads++;
+    return configuration('selected', reads === 1 ? 7 : 8, reads === 1 ? [source('existing', '/media/a')] : [source('existing', '/media/a'), source('added', '/media/new')]) as T;
+  });
+  try {
+    await f.folders.select('selected');
+    assert.equal(f.folders.getSnapshot().config?.revision, 7);
+    gate.hold = new Promise(resolve => {release = resolve;});
+    const saving = f.folders.save('selected', undefined, edit);
+    assert.equal(f.folders.getSnapshot().mutation, 'pending');
+    assert.deepEqual(f.folders.getSnapshot().config?.sources.map(item => item.id), ['existing']);
+    assert.equal(await f.folders.save('selected', undefined, {...edit, name: 'Doubled'}), false);
+    assert.equal(calls.filter(call => call.method === 'POST').length, 1);
+    release();assert.equal(await saving, true);
+    assert.deepEqual(calls.map(call => [call.path, call.method]), [
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+      ['/v1/admin/libraries/selected/sources', 'POST'],
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+    ]);
+    assert.deepEqual(calls[1].body, {name: 'New folder', path: '/media/new', classification: 'local', followSymlinks: false, acceptReplacement: false, expectedRevision: 7, intervalMs: 900000});
+    assert.equal(f.folders.getSnapshot().mutation, 'idle');
+    assert.equal(f.folders.getSnapshot().error, undefined);
+    assert.equal(f.folders.config('selected')?.revision, 8);
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => item.id), ['existing', 'added']);
+  } finally {f.folders.dispose();}
+});
+
+test('updating a folder uses the captured membership and exact CAS; a missing folder or foreign library never dispatches', async () => {
+  let reads = 0;
+  const calls: {path: string; method: string; body?: unknown}[] = [];
+  const f = fixture(async <T>(path: string, method = 'GET', body?: unknown) => {
+    calls.push({path, method, body});
+    if (method === 'PATCH') return source('existing', '/media/renamed', '/media/renamed') as T;
+    reads++;
+    return configuration('selected', 7 + reads, reads === 1 ? [source('existing', '/media/a')] : [source('existing', '/media/renamed', '/media/renamed')]) as T;
+  });
+  try {
+    await f.folders.select('selected');
+    assert.equal(await f.folders.save('selected', 'missing', edit), false);
+    assert.equal(await f.folders.save('other', undefined, edit), false);
+    assert.equal(calls.length, 1);
+    assert.equal(await f.folders.save('selected', 'existing', {...edit, name: 'Renamed', path: '/media/renamed'}), true);
+    assert.deepEqual(calls.map(call => [call.path, call.method]), [
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+      ['/v1/admin/libraries/selected/sources/existing', 'PATCH'],
+      ['/v1/admin/libraries/selected/inventory-config', 'GET'],
+    ]);
+    assert.deepEqual(calls[1].body, {name: 'Renamed', path: '/media/renamed', classification: 'local', followSymlinks: false, acceptReplacement: false, expectedRevision: 8, intervalMs: 900000});
+    assert.deepEqual(f.folders.config('selected')?.sources.map(item => [item.id, item.path]), [['existing', '/media/renamed']]);
+  } finally {f.folders.dispose();}
+});
+
