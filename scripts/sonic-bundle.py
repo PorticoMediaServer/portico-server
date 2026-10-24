@@ -233,11 +233,13 @@ def verify(directory, target, additional_files=()):
 def verify_installed(ffmpeg, target):
     """Verify both sealed inventories; never edit/extend the FFmpeg manifest.
 
-    Sonic lives beside bin/ffmpeg. A file-link projection lets the unchanged
+    Sonic lives beside bin/ffmpeg. A regular hardlink projection lets the unchanged
     standalone FFmpeg verifier check its original inventory, while the final
     exact union below rejects any undeclared composite-package member.
     """
     original = json.loads((ffmpeg / 'toolchain-manifest.json').read_text())
+    if original.get('target') != target:
+        raise ValueError('Sonic and FFmpeg targets differ')
     names = set(original['files']) | {'toolchain-manifest.json'}
     extra_bin = []
     for name in names:
@@ -251,15 +253,17 @@ def verify_installed(ffmpeg, target):
     actual = {p.relative_to(ffmpeg).as_posix() for p in ffmpeg.rglob('*') if p.is_file() or p.is_symlink()}
     if actual != names | sonic_names:
         raise ValueError('composite toolchain inventory mismatch')
-    with tempfile.TemporaryDirectory(prefix='ffmpeg-inventory-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='ffmpeg-inventory-', dir=ffmpeg.parent) as temporary:
         projection = Path(temporary)
         for name in names:
             source = ffmpeg / name
-            if not source.is_file():
-                raise ValueError('FFmpeg member missing')
+            relative = safe_path(name)
+            if (source.is_symlink() or not source.is_file()
+                    or any((ffmpeg / PurePosixPath(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts)))):
+                raise ValueError('FFmpeg member missing or symlinked')
             dest = projection / name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.symlink_to(source.resolve(strict=True))
+            os.link(source, dest, follow_symlinks=False)
         subprocess.run(['python3', str(ROOT / 'scripts/verify-ffmpeg-manifest.py'), str(projection)], check=True,
                        stdout=subprocess.DEVNULL)
     return manifest
@@ -267,6 +271,8 @@ def verify_installed(ffmpeg, target):
 
 def install(bundle, ffmpeg, target):
     manifest = verify(bundle, target)
+    if json.loads((ffmpeg / 'toolchain-manifest.json').read_text()).get('target') != target:
+        raise ValueError('Sonic and FFmpeg targets differ')
     subprocess.run(['python3', str(ROOT / 'scripts/verify-ffmpeg-manifest.py'), str(ffmpeg)], check=True,
                    stdout=subprocess.DEVNULL)
     files = [entry['path'] for entry in manifest['files']] + ['sonic-manifest.json']

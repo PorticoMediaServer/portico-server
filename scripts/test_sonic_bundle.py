@@ -15,7 +15,7 @@ spec.loader.exec_module(bundle)
 
 
 class SonicBundleTests(unittest.TestCase):
-    def fixture(self, root):
+    def fixture(self, root, target='linux-x64'):
         runtime, model_lock = bundle.locks()
         model = root / 'model'
         model.mkdir()
@@ -34,7 +34,7 @@ class SonicBundleTests(unittest.TestCase):
         (sdk / 'lib').mkdir(parents=True)
         header = bytearray(64)
         header[:6] = b'\x7fELF\x02\x01'
-        struct.pack_into('<H', header, 18, 62)
+        struct.pack_into('<H', header, 18, bundle.TARGETS[target])
         helper = root / 'portico-sonic'
         helper.write_bytes(header)
         real = sdk / 'lib/libonnxruntime.so.1.20.1'
@@ -50,13 +50,13 @@ class SonicBundleTests(unittest.TestCase):
             return ['libonnxruntime.so.1', 'libc.so.6'] if file == helper else ['libstdc++.so.6', 'libm.so.6']
         return helper, sdk, model, needed
 
-    def package(self, root):
-        helper, sdk, model, needed = self.fixture(root)
+    def package(self, root, target='linux-x64'):
+        helper, sdk, model, needed = self.fixture(root, target)
         archive = root / 'bundle.tar.xz'
         with patch.object(bundle, 'needed', side_effect=needed):
-            bundle.package(helper, sdk, model, 'linux-x64', archive, 'a' * 40)
+            bundle.package(helper, sdk, model, target, archive, 'a' * 40)
         output = root / 'extracted'
-        bundle.extract(archive, output, 'linux-x64')
+        bundle.extract(archive, output, target)
         return archive, output
 
     def test_actual_needed_closure_only_and_original_notices_survive_round_trip(self):
@@ -150,7 +150,7 @@ class SonicBundleTests(unittest.TestCase):
             ffmpeg = root / 'ffmpeg'
             (ffmpeg / 'bin').mkdir(parents=True)
             (ffmpeg / 'bin/ffmpeg').write_bytes(b'original FFmpeg fixture')
-            original = {'files': {'bin/ffmpeg': bundle.digest(ffmpeg / 'bin/ffmpeg')}}
+            original = {'target': 'linux-x64', 'files': {'bin/ffmpeg': bundle.digest(ffmpeg / 'bin/ffmpeg')}}
             (ffmpeg / 'toolchain-manifest.json').write_text(json.dumps(original))
             calls = []
             def original_verifier(command, **kwargs):
@@ -182,11 +182,53 @@ class SonicBundleTests(unittest.TestCase):
             (ffmpeg / 'bin').mkdir(parents=True)
             original = ffmpeg / 'bin/portico-sonic'
             original.write_bytes(b'keep existing')
+            (ffmpeg / 'toolchain-manifest.json').write_text(json.dumps({'target': 'linux-x64'}))
             with patch.object(bundle.subprocess, 'run'):
                 with self.assertRaises(ValueError):
                     bundle.install(output, ffmpeg, 'linux-x64')
             self.assertEqual(original.read_bytes(), b'keep existing')
             self.assertEqual([p.name for p in (ffmpeg / 'bin').iterdir()], ['portico-sonic'])
+
+    def test_genuine_ffmpeg_verifier_accepts_composition_and_refuses_tamper_extra_and_symlinks(self):
+        # This uses the real unchanged verifier, not the mocked boundary above.
+        # Tiny ARM inventory bytes exercise that verifier's structural/hash
+        # contract; they do not claim real media or native ARM conformance.
+        for change in ('none', 'tamper', 'extra', 'member-link', 'parent-link'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _, output = self.package(root, 'linux-arm64')
+                ffmpeg = root / 'ffmpeg'
+                ffmpeg.mkdir()
+                names = ['bin/ffmpeg', 'bin/ffprobe', 'bin/portico-disc', 'corresponding-source.tar.xz',
+                         'NOTICE.md', 'sources.lock.json', 'requirements.v1.json', 'portico-dovi-profile.v1.json',
+                         'portico-disc-build.json', 'LICENSES/portico-disc.txt']
+                for name in names:
+                    file = ffmpeg / name
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    file.write_bytes(b'synthetic structural inventory fixture: ' + name.encode())
+                manifest = {'schemaVersion': 1, 'licenseMode': 'gpl3', 'target': 'linux-arm64',
+                            'files': {name: bundle.digest(ffmpeg / name) for name in names}}
+                (ffmpeg / 'toolchain-manifest.json').write_text(json.dumps(manifest))
+                bundle.install(output, ffmpeg, 'linux-arm64')
+                if change == 'none':
+                    bundle.verify_installed(ffmpeg, 'linux-arm64')
+                    continue
+                if change == 'tamper':
+                    (ffmpeg / 'bin/ffmpeg').write_bytes(b'changed')
+                elif change == 'extra':
+                    (ffmpeg / 'extra').write_bytes(b'unlisted')
+                elif change == 'member-link':
+                    file = ffmpeg / 'NOTICE.md'
+                    outside = root / 'same-notice'
+                    file.rename(outside)
+                    file.symlink_to(outside)
+                elif change == 'parent-link':
+                    directory = ffmpeg / 'LICENSES'
+                    outside = root / 'same-licences'
+                    directory.rename(outside)
+                    directory.symlink_to(outside, target_is_directory=True)
+                with self.assertRaises((ValueError, bundle.subprocess.CalledProcessError)):
+                    bundle.verify_installed(ffmpeg, 'linux-arm64')
 
 
 if __name__ == '__main__':
