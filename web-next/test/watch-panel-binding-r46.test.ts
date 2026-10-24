@@ -6,6 +6,7 @@ import type {PlayerOffersData} from '@core/player-offers.ts';
 import type {SubtitlePlan,SubtitleResource} from '@core/subtitles.ts';
 import type {WebPlaybackRuntimeSnapshot,WebShellPlaybackRuntime} from '../src/platform/playback';
 import {watchPanelModel} from '../src/screens/watch/panel-model.ts';
+import {roomActionAllowed} from '../src/screens/watch/room-guard.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
 const fence={kind:'queue' as const,playback:{scope,run:1},sessionId:'session',itemId:'movie',sourceId:'source',entryId:'entry',generation:1};
 function fixture(){
@@ -92,4 +93,21 @@ test('an unreported rung never becomes Original, while an explicit Original rema
   offers:{...f.live.offers!,current:{...f.live.offers!.current!,qualityId:'unreported'}}});
  const model=f.model()!;assert.equal(model.qualityLabel,undefined);assert.equal(model.qualityAccessibleLabel,undefined);assert.equal(model.automatic,true);
  f.set({...f.live,offers:{...f.live.offers!,current:{...f.live.offers!.current!,qualityId:'original'}}});assert.equal(f.model()!.qualityLabel,'Original');
+});
+
+test('a rendered room Leave cannot act after its binding holds another room',async()=>{
+ const fence={kind:'queue' as const,playback:{scope,run:1},sessionId:'session',itemId:'movie',sourceId:'source',entryId:'entry',generation:1};
+ const runtime={groupPlaybackMatches:()=>true};
+ let leaves=0;const leave=async()=>{leaves++;};
+ const act=async(room:{phase:string;group?:{id:string}},current:boolean)=>{
+  if(!roomActionAllowed(runtime as never,current,fence as never,room,'old-room','entry'))return;
+  await leave();
+ };
+ await act({phase:'live',group:{id:'old-room'}},true);assert.equal(leaves,1);
+ // The borrowed binding entered another room without a render; the old handler must not leave it.
+ await act({phase:'live',group:{id:'new-room'}},true);assert.equal(leaves,1);
+ await act({phase:'ended',group:{id:'old-room'}},true);assert.equal(leaves,1);
+ await act({phase:'live',group:{id:'old-room'}},false);assert.equal(leaves,1);
+ // Runtime playback identity alone never grants the action after the handler went stale.
+ assert.equal(roomActionAllowed({groupPlaybackMatches:()=>false} as never,true,fence as never,{phase:'live',group:{id:'old-room'}},'old-room','entry'),false);
 });
