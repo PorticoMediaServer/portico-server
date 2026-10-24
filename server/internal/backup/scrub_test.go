@@ -60,7 +60,7 @@ func TestABackupWhoseCopyCannotBeScrubbedIsNotKept(t *testing.T) {
 	if _, err := s.Create(context.Background(), KindManual); !errors.Is(err, refusal) {
 		t.Fatalf("create: %v", err)
 	}
-	if filepath.Base(scrubbed) != filepath.Base(DatabaseName) || !strings.Contains(scrubbed, ".partial-") {
+	if filepath.Base(scrubbed) != filepath.Base(DatabaseName) || !strings.Contains(scrubbed, filepath.Join("Temp", "backup-snapshot-")) {
 		t.Fatalf("the scrubber was given %q, not the copy being written", scrubbed)
 	}
 	if list, err := s.List(); err != nil || len(list) != 0 {

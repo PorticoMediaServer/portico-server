@@ -45,7 +45,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		if d.Administration == nil {
 			return administration.LibraryDocument{}, &apierror.Error{Code: "internal"}
 		}
-		out, err := d.Administration.LibrarySettingsFor(ctx, d.libraryAdministrationAuthority(p, r.PathValue("id")), r.PathValue("id"))
+		out, err := d.Administration.LibrarySettingsFor(ctx, d.libraryAdministrationAuthority(p, r.PathValue("id")), r.PathValue("id"), d.librarySonicAuthority(p))
 		if err != nil {
 			return out, scanLoopError(err)
 		}
@@ -60,7 +60,7 @@ func registerScanLoop(registry *apikit.Registry, d Dependencies) {
 		if d.Administration == nil {
 			return administration.LibraryDocument{}, &apierror.Error{Code: "internal"}
 		}
-		out, err := d.Administration.SaveLibrarySettings(ctx, d.libraryAdministrationAuthority(p, r.PathValue("id")), r.PathValue("id"), in)
+		out, err := d.Administration.SaveLibrarySettings(ctx, d.libraryAdministrationAuthority(p, r.PathValue("id")), r.PathValue("id"), in, d.librarySonicAuthority(p))
 		if err != nil {
 			return out, scanLoopError(err)
 		}

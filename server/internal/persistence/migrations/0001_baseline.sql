@@ -1737,6 +1737,7 @@ CREATE TABLE artwork_jobs(
  status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',
  lease TEXT NOT NULL DEFAULT '',lease_until TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '',
  locked INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,preview INTEGER NOT NULL DEFAULT 0,
+ size_refresh INTEGER NOT NULL DEFAULT 0 CHECK(size_refresh IN(0,1)),
  UNIQUE(kind,entity_id,role,subject,preview)) STRICT;
 CREATE TABLE artwork_previews(candidate_id TEXT PRIMARY KEY REFERENCES artwork_candidates(id) ON DELETE CASCADE,digest TEXT NOT NULL REFERENCES artwork_objects(digest),source_fence TEXT NOT NULL,created_at TEXT NOT NULL) STRICT;
 CREATE TABLE artwork_discovery(
@@ -2331,6 +2332,16 @@ CREATE TABLE metadata_runtime_settings(
  tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '',
  opensubtitles_api_key TEXT NOT NULL DEFAULT '',opensubtitles_username TEXT NOT NULL DEFAULT '',opensubtitles_password TEXT NOT NULL DEFAULT '') STRICT;
 INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
+CREATE TABLE metadata_artwork_size_sweep(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),running INTEGER NOT NULL DEFAULT 0 CHECK(running IN(0,1)),
+ cursor_kind TEXT NOT NULL DEFAULT '',cursor_id INTEGER NOT NULL DEFAULT 0,cursor_role TEXT NOT NULL DEFAULT '',cursor_subject TEXT NOT NULL DEFAULT '') STRICT;
+INSERT INTO metadata_artwork_size_sweep(singleton) VALUES(1);
+CREATE TABLE metadata_artwork_size_requests(
+ kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL,
+ candidate_id TEXT NOT NULL,digest TEXT NOT NULL,selection_revision INTEGER NOT NULL,
+ edge INTEGER NOT NULL CHECK(edge IN(1280,1920,2560)),next_attempt TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(kind,entity_id,role,subject)) STRICT;
+CREATE INDEX metadata_artwork_size_requests_due ON metadata_artwork_size_requests(next_attempt,kind,entity_id,role,subject);
 CREATE TABLE screen_metadata_consent(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  confirmed INTEGER NOT NULL DEFAULT 0 CHECK(confirmed IN(0,1)),confirmed_at TEXT NOT NULL DEFAULT '') STRICT;
@@ -3249,7 +3260,7 @@ CREATE TABLE networking_claim_authority(
 CREATE TABLE networking_claim_schema(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL CHECK(version=3)) STRICT;
 CREATE TABLE "artwork_variants"(
  source_digest TEXT NOT NULL REFERENCES artwork_objects(digest) ON DELETE CASCADE,
- width INTEGER NOT NULL CHECK(width IN(400,800,1920)),
+ width INTEGER NOT NULL CHECK(width IN(400,800,1920,2560)),
  digest TEXT NOT NULL REFERENCES artwork_objects(digest),
  PRIMARY KEY(source_digest,width)
 ) STRICT;

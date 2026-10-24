@@ -583,6 +583,100 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
           "presentation": {
             "properties": {
               "audioRender": {
@@ -1518,6 +1612,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {
@@ -2579,6 +2767,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {
@@ -7968,6 +8250,100 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "observedPlayback": {
+        "properties": {
+          "audio": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "handling": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "objectAudio": {
+                "type": "string"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "deliveredBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "screen": {
+            "properties": {
+              "dynamicRange": {
+                "type": "string"
+              },
+              "refreshRateHz": {
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "subtitles": {
+            "properties": {
+              "rendering": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "rendering"
+            ],
+            "type": "object"
+          },
+          "video": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "type": "string"
+              },
+              "frameRateHz": {
+                "type": "number"
+              },
+              "height": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "width": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
       "presentation": {
         "properties": {
           "audioRender": {
@@ -8851,6 +9227,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {
@@ -11748,6 +12218,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {
@@ -17320,6 +17884,34 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminBackupSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminBackupSettingsResponse": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      },
+      "passphraseSet": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "backupFolder",
+      "includeArtwork",
+      "passphraseProtected",
+      "passphraseSet"
+    ],
+    "type": "object"
+  },
   "GetAdminBackupsRequest": {
     "properties": {},
     "required": [],
@@ -17337,6 +17929,9 @@ export const schemas = {
             },
             "createdAt": {
               "type": "string"
+            },
+            "encrypted": {
+              "type": "boolean"
             },
             "id": {
               "type": "string"
@@ -17368,6 +17963,27 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "lastBackup": {
+        "properties": {
+          "backupId": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "outcome"
+        ],
+        "type": "object"
       },
       "lastRestore": {
         "properties": {
@@ -114532,6 +115148,100 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "observedPlayback": {
+        "properties": {
+          "audio": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "handling": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "objectAudio": {
+                "type": "string"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "deliveredBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "screen": {
+            "properties": {
+              "dynamicRange": {
+                "type": "string"
+              },
+              "refreshRateHz": {
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "subtitles": {
+            "properties": {
+              "rendering": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "rendering"
+            ],
+            "type": "object"
+          },
+          "video": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "type": "string"
+              },
+              "frameRateHz": {
+                "type": "number"
+              },
+              "height": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "width": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
       "presentation": {
         "properties": {
           "audioRender": {
@@ -145751,6 +146461,100 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
           "presentation": {
             "properties": {
               "audioRender": {
@@ -150210,6 +151014,37 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminBackupsInspectRequest": {
+    "properties": {
+      "source": {
+        "properties": {
+          "backupId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
+    },
+    "required": [
+      "source"
+    ],
+    "type": "object"
+  },
+  "PostAdminBackupsInspectResponse": {
+    "properties": {
+      "encrypted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "encrypted"
+    ],
+    "type": "object"
+  },
   "PostAdminBackupsRequest": {
     "properties": {
       "operationId": {
@@ -150235,6 +151070,9 @@ export const schemas = {
   "PostAdminBackupsRestoreRequest": {
     "properties": {
       "operationId": {
+        "type": "string"
+      },
+      "passphrase": {
         "type": "string"
       },
       "source": {
@@ -177360,6 +178198,47 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutAdminBackupSettingsRequest": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphrase": {
+        "type": "string"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "PutAdminBackupSettingsResponse": {
+    "properties": {
+      "backupFolder": {
+        "type": "string"
+      },
+      "includeArtwork": {
+        "type": "boolean"
+      },
+      "passphraseProtected": {
+        "type": "boolean"
+      },
+      "passphraseSet": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "backupFolder",
+      "includeArtwork",
+      "passphraseProtected",
+      "passphraseSet"
+    ],
+    "type": "object"
+  },
   "PutAdminConsoleSchedulesRequest": {
     "properties": {
       "expectedRevision": {
@@ -185957,6 +186836,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {
@@ -197784,6 +198757,100 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "observedPlayback": {
+        "properties": {
+          "audio": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "codec": {
+                "type": "string"
+              },
+              "handling": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string"
+              },
+              "objectAudio": {
+                "type": "string"
+              },
+              "sampleRate": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "deliveredBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "screen": {
+            "properties": {
+              "dynamicRange": {
+                "type": "string"
+              },
+              "refreshRateHz": {
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "subtitles": {
+            "properties": {
+              "rendering": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "rendering"
+            ],
+            "type": "object"
+          },
+          "video": {
+            "properties": {
+              "bitDepth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dynamicRange": {
+                "type": "string"
+              },
+              "frameRateHz": {
+                "type": "number"
+              },
+              "height": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "width": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
       "presentation": {
         "properties": {
           "audioRender": {
@@ -198866,6 +199933,100 @@ export const schemas = {
               "expiresAt",
               "reportEveryMs"
             ],
+            "type": "object"
+          },
+          "observedPlayback": {
+            "properties": {
+              "audio": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "handling": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "type": "string"
+                  },
+                  "objectAudio": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deliveredBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "screen": {
+                "properties": {
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "refreshRateHz": {
+                    "type": "number"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "subtitles": {
+                "properties": {
+                  "rendering": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rendering"
+                ],
+                "type": "object"
+              },
+              "video": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "dynamicRange": {
+                    "type": "string"
+                  },
+                  "frameRateHz": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "width": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
             "type": "object"
           },
           "presentation": {

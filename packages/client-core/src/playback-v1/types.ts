@@ -3,6 +3,7 @@ import {parseDashboardSessionFacts} from '../admin/activity-summary/parser.ts';
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
 import {apiRoot} from '../../../contracts/src/routes.ts';
+import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -125,7 +126,7 @@ export type Presentation = Readonly<{
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
   /** The player engine the device must play this presentation with. */
   engine: PlaybackEngine;
-  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string}>[];
+  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string; timeDomain?: 'source-relative'; offsetMs?: number}>[];
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>;
   bitrateKbps?: number;
   /** The quality in force (what was asked for, or the saved default for this network). */
@@ -148,6 +149,8 @@ export type Session = Readonly<{
   queue?: Readonly<{queueId: string; entryId: string}>;
   lease: Readonly<{expiresAt?: string; reportEveryMs: number}>;
   presentation: Presentation;
+  /** Only the current renderer snapshot returned by the authorized server read. */
+  observedPlayback?: ObservedPlayback;
   /** Why an ended session ended (spec §14): "terminated" by an administrator with their message,
    * "stopped", "transferred", "lease_expired", "replaced"… Absent until it ends. */
   end?: SessionEnd;
@@ -169,7 +172,12 @@ function decision(v: unknown): Decision | undefined {
 
 export function parseSession(v: unknown): Session {
   if (!obj(v) || !obj(v.presentation)) throw new ContractError('session');
+  let observed: ObservedPlayback | undefined;
+  if (v.state !== 'ended') {
+    try { observed = parseObservedPlayback(v.observedPlayback); } catch { /* Invalid optional facts never become output, or end valid playback. */ }
+  }
   return Object.freeze({
+    ...(observed !== undefined ? {observedPlayback: observed} : {}),
     id: id(v.id, 'session id'), revision: revision(v.revision), kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never),
     role: oneOf(v.role, ['local', 'receiver', 'group_member'] as const, 'other' as never), state: oneOf(v.state, ['playing', 'paused', 'ended'] as const, 'other' as never),
     itemId: optId(v.itemId, 'item id'), versionId: optId(v.versionId, 'version id'),
@@ -192,7 +200,7 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
     audioTrackId: typeof p.audioTrackId === 'string' && p.audioTrackId ? p.audioTrackId : undefined,
     subtitle: obj(p.subtitle) && typeof p.subtitle.trackId === 'string' && p.subtitle.trackId ? Object.freeze({trackId: p.subtitle.trackId, kind: oneOf(p.subtitle.kind, ['text', 'ass', 'pgs', 'vobsub', 'dvb'] as const, 'other' as never), delivery: oneOf(p.subtitle.delivery, ['sidecar', 'device', 'burn'] as const, 'other' as never)}) : undefined,
     container: typeof p.container === 'string' && p.container ? p.container : undefined,
-    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')}), ...(s.linesUrl===undefined?{}:{linesUrl:url(s.linesUrl,'subtitle lines url')})}))),
+    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.timeDomain === 'source-relative' ? {timeDomain: 'source-relative' as const} : {}), ...(typeof s.offsetMs === 'number' && Number.isFinite(s.offsetMs) ? {offsetMs: s.offsetMs} : {}), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')}), ...(s.linesUrl===undefined?{}:{linesUrl:url(s.linesUrl,'subtitle lines url')})}))),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(p.bitrateKbps),
     hdr: obj(p.hdr) ? Object.freeze({source: typeof p.hdr.source === 'string' ? p.hdr.source : undefined, delivered: typeof p.hdr.delivered === 'string' ? p.hdr.delivered : undefined, toneMapped: bool(p.hdr.toneMapped)}) : undefined,
@@ -215,7 +223,7 @@ export type Selector =
   | Readonly<{query: QueueBrowseSelector}>
   | Readonly<{saved: Readonly<{id: string}>}>
   | Readonly<{items: Readonly<{ids: readonly string[]}>}>;
-export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
+export type QueueSegment = Readonly<{id: string; kind: 'items' | 'selector' | 'radio' | 'other'; sourceRevision?: string; label: string; count: number; state: 'building' | 'ready' | 'failed' | 'other'}>;
 export type QueueHeader = Readonly<{
   id: string; revision: string; total: number; remainingCount?: number; totalDurationMs?: number; durationKnown?: boolean; current?: Readonly<{entryId: string; position: number}>;
   repeat: 'off' | 'one' | 'all'; shuffle?: Readonly<{seed: string; lap: number}>; segments: readonly QueueSegment[];
@@ -254,7 +262,7 @@ export function parseQueue(v: unknown): QueueHeader {
     current: obj(v.current) ? Object.freeze({entryId: id(v.current.entryId, 'current entry'), position: num(v.current.position)}) : undefined,
     repeat: oneOf(v.repeat, ['off', 'one', 'all'] as const, 'off'),
     shuffle: obj(v.shuffle) ? Object.freeze({seed: str(v.shuffle.seed), lap: num(v.shuffle.lap)}) : undefined,
-    segments: Object.freeze(arr(v.segments).filter(obj).map(s => Object.freeze({id: id(s.id, 'segment id'), kind: oneOf(s.kind, ['items', 'selector'] as const, 'other' as never), ...(typeof s.sourceRevision === 'string' ? {sourceRevision: s.sourceRevision} : {}), label: str(s.label), count: num(s.count), state: oneOf(s.state, ['building', 'ready', 'failed'] as const, 'other' as never)}))),
+    segments: Object.freeze(arr(v.segments).filter(obj).map(s => Object.freeze({id: id(s.id, 'segment id'), kind: oneOf(s.kind, ['items', 'selector', 'radio'] as const, 'other' as never), ...(typeof s.sourceRevision === 'string' ? {sourceRevision: s.sourceRevision} : {}), label: str(s.label), count: num(s.count), state: oneOf(s.state, ['building', 'ready', 'failed'] as const, 'other' as never)}))),
     next: obj(v.next) ? Object.freeze({entryId: typeof v.next.entryId === 'string' ? id(v.next.entryId, 'next entry') : null, available: v.next.available === true, reason: oneOf(v.next.reason, ['ready', 'end', 'unavailable'] as const, 'end')}) : undefined,
     postPlay: obj(v.postPlay) ? Object.freeze({autoplay: v.postPlay.autoplay !== false, countdownSeconds: num(v.postPlay.countdownMs, 10000) / 1000, passoutCheckDue: v.postPlay.passoutCheckDue === true, automaticAdvances: num(v.postPlay.automaticAdvances), startDuringCredits: v.postPlay.startDuringCredits === true}) : undefined,
   });

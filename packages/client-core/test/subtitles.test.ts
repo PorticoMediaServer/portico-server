@@ -113,3 +113,60 @@ test('a subtitle row this app cannot read is left out and the others are still o
  assert.deepEqual(planned.resources.map(r=>r.id),[resource.id]);
  assert.throws(()=>validateSubtitlePlan(plan(2,{...resource,format:'webvtt2',pinned:true} as any)),'the selected track itself stays exact');
 });
+
+const upload={content:'00:00:00,000 --> 00:00:01,000\nHello',format:'srt' as const,language:'en',title:'English',rights:'Own transcript',scope:'personal' as const,offsetUs:'0'};
+const uploadReceipt={operationId:'op',resourceId:'sub',revision:2,catalogRevision:2};
+
+test('a subtitle save refused by its original host lifetime never reaches transport',async()=>{
+ let writes=0;const service=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();writes++;return uploadReceipt;}),target,()=> 'op');
+ try{await ready(service);const abort=new AbortController();abort.abort();
+  for(const context of [{signal:abort.signal},{isCurrent:()=>false},{isCurrent:()=>{throw new Error('retired fence');}}])await assert.rejects(service.save(upload,undefined,context),{name:'AbortError'});
+  assert.equal(writes,0);assert.equal(service.getSnapshot().busy,false);assert.equal(service.getSnapshot().error,null);assert.equal(service.getSnapshot().canRetry,false);
+ }finally{service.stop();}
+});
+
+test('queued subtitle upload checks both caller cancellation and currentness before issuing any POST',async()=>{
+ for(const mode of ['signal','current'] as const){
+  const response=deferred<unknown>(),entered=deferred<void>();let writes=0,current=true;
+  const service=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();writes++;if(writes===1){entered.resolve();return response.promise;}return uploadReceipt;}),target,()=> 'op');
+  try{await ready(service);const first=service.save(upload);await entered.promise;const abort=new AbortController();
+   const queued=service.save({...upload,language:'fr'},undefined,mode==='signal'?{signal:abort.signal}:{isCurrent:()=>current});
+   const canceled=assert.rejects(queued,{name:'AbortError'});abort.abort();current=false;response.resolve(uploadReceipt);await first;await canceled;
+   assert.equal(writes,1);assert.equal(service.getSnapshot().error,null);assert.equal(service.getSnapshot().canRetry,false);
+   await service.save({...upload,language:'de'},undefined,{isCurrent:()=>true});assert.equal(writes,2,'a canceled upload leaves the serial queue usable');assert.equal(service.getSnapshot().busy,false);
+  }finally{service.stop();}
+ }
+});
+
+test('active subtitle upload forwards caller abort and discards even an abort-ignoring late response',async()=>{
+ const response=deferred<unknown>(),entered=deferred<void>();let transportSignal:AbortSignal|undefined;
+ const service=new SubtitleService(api(async(p,m,_body,signal)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();transportSignal=signal;entered.resolve();return response.promise;}),target,()=> 'op');
+ try{await ready(service);const abort=new AbortController(),save=service.save(upload,undefined,{signal:abort.signal});const canceled=assert.rejects(save,{name:'AbortError'});await entered.promise;
+  assert.equal(transportSignal!.aborted,false);abort.abort();assert.equal(transportSignal!.aborted,true);
+  response.resolve({not:'a valid receipt'});await canceled;assert.equal(service.getSnapshot().error,null);assert.equal(service.getSnapshot().canRetry,false);assert.equal(service.getSnapshot().busy,false);
+ }finally{service.stop();}
+});
+
+test('a subtitle upload rejects a retired full-host predicate after HTTP without accepting its receipt',async()=>{
+ const response=deferred<unknown>(),entered=deferred<void>();let current=true;
+ const service=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();entered.resolve();return response.promise;}),target,()=> 'op');
+ try{await ready(service);const save=service.save(upload,undefined,{isCurrent:()=>current});const canceled=assert.rejects(save,{name:'AbortError'});await entered.promise;
+  current=false;response.resolve(uploadReceipt);await canceled;assert.equal(service.getSnapshot().error,null);assert.equal(service.getSnapshot().canRetry,false);
+ }finally{service.stop();}
+});
+
+test('an ambiguous subtitle write keeps its original retry lifetime and cannot retry after host retirement',async()=>{
+ let writes=0,current=true;
+ const service=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();writes++;throw new Error('lost response');}),target,()=> 'op');
+ try{await ready(service);await service.save(upload,undefined,{isCurrent:()=>current});assert.equal(service.getSnapshot().canRetry,true);
+  current=false;await assert.rejects(service.retry(),{name:'AbortError'});assert.equal(writes,1);assert.equal(service.getSnapshot().canRetry,false);assert.equal(service.getSnapshot().error,null);
+ }finally{service.stop();}
+});
+
+test('stopping the subtitle service still cancels an active caller-scoped save when transport ignores abort',async()=>{
+ const response=deferred<unknown>(),entered=deferred<void>();let transportSignal:AbortSignal|undefined;
+ const service=new SubtitleService(api(async(p,m,_body,signal)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();transportSignal=signal;entered.resolve();return response.promise;}),target,()=> 'op');
+ try{await ready(service);const save=service.save(upload,undefined,{isCurrent:()=>true});const canceled=assert.rejects(save,{name:'AbortError'});await entered.promise;
+  service.stop();assert.equal(transportSignal!.aborted,true);response.resolve(uploadReceipt);await canceled;assert.equal(service.getSnapshot().catalog,null);assert.equal(service.getSnapshot().plan,null);
+ }finally{service.stop();}
+});

@@ -34,6 +34,17 @@ test('a route restored after retirement is disposed and never assembled', async 
   route.resolve({api: {getRouteConnection: () => ({dispose: () => { disposed++; }})} as unknown as HttpLocalApi, session: selected.session}); await work;
   assert.equal(disposed, 1); assert.equal(assembling, 0); assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
 });
+test('terminal disposal prevents a late server switch from restarting protected restoration', async () => {
+  const switchGate = deferred<void>();let reads = 0, switches = 0;
+  const bootstrap = new ShellBootstrap(unavailableAssembly, {
+    selected: {read: async () => {reads++;return null;}}, restore: async () => {assert.fail('no route restoration after close');},
+    actions: () => ({switchServer: async () => {switches++;await switchGate.promise;}} as never),
+  });
+  const switching = bootstrap.selectServer('actual-selected-server');
+  bootstrap.dispose();bootstrap.dispose();switchGate.resolve();await switching;
+  await bootstrap.start();await bootstrap.resumeAfterAccountEntry();await bootstrap.selectServer('later-server');
+  assert.equal(reads, 0);assert.equal(switches, 1);assert.equal(bootstrap.getSnapshot().phase, 'signed-out');
+});
 
 test('a failed protected read exposes retry state and a later explicit retry can restore signed-out state', async () => {
   let attempt = 0, observed = 0;
