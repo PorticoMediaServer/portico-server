@@ -198,16 +198,28 @@ func TestCapturedSetupReturnOriginRetainsFrozenAuthority(t *testing.T) {
 			pending, proof, operation, audience := f.pending, f.proofHash, f.intent.OperationID, f.claim.Audience
 			var statement string
 			switch mode {
-			case "wrong proof": proof = identity.Token()
-			case "wrong revision": pending.Revision++
-			case "wrong operation": operation = identity.Token()
-			case "wrong audience": audience = "https://other.example"
-			case "expired": statement = `UPDATE identity_setup_completions SET created_ms=1,expires_ms=2`
-			case "retired": statement = `UPDATE networking_claim_identity SET active_operation_id=NULL`
-			case "consumed": statement = `UPDATE identity_setup_completions SET phase='consumed',attempt_id='another-attempt'`
-			case "signature changed": statement = `UPDATE identity_setup_completions SET start_signature=zeroblob(64)`
+			case "wrong proof":
+				proof = identity.Token()
+			case "wrong revision":
+				pending.Revision++
+			case "wrong operation":
+				operation = identity.Token()
+			case "wrong audience":
+				audience = "https://other.example"
+			case "expired":
+				statement = `UPDATE identity_setup_completions SET created_ms=1,expires_ms=2`
+			case "retired":
+				statement = `UPDATE networking_claim_identity SET active_operation_id=NULL`
+			case "consumed":
+				statement = `UPDATE identity_setup_completions SET phase='consumed',attempt_id='another-attempt'`
+			case "signature changed":
+				statement = `UPDATE identity_setup_completions SET start_signature=zeroblob(64)`
 			}
-			if statement != "" { if _, err := f.db.Exec(statement); err != nil { t.Fatal(err) } }
+			if statement != "" {
+				if _, err := f.db.Exec(statement); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var origin string
 			err := f.write(func(tx *sql.Tx) error {
 				var err error
@@ -215,10 +227,16 @@ func TestCapturedSetupReturnOriginRetainsFrozenAuthority(t *testing.T) {
 				return err
 			})
 			if mode == "current" {
-				if err != nil || origin != f.claim.Address { t.Fatalf("frozen origin %q: %v", origin, err) }
-			} else if err == nil || origin != "" { t.Fatal("retired or altered capture returned an origin") }
+				if err != nil || origin != f.claim.Address {
+					t.Fatalf("frozen origin %q: %v", origin, err)
+				}
+			} else if err == nil || origin != "" {
+				t.Fatal("retired or altered capture returned an origin")
+			}
 			var accounts int
-			if err := f.db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&accounts); err != nil || accounts != 0 { t.Fatal("origin recovery admitted an account", err) }
+			if err := f.db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&accounts); err != nil || accounts != 0 {
+				t.Fatal("origin recovery admitted an account", err)
+			}
 		})
 	}
 }
