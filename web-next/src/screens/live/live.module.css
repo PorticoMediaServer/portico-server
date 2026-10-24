@@ -1,3 +1,8 @@
+/* Series rules editor: the frame draws white control chevrons and 12 px footer buttons. */
+:global(section[data-live-rules]) button[role='combobox'] > span:last-child { color: var(--color-text); }
+.editorSelect.editorSelect > span:last-child { color: var(--color-text); }
+.footerButton.footerButton.footerButton { border-radius: 12px; }
+
 .live { min-height: 100vh; }
 .header { padding: 122px var(--shell-gutter, var(--gutter-desktop)) 0; display: flex; align-items: flex-end; gap: 20px; }
 .header h1 { margin: 0; font-size: calc(var(--type-lockup-long-size) - 4px); line-height: calc(.95em); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); }
