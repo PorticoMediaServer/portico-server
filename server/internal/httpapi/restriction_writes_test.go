@@ -537,6 +537,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/saved-resources/{id}/shares": writeExempt(reasonOwnObject),
 		"PUT /v1/shows/{id}/metadata/screen":  writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"PUT /v1/storage/sources/webdav/{id}": writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
+
 		"PUT /v1/storage/sources/{id}/read-profile": {check: TestSourceReadSettingsHTTPUsesCurrentOwnerCASAndDurableReceipt},
 
 		// Catalogue content named by id.
