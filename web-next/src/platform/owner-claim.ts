@@ -161,7 +161,7 @@ export class BrowserOwnerClaim {
     let grant: DirectSignIn | undefined, adopted = false, admissionServer: string | undefined;
     try {
       const record = await this.ports.journal.read();
-      if (!record?.handoff || !record.expected) throw invalid();
+      if (record?.version !== 1 || record.kind !== 'owner' || !record.handoff || !record.expected) throw invalid();
       const handoff = record.handoff, pending = record;
       const callback = dispatchPorticoReturn(captured, {kind: 'owner', transactionId: handoff.transactionId});
       if (new URL(callback.href).origin !== record.origin || record.origin !== this.ports.pageOrigin()) throw invalid();

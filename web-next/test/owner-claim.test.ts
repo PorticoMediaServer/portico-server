@@ -106,6 +106,11 @@ test('owner initiation journals full signed binding before returning the actual 
 test('insecure context refuses before private reads/writes or network', async t => {
   const f = await fixture(t); f.insecure(); await assert.rejects(f.prepare(), /secure storage/); assert.equal(f.sent.length, 0); assert.equal(f.pending(), undefined);
 });
+test('a transaction-only URL never selects owner without the actual protected owner KIND', async t => {
+  const f = await fixture(t); await f.prepare(); f.install(); const count = f.sent.length;
+  f.mutate(old => ({...old, kind: 'registered'}) as never);
+  assert.equal(await f.flow.pendingReturn(), undefined); await assert.rejects(f.flow.finish(f.callback)); assert.equal(f.sent.length, count);
+});
 test('actual installed registration and one owner exchange admit the same owner account without profile promotion', async t => {
   const f = await fixture(t); await f.prepare(); f.install();
   assert.deepEqual(await f.flow.pendingReturn(), {kind: 'owner', transactionId: 'actual_owner_transaction'});
