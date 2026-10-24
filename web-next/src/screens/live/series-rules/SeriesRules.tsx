@@ -99,7 +99,7 @@ export function SeriesRulesScreen({model, initialOpenRuleId, onSaveRule, onDelet
       <p className={styles.hint}>{t('next.live.rules.hint')}</p>
     </div>
     <SidePanel open={state.selectedRuleId !== undefined && panel !== undefined} onOpenChange={open => {if (!open) dispatch({type: 'close'});}}
-      width={600} topInset={76} className={styles.sheet} initialFocusRef={focusAnchor} accessibilityLabel={panel ? t('next.live.rules.panelLabel', {title: panel.title}) : undefined}
+      width={600} topInset={76} className={styles.sheet} closeIcon="i-close" initialFocusRef={focusAnchor} accessibilityLabel={panel ? t('next.live.rules.panelLabel', {title: panel.title}) : undefined}
       title={panel ? <>
         <span ref={focusAnchor} className={styles.focusAnchor} tabIndex={-1} role="group" aria-label={t('next.live.rules.panelLabel', {title: panel.title})}/>
         <span className={styles.shKind}><Icon name="i-series" size={18}/>{t('next.live.rules.kind')}</span>
