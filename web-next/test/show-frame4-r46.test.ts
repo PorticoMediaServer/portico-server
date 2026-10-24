@@ -11,6 +11,8 @@ import type {ShowWorkspaceData, WorkspaceShowCredit} from '@core/show-workspace.
 // a browser capture or a visual verdict.
 registerHooks({load(url, context, next) {
   if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
+  // Source proof of the drawn desktop frame: the screen's real platform rule still applies.
+  if (url.endsWith('/shell/viewport.ts')) return {format: 'module', source: 'export const useShellWidth = () => 1440; export const useShellScrolled = () => false;', shortCircuit: true};
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
