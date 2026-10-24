@@ -43,8 +43,16 @@ async function walk(page, viewportName) {
     if (!path.startsWith('/v1/reading/sessions/') || !/\/(pages|source)(\/|$)/.test(path)) return;
     const shape = {path: path.replace(/[^/]+$/, ':id'), status: response.status(),
       contentType: response.headers()['content-type'] ?? '', contentLength: response.headers()['content-length'] ?? ''};
-    void response.body().then(body => {
-      pageResponses.push({...shape, bytes: body.length, magic: body.subarray(0, 8).toString('hex'), sha256: createHash('sha256').update(body).digest('hex')});
+    void response.body().then(async body => {
+      // A matching magic proves nothing on its own: the page is only usable if
+      // the browser's own decoder accepts these exact bytes.
+      const decodable = await page.evaluate(encoded => new Promise(resolve => {
+        const bytes = Uint8Array.from(atob(encoded), value => value.charCodeAt(0));
+        createImageBitmap(new Blob([bytes], {type: 'image/png'}))
+          .then(bitmap => { bitmap.close(); resolve(true); }, () => resolve(false));
+      }), body.toString('base64')).catch(() => null);
+      pageResponses.push({...shape, bytes: body.length, magic: body.subarray(0, 8).toString('hex'),
+        sha256: createHash('sha256').update(body).digest('hex'), decodable});
     }).catch(() => { pageResponses.push({...shape, body: 'unreadable'}); });
   });
   page.on('console', message => {
