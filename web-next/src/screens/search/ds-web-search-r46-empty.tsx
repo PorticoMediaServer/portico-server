@@ -64,6 +64,8 @@ async function fixture(path: string): Promise<unknown> {
   if (url.pathname === '/v1/guide/channels') return {protocolVersion: '1.0', serverId,
     directory: {viewerFence: 'fence', revision: 'directory-revision', total: channels.length, offset: 0,
       limit: Number(url.searchParams.get('limit')), sources: [source], channels: channels.map(channel => guideChannel(channel, []))}};
+  if (url.pathname === '/v1/guide/sources') return {protocolVersion: '1.0', serverId, viewerFence: 'fence', revision: 'sources-revision',
+    sources: [{...source, position: 0, recordAvailable: false, guideDays: 7, channelCount: channels.length, favoriteCount: 0, groups: [], groupCounts: [], unavailableReasons: {}}]};
   if (url.pathname === '/v1/guide') {
     const start = url.searchParams.get('start')!, end = url.searchParams.get('end')!, ids = (url.searchParams.get('channels') ?? '').split(',');
     return {protocolVersion: '1.0', serverId, guide: {state: 'ready', viewerFence: 'fence', revision: 'guide-revision', start, end,

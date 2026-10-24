@@ -25,7 +25,7 @@ import {ScreenProblem} from '../detail/ScreenProblem';
 import {useShellWidth} from '../../shell/viewport';
 import {RecentSearches} from './RecentSearches';
 import {nowNext} from '@core/guide/index.ts';
-import type {FactPart} from '@portico/client-core/kit-model';
+import {channelTint, type FactPart} from '@portico/client-core/kit-model';
 import {defaultI18n} from '@i18n';
 
 type ChipId = SearchGroup | 'all';
@@ -116,11 +116,12 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
       })}</div>
     </section>}
     {context.identity?.liveAvailable === true && onNow.phase === 'ready' && onNow.cards.length > 0 && <section className={styles.emptySection} aria-labelledby="search-on-now">
-      <header><h2 id="search-on-now">{t('next.home.onNow')}</h2><span>{t('next.live.sources', {count: liveSourceCount})}</span>
-        <Button variant="text" size="small" icon="i-right" disabled={!onOpenLive} onClick={() => onOpenLive?.()}>{t('next.controls.guide')}</Button></header>
+      <header><h2 id="search-on-now">{t('next.home.onNow')}</h2><span>{onNow.sourceNames.length ? onNow.sourceNames.join(', ') : t('next.live.sources', {count: liveSourceCount})}</span>
+        <Button variant="text" size="small" className={styles.trailingLink} icon="i-right" disabled={!onOpenLive} onClick={() => onOpenLive?.()}>{t('next.controls.guide')}</Button></header>
       <div className={styles.lives}>{onNow.cards.map(card => <LiveCard key={card.channel.sourceId + ':' + card.channel.id}
         channel={{sourceId: card.channel.sourceId, id: card.channel.id, name: card.channel.name, ...(card.channel.number !== undefined ? {number: card.channel.number} : {}),
           ...(card.channel.mark ? {mark: {...card.channel.mark, sourceId: card.channel.sourceId, id: card.channel.id}} : {})}}
+        tint={card.channel.mark ? channelTint(card.channel.mark.seed) : undefined}
         logo={card.channel.logoUrl ? context.artwork.foreground(card.channel.logoUrl, 68, 1) : undefined}
         programme={onNowProgramme(card, now)} onNavigate={() => onOpenLive?.(card.channel.sourceId)} />)}</div>
     </section>}

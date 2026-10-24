@@ -36,6 +36,8 @@
 
 .section header > button,.recent header > button,.emptySection header > button { margin-left: auto; }
 
+.emptySection header > .trailingLink { flex-direction: row-reverse; }
+
 .cards { display: flex; gap: 16px; align-items: start; }
 
 .cards > * { width: calc(150px * var(--search-card-scale)); }

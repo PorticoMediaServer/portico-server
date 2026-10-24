@@ -32,7 +32,7 @@ test('an empty permitted directory leaves On now absent with one favourite-order
     assert.equal(owner.controller.getSnapshot().phase, 'idle');
     await owner.controller.load();
     const state = owner.controller.getSnapshot();
-    assert.equal(state.phase, 'ready');assert.deepEqual(state.cards, []);
+    assert.equal(state.phase, 'ready');assert.deepEqual(state.cards, []);assert.deepEqual(state.sourceNames, []);
     assert.equal(owner.requests().length, 1);
     const query = new URL(owner.requests()[0], 'https://local.invalid').searchParams;
     assert.equal(query.get('sort'), 'favorites');assert.equal(query.get('limit'), '4');assert.equal(query.get('kind'), 'all');
@@ -43,6 +43,8 @@ test('the actual directory order and its exact programmes become the drawn cards
   const owner = setup(async path => {
     const url = new URL(path, 'https://local.invalid'), query = url.searchParams;
     if (url.pathname === routePath('get_guide_channels')) return directory([channel('ch1', {text: 'NN', seed: 'src1:ch1'}), channel('ch2')]);
+    if (url.pathname === routePath('get_guide_sources')) return {protocolVersion: '1.0', serverId, viewerFence: 'fence', revision: 'sources-revision',
+      sources: [{...source, position: 0, recordAvailable: false, guideDays: 7, channelCount: 2, favoriteCount: 1, groups: [], groupCounts: [], unavailableReasons: {}}]};
     assert.equal(url.pathname, routePath('get_guide'));
     return guide((query.get('channels') ?? '').split(','), query.get('start'), query.get('end'), query.get('timezone'));
   });
@@ -51,12 +53,13 @@ test('the actual directory order and its exact programmes become the drawn cards
     const state = owner.controller.getSnapshot();
     assert.equal(state.phase, 'ready');
     assert.deepEqual(state.cards.map(card => card.channel.id), ['ch1', 'ch2']);
+    assert.deepEqual(state.sourceNames, ['Live source']);
     assert.equal(state.cards[0].channel.mark?.text, 'NN');
     assert.equal(state.cards[0].programmes[0].title, 'World Tonight');
     assert.equal(state.cards[0].programmes[0].subtitle, 'Homecoming');
-    assert.equal(owner.requests().length, 2);
-    const second = new URL(owner.requests()[1], 'https://local.invalid').searchParams;
-    assert.equal(second.get('channels'), 'ch1,ch2');assert.equal(second.get('timezone'), 'America/Halifax');
+    assert.equal(owner.requests().length, 3);
+    const guideRead = owner.requests().map(path => new URL(path, 'https://local.invalid')).find(url => url.pathname === routePath('get_guide'));
+    assert.equal(guideRead.searchParams.get('channels'), 'ch1,ch2');assert.equal(guideRead.searchParams.get('timezone'), 'America/Halifax');
   } finally {owner.controller.dispose();}
 });
 
