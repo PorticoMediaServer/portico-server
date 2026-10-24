@@ -373,6 +373,9 @@ func ExecWrite(ctx context.Context, db *sql.DB, class Class, query string, args 
 		writeCtx := context.WithValue(ctx, changeKey{}, changes)
 		var before, after int64
 		if err = conn.QueryRowContext(writeCtx, `SELECT total_changes()`).Scan(&before); err == nil {
+			// Autocommit has no BeginTx hook to attach this set to the
+			// observed connection. Record this attempt's supplied write root.
+			changes.note(query)
 			result, err = conn.ExecContext(writeCtx, query, args...)
 		}
 		if err == nil {
