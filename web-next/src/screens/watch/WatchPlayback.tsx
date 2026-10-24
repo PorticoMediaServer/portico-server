@@ -45,11 +45,11 @@ export function browserPictureInPictureSupported(host: PictureInPictureDocument 
   return host.pictureInPictureEnabled === true && typeof host.exitPictureInPicture === 'function';
 }
 
-/** Picture in Picture and AirPlay lift only the video; a page-drawn caption cannot follow it and
- * the notes require burn-in for both. The floating picture is therefore offered only while no
- * track is selected, or when the server already burned the selected track into this source.
+/** Picture in Picture and AirPlay lift only the video; a page-drawn caption cannot follow them and
+ * the notes require burn-in for both. The floating/remote picture is therefore offered only while
+ * no track is selected, or when the server already burned the selected track into this source.
  * A plan for another session/generation/source is unknown here, so it refuses rather than guesses. */
-export function pictureInPictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot): boolean {
+export function remotePictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot): boolean {
   const plan = snapshot.offers?.subtitlePlan, fence = snapshot.fence;
   if (!plan) return true;
   if (!fence || fence.kind === 'local' || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation || plan.sourceId !== fence.sourceId) return false;
@@ -61,7 +61,7 @@ export function pictureInPictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapsh
 export function pictureInPictureReady(runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined): boolean {
   const fence = snapshot?.fence;
   if (!runtime || !snapshot || snapshot.disposed || !fence || snapshot.nativeVideoSurfaceActive) return false;
-  if (snapshot.dock.remote?.phase === 'playing' || !pictureInPictureKeepsCaptions(snapshot)) return false;
+  if (snapshot.dock.remote?.phase === 'playing' || !remotePictureKeepsCaptions(snapshot)) return false;
   try { return runtime.browserMediaReady(fence); } catch { return false; }
 }
 
@@ -70,14 +70,14 @@ export function pictureInPictureReady(runtime: WebShellPlaybackRuntime | undefin
 export function pictureInPictureCurrent(runtime: WebShellPlaybackRuntime, fence: PlaybackFence): boolean {
   const live = runtime.getSnapshot();
   return !live.disposed && !!live.fence && sameFence(live.fence, fence) && !live.nativeVideoSurfaceActive
-    && live.dock.remote?.phase !== 'playing' && pictureInPictureKeepsCaptions(live);
+    && live.dock.remote?.phase !== 'playing' && remotePictureKeepsCaptions(live);
 }
 
 /** While the picture floats, a source that retires or turns native/remote, or a track that the
  * page can no longer draw into it, returns the one retained video to the page. */
 export function pictureInPictureRetained(runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined, owner: WebShellPlaybackRuntime | undefined): boolean {
   return !!owner && owner === runtime && !!snapshot && !snapshot.disposed && !!snapshot.fence
-    && !snapshot.nativeVideoSurfaceActive && snapshot.dock.remote?.phase !== 'playing' && pictureInPictureKeepsCaptions(snapshot);
+    && !snapshot.nativeVideoSurfaceActive && snapshot.dock.remote?.phase !== 'playing' && remotePictureKeepsCaptions(snapshot);
 }
 
 export type PictureInPictureOperations = Readonly<{toggle: () => Promise<void>; release: () => Promise<void>}>;
@@ -139,7 +139,9 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   }, [binding, context]);
   const cast = castOwner && castOwner.runtime === runtime && castOwner.context === context ? castOwner.value : undefined;
   const remoteState = useSyncExternalStore<PlayOnSnapshot | undefined>(cast?.controller.subscribe ?? noSubscription, cast?.controller.getSnapshot ?? noSnapshot, noSnapshot);
-  const castAvailable = !!cast && (remoteState?.airPlayAvailable || remoteState?.cast.available && snapshot?.fence?.kind === 'queue');
+  // AirPlay also lifts only the video; page-drawn captions keep the picture on the page.
+  const airPlayAvailable = !!remoteState?.airPlayAvailable && (!snapshot || remotePictureKeepsCaptions(snapshot));
+  const castAvailable = !!cast && (airPlayAvailable || remoteState?.cast.available && snapshot?.fence?.kind === 'queue');
   const remotePlaying = remoteState?.remote?.phase === 'playing';
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);

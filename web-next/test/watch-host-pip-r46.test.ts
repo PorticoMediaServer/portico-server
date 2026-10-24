@@ -22,7 +22,7 @@ registerHooks({
   },
 });
 
-const {browserPictureInPictureSupported, createPictureInPictureOperations, pictureInPictureCurrent, pictureInPictureKeepsCaptions,
+const {browserPictureInPictureSupported, createPictureInPictureOperations, pictureInPictureCurrent, remotePictureKeepsCaptions,
   pictureInPictureReady, pictureInPictureRetained} = await import('../src/screens/watch/WatchPlayback.tsx');
 
 const scope = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile', controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'};
@@ -101,16 +101,16 @@ test('a native surface, a remote takeover, a loading generation or a retired sou
   assert.equal(doc.pictureInPictureElement, null);
 });
 
-test('a page-drawn caption keeps the picture on the page; off and already-burned tracks may float', () => {
-  assert.equal(pictureInPictureKeepsCaptions(snapshot()), true);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan()} as never})), false);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({renderer: 'client'})} as never})), false);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({mode: 'off'})} as never})), true);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({renderer: 'burn_in'})} as never})), true);
+test('a page-drawn caption keeps the picture on the page; off and already-burned tracks may float or AirPlay', () => {
+  assert.equal(remotePictureKeepsCaptions(snapshot()), true);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan()} as never})), false);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({renderer: 'client'})} as never})), false);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({mode: 'off'})} as never})), true);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({renderer: 'burn_in'})} as never})), true);
   // Another session, generation or source is not this picture's caption state.
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({generation: 2})} as never})), false);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({sessionId: 'replacement'})} as never})), false);
-  assert.equal(pictureInPictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({sourceId: 'replacement'})} as never})), false);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({generation: 2})} as never})), false);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({sessionId: 'replacement'})} as never})), false);
+  assert.equal(remotePictureKeepsCaptions(snapshot({offers: {subtitlePlan: subtitlePlan({sourceId: 'replacement'})} as never})), false);
 
   const runtime = runtimeFor(() => snapshot());
   assert.equal(pictureInPictureReady(runtime, snapshot({offers: {subtitlePlan: subtitlePlan()} as never})), false);
