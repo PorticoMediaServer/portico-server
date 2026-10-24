@@ -112,6 +112,8 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	}
 	authority := &OwnerStartAuthority{ExpiresAt: p.ExpiresAt, CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
 		return id.CaptureOwnerClaimTx(ctx, tx, p, original, start, audience)
+	}, CaptureWithCountTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed, sign OwnerSwitchCountSign) (*claimweb.Signed, error) {
+		return id.CaptureOwnerClaimWithCountTx(ctx, tx, p, original, start, audience, identity.OwnerSwitchCountSigner(sign))
 	}, BindTx: func(ctx context.Context, tx *sql.Tx, op, transaction string) error {
 		return id.BindOwnerClaimTransactionTx(ctx, tx, p, op, transaction)
 	}}
@@ -146,13 +148,20 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 		if err != nil || start.State != state || start.CodeChallenge != challenge || start.InstallationID != installation {
 			t.Fatal("actual signed pending binding", err)
 		}
+		if request.OwnerSwitchCount == nil {
+			t.Fatal("actual protected signer omitted captured count")
+		}
+		fact, err := claimweb.VerifyOwnerSwitchCount(request.Original(), *request.OwnerStart, *request.OwnerSwitchCount, "https://hosted.example", time.Now())
+		if err != nil || fact.OtherPeopleCount != 0 || fact.PreviewID != move.ID || fact.PreviewRevision != move.Revision {
+			t.Fatal("actual signed count lost its preview binding", err)
+		}
 		var count int
 		if err = db.QueryRowContext(ctx, `SELECT count(*) FROM identity_owner_completions c JOIN hosted_identity_challenges h ON h.challenge_hash=c.server_challenge_hash AND h.installation_id=c.installation_id WHERE c.operation_id=? AND c.phase='prepared' AND c.claim_hash=?`, v.OperationID, start.ClaimHash).Scan(&count); err != nil || count != 1 {
 			t.Fatal("pending preceded full durable capture", count, err)
 		}
 		if calls == 1 {
 			first = request
-		} else if request.Payload != first.Payload || request.Signature != first.Signature || *request.OwnerStart != *first.OwnerStart {
+		} else if request.Payload != first.Payload || request.Signature != first.Signature || *request.OwnerStart != *first.OwnerStart || *request.OwnerSwitchCount != *first.OwnerSwitchCount {
 			t.Fatal("retry refreshed signed start or original request")
 		}
 		if revoke {
@@ -202,6 +211,9 @@ func TestOwnerWebPendingFollowsAtomicCaptureAndFencesLateRevocation(t *testing.T
 	var status ClaimStatus
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &status) != nil || status.OwnerContinuation == nil || status.OwnerContinuation.Claim == nil || status.OwnerContinuation.Start == nil {
 		t.Fatal("served owner initiation", w.Code)
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("ownerSwitchCount")) || bytes.Contains(w.Body.Bytes(), []byte("otherPeopleCount")) {
+		t.Fatal("private count appeared in public initiation")
 	}
 	expires, err := time.Parse(time.RFC3339Nano, status.OwnerContinuation.ExpiresAt)
 	if err != nil {
