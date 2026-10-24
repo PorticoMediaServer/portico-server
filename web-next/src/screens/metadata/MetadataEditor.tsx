@@ -10,6 +10,15 @@ type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown,
 type Draft = Readonly<Record<string, {value: string; locked: boolean}>>;
 type Tab = 'general' | 'artwork' | 'tags' | 'history';
 
+/** Only the tabs this type really has: no list fields means no Tags tab, no roles means no Artwork. */
+function tabsFor(data: RepairData | undefined): readonly Tab[] {
+  const tabs: Tab[] = ['general'];
+  if (!data || data.artworkRoles.length) tabs.push('artwork');
+  if (!data || data.schema.some(spec => spec.type === 'list')) tabs.push('tags');
+  tabs.push('history');
+  return tabs;
+}
+
 /** owner-metadata frames 6-8: one editor for a title, an episode, a show, an album or a book.
  * Every field and every choice comes from the server's schema and current snapshot; a change is
  * exactly one edit command carrying only the fields the owner touched. */
@@ -21,6 +30,8 @@ export function MetadataEditor({api, scope, target, onClose}: {
   const [tab, setTab] = useState<Tab>('general'), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
   useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
   const data = state.data;
+  const offered = tabsFor(data);
+  const shown: Tab = offered.includes(tab) ? tab : 'general';
   const invalid = data ? Object.entries(draft).some(([name, value]) => {const spec = data.schema.find(row => row.field === name); return spec ? Boolean(fieldError(spec, value.value)) : false;}) : false;
   const changed = useMemo(() => {
     if (!data) return [];
@@ -52,7 +63,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <header className={styles.editorHead}><h2>{heading}</h2><Button size="small" onClick={onClose}>{t('action.close')}</Button></header>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
-      {(['general', 'artwork', 'tags', 'history'] as const).map(id => <button key={id} type="button" aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+      {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
         {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : 'web.metadata.tabHistory')}</button>)}
     </nav>
     {state.phase === 'loading' ? <p className={styles.working}>{t('web.metadata.loading')}</p> : null}
@@ -60,14 +71,14 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {error ? <HostedError error={error} /> : null}
     {state.phase === 'saving' ? <p className={styles.working}>{t('web.metadata.applying')}</p> : null}
     {data && state.phase !== 'loading' ? <>
-      {tab === 'general' ? <General data={data} draft={draft} set={set} /> : null}
-      {tab === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
-      {tab === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+      {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
+      {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
+      {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
-      {tab === 'history' ? <History data={data} busy={state.phase === 'saving'} onUndo={historyId => void run({action: 'undo', historyId})}
+      {shown === 'history' ? <History data={data} busy={state.phase === 'saving'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
-      {tab !== 'artwork' && tab !== 'history' ? <footer className={styles.editorFooter}>
+      {shown !== 'artwork' && shown !== 'history' ? <footer className={styles.editorFooter}>
         <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
         <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
