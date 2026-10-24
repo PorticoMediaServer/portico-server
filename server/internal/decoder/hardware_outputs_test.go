@@ -93,3 +93,20 @@ func TestHardwareAV1RequiresIndependentDepthAndQualityProbes(t *testing.T) {
 		t.Fatal("unqualified hardware quality mode lost the CPU fallback", graph, err)
 	}
 }
+
+func TestHardwareGraphFallsBackForAnotherSelectedRuntime(t *testing.T) {
+	facts := targetFacts()
+	facts.Identity = "current-runtime"
+	probe := HardwareProbe{Backend: supportedTestBackend(t), Available: true, Identity: facts.Identity,
+		NativeFilters: true, DecodeCodecs: map[string]bool{"hevc:10": true}}
+	request := ConversionRequest{ConvertVideo: true, SourceVideoCodec: "hevc", SourceBitDepth: 10, Toolchain: facts, Probe: probe}
+	graph, err := BuildConversion(request)
+	if err != nil || graph.Backend != probe.Backend {
+		t.Fatal("matching runtime lost its measured hardware route", graph, err)
+	}
+	request.Probe.Identity = "previous-runtime"
+	graph, err = BuildConversion(request)
+	if err != nil || graph.Backend != BackendSoftware || HardwareStagesRequireDevice(graph.Stages) || argValue(graph.Video, "-c:v") != "libx264" {
+		t.Fatal("previous runtime's hardware result survived graph composition", graph, err)
+	}
+}

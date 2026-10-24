@@ -754,7 +754,10 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	}
 	backend := BackendSoftware
 	spec := backendSpec{}
-	if r.Probe.Available && r.Probe.Backend != BackendSoftware {
+	// Persisted hardware results from another selected runtime cannot execute
+	// its graph. Legacy argument-only callers may omit toolchain facts.
+	mismatchedRuntime := r.Toolchain != nil && r.Toolchain.Identity != "" && r.Probe.Identity != "" && r.Toolchain.Identity != r.Probe.Identity
+	if !mismatchedRuntime && r.Probe.Available && r.Probe.Backend != BackendSoftware {
 		if s, ok := backendSpecs[r.Probe.Backend]; ok && s.supported() {
 			backend, spec = r.Probe.Backend, s
 		}
