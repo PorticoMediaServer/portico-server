@@ -2,7 +2,6 @@ import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObje
 import {defaultI18n} from '@i18n';
 import type {ServerShortInvitation} from '@core/direct-account.ts';
 import {Button} from '../controls/Button';
-import {Icon} from '../Icon';
 import {Dialog} from '../overlays/Dialog';
 import {AuthError} from './AuthStage';
 import {ShortCodeIssuer, type ShortCodeRun} from './invitation-short-code';
@@ -82,7 +81,6 @@ function IssuerDialog({open, onOpenChange, request, issueOnOpen = false, createO
         {state.phase === 'failed' && <Button variant="glass" onClick={() => void issuer.retry(runRef.current)} disabled={busy}>{t('action.tryAgain')}</Button>}
         {!busy && <Button variant="glass" icon="i-plus" onClick={() => void issuer.issue(true, runRef.current)}>{t('web.access.newShortCode')}</Button>}
       </div>
-      <p className={styles.quiet}><Icon name="i-info" size={18} />{t('invite.readyBody')}</p>
     </div>
   </Dialog>;
 }
