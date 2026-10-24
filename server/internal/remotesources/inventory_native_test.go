@@ -113,6 +113,13 @@ func runInventoryServeFixture() int {
 		}
 		return ""
 	}
+	// Like the real process, capture config before readiness lets its owner
+	// remove the private config file. RC never reopens a deleted config path.
+	var sections map[string]map[string]string
+	if raw, err := os.ReadFile(flag("--config")); err == nil {
+		sections, _ = parseServeConfiguration(raw)
+		clear(raw)
+	}
 	response := func(w http.ResponseWriter, path string, directory bool) {
 		fmt.Fprintf(w, `<d:response><d:href>/%s</d:href><d:propstat><d:prop>`, path)
 		if directory {
@@ -191,14 +198,7 @@ func runInventoryServeFixture() int {
 				w.WriteHeader(400)
 				return
 			}
-			raw, err := os.ReadFile(flag("--config"))
-			if err != nil {
-				w.WriteHeader(500)
-				return
-			}
-			sections, err := parseServeConfiguration(raw)
-			clear(raw)
-			if err != nil || sections[input.Name] == nil {
+			if sections[input.Name] == nil {
 				w.WriteHeader(404)
 				return
 			}
