@@ -107,6 +107,14 @@ func TestReadingBrowseLeavesFacetsAndCompilerShareTheReadyScope(t *testing.T) {
 			if err != nil || facets.Total != 2 || len(facets.Values) != 1 {
 				t.Fatalf("exact facets %+v %v", facets, err)
 			}
+			nextFacet, err := s.Facets(viewer, FacetRequest{Library: "reading", Field: "author", Pivot: "authors", Limit: 1, Offset: 1})
+			if err != nil || nextFacet.Total != 2 || len(nextFacet.Values) != 1 || nextFacet.Values[0].Value == facets.Values[0].Value || nextFacet.Revision != facets.Revision {
+				t.Fatalf("bounded facet continuation %+v %v", nextFacet, err)
+			}
+			counted, err := s.BrowseCounts(viewer, "reading", BrowseCountRequest{Queries: []BrowseCountQuery{{ID: "same", Query: query}}}, nil)
+			if err != nil || len(counted.Counts) != 1 || counted.Counts[0].Total != 2 || counted.Counts[0].TotalIsLowerBound {
+				t.Fatalf("Reading filter counts differ from browse %+v %v", counted, err)
+			}
 			if facets.TotalIsLowerBound || facets.Values[0].CountIsLowerBound {
 				t.Fatal("small exact facet became a lower bound")
 			}

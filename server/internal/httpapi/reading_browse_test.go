@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+ "encoding/json"
+ "portico.local/server/internal/catalog"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,7 +11,7 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllThreeSurfaces(t *testing.T) {
+func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllFourSurfaces(t *testing.T) {
 	r := newReadingFixture(t, "book", "pdf")
 	ctx := context.Background()
 	readingSeriesOwnerField(t, r, r.item, "author", "Protected Reading author")
@@ -21,7 +23,7 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllThreeSurfaces(t *testing.T
 		body         any
 	}
 	base := "/v1/libraries/" + r.library
-	targets := []target{{"GET", base + "/browse-capabilities", nil}, {"POST", base + "/browse", map[string]any{"pivot": "books", "limit": 1}}, {"GET", base + "/facets?field=author", nil}}
+	targets := []target{{"GET", base + "/browse-capabilities", nil}, {"POST", base + "/browse", map[string]any{"pivot": "books", "limit": 1}}, {"GET", base + "/facets?field=author", nil}, {"POST",base+"/browse/counts",map[string]any{"pivot":"books","queries":[]any{map[string]any{"id":"base"}}}}}
 	check := func(token string, status int, hidden bool) {
 		t.Helper()
 		for _, target := range targets {
@@ -71,4 +73,26 @@ func TestReadingBrowseHTTPUsesLiveReadyAuthorityForAllThreeSurfaces(t *testing.T
 		t.Fatal(err)
 	}
 	check(r.f.owner.AccessToken, 401, true)
+}
+
+func TestReadingBrowseFacetWindowHTTP(t *testing.T) {
+ r:=newReadingFixture(t,"book","pdf")
+ readingSeriesOwnerField(t,r,r.item,"author","One author")
+ readingSeriesDrain(t,r)
+ h:=New(r.d)
+ path:="/v1/libraries/"+r.library+"/facets?field=author&pivot=authors&limit=1"
+ var first catalog.FacetPage
+ w:=readingHTTP(t,h,"GET",path,r.f.owner.AccessToken,"",nil)
+ if w.Code!=200 {t.Fatal(w.Code,w.Body.String())}
+ if err:=json.Unmarshal(w.Body.Bytes(),&first);err!=nil {t.Fatal(err)}
+ if first.Total!=1||len(first.Values)!=1 {t.Fatalf("first window %+v",first)}
+ w=readingHTTP(t,h,"GET",path+"&offset=1",r.f.owner.AccessToken,"",nil)
+ if w.Code!=200 {t.Fatal(w.Code,w.Body.String())}
+ var next catalog.FacetPage
+ if err:=json.Unmarshal(w.Body.Bytes(),&next);err!=nil {t.Fatal(err)}
+ if next.Total!=1||len(next.Values)!=0||next.Revision!=first.Revision {t.Fatalf("next window %+v",next)}
+ for _,offset:=range []string{"-1","no","1&offset=2"} {
+  w=readingHTTP(t,h,"GET",path+"&offset="+offset,r.f.owner.AccessToken,"",nil)
+  if w.Code!=400 {t.Fatalf("invalid offset accepted %s: %d",offset,w.Code)}
+ }
 }

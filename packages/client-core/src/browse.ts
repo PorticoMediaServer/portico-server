@@ -489,9 +489,10 @@ export function parseBrowseCounts(raw:unknown,expected:readonly string[]):readon
 }
 /** Contextual facet URL; query includes current filters and immutable group.
  * The server leaves the counted field out and rechecks current authority. */
-export function browseContextFacetsPath(libraryId:string,field:string,pivot:string,query?:BrowseNode,q='',limit=200):string{
- if(!id(field)||!id(pivot)||!count(limit)||limit<1||limit>200||q.length>100)bad();
+export function browseContextFacetsPath(libraryId:string,field:string,pivot:string,query?:BrowseNode,q='',limit=200,offset=0):string{
+ if(!id(field)||!id(pivot)||!count(limit)||limit<1||limit>200||q.length>100||!count(offset)||(offset>0&&libraryId===acrossLibraries))bad();
  const params=new URLSearchParams({field,pivot,limit:String(limit)});
+ if(offset>0)params.set('offset',String(offset));
  if(query)params.set('query',JSON.stringify(parseBrowseNode(query)));
  if(q)params.set('q',q);
  return browseFacetsPath(libraryId)+'?'+params.toString();
