@@ -148,7 +148,7 @@ function episodeDetail() {
 }
 
 function activityDocument(now: string) {
-  const session = (id: string) => ({id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: 'Demo'},
+  const session = (id: string) => ({id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: 'Demo'}, // lint-strings-allow
     device: {id: 'specimen-device', name: 'Portico web'}, kind: 'vod', state: 'playing', startedAt: now, // lint-strings-allow
     problem: false, converting: false, positionMs: 60_000, decision: {}});
   return {scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo', // lint-strings-allow
@@ -226,7 +226,7 @@ const homeService = {getSnapshot: () => ({phase: 'idle'}), subscribe: () => () =
 const home: HomeBindings = {service: homeService, artwork, time, reducedMotion: true,
   selection: {toolbar: null, card: () => undefined, channel: () => undefined, collection: () => undefined, registerWindow: () => undefined, registerSpotlight: () => undefined, moreAvailable: () => false, moreExpanded: () => false},
   effects: {play: async () => {record('play');}, playChannel: async () => {}, openEntry: () => {}, openSeeAll: () => {}, openMore: () => {},
-    setMyList: async () => {}, reportError: error => {record('report-error', String(error));}}}; // lint-raw-errors-allow
+    setMyList: async () => {}, reportError: () => {record('report-error');}}};
 const binding: ShellBindings = {api, events, scopeKey: 'show-specimen', shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => record('sign-out')}, home};
 
 // The fixture's real command receipts are inspectable from the page; no credentials or server data.
