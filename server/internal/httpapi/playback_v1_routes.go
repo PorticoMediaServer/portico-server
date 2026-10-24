@@ -50,37 +50,10 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		if d.Catalog == nil {
 			return catalog.QueueSelection{}, playbackv1.ErrUnsupportedSelector
 		}
-		restrictions, err := contentaccess.RestrictionsTx(ctx, tx, p.Viewer)
+		viewer, err := d.queueCatalogViewerTx(ctx, tx, p)
 		if err != nil {
 			return catalog.QueueSelection{}, err
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT library_id FROM catalog_libraries WHERE retired=0 ORDER BY library_id`)
-		if err != nil {
-			return catalog.QueueSelection{}, err
-		}
-		var candidates []string
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				break
-			}
-			candidates = append(candidates, id)
-		}
-		if err == nil {
-			err = rows.Err()
-		}
-		rows.Close()
-		if err != nil {
-			return catalog.QueueSelection{}, err
-		}
-		libraries := []string{}
-		for _, id := range candidates {
-			if d.allowedLibraryTx(ctx, p, id, tx) == nil {
-				libraries = append(libraries, id)
-			}
-		}
-		scope, _ := json.Marshal(libraries)
-		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: catalog.RestrictionFence(restrictions) + ":" + string(scope), Libraries: libraries, Restrictions: restrictions}
 		saved := ""
 		if source.Saved != nil {
 			saved = source.Saved.ID
@@ -98,6 +71,16 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 			}
 		}
 		return selection, err
+	}
+	s.RadioKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, request catalog.RadioBatchRequest) (catalog.RadioBatch, error) {
+		if d.Catalog == nil {
+			return catalog.RadioBatch{}, playbackv1.ErrUnsupportedSelector
+		}
+		viewer, err := d.queueCatalogViewerTx(ctx, tx, p)
+		if err != nil {
+			return catalog.RadioBatch{}, err
+		}
+		return d.Catalog.MusicRadioBatchTx(ctx, tx, viewer, request)
 	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
@@ -781,4 +764,40 @@ func (d Dependencies) withQueueHomeRows(ctx context.Context, r *http.Request, so
 		held.members[id], held.titles[id] = members, title
 	}
 	return context.WithValue(ctx, queueHomeRowsKey{}, held), nil
+}
+
+// queueCatalogViewerTx is shared by finite selectors and generated radio
+// batches. Both use current account/profile restrictions and library admission.
+func (d Dependencies) queueCatalogViewerTx(ctx context.Context, tx *sql.Tx, p identity.Principal) (catalog.Viewer, error) {
+	restrictions, err := contentaccess.RestrictionsTx(ctx, tx, p.Viewer)
+	if err != nil {
+		return catalog.Viewer{}, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT library_id FROM catalog_libraries WHERE retired=0 ORDER BY library_id`)
+	if err != nil {
+		return catalog.Viewer{}, err
+	}
+	var candidates []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			break
+		}
+		candidates = append(candidates, id)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return catalog.Viewer{}, err
+	}
+	libraries := []string{}
+	for _, id := range candidates {
+		if d.allowedLibraryTx(ctx, p, id, tx) == nil {
+			libraries = append(libraries, id)
+		}
+	}
+	scope, _ := json.Marshal(libraries)
+	return catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: catalog.RestrictionFence(restrictions) + ":" + string(scope), Libraries: libraries, Restrictions: restrictions}, nil
 }

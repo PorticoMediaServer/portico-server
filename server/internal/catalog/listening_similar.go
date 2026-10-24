@@ -34,7 +34,7 @@ func (s *Service) ListeningSimilar(viewer Viewer, id string, limit int) (Listeni
 	if _, ok := entityid.Decode(id); !ok {
 		return ListeningSimilar{}, sql.ErrNoRows
 	}
-	if dbwork.Snapshot(s.Context()) == nil {
+	if dbwork.Snapshot(s.Context()) == nil && s.readTx == nil {
 		var out ListeningSimilar
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var e error
