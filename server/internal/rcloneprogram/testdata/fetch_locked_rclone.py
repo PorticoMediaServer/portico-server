@@ -1,9 +1,9 @@
 """Fetch only the locked fixture tool inside its owner's disposable directory."""
 
 import hashlib
-import io
 import json
 import pathlib
+import signal
 import sys
 import time
 import urllib.error
@@ -66,4 +66,14 @@ def fetch(lock_path, root, *, open_url=urllib.request.urlopen, clock=time.monoto
 
 
 if __name__ == "__main__":
-    fetch(sys.argv[1], sys.argv[2])
+    def expired(_signal, _frame):
+        raise RuntimeError("locked rclone acquisition exceeded 120 seconds")
+
+    # This fixture entry point is Linux-only. The alarm also bounds a blocked
+    # DNS/TLS/socket call; progress cannot extend the overall setup deadline.
+    signal.signal(signal.SIGALRM, expired)
+    signal.alarm(120)
+    try:
+        fetch(sys.argv[1], sys.argv[2])
+    finally:
+        signal.alarm(0)
