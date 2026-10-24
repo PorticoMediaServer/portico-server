@@ -43,6 +43,29 @@ func (s *Service) PrepareSetupCompletion(ctx context.Context, h *networking.Clai
 	if err != nil {
 		return serverreturn.Registration{}, err
 	}
+	return s.prepareSetupCompletion(ctx, h, pending, proof, operation, sourceOrigin)
+}
+
+// PrepareCapturedSetupCompletion resumes the exact server-private capture after
+// installation, including across restart. It binds a return registration only;
+// no browser verifier, setup token or owner credential is recovered or issued.
+func (s *Service) PrepareCapturedSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation string) (serverreturn.Registration, error) {
+	if s == nil || s.identity == nil || s.current == nil || !s.Configured() {
+		return serverreturn.Registration{}, networking.ErrUnavailable
+	}
+	g, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return serverreturn.Registration{}, err
+	}
+	sourceOrigin, err := s.identity.CapturedSetupReturnOriginTx(ctx, g.Tx(), pending, proof, operation, s.origin)
+	g.Rollback()
+	if err != nil {
+		return serverreturn.Registration{}, err
+	}
+	return s.prepareSetupCompletion(ctx, h, pending, proof, operation, sourceOrigin)
+}
+
+func (s *Service) prepareSetupCompletion(ctx context.Context, h *networking.ClaimHandler, pending identity.PendingAccountSetup, proof, operation, sourceOrigin string) (serverreturn.Registration, error) {
 	guard := func(ctx context.Context, tx *sql.Tx) error {
 		if err := s.identity.CheckSetupContinuationTx(ctx, tx, pending, proof, operation, ""); err != nil {
 			return err

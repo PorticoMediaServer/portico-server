@@ -188,6 +188,40 @@ func (f setupContinuationFixture) bound(t *testing.T) (serverreturn.SetupExchang
 	}
 	return serverreturn.SetupExchange{TransactionID: "actual_setup_transaction", State: f.start.State, Verifier: f.verifier, InstallationID: f.start.InstallationID, ServerChallenge: f.start.ServerChallenge, RegistrationID: route.Registration.ID, Purpose: "setup"}, route
 }
+
+func TestCapturedSetupReturnOriginRetainsFrozenAuthority(t *testing.T) {
+	for _, mode := range []string{"current", "wrong proof", "wrong revision", "wrong operation", "wrong audience", "expired", "retired", "consumed", "signature changed"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newSetupContinuationFixture(t)
+			f.capture(t)
+			f.install(t)
+			pending, proof, operation, audience := f.pending, f.proofHash, f.intent.OperationID, f.claim.Audience
+			var statement string
+			switch mode {
+			case "wrong proof": proof = identity.Token()
+			case "wrong revision": pending.Revision++
+			case "wrong operation": operation = identity.Token()
+			case "wrong audience": audience = "https://other.example"
+			case "expired": statement = `UPDATE identity_setup_completions SET created_ms=1,expires_ms=2`
+			case "retired": statement = `UPDATE networking_claim_identity SET active_operation_id=NULL`
+			case "consumed": statement = `UPDATE identity_setup_completions SET phase='consumed',attempt_id='another-attempt'`
+			case "signature changed": statement = `UPDATE identity_setup_completions SET start_signature=zeroblob(64)`
+			}
+			if statement != "" { if _, err := f.db.Exec(statement); err != nil { t.Fatal(err) } }
+			var origin string
+			err := f.write(func(tx *sql.Tx) error {
+				var err error
+				origin, err = f.s.CapturedSetupReturnOriginTx(context.Background(), tx, pending, proof, operation, audience)
+				return err
+			})
+			if mode == "current" {
+				if err != nil || origin != f.claim.Address { t.Fatalf("frozen origin %q: %v", origin, err) }
+			} else if err == nil || origin != "" { t.Fatal("retired or altered capture returned an origin") }
+			var accounts int
+			if err := f.db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&accounts); err != nil || accounts != 0 { t.Fatal("origin recovery admitted an account", err) }
+		})
+	}
+}
 func TestSetupContinuationFrozenCaptureAndCurrentAuthority(t *testing.T) {
 	f := newSetupContinuationFixture(t)
 	f.capture(t)

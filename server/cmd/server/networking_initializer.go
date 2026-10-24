@@ -142,6 +142,7 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 	if e != nil {
 		return nil, e
 	}
+	handler.UseSetupReturnResolver(httpapi.NetworkingSetupReturnResolver(id, control, handler))
 	if e = handler.ConfigureCertificates(context.Background(), state, networking.CertificateOptions{
 		Environment:      os.Getenv("PORTICO_CERTIFICATE_ENVIRONMENT"),
 		StagingRootsFile: os.Getenv("PORTICO_CERTIFICATE_STAGING_ROOTS"),

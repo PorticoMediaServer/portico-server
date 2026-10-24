@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"portico.local/server/internal/claimweb"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/networkpolicy"
@@ -99,6 +100,21 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			}
 		}
 		return actor, nil
+	}
+}
+
+// NetworkingSetupReturnResolver rechecks an existing server-private resume
+// note. No public caller can turn an attached boolean or operation ID into this
+// capability, and only the captured setup registration is prepared.
+func NetworkingSetupReturnResolver(id *identity.Service, control *hosted.Service, handler *networking.ClaimHandler) func(context.Context, string, string) error {
+	return func(ctx context.Context, note, operation string) error {
+		var saved claimResume
+		if id == nil || control == nil || json.Unmarshal([]byte(note), &saved) != nil || saved.SetupOperationID == "" || saved.SetupRevision < 1 || saved.SetupProof == "" || saved.Digest != "" || saved.AccountID != "" || saved.ProfileID != "" || saved.Epoch != 0 {
+			return networking.ErrClaimOwnerRequired
+		}
+		pending := identity.PendingAccountSetup{ServerID: id.ID(), RequestID: saved.SetupOperationID, Revision: saved.SetupRevision, AuthMode: "hosted", ClaimRequired: true}
+		_, err := control.PrepareCapturedSetupCompletion(ctx, handler, pending, saved.SetupProof, operation)
+		return networkingOwnerStartError(err)
 	}
 }
 
