@@ -302,7 +302,8 @@ export const hero = {
   identity: {eyebrow: 'eyebrow' as TypeRole, title: 'lockup' as TypeRole, longTitle: 'lockupLong' as TypeRole, gap: same(20, 22)},
   facts: {role: 'meta' as TypeRole, strongWeight: 700, color: 'textSecondary' as ColorToken, gap: all(18, 12, 12, 26), rowGap: all(8, 6, 6, 10), separatorWidth: same(12, 16)},
   synopsis: {role: 'synopsis' as TypeRole, color: 'textSecondary' as ColorToken, lines: all(3, 2, 2, 2), maxWidth: all(540, 350, 350, 800)},
-  actions: {gap: all(12, 10, 10, 18), phonePrimaryFullWidth: false, progress: {height: 4, insetX: 0, track: 'ink' as ColorToken, trackAlpha: 0.14, fill: 'accent' as ColorToken}},
+  /** kit.css `.actions` draws 12 px on web, phone and tablet; TV `.tv .actions` draws 18. */
+  actions: {gap: all(12, 12, 12, 18), phonePrimaryFullWidth: false, progress: {height: 4, insetX: 0, track: 'ink' as ColorToken, trackAlpha: 0.14, fill: 'accent' as ColorToken}},
   rotation: {intervalMs: 8000, crossfadeMs: 900, copyMs: 600, copyTranslate: 6, copyStaggerMs: 60, driftMs: 11000, driftScaleFrom: 1.07, pausesOnHover: true, pausesOnFocus: true, tvOnlyWhileHeroFocused: true, reducedMs: 160, reducedRotates: false},
   thumbnail: {width: 132, height: 74, radius: 8, gap: 12, bottom: 64, opacity: 0.62, hoverOpacity: 0.9, progressHeight: 3, progressGap: 8, labelGap: 6, labelSize: 12, label: 'thumbnailLabel' as TypeRole},
   phoneDots: {size: 6, activeWidth: 18, gap: 6, marginTop: 18, alpha: 0.3},
@@ -316,7 +317,8 @@ export const card = {
   hover: {artScale: 1.045, liveScale: 1.03, episodeScale: 1.03, durationMs: 260, playMs: 200, playTranslate: 6,
     shadow: {x: 0, y: 22, blur: 40, spread: -16, color: 'shadow' as ColorToken, alpha: 0.85}, ring: {width: 1, color: 'text' as ColorToken, alpha: 0.16}},
   play: {size: 40, wideSize: 52, episodeSize: 48, inset: 10, wideScaleFrom: 0.9},
-  wide: {insetX: same(14, 20), insetBottom: same(14, 18), title: 'wideTitle' as TypeRole, scrimStart: 0.45, scrimAlpha: 0.85},
+  /** kit.css `.gap` between on-art facts: 12 px, 16 on TV. */
+  wide: {insetX: same(14, 20), insetBottom: same(14, 18), title: 'wideTitle' as TypeRole, scrimStart: 0.45, scrimAlpha: 0.85, factsGap: all(12, 12, 12, 16)},
   progress: {height: same(4, 6), marginTop: same(10, 12), track: 'text' as ColorToken, trackAlpha: 0.22, fill: 'accentStrong' as ColorToken},
   badge: {radius: same(6, 8), inset: same(8, 12), paddingX: all(8, 8, 8, 11), paddingY: same(3, 4), role: 'badge' as TypeRole},
   live: {width: {web: 316, phone: 244}, height: {web: 178, phone: 140}, padding: {web: 18, phone: 14}, radius: 12, channelGap: 10, monogramSize: 34, monogramRadius: 8, title: 'liveTitle' as TypeRole, channel: 'liveChannel' as TypeRole, timeGap: 3, dotSize: 7, dotGap: 6, dotAnimated: false, monogram: 'liveMonogram' as TypeRole},
