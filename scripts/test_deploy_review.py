@@ -20,6 +20,9 @@ spec.loader.exec_module(build)
 spec = importlib.util.spec_from_file_location('build_review_apk', Path(__file__).with_name('build-review-apk.py'))
 apk = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(apk)
+spec = importlib.util.spec_from_file_location('smoke_review', Path(__file__).with_name('smoke-review.py'))
+smoke = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(smoke)
 
 
 class ReviewDeployment(unittest.TestCase):
@@ -60,7 +63,7 @@ class ReviewDeployment(unittest.TestCase):
 
     def test_remote_shell_bodies_parse(self):
         import subprocess
-        for body in (deploy.STAGE, deploy.ACTIVATE):
+        for body in (deploy.STAGE, deploy.ACTIVATE, deploy.ROLLBACK):
             self.assertEqual(subprocess.run(['bash', '-n'], input=body, text=True).returncode, 0)
 
     def test_outgoing_service_environments_are_preserved_by_actual_path(self):
@@ -97,6 +100,38 @@ class ReviewDeployment(unittest.TestCase):
         with patch.object(build.subprocess, 'check_output', return_value=cutoff + '\trefs/heads/main\n'), patch.object(build.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'git')):
             with self.assertRaises(subprocess.CalledProcessError):
                 build.require_current_main(Path('/checkout'), cutoff)
+
+    def test_private_stdin_waits_for_a_whole_ready_line(self):
+        self.assertFalse(smoke.stdin_ready('{"argv":["console.log(\"PRIVATE_STDIN_READY\")"]}'))
+        self.assertTrue(smoke.stdin_ready('public metadata\nPRIVATE_STDIN_READY\n'))
+
+    def test_private_credentials_refuse_unsafe_permissions_and_links(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'review.md'
+            import json
+            path.write_text('```json\n' + json.dumps({'username': 'fixture', 'password': os.urandom(24).hex()}) + '\n```')
+            path.chmod(0o644)
+            with self.assertRaises(ValueError):
+                smoke.read_credentials(path)
+            path.chmod(0o600)
+            self.assertEqual(smoke.read_credentials(path)['username'], 'fixture')
+            link = Path(temp) / 'link'
+            link.symlink_to(path)
+            with self.assertRaises(OSError):
+                smoke.read_credentials(link)
+
+    def test_activation_without_real_browser_inputs_is_refused_before_mutation(self):
+        with patch('sys.argv', ['deploy-review.py', 'a' * 40, '/artifact', '--cycle', 'review-test', '--activate-only']), patch.object(deploy, 'remote') as remote:
+            with self.assertRaises(SystemExit):
+                deploy.main()
+            remote.assert_not_called()
+
+    def test_browser_failure_restores_the_previous_service(self):
+        args = ['deploy-review.py', 'a' * 40, '/artifact', '--cycle', 'review-test', '--activate-only', '--browser-repo', '/repo', '--runner', '/runner', '--private-review', '/private', '--smoke-output', '/output']
+        with patch('sys.argv', args), patch.object(deploy, 'remote') as remote, patch.object(deploy.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, 'smoke')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                deploy.main()
+            self.assertEqual([call.args[0] for call in remote.call_args_list], [deploy.ACTIVATE, deploy.ROLLBACK])
 
     def test_official_ed25519_public_root_is_accepted(self):
         pem = Path(__file__).resolve().parents[1] / 'deployment/hosted/root-public-key.pem'

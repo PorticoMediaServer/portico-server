@@ -68,7 +68,7 @@ host without a working sandbox sees `decoder_confinement_unavailable`.
 
 ## Current review cycles
 
-Build an exact published server MAIN commit on Netcup; never compile on the demo:
+Freeze the actual published server MAIN head and build its matching server and web-next on Netcup; never deploy a feature branch or compile on the demo. The builder checks the exact remote MAIN ref before any build:
 
 ```sh
 python3 scripts/build-review.py FULL_MAIN_SHA --repo /path/to/server-checkout --runner /path/to/_program/runner-tools/run-remote.py --output /path/to/cycle-summary-builds --artifacts /home/justin/projects/Portico/.artifacts/release-r40/FULL_MAIN_SHA
@@ -80,8 +80,10 @@ Staging uses a separate fresh structured data directory and loopback port32504. 
 After setup verification, activate explicitly:
 
 ```sh
-scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --activate-only
+scripts/deploy-demo.sh FULL_MAIN_SHA /path/to/artifacts --cycle review-CYCLE --activate-only --browser-repo /path/to/server-checkout --runner /path/to/_program/runner-tools/run-remote.py --private-review /path/to/_program/private/REVIEW-SERVER.md --smoke-output /path/to/cycle-browser
 ```
+
+Activation must pass a real browser: signed-out `/` redirects to the drawn sign-in form; owner sign-in reaches the actual Home document; the second profile opens; sign-out returns to sign-in. Direct `/sign-in` and `/profiles` document navigation/reload must work too. The smoke reads the existing private0600 credential file only through ephemeral stdin after the real form appears; no credential enters command arguments, logs, screenshots or runner files. Its finally handler retains sanitized DOM/console/network paths and a screenshot when available. Any failed, refused or interrupted smoke restores the previous service and database immediately. Update private review notes only after all four actual passes. Reusing the existing owner password for a fresh account preserves access without carrying the old server identity/session/database.
 
 The old service/configuration and old database remain available for rollback; a new binary never opens old state. The new unit uses `PORTICO_SERVICE=1` and explicitly permits its normal `/var/cache/portico` transcode path. Server transcoding stays disabled on this1CPU/1GB review box. A release APK uses the normal Welcome/local-server flow with `https://demo.getportico.tv` typed by the reviewer; no DEV proof entry, injected runtime or embedded credentials.
 
@@ -103,4 +105,4 @@ python3 scripts/build-review-apk.py --repo /path/to/clean-native-main --seed /pa
 
 The helper uses the Android slot, two workers/CPU affinity, current-source JNI, arm64 engine verification, notices and embedded-JS/ABI checks. It requires an unused owned dependency path; remove only that checkout's finished disposable dependency/build output after retaining the APK. Signatures are verified before review publication. The retained baseline engine is8.1.2; a source-only8.1.3 or different native MAIN is never an interchangeable payload. Publish the artifact's actual native cohort and retain the previous artifact until the next one is ready.
 
-For a client-only update, `build-review.py --web-only` builds the exact MAIN web payload without duplicating the server build. First compare the installed server's exact baseline and canonical contracts against the web source; preserve separate server and web commits in the build stamp. Keep the current executable and database unchanged, preserve the outgoing web directory/APKs, atomically replace built web assets and restart the same server only if needed to refresh its static handler. Recheck readiness and both source pins, and restore the old assets on failure. Never label a client-only update as a newer server producer.
+Current review publication uses one matching server/web MAIN cutoff and a fresh database when the baseline changes. Retain every outgoing database, media view, private account record and APK; a successful build or readiness response is never browser acceptance.
