@@ -97,6 +97,13 @@ func sidecarSeasonNumber(key string) (int, bool) {
 // their item (logo only); music is handled in commitAudio, which knows the
 // album artist.
 func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, kind, asset string, extra map[string]string) error {
+	return s.visitAssetSidecars(ctx, tx, library, kind, asset, extra, commitSidecars)
+}
+
+// visitAssetSidecars resolves slots through the asset's actual catalogue links.
+// Primary carriers and alternate candidates share this entity mapping, while
+// only the primary caller writes local_artwork or its selection lifecycle.
+func (s *Service) visitAssetSidecars(ctx context.Context, tx *sql.Tx, library, kind, asset string, extra map[string]string, commit func(context.Context, *sql.Tx, string, []sidecarCarrier) error) error {
 	if len(extra) == 0 {
 		return nil
 	}
@@ -111,7 +118,7 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 			for _, item := range items {
 				carriers = append(carriers, sidecarCarrier{"item", item, "still", key})
 			}
-			if e = commitSidecars(ctx, tx, library, carriers); e != nil {
+			if e = commit(ctx, tx, library, carriers); e != nil {
 				return e
 			}
 		}
@@ -141,7 +148,7 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 				}
 			}
 		}
-		return commitSidecars(ctx, tx, library, carriers)
+		return commit(ctx, tx, library, carriers)
 	case "movie":
 		items, err := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=?`, asset))
 		if err != nil {
@@ -155,7 +162,7 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 				}
 			}
 		}
-		return commitSidecars(ctx, tx, library, carriers)
+		return commit(ctx, tx, library, carriers)
 	}
 	return nil
 }
