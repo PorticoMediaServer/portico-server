@@ -28,7 +28,7 @@ export function createShowBindings(context: ScreenContext) {
   let viewIdentity = '';
   let subject: Readonly<{libraryId: string; showId: string; title: string}> | undefined;
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {libraryId: data.scope.libraryId, showId: data.show.id, title: data.show.title}; });
-  let personal: ContainerState | undefined, busy = false, intent = 0;
+  let personal: ContainerState | undefined, busy = false, intent = 0, disposed = false;
   let selection: AbortController | undefined;
   let playbackRequest: AbortController | undefined;
   const listeners = new Set<() => void>(), publish = () => { for (const listener of listeners) listener(); };
@@ -129,8 +129,8 @@ export function createShowBindings(context: ScreenContext) {
       await saveShowSettings(api, data.scope.libraryId, data.show.id, settings);
       current(data); signal?.throwIfAborted(); await service.refresh();
     },
-    cancel() { intent++; selection?.abort(); playbackRequest?.abort(); listedPlayback.service.cancel(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
-    dispose() { intent++; selection?.abort(); playbackRequest?.abort(); subject = undefined; offSubject(); offPreferences(); episodeLayoutPreference = undefined; viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); listedPlayback.dispose(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
+    cancel() { if (disposed) return; intent++; selection?.abort(); playbackRequest?.abort(); listedPlayback.service.cancel(); service.cancel(); episode.service.cancel(); primary.service.cancel(); recommendations.clear(); personal = undefined; publish(); },
+    dispose() { if (disposed) return; disposed = true; intent++; selection?.abort(); playbackRequest?.abort(); subject = undefined; offSubject(); offPreferences(); episodeLayoutPreference = undefined; viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); personal = undefined; busy = false; publish(); listeners.clear(); listedPlayback.dispose(); episode.dispose(); primary.dispose(); service.cancel(); service.dispose(); },
   };
 }
 export type ShowBindings = ReturnType<typeof createShowBindings>;

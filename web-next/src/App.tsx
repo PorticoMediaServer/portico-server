@@ -1,6 +1,7 @@
 import {RouterProvider} from '@tanstack/react-router';
 import {useEffect, useSyncExternalStore} from 'react';
 import {IconSprite} from './kit/Icon';
+import {FreshnessProvider} from './platform/freshness';
 import {bindWebAccountEntry} from './route-registry-lifecycle';
 import {WebScreenProvider, webScreens} from './route-registry-view';
 import type {ShellAssemblyContext} from './shell/bootstrap';
@@ -25,5 +26,16 @@ function RestoredApp({bootstrap, takeAccountReturn, takeAccountMove}: {bootstrap
 function BoundApp({binding, context, bootstrap, takeAccountReturn, takeAccountMove}: {binding?: ShellBindings; context?: ShellAssemblyContext; bootstrap?: ShellBootstrap; takeAccountReturn?: TakeAccountReturn; takeAccountMove?: TakeAccountMove}) {
   useEffect(() => bindShellRouteMotion(router), []);
   const MediaHost = webScreens.get('player')?.playbackHost ?? PlaybackHost;
-  return <WebScreenProvider value={{binding, context, bootstrap, takeAccountReturn, takeAccountMove}}><IconSprite /><ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider><MediaHost binding={binding?.playback} /></WebScreenProvider>;
+  const viewer = binding?.shell.identity.viewer;
+  // The player host renders a retained title body, which reads freshness, from
+  // outside every route. One provider covers the router and the host together;
+  // a second provider would detach the first one's feed when either unmounts.
+  const content = <>
+    <IconSprite />
+    <ShellBindingsProvider value={binding}><RouterProvider router={router} /></ShellBindingsProvider>
+    <MediaHost binding={binding?.playback} />
+  </>;
+  return <WebScreenProvider value={{binding, context, bootstrap, takeAccountReturn, takeAccountMove}}>
+    {viewer && binding ? <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>{content}</FreshnessProvider> : content}
+  </WebScreenProvider>;
 }

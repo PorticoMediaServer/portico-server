@@ -22,9 +22,11 @@ export function createDetailBindings(context: ScreenContext) {
   const recommendations = createRecommendations(context);
   const view = titleView('related', ['related', 'details', 'extras'], life.assert);
   let viewIdentity = '';
-  let selected: DetailTarget | undefined, intent = 0;
+  let selected: DetailTarget | undefined, intent = 0, disposed = false;
   let subject: Readonly<{itemId: string; libraryId: string; title: string}> | undefined;
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {itemId: data.item.id, libraryId: data.scope.libraryId, title: data.item.title}; });
+  /** Unmount cleanup may follow the route's dispose; it must never revive a retired read. */
+  const cancel = () => { if (!disposed) service.cancel(); };
   const fileReads = new WeakSet<FileInfoProjection>();
   const fileContexts = new WeakMap<DetailProjection, FileInfoProjection>();
   const previews = new WeakMap<VersionDeletePreview, Readonly<{data: DetailProjection; fileId: string}>>();
@@ -157,8 +159,8 @@ export function createDetailBindings(context: ScreenContext) {
       await context.effects.play({...action.playback, startSeconds, libraryId: data.scope.libraryId, ...(versionId ? {versionId} : {})}, life.signal(signal),
         () => life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().data === data);
     },
-    dispose() { intent++; selected = undefined; subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
+    dispose() { if (disposed) return; disposed = true; intent++; selected = undefined; subject = undefined; offSubject(); viewIdentity = ''; life.dispose(); view.dispose(); recommendations.dispose(); service.cancel(); service.dispose(); },
   };
-  return binding;
+  return {...binding, cancel};
 }
 export type DetailBindings = ReturnType<typeof createDetailBindings>;

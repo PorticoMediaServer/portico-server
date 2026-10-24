@@ -35,7 +35,7 @@ export {DetailLoading} from './Loading';
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
 export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
   const [failure, setFailure] = useState<unknown>(), [attempt, setAttempt] = useState(0);
-  useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.service.cancel(); }; }, [binding, itemId, libraryId, attempt]);
+  useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, itemId, libraryId, attempt]);
   return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => setAttempt(value => value + 1)} /> : <TitleBody binding={binding} />;
 }
 

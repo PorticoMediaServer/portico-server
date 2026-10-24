@@ -1,6 +1,5 @@
 import {useLayoutEffect, useMemo, useRef} from 'react';
 import {Outlet, useRouterState} from '@tanstack/react-router';
-import {FreshnessProvider} from '../platform/freshness';
 import {useRouteFade} from '../platform/route-motion';
 import {Shell} from './Shell';
 import {useShellBindings} from './bindings';
@@ -24,8 +23,6 @@ export function ShellRoot() {
   const screenId = webScreenIdForRoute(routeId);
   const viewer = binding?.shell.identity.viewer;
   const content = !binding || !viewer || screenId && webScreens.chrome(screenId) !== 'shell' ? <RouteContent />
-    : <FreshnessProvider key={binding.scopeKey} api={binding.api} events={binding.events} serverId={viewer.serverId} viewerId={JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}>
-      <Shell {...binding.shell} onFeedback={onFeedback}><RouteContent /></Shell>
-    </FreshnessProvider>;
+    : <Shell {...binding.shell} onFeedback={onFeedback}><RouteContent /></Shell>;
   return <>{content}<WebRetainedScreenHosts /></>;
 }
