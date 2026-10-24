@@ -31,7 +31,7 @@ test('the public specimen parses through the real detail service at the drawn fr
   assert.equal(data.item.duration, 9_960);
   assert.equal(data.item.progressSeconds, 0);
   assert.equal(data.item.available, true);
-  assert.equal(data.collections?.[0]?.name, 'Dune collection');
+  assert.equal(data.collections?.[0]?.name, 'Dune');
   assert.equal(data.collections?.[0]?.memberCount, 2);
   assert.equal(data.facts?.tagline, 'Long live the fighters.');
   assert.equal(data.facts?.contentRating, 'PG-13');
