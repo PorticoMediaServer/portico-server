@@ -10,20 +10,21 @@ import (
 )
 
 type Publication struct {
-	Selection Selection
-	Metadata  Metadata
-	Resources []Resource
-	Spine     []string
-	PageNames []string
+	Sequential bool
+	Selection  Selection
+	Metadata   Metadata
+	Resources  []Resource
+	Spine      []string
+	PageNames  []string
 }
 
 // Inspect returns only actual, bounded package/archival facts. PDF page count
 // and outline belong to the real client PDF parser, never a server estimate.
 func Inspect(f *Source) (Publication, error) {
-	out := Publication{Selection: f.Selection, Metadata: Metadata{Title: f.Title, Language: f.Language}}
+	out := Publication{Sequential: f.Format == "pdf" && f.Sequential(), Selection: f.Selection, Metadata: Metadata{Title: f.Title, Language: f.Language}}
 	switch f.Format {
 	case "epub":
-		e, err := OpenEPUB(f.ctx, f, f.Size)
+		e, err := f.epub()
 		if err != nil {
 			return out, err
 		}
@@ -31,19 +32,15 @@ func Inspect(f *Source) (Publication, error) {
 		out.Resources = e.Resources
 		out.Spine = e.Spine
 	case "cbz":
-		c, err := OpenComic(f.ctx, f, f.Size)
+		c, err := f.comic()
 		if err != nil {
 			return out, err
 		}
 		out.Metadata.Direction = c.Metadata.Direction
 		out.PageNames = c.Names
 	case "pdf":
-		var header [5]byte
-		if _, err := f.ReadAt(header[:], 0); err != nil {
+		if err := f.CheckPDF(); err != nil {
 			return out, err
-		}
-		if string(header[:]) != "%PDF-" {
-			return out, ErrInvalid
 		}
 	default:
 		return out, ErrInvalid

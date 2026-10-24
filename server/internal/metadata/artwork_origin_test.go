@@ -1,0 +1,57 @@
+package metadata
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"testing"
+)
+
+func TestArtworkFullOriginKeepsExactAdmittedImageAndAuthority(t *testing.T) {
+	for _, size := range []string{"w780", "w1280", "h632"} {
+		raw := "https://image.tmdb.org/t/p/" + size + "/picture.jpg"
+		if got := fullArtworkOrigin(raw, "tmdb"); got != "https://image.tmdb.org/t/p/original/picture.jpg" {
+			t.Fatal(got)
+		}
+	}
+	for _, raw := range []string{"https://image.tmdb.org/t/p/original/picture.jpg", "https://image.tmdb.org/t/p/unknown/picture.jpg", "https://image.tmdb.org/t/p/w0/picture.jpg", "https://image.tmdb.org/t/p/w780/", "http://image.tmdb.org/t/p/w780/picture.jpg", "https://image.tmdb.org.evil.invalid/t/p/w780/picture.jpg", "https://secret@image.tmdb.org/t/p/w780/picture.jpg", "https://image.tmdb.org/t/p/w780/../picture.jpg", "https://image.tmdb.org/t/p/w780/picture.jpg?token=secret", "https://image.tmdb.org/t/p/w780/picture.jpg#fragment"} {
+		if got := fullArtworkOrigin(raw, "tmdb"); got != raw {
+			t.Fatal("invalid or already original source was rewritten", got)
+		}
+	}
+	raw := "https://image.tmdb.org/t/p/w780/picture.jpg"
+	if fullArtworkOrigin(raw, "tvdb") != raw {
+		t.Fatal("another provider was given TMDB authority")
+	}
+}
+
+func TestArtworkAcquisitionUsesOriginalWhilePreviewKeepsProviderSize(t *testing.T) {
+	s, _, _ := repairFixture(t)
+	setArtworkPolicy(t, s, 2560)
+	ctx, _, err := s.CaptureArtworkContext(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := editorJPEG(t, 2700, 1080)
+	paths := []string{}
+	s.artClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "image.tmdb.org" || r.Header.Get("Authorization") != "" {
+			t.Fatal("origin or credential authority changed")
+		}
+		paths = append(paths, r.URL.Path)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
+	})}
+	j := artworkWork{provider: "tmdb", origin: "https://image.tmdb.org/t/p/w780/picture.jpg"}
+	full, thumb, err := s.acquireArtworkObjects(ctx, j)
+	if err != nil || full.width != 2560 || thumb.width != 400 {
+		t.Fatal("full acquisition retained provider thumbnail cap", full.width, thumb.width, err)
+	}
+	j.preview = true
+	if _, _, err = s.acquireArtworkObjects(ctx, j); err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 || paths[0] != "/t/p/original/picture.jpg" || paths[1] != "/t/p/w780/picture.jpg" {
+		t.Fatal("original/preview URL intent changed", paths)
+	}
+}

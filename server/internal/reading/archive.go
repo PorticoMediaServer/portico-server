@@ -92,7 +92,7 @@ func openArchive(r io.ReaderAt, size int64) (*archive, error) {
 	}
 	z, err := zip.NewReader(r, size)
 	if err != nil {
-		return nil, ErrInvalid
+		return nil, archiveFailure(err)
 	}
 	a := &archive{files: map[string]*archiveFile{}}
 	var expanded uint64
@@ -148,7 +148,7 @@ func (a *archive) read(ctx context.Context, name string, limit int64) ([]byte, e
 	}
 	r, err := f.zipped.Open()
 	if err != nil {
-		return nil, ErrInvalid
+		return nil, archiveFailure(err)
 	}
 	defer r.Close()
 	b, err := io.ReadAll(io.LimitReader(contextReader{ctx, r}, limit+1))
@@ -162,6 +162,15 @@ func (a *archive) read(ctx context.Context, name string, limit int64) ([]byte, e
 		return nil, ErrInvalid
 	}
 	return b, nil
+}
+
+// Format errors are unsafe publications; source failures retain their typed
+// meaning. In particular, a temporary cap refusal is not a corrupt archive.
+func archiveFailure(err error) error {
+	if errors.Is(err, zip.ErrFormat) || errors.Is(err, zip.ErrAlgorithm) || errors.Is(err, zip.ErrInsecurePath) {
+		return ErrInvalid
+	}
+	return err
 }
 
 // resolveReference accepts only archive-local resources. A fragment is preserved

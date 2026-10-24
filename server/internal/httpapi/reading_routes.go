@@ -148,7 +148,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	v, m := document.Selection, document.Metadata
-	out := ReadingSessionResponse{SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{m.Title, m.Author, m.Language, ReadingDirection(m.Direction)}, Spine: document.Spine, PageNames: document.PageNames}
+	out := ReadingSessionResponse{Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{m.Title, m.Author, m.Language, ReadingDirection(m.Direction)}, Spine: document.Spine, PageNames: document.PageNames}
 	for _, resource := range document.Resources {
 		out.Resources = append(out.Resources, ReadingResource{resource.Path, resource.MIME, resource.Size})
 	}
@@ -212,7 +212,7 @@ func (d Dependencies) closeReadingSession(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if err := d.readingService().CloseSession(p, r.PathValue("sessionId")); err != nil {
+	if err := d.readingService().CloseSessionContext(r.Context(), p, r.PathValue("sessionId")); err != nil {
 		readingFailure(w, err)
 		return
 	}

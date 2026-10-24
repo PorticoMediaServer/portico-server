@@ -28,7 +28,14 @@ func (d Dependencies) readingService() *reading.Service {
 	if d.Reading != nil {
 		return d.Reading
 	}
-	return &reading.Service{DB: d.DB, Storage: d.Storage, Mounts: d.Mounts, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
+	return &reading.Service{DB: d.DB, Storage: d.Storage, Mounts: d.Mounts, Remote: d.RemoteSources, Changed: func(library, source string) {
+		if d.Ingestion != nil {
+			// A detected upstream replacement queues existing source-level
+			// inventory reconciliation. Its real job/root/policy fences still
+			// govern scanning; the reader receives no background decode grant.
+			_, _ = d.Ingestion.QueueContext(context.Background(), library, source, nil)
+		}
+	}, Authorize: func(ctx context.Context, tx *sql.Tx, p identity.Principal, library, item string) error {
 		if d.Identity == nil {
 			return identity.ErrUnauthorized
 		}
@@ -66,7 +73,7 @@ func (d Dependencies) readingService() *reading.Service {
 
 func readingFailure(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost):
+	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost), errors.Is(err, storage.ErrRemoteChanged):
 		policyError(w, "revision_mismatch")
 	case errors.Is(err, reading.ErrUnavailable):
 		policyError(w, "not_found")
@@ -164,6 +171,10 @@ func (d Dependencies) serveReadingSource(w http.ResponseWriter, r *http.Request)
 		policyError(w, "not_found")
 		return
 	}
+	if f.Sequential() {
+		d.serveReadingSequential(w, r, f)
+		return
+	}
 	var header [5]byte
 	if _, err := f.ReadAt(header[:], 0); err != nil {
 		readingFailure(w, err)
@@ -211,6 +222,60 @@ func (d Dependencies) serveReadingSource(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// A factual range-unsupported PDF is a different transport: exactly one
+// progressive200 from byte zero, no Range or ReaderAt/full-file buffering.
+func (d Dependencies) serveReadingSequential(w http.ResponseWriter, r *http.Request, f *reading.Source) {
+	if r.Header.Get("Range") != "" {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", f.Size))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="publication.pdf"`)
+	w.Header().Set("Accept-Ranges", "none")
+	if r.Method == http.MethodHead {
+		if err := f.CheckPDF(); err != nil {
+			readingFailure(w, err)
+			return
+		}
+		w.Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+		return
+	}
+	stream, err := f.OpenFromStart()
+	if err != nil {
+		readingFailure(w, err)
+		return
+	}
+	defer stream.Close()
+	firstSize := 64 << 10
+	if f.Size < int64(firstSize) {
+		firstSize = int(f.Size)
+	}
+	first := make([]byte, firstSize)
+	if _, err = io.ReadFull(stream, first); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	if len(first) < 5 || string(first[:5]) != "%PDF-" {
+		readingFailure(w, f.StopAndRecheck(reading.ErrInvalid))
+		return
+	}
+	if err = f.Validate(); err != nil {
+		readingFailure(w, err)
+		return
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+	body := withRollingDeadline(w)
+	defer body.release()
+	body.WriteHeader(http.StatusOK)
+	if _, err = body.Write(first); err != nil {
+		return
+	}
+	if _, err = io.Copy(body, stream); err != nil {
+		panic(http.ErrAbortHandler)
+	}
+}
+
 func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) {
 	f, ok := d.openReadingBytes(w, r)
 	if !ok {
@@ -221,7 +286,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		policyError(w, "not_found")
 		return
 	}
-	e, err := reading.OpenEPUB(f.Context(), f, f.Size)
+	e, err := f.EPUB()
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
@@ -276,7 +341,7 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	c, err := reading.OpenComic(f.Context(), f, f.Size)
+	c, err := f.Comic()
 	if err != nil {
 		readingFailure(w, f.StopAndRecheck(err))
 		return
