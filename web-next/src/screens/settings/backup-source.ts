@@ -1,4 +1,4 @@
-import {getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, restoreBackup, startBackup, updateBackupSettings, waitForBackupCompletion, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
+import {deleteBackup, getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, restoreBackup, startBackup, updateBackupSettings, waitForBackupCompletion, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
 import type {BackupsDocument, RestoreSource, RestoreStaged} from '@core/administration.ts';
 import {randomId} from '@core/random-id.ts';
 
@@ -98,8 +98,24 @@ export class SettingsBackupSource {
       this.publish({...this.state, staged});return staged;
     } catch (error) {this.refuse(error);} finally {request.dispose();this.publish({...this.state, busy: false});}
   }
-  cancelRestoreSelection() {this.candidate?.abort();this.candidate = undefined;}
-  private linkSignals(signals: readonly AbortSignal[]) {
+  /** Delete one backup the owner chose from the current list; an unlisted id is refused. */
+  async remove(backupId: string, signal: AbortSignal): Promise<boolean> {
+    this.requireCurrent();
+    const document = this.state.document;
+    if (!document?.backups.some(backup => backup.id === backupId)) throw new Error('The selected backup is no longer listed.');
+    if (this.loading || this.state.busy || document.running || document.restore) return false;
+    const request = this.linkSignals([signal]);
+    this.publish({...this.state, busy: true});
+    try {
+      request.signal.throwIfAborted();
+      await deleteBackup(this.api, this.serverId, backupId, request.signal);
+      this.requireCurrent();request.signal.throwIfAborted();
+      const document = await getBackups(this.api, this.serverId, this.lifetime.signal);
+      if (!this.current()) return false;
+      this.publish({...this.state, document});return true;
+    } catch (error) {this.refuse(error);} finally {request.dispose();this.publish({...this.state, busy: false});}
+  }
+  cancelRestoreSelection() {this.candidate?.abort();this.candidate = undefined;}  private linkSignals(signals: readonly AbortSignal[]) {
     const request = new AbortController(), abort = () => request.abort(), all = [this.lifetime.signal, ...signals];
     for (const signal of all) {signal.addEventListener('abort', abort, {once: true});if (signal.aborted) request.abort();}
     return {signal: request.signal, dispose: () => {for (const signal of all) signal.removeEventListener('abort', abort);}};

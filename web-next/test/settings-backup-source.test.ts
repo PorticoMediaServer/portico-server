@@ -189,3 +189,21 @@ test('closing during an accepted restore stops polling and refuses a late stage 
     assert.equal(f.calls.length, count);assert.equal(f.source.getSnapshot().staged, undefined);assert.equal(f.source.getSnapshot().busy, false);
   } finally {f.source.dispose();}
 });
+
+test('Delete removes only a listed backup, rereads the list, and refuses an unlisted id before any request', async () => {
+  let deleted = false;
+  const f = fixture(async (path, method) => {
+    if (path.endsWith('/settings')) return envelope(settings);
+    if (method === 'DELETE') {deleted = true;return envelope({deleted: true});}
+    return envelope({backups: deleted ? [] : [backup]});
+  });
+  try {
+    await f.source.load();
+    await assert.rejects(f.source.remove('not-listed', new AbortController().signal));
+    assert.equal(f.calls.some(call => call.method === 'DELETE'), false);
+    assert.equal(await f.source.remove('listed', new AbortController().signal), true);
+    assert.equal(deleted, true);
+    assert.deepEqual(f.source.getSnapshot().document?.backups, []);
+    assert.equal(f.source.getSnapshot().busy, false);
+  } finally {f.source.dispose();}
+});

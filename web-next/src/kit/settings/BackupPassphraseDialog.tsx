@@ -10,8 +10,9 @@ export type BackupPassphraseDialogProps = Readonly<{
   scopeKey: string;
   isCurrent: () => boolean;
   subscribeAuthority: (listener: () => void) => () => void;
-  /** The real facade adapter maps only its authenticated wrong-passphrase outcome. */
-  submit: (passphrase: string, signal: AbortSignal) => Promise<'done' | 'wrong-passphrase'>;
+  /** `unopened` is the honest state when a protected restore refuses: the server cannot say
+   *  whether the passphrase or the archive is wrong (v2 Root §1), so nothing is marked wrong. */
+  submit: (passphrase: string, signal: AbortSignal) => Promise<'done' | 'wrong-passphrase' | 'unopened'>;
   onDone: () => void;
   /** No raw error or secret leaves this password surface. The parent shows its approved failure state. */
   onFailure: () => void;
@@ -25,7 +26,7 @@ export function BackupPassphraseDialog(props: BackupPassphraseDialogProps) {
 }
 
 function Passphrase({open, mode, onClose, submit, onDone, onFailure, returnFocusRef, isCurrent}: BackupPassphraseDialogProps) {
-  const [first, setFirst] = useState(''), [second, setSecond] = useState(''), [error, setError] = useState<'mismatch' | 'incorrect'>(), [busy, setBusy] = useState(false);
+  const [first, setFirst] = useState(''), [second, setSecond] = useState(''), [error, setError] = useState<'mismatch' | 'incorrect' | 'unopened'>(), [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null), request = useRef<AbortController | undefined>(undefined);
   const erase = () => {setFirst('');setSecond('');setError(undefined);};
   const close = () => {request.current?.abort();request.current = undefined;erase();setBusy(false);onClose();};
@@ -44,6 +45,7 @@ function Passphrase({open, mode, onClose, submit, onDone, onFailure, returnFocus
       const result = await submit(passphrase, controller.signal);
       if (controller.signal.aborted || request.current !== controller || !isCurrent()) return;
       if (result === 'wrong-passphrase' && mode === 'restore') setError('incorrect');
+      else if (result === 'unopened' && mode === 'restore') setError('unopened');
       else if (result === 'done') {onDone();onClose();}
       else {onClose();onFailure();}
     } catch {
@@ -60,6 +62,7 @@ function Passphrase({open, mode, onClose, submit, onDone, onFailure, returnFocus
         onChange={event => {setFirst(event.currentTarget.value);setError(undefined);}} error={error === 'incorrect' ? t('next.settings.backup.incorrect') : undefined} />
       {mode !== 'restore' && <TextField label={t('next.settings.backup.repeat')} type="password" autoComplete="off" value={second} disabled={busy}
         onChange={event => {setSecond(event.currentTarget.value);setError(undefined);}} error={error === 'mismatch' ? t('next.settings.backup.mismatch') : undefined} />}
+      {error === 'unopened' && <p className={styles.passphraseNotice} role="alert">{t('next.settings.backup.unopened')}</p>}
     </form>
   </Dialog>;
 }
