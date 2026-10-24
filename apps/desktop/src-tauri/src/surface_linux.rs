@@ -153,7 +153,9 @@ fn retire_parent(parent:gtk::Widget)->Result<()>{
         let owned=gtk::GLArea::new();owned.set_widget_name("portico-native-video");fixed.put(&owned,0,0);
         let foreign=gtk::GLArea::new();foreign.set_widget_name("foreign-area");fixed.put(&foreign,0,0);
         assert_eq!(retire_parent(overlay.clone().upcast()),Ok(()));assert!(owned.parent().is_none());assert_eq!(foreign.parent(),Some(fixed.clone().upcast()));
-        assert_eq!(retire_parent(overlay.upcast()),Ok(()));assert_eq!(fixed.children().len(),1);
+        // The real Wry parent retains its overlay while retirement runs. Keep
+        // that owner alive when checking repeated retirement and foreign children.
+        assert_eq!(retire_parent(overlay.clone().upcast()),Ok(()));assert_eq!(fixed.children().len(),1);
         assert_eq!(retire_parent(gtk::Overlay::new().upcast()),Err(Error::Unsupported));
     }
 }
