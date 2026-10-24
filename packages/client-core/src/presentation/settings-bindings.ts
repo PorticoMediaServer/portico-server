@@ -1,4 +1,6 @@
 import type {LibraryAdminDocument,LibrarySettings} from '../administration.ts';
+import type {LibrarySonicDocument} from '../server-admin/library-sonic.ts';
+import type {PutAdminLibrariesIdSonicAnalysisRequest} from '../../../contracts/src/types.ts';
 import {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from '../server-admin/library-policy.ts';
 import type {AccessMember,MemberLimits} from '../server-administration.ts';
 import type {SettingsBulkAccess} from '../settings-people.ts';
@@ -412,6 +414,22 @@ export function readLibrarySettingsBinding(rowId:string,document:LibraryAdminDoc
  if(!document.eligibleControls.includes(rowId))return undefined;const current=libraryRowValue(rowId,document.settings,document);if(current===undefined)return undefined;
  return {current,effective:current,default:document.defaults?libraryRowValue(rowId,document.defaults,document):undefined,source:'library',configOnly:false};
 }
+/** Read the separate Sonic domain through its current Library eligibility hint. */
+export function readLibrarySonicSettingsBinding(rowId:string,document:Pick<LibraryAdminDocument,'libraryId'|'libraryKind'|'eligibleControls'>,sonic:LibrarySonicDocument):SettingsBindingValue|undefined{
+ if(document.libraryKind!=='music'||document.libraryId!==sonic.libraryId||!sonic.available||typeof sonic.defaultEnabled!=='boolean'||!document.eligibleControls.includes(rowId))return undefined;
+ if(rowId==='libraries.sonicAnalysis')return {current:sonic.enabled,effective:sonic.enabled,default:sonic.defaultEnabled,source:'library',configOnly:false};
+ if(rowId==='libraries.sonicStatus'){
+  const value=Object.freeze({state:sonic.state,done:sonic.done,total:sonic.total,observedAtMs:sonic.observedAtMs,...(sonic.reasonCode===undefined?{}:{reasonCode:sonic.reasonCode}),...(sonic.pausedUntilMs===undefined?{}:{pausedUntilMs:sonic.pausedUntilMs}),...(sonic.estimatedRemainingSeconds===undefined?{}:{estimatedRemainingSeconds:sonic.estimatedRemainingSeconds})});
+  return {current:value,effective:value,default:undefined,source:'library',configOnly:false};
+ }
+ return undefined;
+}
+/** Sonic keeps its own settings revision and writer, separate from full Library Save. */
+export function patchLibrarySonicSettingsBinding(rowId:string,value:unknown,document:Pick<LibraryAdminDocument,'libraryId'|'libraryKind'|'eligibleControls'>,sonic:LibrarySonicDocument):PutAdminLibrariesIdSonicAnalysisRequest{
+ if(rowId!=='libraries.sonicAnalysis'||typeof value!=='boolean'||!readLibrarySonicSettingsBinding(rowId,document,sonic))throw new Error('Invalid or unavailable library Sonic setting.');
+ return {enabled:value,expectedRevision:sonic.revision};
+}
+
 /** One complete typed library draft; the facade applies its revision/operation fence on Save. */
 export function patchLibrarySettingsBinding(rowId:string,value:unknown,document:LibraryAdminDocument):LibrarySettings{
  if(!document.eligibleControls.includes(rowId))throw new Error('This library does not offer that setting.');if(value==='custom')throw new Error('Custom is derived.');const settings=document.settings,binding=libraryScalarBindings[rowId];
