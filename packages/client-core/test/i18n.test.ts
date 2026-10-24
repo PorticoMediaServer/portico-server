@@ -44,8 +44,19 @@ test('catalogue: US spelling in the source; Canada and Britain spell by rule', (
 });
 
 test('catalogue: recovery actions use one verb, "Try again" (CON-17)', () => {
-  const offenders = Object.entries(enUS as Record<string, string>).filter(([, v]) => /^(Retry|Try now|Reload)$/.test(v)).map(([k]) => k);
+  // states.html#24 draws "Reload" on the web's last-resort page because that
+  // button starts the app afresh; a retry verb would promise to resume the
+  // failed work instead. The exemption is this exact ID and text only.
+  const approvedPageReloads: Readonly<Record<string, string>> = {'next.states.reloadPage': 'Reload'};
+  const offenders = Object.entries(enUS as Record<string, string>)
+    .filter(([id, value]) => approvedPageReloads[id] !== value)
+    .filter(([, value]) => /^(Retry|Try now|Reload)$/.test(value)).map(([id]) => id);
   assert.deepEqual(offenders, []);
+  // Nothing else may borrow the exemption, and the approved line cannot drift.
+  for (const [id, value] of Object.entries(approvedPageReloads)) {
+    assert.equal((enUS as Record<string, string>)[id], value, id);
+    assert.ok(/^(Retry|Try now|Reload)$/.test(value), id);
+  }
 });
 
 test('catalogue: no engineering words reach people (CON-21)', () => {

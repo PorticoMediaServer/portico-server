@@ -122,8 +122,19 @@ function checkedSelector(input: WholeSelectionSelector): WholeSelectionSelector 
 }
 
 export function checkedQuery(input: SelectionQuery, context: SelectionContext): SelectionQuery {
+  return validateQuery(input, context.revision.catalogRevision);
+}
+
+/** Browse reports one opaque page revision; the query contract's catalog revision is that
+ * same value. Any other revision is a different view and is refused. */
+export function checkedBrowseQuery(input: SelectionQuery, context: BrowseSelectionContext): SelectionQuery {
+  requireSelection(record(context) && record(context.revision) && selectionID(context.revision.pageRevision), 'invalid-query');
+  return validateQuery(input, context.revision.pageRevision);
+}
+
+function validateQuery(input: SelectionQuery, expectedRevision: string): SelectionQuery {
   requireSelection(record(input) && catalogueID(input.id) && selectionCount(input.total)
-    && input.catalogRevision === context.revision.catalogRevision && record(input.summary), 'invalid-query');
+    && input.catalogRevision === expectedRevision && record(input.summary), 'invalid-query');
   const selector = checkedSelector(input.selector);
   const summary = input.summary;
   requireSelection(Array.isArray(summary.types) && summary.types.length <= selectionKinds.length

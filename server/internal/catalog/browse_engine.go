@@ -66,6 +66,12 @@ type BrowseResult struct {
 	PageInfo       BrowsePageInfo         `json:"pageInfo"`
 	PositionIndex  []BrowsePositionAnchor `json:"positionIndex"`
 	DisplayTargets []HomeDisplayTarget    `json:"displayTargets,omitempty"`
+	// WholeSelection is the exact whole-view aggregate for "Select all N".
+	// Absent whenever the view cannot be replayed exactly; never inferred.
+	WholeSelection *BrowseSelectionDescriptor `json:"wholeSelection,omitempty"`
+	// Bound is the exact authorized WHERE this page was read with, for the
+	// same-snapshot whole-selection aggregate. Never serialized.
+	Bound *BoundBrowseQuery `json:"-"`
 }
 
 // BrowseRequest is the whole of the POST body plus the authorized scope the
@@ -499,6 +505,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.PageInfo.Revision = revision
+	out.Bound = &BoundBrowseQuery{Where: where, Args: append([]any{}, args...), Library: request.Library, Pivot: pivot.ID, Sorts: sorts, Query: request.Query, Revision: revision, snapshot: dbwork.Snapshot(s.Context())}
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
 	if stale && request.HomeRowDisplay != "" {
 		return out, nil, ErrStaleContinuation

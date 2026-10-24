@@ -1,6 +1,6 @@
 import {browseSelectionKey, selectionCapabilityNames, selectionKey, summarizeSelection} from './capabilities.ts';
 import {summarizeQuerySelection} from './query-summary.ts';
-import {catalogueID, checkedBrowseContext, checkedContext, checkedItem, checkedLimits, checkedQuery, requireSelection, selectionCount, SelectionInputError} from './validation.ts';
+import {catalogueID, checkedBrowseContext, checkedBrowseQuery, checkedContext, checkedItem, checkedLimits, checkedQuery, requireSelection, selectionCount, SelectionInputError} from './validation.ts';
 import type {
   BrowseSelectionContext, ExplicitSelectionTarget, SelectedItem, SelectionChange, SelectionContext, SelectionLimits,
   SelectionItem, SelectionKind, SelectionOperation, SelectionQuery, SelectionRange, SelectionReadTicket, SelectionRegistration,
@@ -487,6 +487,8 @@ export class SelectionModel extends WindowedSelectionModel<SelectionContext> {
 export class BrowseSelectionModel extends WindowedSelectionModel<BrowseSelectionContext> {
   constructor(context: BrowseSelectionContext, limits: Partial<SelectionLimits> = {}) {
     super(context, {check: checkedBrowseContext, key: (value, item) => browseSelectionKey(value.scope, item),
-      query: () => {throw new SelectionInputError('invalid-query');}}, limits);
+      // A whole-view query is lawful only when the server's exact descriptor names this
+      // page's own revision; checkedBrowseQuery refuses every other revision.
+      query: checkedBrowseQuery}, limits);
   }
 }

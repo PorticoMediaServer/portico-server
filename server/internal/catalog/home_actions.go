@@ -86,15 +86,22 @@ type homeActionFacts struct {
 // on the first permitted available member, with no correctness/candidate cap.
 // Global browse availability and restricted-class sort facts cannot prove this:
 // the class rows currently copy the global member-link availability state.
-func homeActionAvailableSQL(v Viewer) (string, []any) {
+// homeActionAvailableSQLFor is the one viewer-bound availability predicate. The
+// entity-id expression lets the same rule serve the Home/browse projection
+// (catalog_entities e.id) and the whole-view aggregate over catalog_browse_rows
+// (e.entity_id); a container is available only through a member the viewer may
+// actually see.
+func homeActionAvailableSQLFor(v Viewer, entityID string) (string, []any) {
 	visible, args := v.itemVisibilitySQL("home_member.item_id")
 	return `CASE WHEN k.playable=1 THEN COALESCE(a.available,0) ELSE EXISTS(
 	 SELECT 1 FROM catalog_browse_memberships home_member
 	 CROSS JOIN catalog_item_availability available ON available.entity_id=home_member.item_id
-	 WHERE home_member.entity_id=e.id AND available.available=1 AND available.retired=0
+	 WHERE home_member.entity_id=` + entityID + ` AND available.available=1 AND available.retired=0
 	 AND ` + visible + recordingsClause("home_member.item_id", v.EffectiveRestrictions()) + `
 	 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=home_member.item_id)) END`, args
 }
+
+func homeActionAvailableSQL(v Viewer) (string, []any) { return homeActionAvailableSQLFor(v, "e.id") }
 
 // ProjectHomeActions decorates only the already-authorized returned Home items.
 // It requires the composition snapshot and batches exact returned-entity keys.
@@ -248,17 +255,8 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 			}
 			a.Delete = allowed
 		}
-		a.Selection = HomeSelectionActions{
-			Play: a.Play, Queue: a.Queue,
-			Playlist: a.Playlist && authority.Bulk, Collection: a.Collection && authority.Bulk,
-			MyList: authority.Personal && authority.Bulk,
-			// The canonical selection dispatcher uses jobs for leaf personal
-			// commands and refresh. Supported container favorite/watched have
-			// genuine direct commands independent of the job scheduler.
-			Favorite: a.Favorite && (container || authority.Bulk),
-			Watched:  a.Watched && (container || authority.Bulk), Download: a.Download,
-			Edit: a.EditMetadata, Refresh: a.RefreshMetadata && authority.Bulk, Delete: a.Delete,
-		}
+		// The one offer rule, shared with the whole-view aggregate.
+		a.Selection = selectionOffers(authority, f.kind, available, a.Delete)
 		entry.HomeActions = a
 	}
 	for collection, entry := range collections {

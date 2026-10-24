@@ -227,11 +227,15 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 		if composeErr != nil {
 			return composeErr
 		}
-		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows})
+		browseRequest := catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows}
+		out, composeErr = cat.BrowseEntities(viewer, browseRequest)
 		if composeErr != nil {
 			return composeErr
 		}
-		return d.projectBrowseDisplay(r, p, viewer, cat, body.HomeRowDisplay, query, &out)
+		if composeErr = d.projectBrowseDisplay(r, p, viewer, cat, body.HomeRowDisplay, query, &out); composeErr != nil {
+			return composeErr
+		}
+		return d.attachWholeSelection(r, p, viewer, cat, browseRequest, body, &out)
 	})
 	if e != nil {
 		browseFailure(w, e)
@@ -314,6 +318,29 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 // projectBrowseDisplay keeps canonical membership for every browse operation,
 // while the explicitly requested cards and their command offers name actual
 // targets. No stale member is skipped or substituted.
+// attachWholeSelection adds the exact whole-view aggregate to the first page of
+// a view whose job replay is provably identical. Every other page, and every
+// view the job compiler cannot reproduce, carries no field at all.
+func (d Dependencies) attachWholeSelection(r *http.Request, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, request catalog.BrowseRequest, body browseRequestBody, out *catalog.BrowseResult) error {
+	if out.Bound == nil || out.PageInfo.Start != 0 || body.Cursor != "" || body.Range != nil || body.Seek != nil || body.HomeRowDisplay != "" {
+		return nil
+	}
+	authority, err := d.homeActionAuthority(cat.Context(), p)
+	if err != nil {
+		return err
+	}
+	whole, err := cat.BrowseSelectionAggregate(request, viewer, *out.Bound, authority)
+	if err != nil {
+		return err
+	}
+	// An omitted aggregate has no library: the view is not replayable.
+	if whole.Selector.Query.LibraryID == "" {
+		return nil
+	}
+	out.WholeSelection = &whole
+	return nil
+}
+
 func (d Dependencies) projectBrowseDisplay(r *http.Request, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, rowID string, query *catalog.BrowseNode, out *catalog.BrowseResult) error {
 	if rowID == "" {
 		return nil
