@@ -63,13 +63,25 @@ export function parseAccountMoveCodes(raw:unknown,now=Date.now()):readonly Accou
   return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now),...(row.serverId===undefined?{}:{serverId:row.serverId as string})});
  }));
 }
-/** Codes live in memory only. Scrub even an invalid fragment before any await/analytics. */
-export function consumeMoveCodeFragment(location:Pick<Location,'pathname'|'search'|'hash'>,history:Pick<History,'replaceState'>):string|undefined{
- const raw=location.hash;history.replaceState(null,'',location.pathname);if(location.search)invalid();if(!raw)return;
- const params=new URLSearchParams(raw.slice(1));if(params.size!==1||!secret(params.get('code')))invalid();return params.get('code')!;
+export type MoveCodeLink=Readonly<{code:string;id?:string}>;
+/** Codes live in memory only. Scrub even an invalid fragment before any await/analytics.
+ * The optional public id is an expectation for the existing first-contact proof,
+ * never authority to redeem a code or a replacement for that proof. */
+export function consumeAccountMoveFragment(location:Pick<Location,'pathname'|'search'|'hash'>,history:Pick<History,'replaceState'>):MoveCodeLink|undefined{
+ const raw=location.hash,search=location.search,path=location.pathname;history.replaceState(null,'',path);if(search)invalid();if(!raw)return;
+ const params=new URLSearchParams(raw.slice(1)),code=params.get('code'),id=params.get('id');
+ if(!secret(code)||params.getAll('code').length!==1||params.getAll('id').length>1||[...params.keys()].some(key=>!['code','id'].includes(key)))invalid();
+ if(id!==null){try{identityCode(id);}catch{invalid();}}
+ return Object.freeze({code,...(id===null?{}:{id})});
 }
-export function accountMoveLink(serverOrigin:string,code:string):string{
- if(!secret(code))invalid();return new URL('/sign-in#code='+code,routeOrigin(serverOrigin)).href;
+/** Legacy code-only callers must refuse an identity-bearing link rather than
+ * silently drop its expected server. Use consumeAccountMoveFragment for those. */
+export function consumeMoveCodeFragment(location:Pick<Location,'pathname'|'search'|'hash'>,history:Pick<History,'replaceState'>):string|undefined{
+ const link=consumeAccountMoveFragment(location,history);if(link?.id!==undefined)invalid();return link?.code;
+}
+export function accountMoveLink(serverOrigin:string,code:string,serverId?:string):string{
+ if(!secret(code))invalid();if(serverId!==undefined){try{identityCode(serverId);}catch{invalid();}}
+ return new URL('/sign-in#code='+code+(serverId===undefined?'':'&id='+serverId),routeOrigin(serverOrigin)).href;
 }
 
 /** Cancellation never replays a mutation. A late session is retired through the platform's

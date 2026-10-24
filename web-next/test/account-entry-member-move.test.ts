@@ -6,7 +6,7 @@ import {ServerSignInProbe} from '@core/sign-in.ts';
 import {BrowserAccountEntry} from '../src/platform/account-entry.ts';
 
 const origin='https://member.example',hostedOrigin='https://account.example';
-const serverId='srv_'+'s'.repeat(43),pin={serverId,publicKey:'p'.repeat(43),fingerprint:'f'.repeat(43)};
+const serverId='srv_'+'A'.repeat(43),pin={serverId,publicKey:'p'.repeat(43),fingerprint:'f'.repeat(43)};
 const code='C'.repeat(43),ticket='T'.repeat(43),installation='b909a633-f70f-470a-b096-b0f69d90cabe';
 async function fixture(move:'to_portico'|null='to_portico'){
  let raw:AppSessionRecord|undefined,expiresAt=new Date(Date.now()+60000).toISOString(),passwordGate:Promise<void>|undefined,prepareGate:Promise<void>|undefined;
@@ -86,4 +86,15 @@ test('expiry during protected preparation cancels the attempt before returning a
  const f=await fixture();await f.entry.previewMoveCode(code);const started=f.holdPrepare(),pending=f.entry.preparePorticoSignIn(hostedOrigin);await started;
  const future=Date.now()+120000;t.mock.method(Date,'now',()=>future);f.releasePrepare();
  assert.equal(await pending,undefined);assert.equal(f.cancels,1);f.entry.dispose();
+});
+
+test('a captured move link keeps its expected identity through entry proof before code preview',async()=>{
+ const f=await fixture();await f.entry.inspectMoveLink(origin,{code,id:serverId});
+ assert.equal(f.entry.getSnapshot().phase,'move-portico');
+ assert.equal(f.calls.filter(c=>c.path==='/v1/auth/move/code').length,1);assert.equal(f.remembers,0);f.entry.dispose();
+});
+test('a different proved server never receives a move link code for the expected identity',async()=>{
+ const f=await fixture();await f.entry.inspectMoveLink(origin,{code,id:'srv_'+'C'.repeat(42)+'A'});
+ assert.equal(f.entry.getSnapshot().phase,'address');
+ assert.equal(f.calls.some(c=>c.path==='/v1/auth/move/code'),false);assert.equal(f.prepares.length,0);assert.equal(f.remembers,0);f.entry.dispose();
 });

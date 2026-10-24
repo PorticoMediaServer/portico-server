@@ -8,7 +8,7 @@ import {acceptPorticoInvitation, type HostedRequestApi} from '@core/portico-serv
 import type {JoinLink} from '@core/join-link.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {requestOwnerResetFile, verifyOwnerResetFile, verifyMemberResetCode, changeResetPassword, ownerResetSecurity, finishOwnerResetPassword, type ResetFileLocation} from '@core/account-reset.ts';
-import {MemberAccountMoveClient, type MoveCodePreview} from '@core/account-move.ts';
+import {MemberAccountMoveClient, type MoveCodePreview, type MoveCodeLink} from '@core/account-move.ts';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {routePath} from '../../../packages/contracts/src/routes.ts';
@@ -245,6 +245,13 @@ export class BrowserAccountEntry {
  }
  /** The owner's code is previewed only at the already-proved server. It never
   * enters public state, browser storage, a URL or a Hosted request. */
+ /** The synchronous fragment capture owns the code. Preserve its public
+  * expected identity through proof before asking this server to preview it. */
+ async inspectMoveLink(origin:string,link:MoveCodeLink){
+  const {code,id}=link;
+  const inspected=await this.inspect(origin,id);if(!inspected?.current())return;
+  await this.previewMoveCode(code);
+ }
  async previewMoveCode(code:string){
   const state=this.state,api=this.api;
   if(!api||!state.server||state.invitation||state.busy||!['password','portico','move-code','move-local','move-portico'].includes(state.phase))return;
