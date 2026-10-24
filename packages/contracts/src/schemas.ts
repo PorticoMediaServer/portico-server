@@ -22824,6 +22824,109 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
+    ],
+    "type": "object"
+  },
   "GetAdminLibrariesRequest": {
     "properties": {},
     "required": [],
@@ -91742,6 +91845,9 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "bySound": {
+            "type": "boolean"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -93045,7 +93151,8 @@ export const schemas = {
           "itemId",
           "libraryId",
           "revision",
-          "entries"
+          "entries",
+          "bySound"
         ],
         "type": "object"
       },
@@ -151320,6 +151427,109 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminLibrariesIdSonicAnalysisRetryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSonicAnalysisRetryResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
+    ],
+    "type": "object"
+  },
   "PostAdminLibrariesIdSourcesRequest": {
     "properties": {
       "acceptReplacement": {
@@ -171692,6 +171902,9 @@ export const schemas = {
       "revision": {
         "type": "string"
       },
+      "sequential": {
+        "type": "boolean"
+      },
       "sessionId": {
         "type": "string"
       },
@@ -177724,6 +177937,121 @@ export const schemas = {
       "ranges",
       "newestFirst",
       "revision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "enabled",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
     ],
     "type": "object"
   },

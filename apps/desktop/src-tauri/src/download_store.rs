@@ -253,7 +253,7 @@ pub struct DownloadArtwork {
     pub mime: String,
     pub bytes: Vec<u8>,
 }
-fn disk_space(path: &Path) -> Result<(u64, u64)> {
+pub(super) fn disk_space(path: &Path) -> Result<(u64, u64)> {
     #[cfg(unix)]
     {
         use std::{ffi::CString, os::unix::ffi::OsStrExt};
@@ -362,7 +362,7 @@ fn private_dir(path: &Path) -> Result<()> {
         Err(_) => Err(Error::DownloadsUnavailable),
     }
 }
-fn open_file(path: &Path, write: bool, create: bool) -> Result<File> {
+pub(super) fn open_file(path: &Path, write: bool, create: bool) -> Result<File> {
     let mut options = OpenOptions::new();
     options.read(true).write(write).create_new(create);
     #[cfg(unix)]
@@ -432,6 +432,7 @@ fn row_entry(row: &Row<'_>) -> rusqlite::Result<LocalDownload> {
 
 pub struct DownloadStore {
     connection: Connection,
+    metadata_root:PathBuf,
     files: PathBuf,
     previews: HashMap<String, RemovalSnapshot>,
 }
@@ -457,6 +458,7 @@ impl DownloadStore {
             .busy_timeout(std::time::Duration::from_secs(2))
             .map_err(unavailable)?;
         connection.execute_batch(SQL).map_err(unavailable)?;
+        let files=crate::download_folder::open(&connection,&files)?;
         connection
             .execute(
                 "INSERT OR IGNORE INTO download_rules VALUES(1,0,?1,?2,?3,?4)",
@@ -470,12 +472,19 @@ impl DownloadStore {
             .map_err(unavailable)?;
         let store = Self {
             connection,
+            metadata_root:root.to_path_buf(),
             files,
             previews: HashMap::new(),
         };
         store.collect_garbage()?;
         store.recover()?;
         Ok(store)
+    }
+    /// The only native directory that may be shown deliberately as Folder in Saved.
+    pub fn folder_path(&self)->&Path{&self.files}
+    pub fn relocate_files(&mut self,selected:&Path,current:impl Fn()->bool)->Result<()>{
+        self.files=crate::download_folder::relocate(&mut self.connection,&self.files,selected,current)?;
+        self.previews.clear();Ok(())
     }
     fn ensure_scope(&self, viewer: &DownloadViewer) -> Result<String> {
         let id = scope(viewer)?;
@@ -497,7 +506,8 @@ impl DownloadStore {
         if !digest(id) {
             return Err(Error::InvalidCommand);
         }
-        private_dir(&self.files)?;
+        let metadata=std::fs::symlink_metadata(&self.files).map_err(unavailable)?;
+        if !metadata.is_dir()||metadata.file_type().is_symlink(){return Err(Error::DownloadsUnavailable)}
         Ok(self
             .files
             .join(format!("{id}.{}", if ready { "media" } else { "part" })))
@@ -1079,7 +1089,7 @@ impl DownloadStore {
             })?;
         // Count actual Portico-owned files, including metadata/artwork in SQLite and
         // pending garbage. Do not label all other accounts' bytes as removable.
-        let mut used_bytes = 0u64;
+        let mut used_bytes = crate::download_folder::retained_bytes(&self.connection,&self.files)?;
         for entry in std::fs::read_dir(&self.files).map_err(unavailable)? {
             let entry = entry.map_err(unavailable)?;
             let name = entry.file_name();
@@ -1103,10 +1113,7 @@ impl DownloadStore {
             "downloads.sqlite3-journal",
         ] {
             match std::fs::symlink_metadata(
-                self.files
-                    .parent()
-                    .ok_or(Error::DownloadsUnavailable)?
-                    .join(name),
+                self.metadata_root.join(name),
             ) {
                 Ok(meta) if meta.is_file() && !meta.file_type().is_symlink() => {
                     used_bytes = used_bytes
@@ -1647,6 +1654,45 @@ mod tests {
         let entry=first.append(&viewer(),&entry.id,entry.revision,0,b"first").unwrap();
         assert_eq!(entry.bytes_done,5);
         drop(first);let reopened=DownloadStore::open(&root,&rules()).unwrap();assert_eq!(reopened.entry(&viewer(),&entry.id).unwrap().bytes_done,5);
+        drop(reopened);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn folder_move_commits_files_and_pointer_together_without_changing_receipts_or_personal_files(){
+        let root=root();let selected=root.join("selected");std::fs::create_dir_all(&selected).unwrap();
+        std::fs::write(selected.join("personal.txt"),b"preserve").unwrap();
+        let mut store=DownloadStore::open(&root,&rules()).unwrap();
+        let entry=store.enroll(enrollment(b"hello")).unwrap();
+        let entry=store.append(&viewer(),&entry.id,entry.revision,0,b"hello").unwrap();
+        let ready=store.seal(&viewer(),&entry.id,entry.revision).unwrap();
+        let (receipt,key)=crate::download_receipt::tests::signed(&viewer(),&ready.sha256,5);
+        store.install_receipt_key(&viewer(),"key",&key).unwrap();store.save_receipt(&viewer(),&entry.id,receipt).unwrap();
+        let original=store.playback_file(&viewer(),&entry.id).unwrap();
+        std::fs::write(store.folder_path().join("unowned.txt"),b"retain here").unwrap();
+        store.relocate_files(&selected,||true).unwrap();let moved=store.folder_path().to_path_buf();
+        assert_eq!(std::fs::read(store.verified_playback(&viewer(),&entry.id).unwrap().path).unwrap(),b"hello");
+        assert!(!original.exists());assert_eq!(std::fs::read(original.parent().unwrap().join("unowned.txt")).unwrap(),b"retain here");
+        assert_eq!(std::fs::read(selected.join("personal.txt")).unwrap(),b"preserve");
+        drop(store);let reopened=DownloadStore::open(&root,&rules()).unwrap();assert_eq!(reopened.folder_path(),moved);
+        assert_eq!(std::fs::read(reopened.verified_playback(&viewer(),&entry.id).unwrap().path).unwrap(),b"hello");
+        assert!(reopened.capacity(&viewer()).unwrap().used_bytes>5,"metadata stays counted in its original app-data directory");
+        drop(reopened);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn folder_copy_cancellation_and_pointer_commit_failure_retain_every_original(){
+        use std::cell::Cell;
+        let root=root();let selected=root.join("selected");std::fs::create_dir_all(&selected).unwrap();
+        let mut store=DownloadStore::open(&root,&rules()).unwrap();
+        let entry=store.enroll(enrollment(b"hello")).unwrap();store.append(&viewer(),&entry.id,entry.revision,0,b"hello").unwrap();
+        let original=store.path(&entry.id,false).unwrap();let folder=store.folder_path().to_path_buf();
+        let calls=Cell::new(0);assert!(store.relocate_files(&selected,||{calls.set(calls.get()+1);calls.get()<3}).is_err());
+        assert_eq!(std::fs::read(&original).unwrap(),b"hello");assert_eq!(store.folder_path(),folder);
+        assert_eq!(std::fs::read_dir(&selected).unwrap().count(),0);
+        store.connection.execute_batch("CREATE TRIGGER reject_folder BEFORE UPDATE ON download_folder BEGIN SELECT RAISE(ABORT,'injected commit failure'); END;").unwrap();
+        assert!(store.relocate_files(&selected,||true).is_err());
+        assert_eq!(store.folder_path(),folder);assert_eq!(std::fs::read(&original).unwrap(),b"hello");assert_eq!(std::fs::read_dir(&selected).unwrap().count(),0);
+        drop(store);let reopened=DownloadStore::open(&root,&rules()).unwrap();assert_eq!(reopened.folder_path(),folder);assert_eq!(std::fs::read(&original).unwrap(),b"hello");
         drop(reopened);std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

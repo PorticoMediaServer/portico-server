@@ -59,16 +59,17 @@ type ReadingSessionRequest struct {
 	SourceID string `json:"sourceId"`
 }
 type ReadingSessionResponse struct {
-	SessionID string            `json:"sessionId"`
-	ItemID    string            `json:"itemId"`
-	SourceID  string            `json:"sourceId"`
-	Revision  string            `json:"revision"`
-	Format    ReadingFormat     `json:"format"`
-	Size      int64             `json:"size"`
-	Metadata  ReadingMetadata   `json:"metadata"`
-	Resources []ReadingResource `json:"resources,omitempty"`
-	Spine     []string          `json:"spine,omitempty"`
-	PageNames []string          `json:"pageNames,omitempty"`
+	Sequential bool              `json:"sequential,omitempty"`
+	SessionID  string            `json:"sessionId"`
+	ItemID     string            `json:"itemId"`
+	SourceID   string            `json:"sourceId"`
+	Revision   string            `json:"revision"`
+	Format     ReadingFormat     `json:"format"`
+	Size       int64             `json:"size"`
+	Metadata   ReadingMetadata   `json:"metadata"`
+	Resources  []ReadingResource `json:"resources,omitempty"`
+	Spine      []string          `json:"spine,omitempty"`
+	PageNames  []string          `json:"pageNames,omitempty"`
 }
 type ReadingLocation struct {
 	Format      ReadingFormat `json:"format"`
