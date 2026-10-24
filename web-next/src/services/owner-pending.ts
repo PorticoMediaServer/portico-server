@@ -134,6 +134,7 @@ export function scopedHostedApproval(account: ServicesAccount, store: HostedOwne
 /** Select only a view from an authenticated lookup. This grants no approval or
  * completion: each selected controller independently validates its fixed purpose. */
 export async function hostedApprovalPurpose(account: ServicesAccount, store: HostedOwnerPendingStore, pending: HostedOwnerPending, signal: AbortSignal): Promise<'setup'|'switch'> {
+  if(account.api.origin!==pending.request.hostedOrigin)throw invalid();
   await current(store,pending); signal.throwIfAborted();
   const raw=await currentAccountWork(account,session=>account.api.send(routePath('server_claim_lookup'),'POST',{code:pending.request.code},signal,session.accessToken));
   signal.throwIfAborted();await current(store,pending);signal.throwIfAborted();
