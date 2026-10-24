@@ -102,6 +102,39 @@ func TestListeningClustersUseOnlyCurrentProfilePermittedCompletedPlays(t *testin
 			t.Fatal("non-authorized history shaped a cluster", item.Public)
 		}
 	}
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, item := range songs {
+			for index := 0; index < sonic.TagCount; index++ {
+				score := 0.0
+				if index == 7 { // Exact original MTT rock index.
+					score = .8
+				}
+				if _, err := tx.ExecContext(ctx, `INSERT INTO music_sonic_tags(result_id,entity_id,tag_index,score) SELECT result_id,entity_id,?,? FROM music_sonic_embeddings WHERE entity_id=?`, index, score, item.ID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	row, err := service.MusicMixRow(viewer, at)
+	if err != nil || len(row) != 2 || row[0].NameSource.Style == nil || row[0].NameSource.Style.Tag != "rock" || row[0].NameSource.Style.Model != sonic.ModelID || row[0].NameSource.Artist != nil || row[1].NameSource.Style != nil || row[1].NameSource.Artist == nil {
+		t.Fatal("duplicate strongest style did not fall back to actual top artist", row, err)
+	}
+	oldIDs := map[string]bool{row[0].ID: true, row[1].ID: true}
+	insertPlay := func(key string, item catalogtest.Item) {
+		c.Exec(`INSERT INTO play_history(playback_id,authority,account_id,profile_id,user_name,item_id,library_id,kind,title,started_ms,updated_ms,watched_ms,completed) VALUES(?,'local','account','profile','Fixture',?,'music',7,?,?,?,100000,1)`, key, item.ID, item.Public, at.Add(-time.Second).UnixMilli(), at.Add(-time.Second).UnixMilli())
+	}
+	insertPlay("new-east-play", songs[7])
+	row, err = service.MusicMixRow(viewer, at)
+	if err != nil || len(row) != 2 || oldIDs[row[0].ID] || oldIDs[row[1].ID] {
+		t.Fatal("another cluster's play retained old row identity", row, err)
+	}
+	stable := []string{row[0].ID, row[1].ID}
+	insertPlay("hidden-new-play", hidden)
+	row, err = service.MusicMixRow(viewer, at)
+	if err != nil || len(row) != 2 || row[0].ID != stable[0] || row[1].ID != stable[1] {
+		t.Fatal("hidden listening changed observable mix identity", row, err)
+	}
 	c.Exec(`UPDATE music_sonic_embeddings SET model_sha256='old' WHERE entity_id=?`, songs[0].ID)
 	stale := read()
 	if stale.EligibleTracks != 12 || stale.AnalyzedTracks != 11 {

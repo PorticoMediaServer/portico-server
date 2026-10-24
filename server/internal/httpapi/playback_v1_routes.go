@@ -82,6 +82,16 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		}
 		return d.Catalog.MusicRadioBatchTx(ctx, tx, viewer, request)
 	}
+	s.MixKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, id string) ([]string, error) {
+		if d.Catalog == nil {
+			return nil, playbackv1.ErrUnsupportedSelector
+		}
+		viewer, err := d.queueCatalogViewerTx(ctx, tx, p)
+		if err != nil {
+			return nil, err
+		}
+		return d.Catalog.MusicMixKeysTx(ctx, tx, viewer, time.Now(), id)
+	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
 	}

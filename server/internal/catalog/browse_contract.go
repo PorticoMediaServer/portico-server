@@ -75,7 +75,7 @@ func stringOperators(set bool) []string {
 }
 
 var numberOperators = []string{"equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "in", "not-in", "is-present", "is-missing"}
-var dateOperators = []string{"equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "is-present", "is-missing"}
+var dateOperators = []string{"within-last-days", "equals", "not-equals", "less-than", "at-most", "greater-than", "at-least", "between", "is-present", "is-missing"}
 var enumOperators = []string{"equals", "not-equals", "in", "not-in"}
 
 const (

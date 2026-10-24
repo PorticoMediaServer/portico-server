@@ -6580,6 +6580,28 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_music_mixes",
+    "method": "GET",
+    "path": "/v1/music/mixes",
+    "summary": "Read the current profile's permitted listening mixes",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
     "id": "get_networking_certificate",
     "method": "GET",
     "path": "/v1/networking/certificate",
@@ -12634,6 +12656,29 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "post_music_mixes_id_playlist",
+    "method": "POST",
+    "path": "/v1/music/mixes/{id}/playlist",
+    "summary": "Copy a permitted mix into an ordinary playlist",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "post_networking_certificate_config",
     "method": "POST",
     "path": "/v1/networking/certificate/config",
@@ -18449,6 +18494,7 @@ export const routePaths = {
   "get_metadata_kind_id_art_role": "/v1/metadata/{kind}/{id}/art/{role}",
   "get_metadata_kind_id_preview": "/v1/metadata/{kind}/{id}/preview",
   "get_metadata_settings": "/v1/admin/metadata/settings",
+  "get_music_mixes": "/v1/music/mixes",
   "get_networking_certificate": "/v1/networking/certificate",
   "get_networking_claim": "/v1/networking/claim",
   "get_networking_remote": "/v1/networking/remote",
@@ -18701,6 +18747,7 @@ export const routePaths = {
   "post_metadata_bulk_preview": "/v1/metadata/bulk/preview",
   "post_metadata_kind_id": "/v1/metadata/{kind}/{id}",
   "post_metadata_kind_id_art_role_upload": "/v1/metadata/{kind}/{id}/art/{role}/upload",
+  "post_music_mixes_id_playlist": "/v1/music/mixes/{id}/playlist",
   "post_networking_certificate_config": "/v1/networking/certificate/config",
   "post_networking_certificate_retry": "/v1/networking/certificate/retry",
   "post_networking_claim_approve": "/v1/networking/claim/approve",

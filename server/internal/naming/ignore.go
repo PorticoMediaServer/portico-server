@@ -16,11 +16,12 @@ var sampleName = regexp.MustCompile(`(?i)(?:^|[._-][ ._-]*)sample(?:$|[._-])`)
 
 var systemFolders = map[string]bool{"@eadir": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "@recycle": true, "system volume information": true}
 
-// IgnoreName handles one entry before stat/probe. The library root itself is
-// never tested. Complete titles such as "Sample (2020)" are preserved.
+// IgnoreName classifies built-in names without a size. Inventory callers use
+// IgnoreNameBeforeStat and IgnorePathWithSize so a sample name alone cannot
+// exclude a full-size file. Complete titles such as "Sample (2020)" are preserved.
 func IgnoreName(name string, directory bool) bool {
 	lower := strings.ToLower(name)
-	if strings.HasPrefix(name, ".") || systemFolders[lower] || strings.HasSuffix(lower, ".grab") {
+	if IgnoreNameBeforeStat(name) {
 		return true
 	}
 	if directory {
@@ -50,6 +51,41 @@ func IgnorePath(relative string, directory bool) bool {
 		}
 	}
 	return false
+}
+
+// SampleLimitBytes is the strict 300 MB sample exclusion boundary. A file at
+// the boundary, or with unknown size, remains eligible for inventory.
+const SampleLimitBytes int64 = 300_000_000
+
+// IgnoreNameBeforeStat excludes only system/temporary names. Sample folders
+// must be traversed: their individual files may exceed the sample boundary.
+func IgnoreNameBeforeStat(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasPrefix(name, ".") || systemFolders[lower] || strings.HasSuffix(lower, ".grab")
+}
+
+// IgnorePathWithSize applies sample naming only to an observed file smaller
+// than SampleLimitBytes. Directory size is never evidence of a sample file.
+// Explicit .ignore/.plexignore rules are applied separately by the caller.
+func IgnorePathWithSize(relative string, directory bool, size int64) bool {
+	if len(relative) > MaxPathBytes || strings.IndexByte(relative, 0) >= 0 {
+		return true
+	}
+	parts := strings.Split(slash(relative), "/")
+	if len(parts) > MaxDepth {
+		return true
+	}
+	sample := false
+	for i, name := range parts {
+		if name == "" || name == "." || name == ".." {
+			continue
+		}
+		if IgnoreNameBeforeStat(name) {
+			return true
+		}
+		sample = sample || IgnoreName(name, i < len(parts)-1 || directory)
+	}
+	return sample && !directory && size >= 0 && size < SampleLimitBytes
 }
 
 type IgnoreDiagnostic struct {

@@ -186,7 +186,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		if name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsAny(name, "/\\\x00") {
 			return p, ErrInventoryChanged
 		}
-		if naming.IgnoreName(name, false) {
+		if naming.IgnoreNameBeforeStat(name) {
 			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "ignored_name"})
 			continue
 		}
@@ -225,7 +225,11 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 				continue
 			}
 		}
-		ignored := naming.IgnoreName(name, info.IsDir())
+		if naming.IgnorePathWithSize(filepath.ToSlash(filepath.Join(r.RelativePath, name)), info.IsDir(), info.Size()) {
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "ignored_name"})
+			continue
+		}
+		ignored := false
 		for _, rule := range rules {
 			ignored = ignored || rule.Match(filepath.ToSlash(filepath.Join(r.RelativePath, name)), info.IsDir())
 		}

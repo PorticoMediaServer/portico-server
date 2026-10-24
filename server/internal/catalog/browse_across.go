@@ -228,6 +228,11 @@ func acrossKinds(pivot browsePivot) ([]any, error) {
 // BrowseAcross reads one page of a group of titles across the viewer's
 // libraries, sorted and filtered with the common vocabulary.
 func (s *Service) BrowseAcross(viewer Viewer, request AcrossRequest) (BrowseResult, error) {
+	var instantErr error
+	s, instantErr = s.withBrowseInstant(request.Query, request.Cursor)
+	if instantErr != nil {
+		return BrowseResult{}, instantErr
+	}
 	if err := s.prepareViewer(viewer); err != nil {
 		return BrowseResult{}, err
 	}
@@ -280,11 +285,17 @@ func (s *Service) acrossRevision(request AcrossRequest, pivot browsePivot, sorts
 	if err != nil {
 		return "", err
 	}
+	group += s.relativeBrowseFence(request.Query)
 	digest := sha256.Sum256([]byte(fmt.Sprintf("across\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", pivot.ID, request.fence, queryFingerprint(request.Query)+"\x00display:"+request.HomeRowDisplay, canonicalSort(sorts), state.String, group)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
 }
 
 func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow, error) {
+	var instantErr error
+	s, instantErr = s.withBrowseInstant(request.Query, request.Cursor)
+	if instantErr != nil {
+		return BrowseResult{}, nil, instantErr
+	}
 	out := BrowseResult{Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}}
 	pivot, ok := acrossPivot(request.Pivot)
 	if !ok {
@@ -341,7 +352,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(request.Query, anchor))
 	if err != nil {
 		return out, nil, err
@@ -421,7 +432,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		out.PageInfo.HasMore = start+len(selected) < total
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
@@ -488,7 +499,7 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{request.profile, idsJSON(request.libraries)}, kinds...)
-	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: request.profile, restrictions: request.restriction, rows: request.Rows, rowSources: request.RowSources}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -558,7 +569,7 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 	}
 	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound, out.PageInfo.HasMore = total, capped && more, more
 	if more && request.Range == nil && len(selected) > 0 {
-		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{EvaluationAt: s.relativeBrowseTime(request.Query), Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
@@ -748,7 +759,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 		where += ` AND ` + acrossVideoLibraryPredicate
 	}
 	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
+	compiler := &browseCompiler{now: s.recommendationNow(s.browseInstant), profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
 	clause, err := compiler.compile(withoutSelectedGenreAnchor(query.Query, anchor))
 	if err != nil {
 		return QueueSelection{}, err

@@ -618,6 +618,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/playlists/{id}/order":            probe(func(m *restrictionEnv) []string { return []string{"/v1/playlists/" + m.playlist + "/order"} }),
 		"GET /v1/playlists/{id}/share-candidates": probe(func(m *restrictionEnv) []string { return []string{"/v1/playlists/" + m.playlist + "/share-candidates"} }),
 		"GET /v1/downloads/preparations":          static("/v1/downloads/preparations"),
+		"GET /v1/music/mixes":                     static("/v1/music/mixes"),
 		"GET /v1/receivers":                       static("/v1/receivers"),
 		"GET /v1/groups":                          static("/v1/groups"),
 
