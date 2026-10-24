@@ -47,6 +47,9 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 		}
 		out.Recording = r
 		restrictRecording(&out.Recording, programmeAllowed)
+		if e = s.recordingChannelMarksTx(ctx, tx, a, o, []recordingChannelRef{{r.Occurrence.SourceID, &out.Recording.Channel}}); e != nil {
+			return e
+		}
 		if r.State == "pending-delete" {
 			var reason string
 			if err := tx.QueryRowContext(ctx, `SELECT reason FROM dvr_delete_work WHERE recording_id=?`, r.ID).Scan(&reason); err != nil && err != sql.ErrNoRows {
@@ -115,8 +118,11 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 			}
 			out.Overlaps[i].Channel = peer.Channel
 		}
-
-		return nil
+		refs := make([]recordingChannelRef, len(out.Overlaps))
+		for i := range out.Overlaps {
+			refs[i] = recordingChannelRef{r.Occurrence.SourceID, &out.Overlaps[i].Channel}
+		}
+		return s.recordingChannelMarksTx(ctx, tx, a, o, refs)
 	})
 	return out, e
 }
@@ -416,7 +422,12 @@ func (s *Store) Groups(ctx context.Context, a livechannels.Authority, o livechan
 				out.Groups[i].Key = "restricted:" + r.ID
 			}
 		}
-		return nil
+		refs := make([]recordingChannelRef, len(out.Groups))
+		for i := range out.Groups {
+			r := &out.Groups[i].Recording
+			refs[i] = recordingChannelRef{r.Occurrence.SourceID, &r.Channel}
+		}
+		return s.recordingChannelMarksTx(ctx, tx, a, o, refs)
 	})
 	return out, e
 }

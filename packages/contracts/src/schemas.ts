@@ -12876,6 +12876,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -13013,6 +13028,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -22791,6 +22821,109 @@ export const schemas = {
     "required": [
       "scope",
       "library"
+    ],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
     ],
     "type": "object"
   },
@@ -35678,6 +35811,21 @@ export const schemas = {
                         "id": {
                           "type": "string"
                         },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
+                        },
                         "name": {
                           "type": "string"
                         },
@@ -35815,6 +35963,21 @@ export const schemas = {
                             "properties": {
                               "id": {
                                 "type": "string"
+                              },
+                              "mark": {
+                                "properties": {
+                                  "seed": {
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "text",
+                                  "seed"
+                                ],
+                                "type": "object"
                               },
                               "name": {
                                 "type": "string"
@@ -36244,6 +36407,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -36326,6 +36504,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"
@@ -36464,6 +36657,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -36780,6 +36988,21 @@ export const schemas = {
                     "id": {
                       "type": "string"
                     },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
+                    },
                     "name": {
                       "type": "string"
                     },
@@ -36917,6 +37140,21 @@ export const schemas = {
                         "properties": {
                           "id": {
                             "type": "string"
+                          },
+                          "mark": {
+                            "properties": {
+                              "seed": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "seed"
+                            ],
+                            "type": "object"
                           },
                           "name": {
                             "type": "string"
@@ -37311,6 +37549,21 @@ export const schemas = {
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "mark": {
+                          "properties": {
+                            "seed": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "seed"
+                          ],
+                          "type": "object"
                         },
                         "name": {
                           "type": "string"
@@ -91592,6 +91845,9 @@ export const schemas = {
     "properties": {
       "data": {
         "properties": {
+          "bySound": {
+            "type": "boolean"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -92895,7 +93151,8 @@ export const schemas = {
           "itemId",
           "libraryId",
           "revision",
-          "entries"
+          "entries",
+          "bySound"
         ],
         "type": "object"
       },
@@ -126875,6 +127132,101 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSearchGenresRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSearchGenresResponse": {
+    "properties": {
+      "genres": {
+        "items": {
+          "properties": {
+            "backdrop": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "item",
+                    "show"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "path"
+              ],
+              "type": "object"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "covers": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "item",
+                      "show"
+                    ],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "path"
+                ],
+                "type": "object"
+              },
+              "maxItems": 2,
+              "type": "array"
+            },
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "label",
+            "count",
+            "covers"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "revision",
+      "genres"
+    ],
+    "type": "object"
+  },
   "GetSearchHistoryRequest": {
     "properties": {},
     "required": [],
@@ -146879,6 +147231,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -147016,6 +147383,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -151042,6 +151424,109 @@ export const schemas = {
     },
     "required": [
       "itemId"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSonicAnalysisRetryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSonicAnalysisRetryResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
     ],
     "type": "object"
   },
@@ -159856,6 +160341,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -159993,6 +160493,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -160358,6 +160873,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -160495,6 +161025,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -177392,6 +177937,121 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutAdminLibrariesIdSonicAnalysisRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "enabled",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdSonicAnalysisResponse": {
+    "properties": {
+      "done": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "estimatedRemainingSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "model": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "observedAtMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pausedUntilMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "policyAllows": {
+        "type": "boolean"
+      },
+      "policyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reasonCode": {
+        "enum": [
+          "inference_failed",
+          "inference_not_verified",
+          "runtime_or_model_missing",
+          "scan_policy_disallows"
+        ],
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "disabled",
+          "unavailable",
+          "complete",
+          "paused",
+          "analyzing"
+        ],
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "libraryId",
+      "enabled",
+      "revision",
+      "policyAllows",
+      "state",
+      "done",
+      "total",
+      "policyRevision",
+      "observedAtMs"
+    ],
+    "type": "object"
+  },
   "PutAdminLibrariesOrderRequest": {
     "properties": {
       "libraryIds": {
@@ -179343,6 +180003,21 @@ export const schemas = {
               "id": {
                 "type": "string"
               },
+              "mark": {
+                "properties": {
+                  "seed": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "seed"
+                ],
+                "type": "object"
+              },
               "name": {
                 "type": "string"
               },
@@ -179480,6 +180155,21 @@ export const schemas = {
                   "properties": {
                     "id": {
                       "type": "string"
+                    },
+                    "mark": {
+                      "properties": {
+                        "seed": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "seed"
+                      ],
+                      "type": "object"
                     },
                     "name": {
                       "type": "string"
@@ -180037,6 +180727,21 @@ export const schemas = {
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "mark": {
+                    "properties": {
+                      "seed": {
+                        "type": "string"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "seed"
+                    ],
+                    "type": "object"
                   },
                   "name": {
                     "type": "string"
