@@ -83,6 +83,7 @@ func QualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts T
 
 func qualifyToolchainBundle(ctx context.Context, ffmpeg, ffprobe string, facts ToolchainFacts, cohorts []qualifiedBundleCohort, runner toolchainProbeRunner) (ToolchainFacts, error) {
 	facts.DolbyVisionProfile7To81, facts.DolbyVisionDualLayerJoin = false, false
+	facts.HDR10PlusLibX265Encode = false
 	if err := ctx.Err(); err != nil {
 		return facts, err
 	}
