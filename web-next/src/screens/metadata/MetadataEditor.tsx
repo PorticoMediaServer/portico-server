@@ -20,7 +20,6 @@ export function MetadataEditor({api, scope, target, onClose}: {
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const [tab, setTab] = useState<Tab>('general'), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
   useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
-  useEffect(() => setDraft({}), [state.phase === 'ready' ? state.data?.revision : undefined]);
   const data = state.data;
   const changed = useMemo(() => {
     if (!data) return [];
