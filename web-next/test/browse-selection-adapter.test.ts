@@ -15,7 +15,7 @@ const {createLibrarySelection} = await import('../src/screens/browse/selection.t
 const capabilities = {play: true, queue: true, playlist: true, myList: true, watched: true, collection: true, favorite: true, download: false, edit: true, refresh: true, delete: true};
 const entry = {id: 'm1', kind: 'movie', title: 'Alpha', libraryId: 'a'};
 const row = {entry, position: 0, key: 'key-0', capabilities};
-const fake = (over: Record<string, unknown> = {}) => {
+const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> = {}) => {
   const calls: string[] = [];
   const snapshot = {
     phase: 'ready',
@@ -37,6 +37,7 @@ const fake = (over: Record<string, unknown> = {}) => {
     registerWindow: async () => { calls.push('registerWindow'); return [row]; },
     start: () => () => {},
     dispose: () => {},
+    ...host,
   };
   return {selection: selection as never, calls};
 };
@@ -80,4 +81,28 @@ test('a selection with nothing playable hides Play rather than pretending', () =
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
   assert.doesNotMatch(html, />Play</);
   assert.match(html, /1 selected/);
+});
+
+
+test('whole-view Select all appears only with the server descriptor and a model that can hold it', () => {
+  const whole = {libraryId: 'a', pivot: 'movies', filter: null, sort: [{field: 'title', direction: 'asc'}], catalogRevision: 'r1', total: 48000,
+    types: [{kind: 'movie', count: 48000, capabilities: capabilities, libraries: [{libraryId: 'a', count: 48000}]}]};
+  const withWhole = fake({}, {selectWhole: () => {}});
+  const adapter = createLibrarySelection({playSelection: withWhole.selection, descriptor: () => whole as never, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.match(html, /Select all 48,000/);
+  // Without a descriptor, or without the model capability, nothing is offered.
+  const noDescriptor = createLibrarySelection({playSelection: withWhole.selection, reportError: () => {}});
+  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, noDescriptor.toolbar)), /Select all/);
+  const noModel = createLibrarySelection({playSelection: fake().selection, descriptor: () => whole as never, reportError: () => {}});
+  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, noModel.toolbar)), /Select all/);
+});
+
+test('a card previews the range only when the play adapter says it would join it', () => {
+  const previewing = fake({}, {preview: () => true});
+  const adapter = createLibrarySelection({playSelection: previewing.selection, reportError: () => {}});
+  assert.equal(adapter.entry({membershipId: 'm1', entry} as never, 0)?.preview, true);
+  const quiet = fake({}, {preview: () => false});
+  const noPreview = createLibrarySelection({playSelection: quiet.selection, reportError: () => {}});
+  assert.equal(noPreview.entry({membershipId: 'm1', entry} as never, 0)?.preview, undefined);
 });
