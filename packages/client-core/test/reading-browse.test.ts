@@ -18,3 +18,11 @@ test('Reading Authors is a reachable facet surface rather than entity cards',()=
   const caps=parseBrowseCapabilities({library:{id:'reading',name:'Reading',kind:'book'},pivots:[pivot],resolvedPivot:pivot,fields:[],sorts:[],quickFilters:[],queryLimits:{maximumDepth:5,maximumClauses:40,maximumBytes:65536,maximumSorts:1,defaultLimit:40,maximumLimit:100,cursorTtlMs:1800000}});
   assert.equal(caps.resolvedPivot?.browsable,false);assert.equal(caps.resolvedPivot?.facetSource?.field,'author');assert.equal(caps.pivots[0].entityKinds.length,0);
 });
+
+test('Reading leaves retain a complete accepted author as a semantic card fact',()=>{
+ const author='Accepted '+ 'a'.repeat(1000);
+ for(const kind of ['ebook','comic']){
+  const entry=validateContentEntry({id:'reading-item',kind,title:'Actual title',author,subtitle:author,navigation:{view:'item',entityId:'reading-item'}});
+  assert.equal(entry.author,author);
+ }
+});

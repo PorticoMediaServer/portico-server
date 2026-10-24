@@ -27,7 +27,7 @@ export type ContentEntry = Readonly<{
   year?: number; contentRating?: string; genres?: readonly string[]; watchlisted?: boolean;
   /** The album artist; album entities only (M24, behind presence). Absent on older servers. */
   artist?: Readonly<{ id: string; name: string }>;
-  /** A book's author; on book entries, and on an audiobook file (its book's author). */
+  /** Accepted Reading author or a book/audiobook part's semantic author, never parsed from subtitle. */
   author?: string;
   /** How many times the viewer has played a song to the end; song entries only, absent when never played. */
   plays?: number;
@@ -214,7 +214,7 @@ function entry(v: unknown): ContentEntry {
       row.artist = Object.freeze({ id: a.id as string, name: a.name as string });
     }
   }
-  if (string(v.author, 512) && (v.author as string).length > 0) row.author = v.author as string;
+  if (string(v.author, v.kind === 'ebook' || v.kind === 'comic' ? 4096 : 512) && (v.author as string).length > 0) row.author = v.author as string;
   if (typeof v.plays === 'number' && Number.isSafeInteger(v.plays) && v.plays >= 1) row.plays = v.plays; else if (v.plays !== 0) left('entry.plays', v.plays);
   if (v.album !== undefined) {
     const a = v.album;

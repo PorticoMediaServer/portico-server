@@ -124,9 +124,10 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 		var id int64
 		var entry ContentEntry
 		var available bool
-		if err = read.Scan(&id, &entry.LibraryID, &entry.PosterURL, &entry.Subtitle, &available); err != nil {
+		if err = read.Scan(&id, &entry.LibraryID, &entry.PosterURL, &entry.Author, &available); err != nil {
 			return nil, err
 		}
+		entry.Subtitle = entry.Author
 		entry.Available = &available
 		facts[id] = entry
 	}
