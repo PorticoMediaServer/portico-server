@@ -274,6 +274,9 @@ func mapError(err error) error {
 	}
 }
 func ErrorCode(err error) string {
+	if errors.Is(err, errUnknownWebDAVRange) {
+		return "range_unknown"
+	}
 	var response *remotemedia.ResponseFailure
 	if errors.As(err, &response) {
 		if response.Kind == "throttled" {
