@@ -19,7 +19,7 @@ test('a requested sound match truthfully retains the server genre fallback',asyn
 });
 
 test('sound basis is never guessed from request intent or malformed/missing facts',async()=>{
- for(const basis of [undefined,null,'true',1])await assert.rejects(readListeningSimilar({request:async()=>payload(basis)} as unknown as LibraryContentApi,scope,'seed',{by:'sound'}));
+ for(const basis of [undefined,null,'true',1]){const malformed=payload();malformed.data.bySound=basis;await assert.rejects(readListeningSimilar({request:async()=>malformed} as unknown as LibraryContentApi,scope,'seed',{by:'sound'}));}
  await assert.rejects(readListeningSimilar({request:async()=>payload(true,[{...song,kind:'book'}])} as unknown as LibraryContentApi,scope,'seed',{by:'sound'}));
  await assert.rejects(readListeningSimilar({request:async()=>payload()} as unknown as LibraryContentApi,scope,'seed',{by:'genre' as 'sound'}));
 });
