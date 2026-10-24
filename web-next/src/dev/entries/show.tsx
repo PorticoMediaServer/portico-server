@@ -43,11 +43,11 @@ const artPath = (id: string, role: 'poster' | 'backdrop' | 'still', query: strin
 const imageArt = (kind: string, id: string) => `specimen-art://${kind}/${encodeURIComponent(id)}`;
 
 const overview = 'After a global pandemic destroys civilization, a hardened survivor takes charge of a 14-year-old girl who may be humanity’s last hope.';
-const episodeOverview = 'Joel and Tess head to the Capitol to retrieve something from a dead drop, but their plans change when they meet a young girl who may hold the key to a cure.';
+const episodeOverview = 'Joel and Tess head to the Capitol to retrieve something from a dead drop, but their plans change when they meet a young girl who may hold the key to a cure.'; // lint-strings-allow
 
 const credits = [
-  {id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', ordinal: 0},
-  {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', ordinal: 1},
+  {id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', ordinal: 0}, // lint-strings-allow
+  {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', ordinal: 1}, // lint-strings-allow
   {id: 'gabriel-luna', name: 'Gabriel Luna', role: 'Tommy Miller', department: 'Acting', ordinal: 2},
   {id: 'isabela-merced', name: 'Isabela Merced', role: 'Dina', department: 'Acting', ordinal: 3},
   {id: 'young-mazino', name: 'Young Mazino', role: 'Jesse', department: 'Acting', ordinal: 4},
@@ -82,15 +82,15 @@ const credits = [
   {id: 'catherine-ohara', name: 'Catherine O’Hara', role: 'Ranger', department: 'Acting', ordinal: 33},
   {id: 'jason-ritter', name: 'Jason Ritter', role: 'Ranger', department: 'Acting', ordinal: 34},
   {id: 'aimee-carrero', name: 'Aimee Carrero', role: 'Ranger', department: 'Acting', ordinal: 35},
-  {id: 'craig-mazin', name: 'Craig Mazin', role: 'Creator', department: 'Writing', ordinal: 36},
+  {id: 'craig-mazin', name: 'Craig Mazin', role: 'Creator', department: 'Writing', ordinal: 36}, // lint-strings-allow
   {id: 'neil-druckmann', name: 'Neil Druckmann', role: 'Creator', department: 'Writing', ordinal: 37},
 ] as const;
 
 const episodes = [
-  {id: 'ep-1', title: 'When You’re Lost in the Darkness', airDate: '2023-01-15', progressSeconds: 30205, watched: false, overview: episodeOverview},
-  {id: 'ep-2', title: 'Infected', airDate: '2023-01-22', progressSeconds: 0, watched: false, overview: 'A horrifying discovery forces Joel and Tess to change course.'},
-  {id: 'ep-3', title: 'Long, Long Time', airDate: '2023-01-29', progressSeconds: 0, watched: false, overview: 'A stranger asks Bill and Frank for help.'},
-  {id: 'ep-4', title: 'Kin', airDate: '2023-02-05', progressSeconds: 0, watched: false, overview: 'Joel and Ellie reach the Capitol and meet an old friend.'},
+  {id: 'ep-1', title: 'When You’re Lost in the Darkness', airDate: '2023-01-15', progressSeconds: 30205, watched: false, overview: episodeOverview}, // lint-strings-allow
+  {id: 'ep-2', title: 'Infected', airDate: '2023-01-22', progressSeconds: 0, watched: false, overview: 'A horrifying discovery forces Joel and Tess to change course.'}, // lint-strings-allow
+  {id: 'ep-3', title: 'Long, Long Time', airDate: '2023-01-29', progressSeconds: 0, watched: false, overview: 'A stranger asks Bill and Frank for help.'}, // lint-strings-allow
+  {id: 'ep-4', title: 'Kin', airDate: '2023-02-05', progressSeconds: 0, watched: false, overview: 'Joel and Ellie reach the Capitol and meet an old friend.'}, // lint-strings-allow
 ] as const;
 
 const episodeEntry = (index: number) => {
@@ -105,13 +105,13 @@ function showWorkspace() {
   const revision = {catalog: 1, viewer: 1};
   return {
     scope: {serverId, libraryId, viewerFence}, revision,
-    show: {id: showId, libraryId, title: 'The Last of Us', year: 2023, libraryKind: 'tv', providerMatchStatus: 'matched',
-      overview, network: 'HBO', studio: 'PlayStation Productions', country: 'United States', contentRating: 'TV-MA',
+    show: {id: showId, libraryId, title: 'The Last of Us', year: 2023, libraryKind: 'tv', providerMatchStatus: 'matched', // lint-strings-allow
+      overview, network: 'HBO', studio: 'PlayStation Productions', country: 'United States', contentRating: 'TV-MA', // lint-strings-allow
       status: 'Continuing', firstAired: '2023-01-15', originalLanguage: 'en', addedAt: '2026-10-17T00:00:00Z', episodeCount: episodes.length,
       posterUrl: artPath(showId, 'poster', 'w=600'), backdropUrl: artPath(showId, 'backdrop', 'w=1920'),
-      genres: ['Drama']},
+      genres: ['Drama']}, // lint-strings-allow
     showCredits: credits.map(credit => ({...credit, portraitUrl: imageArt('portrait', credit.id)})),
-    seasons: [{id: seasonId, showId, number: 1, title: 'Season 1', episodeCount: episodes.length, watchedCount: 0, unwatchedCount: episodes.length,
+    seasons: [{id: seasonId, showId, number: 1, title: 'Season 1', episodeCount: episodes.length, watchedCount: 0, unwatchedCount: episodes.length, // lint-strings-allow
       firstAired: '2023-01-15', lastAired: '2023-02-05'}],
     seasonTotalCount: 1, nextSeasonCursor: '', groups: [],
     selected: {seasonId},
@@ -136,11 +136,11 @@ function episodeDetail() {
     actions: [{id: 'play', labelKey: 'entry.play', enabled: true, playback: {itemId: 'ep-1', startMs: 0}},
       {id: 'watchlist', labelKey: 'entry.addToWatchlist', enabled: true},
       {id: 'watched', labelKey: 'entry.markWatched', enabled: true}],
-    facts: {contentRating: 'TV-MA', releaseDate: '2023-01-15', studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'},
-    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}],
-      credits: [{id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'},
-        {id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'},
-        {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}],
+    facts: {contentRating: 'TV-MA', releaseDate: '2023-01-15', studio: 'PlayStation Productions', country: 'United States', originalLanguage: 'en'}, // lint-strings-allow
+    metadata: {status: 'available', ratings: [], attributions: [], genres: [{id: 'drama', name: 'Drama', provider: 'specimen'}], // lint-strings-allow
+      credits: [{id: 'craig-mazin', name: 'Craig Mazin', role: 'Writer', department: 'Writing', provider: 'specimen'}, // lint-strings-allow
+        {id: 'pedro-pascal', name: 'Pedro Pascal', role: 'Joel Miller', department: 'Acting', provider: 'specimen'}, // lint-strings-allow
+        {id: 'bella-ramsey', name: 'Bella Ramsey', role: 'Ellie Williams', department: 'Acting', provider: 'specimen'}], // lint-strings-allow
       creditTotals: {cast: 2, crew: 1}},
     languages: {audio: ['en'], subtitles: ['en']},
     collections: [], markers: [],
@@ -149,9 +149,9 @@ function episodeDetail() {
 
 function activityDocument(now: string) {
   const session = (id: string) => ({id, user: {id: 'specimen-account', username: 'demo'}, profile: {id: 'demo', name: 'Demo'},
-    device: {id: 'specimen-device', name: 'Portico web'}, kind: 'vod', state: 'playing', startedAt: now,
+    device: {id: 'specimen-device', name: 'Portico web'}, kind: 'vod', state: 'playing', startedAt: now, // lint-strings-allow
     problem: false, converting: false, positionMs: 60_000, decision: {}});
-  return {scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo',
+  return {scope: {serverId, viewerFence: 'a'.repeat(64)}, observedAt: now, serverName: 'Portico demo', // lint-strings-allow
     streams: {count: 2, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: [session('stream-1'), session('stream-2')]},
     scans: [], tasks: {count: 0, items: []}, update: {available: false, state: 'unconfigured', current: ''}, health: {degraded: false}};
 }
@@ -214,7 +214,7 @@ const viewer: Viewer = {serverId, authority: 'local', accountId: 'specimen-accou
 const session: LocalSession = {accessToken: 'specimen-public', refreshToken: '', sessionFamilyId: 'specimen-family', tokenGeneration: '1',
   installationId: 'i'.repeat(43), expiresAt: '2099-01-01T00:00:00Z', authorizationHorizon: '2099-02-01T00:00:00Z', viewer};
 const libraries: readonly Library[] = [{id: libraryId, name: 'TV Shows', kind: 'show'}];
-const identity: ShellIdentity = {viewer, username: 'demo', profileName: 'Demo', profileArt: 'blue', serverName: 'Portico demo',
+const identity: ShellIdentity = {viewer, username: 'demo', profileName: 'Demo', profileArt: 'blue', serverName: 'Portico demo', // lint-strings-allow
   primaryProfile: true, profiles: [], canManageProfiles: false, accountFacts: [], libraries, liveAvailable: true, unread: 3, showNotificationDot: true,
   capabilities: {manageAccount: false, managePeople: false, manageServer: true, manageSignIn: false}};
 
@@ -226,7 +226,7 @@ const homeService = {getSnapshot: () => ({phase: 'idle'}), subscribe: () => () =
 const home: HomeBindings = {service: homeService, artwork, time, reducedMotion: true,
   selection: {toolbar: null, card: () => undefined, channel: () => undefined, collection: () => undefined, registerWindow: () => undefined, registerSpotlight: () => undefined, moreAvailable: () => false, moreExpanded: () => false},
   effects: {play: async () => {record('play');}, playChannel: async () => {}, openEntry: () => {}, openSeeAll: () => {}, openMore: () => {},
-    setMyList: async () => {}, reportError: error => {record('report-error', String(error));}}};
+    setMyList: async () => {}, reportError: error => {record('report-error', String(error));}}}; // lint-raw-errors-allow
 const binding: ShellBindings = {api, events, scopeKey: 'show-specimen', shell: {identity, OwnerActivity: activity.OwnerActivity, dockVisible: false, onSignOut: () => record('sign-out')}, home};
 
 // The fixture's real command receipts are inspectable from the page; no credentials or server data.
