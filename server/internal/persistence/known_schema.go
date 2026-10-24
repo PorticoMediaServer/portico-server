@@ -1241,6 +1241,7 @@ table queues_v1
 table quick_connect_v1
 table reading_progress
 table reading_publications
+table reading_source_values
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions

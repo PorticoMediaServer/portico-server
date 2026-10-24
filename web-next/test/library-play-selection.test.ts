@@ -1,0 +1,169 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {setImmediate} from 'node:timers/promises';
+import {BrowseController} from '../src/screens/browse/controller.ts';
+import {createLibraryPlaySelection} from '../src/screens/browse/play-selection.ts';
+import type {DetailApi} from '@core/detail.ts';
+import type {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
+import type {QueueHeader} from '@core/playback-v1/types.ts';
+
+const pivot = {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid', 'list'], browsable: true, paging: 'offset'};
+const caps = {library: {id: 'library', name: 'Movies', kind: 'movie', defaultView: 'discover'}, pivots: [pivot], resolvedPivot: pivot,
+  fields: [], sorts: [{id: 'title', labelKey: 'sort.title', directions: ['asc', 'desc'], defaultDirection: 'asc', applicableKinds: ['movie']}], quickFilters: [],
+  queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 60, maximumLimit: 100, cursorTtlMs: 1800000}};
+const scope = {serverId: 'server', viewerId: 'actual-captured-viewer'};
+function detail(id: string) {return {scope: {...scope, libraryId: 'library', itemId: id, viewerFence: 'detail-only'}, revision: {catalog: 77, viewer: 3},
+  item: {id, libraryId: 'library', kind: 'movie', title: id, durationMs: 1000, progressMs: 0, available: true},
+  personal: {watchlisted: false, favorite: false, rating: null, revision: 0}, actions: [
+    {id: 'play', labelKey: 'action.play', enabled: true, playback: {itemId: id, startMs: 0}},
+    ...['favorite', 'watchlist', 'watched', 'metadata_edit', 'delete'].map(id => ({id, labelKey: id, enabled: true})),
+  ], metadata: {status: 'unavailable', ratings: [], genres: [], credits: []}};}
+const queue: QueueHeader = {id: 'actual-port-receipt', revision: '1', total: 1, repeat: 'off', segments: []};
+function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
+async function settle() {for (let index = 0; index < 8; index++) await setImmediate();}
+function setup(playback?: Pick<V1QueuePlayer, 'playSegments'>, readDetail: (id: string, signal?: AbortSignal) => Promise<unknown> = async id => detail(id)) {
+  const navigation = new AbortController();let authority = true, detailReads = 0;
+  const api: DetailApi = {async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
+    if (path.includes('browse-capabilities')) return caps as T;
+    if (method === 'POST') {
+      const request = body as {range: {start: number}; query?: unknown; sort: unknown}, start = request.range.start;
+      return {pivot: 'movies', applied: {query: request.query ?? null, sort: request.sort, seek: null},
+        entries: Array.from({length: Math.min(60, 1200 - start)}, (_, index) => ({id: 'movie-' + (start + index), libraryId: 'library', kind: 'movie', title: 'Movie ' + (start + index), available: true, playback: {itemId: 'movie-' + (start + index), startMs: 0}, navigation: {view: 'item', entityId: 'movie-' + (start + index)}})),
+        pageInfo: {start, total: 1200, totalIsLowerBound: false, revision: 'browse:opaque/actual', hasMore: start + 60 < 1200, nextCursor: ''}, positionIndex: []} as T;
+    }
+    assert.equal(method, 'GET');detailReads++;
+    const id = new URL(path, 'https://local.invalid').pathname.split('/').at(-2)!;
+    return await readDetail(id, signal) as T;
+  }};
+  const source = new BrowseController(api, {libraryId: 'library', pivot: 'movies'}, () => authority);
+  const selection = createLibraryPlaySelection({source, api, scope, principal: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'},
+    requestId: async () => {throw new Error('No mutation operation may be issued by a grant read');}, signal: navigation.signal, isCurrent: () => authority, playback});
+  return {source, selection, navigation, detailReads: () => detailReads, authority: (value: boolean) => {authority = value;},
+    async load() {selection.start();await source.load();await settle();}, dispose() {selection.dispose();source.dispose();}};
+}
+
+test('Library selection defers to an actual token and offers no grant or Detail read without an executor', async () => {
+  const owner = setup();
+  try {
+    assert.equal(owner.selection.getSnapshot().phase, 'waiting');assert.equal(owner.detailReads(), 0);
+    await assert.rejects(owner.selection.registerWindow(0, 2), {code: 'library-play-selection-unavailable'});
+    await owner.load();const rows = await owner.selection.registerWindow(0, 2);
+    assert.equal(owner.detailReads(), 0);assert.equal(rows.length, 3);
+    const context = owner.selection.getSnapshot().selection!.context;
+    assert.deepEqual(context.revision, {pageRevision: 'browse:opaque/actual'});assert(!('privacyFence' in context.scope));
+    assert.deepEqual(JSON.parse(context.scope.viewId), {libraryId: 'library', pivot: 'movies', query: null, sort: [{field: 'title', direction: 'asc'}]});
+    owner.selection.selectLoaded();assert.equal(owner.selection.getSnapshot().selection!.summary.count, 3);
+    assert.equal(owner.selection.getSnapshot().canPlay, false);
+    await assert.rejects(owner.selection.play(), {code: 'library-play-selection-unavailable'});
+  } finally {owner.dispose();}
+});
+
+test('actual Detail grants resolve at four concurrent reads and remain bounded to the requested resident window', async () => {
+  let active = 0, peak = 0;
+  const pending: {id: string; result: ReturnType<typeof deferred<unknown>>}[] = [];
+  const owner = setup({playSegments: async () => queue}, async id => {
+    active++;peak = Math.max(peak, active);const result = deferred<unknown>();pending.push({id, result});
+    try {return await result.promise;} finally {active--;}
+  });
+  try {
+    await owner.load();let done = false;
+    const read = owner.selection.registerWindow(0, 9).then(rows => {done = true;return rows;});
+    await settle();assert.equal(active, 4);
+    for (let round = 0; round < 10 && !done; round++) {for (const value of pending.splice(0)) value.result.resolve(detail(value.id));await settle();}
+    const rows = await read;assert.equal(peak, 4);assert.equal(owner.detailReads(), 10);assert.equal(rows.length, 10);
+    assert(rows.every(row => row.capabilities.play && !row.capabilities.myList && !row.capabilities.favorite && !row.capabilities.edit && !row.capabilities.queue));
+    assert.deepEqual(rows.map(row => row.position), Array.from({length: 10}, (_, index) => index));
+    await assert.rejects(owner.selection.registerWindow(0, 60), {code: 'library-play-selection-unavailable'});
+  } finally {owner.dispose();}
+});
+
+test('replacement windows reject old row handles but explicit picks survive real page eviction', async () => {
+  let ids: readonly string[] | undefined;
+  const owner = setup({playSegments: async segments => {const first = segments[0].source;assert('items' in first);ids = first.items.ids;return queue;}});
+  try {
+    await owner.load();const first = await owner.selection.registerWindow(0, 2);owner.selection.toggle(first[0]);
+    const sameEntries = await owner.selection.registerWindow(1, 3);
+    assert.throws(() => owner.selection.toggle(first[1]), {name: 'AbortError'});
+    assert.equal(sameEntries[0].position, 1);
+    for (const start of [120, 300, 600, 900]) {owner.source.collection.ensureRange(start, start + 5);await settle();}
+    assert.equal(owner.source.contains(first[0].entry), false);assert.equal(owner.selection.getSnapshot().selection!.summary.count, 1);
+    assert.equal(owner.selection.getSnapshot().canPlay, true);assert.equal(await owner.selection.play(), queue);
+    assert.deepEqual(ids, ['movie-0']);
+  } finally {owner.dispose();}
+});
+
+test('replacing the mounted window cancels its unfinished grants before admitting new rows', async () => {
+  const pending: {id: string; signal?: AbortSignal; finish: () => void}[] = [];
+  const owner = setup({playSegments: async () => queue}, (id, signal) => new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('cancelled', 'AbortError'));
+    signal!.addEventListener('abort', abort, {once: true});
+    pending.push({id, signal, finish: () => {signal!.removeEventListener('abort', abort);resolve(detail(id));}});
+  }));
+  try {
+    await owner.load();
+    const first = assert.rejects(owner.selection.registerWindow(0, 9), {name: 'AbortError'});
+    await settle();assert.equal(pending.length, 4);
+    const next = owner.selection.registerWindow(10, 11);
+    await first;await settle();
+    assert(pending.slice(0, 4).every(value => value.signal!.aborted));
+    assert.deepEqual(pending.slice(4).map(value => value.id), ['movie-10', 'movie-11']);
+    for (const value of pending.slice(4)) value.finish();
+    const rows = await next;assert.deepEqual(rows.map(row => row.position), [10, 11]);
+    assert.equal(owner.detailReads(), 6);
+  } finally {owner.dispose();for (const value of pending) value.finish();}
+});
+
+test('selection and navigation cancel a pending real-port call; reselecting or Back cannot revive it', async () => {
+  for (const navigate of [false, true]) {
+    const held = deferred<QueueHeader>();let lifetime: {signal?: AbortSignal; isCurrent?: () => boolean} | undefined;
+    const owner = setup({playSegments: async (_segments, options) => {lifetime = options;return held.promise;}});
+    try {
+      await owner.load();const rows = await owner.selection.registerWindow(0, 2);owner.selection.toggle(rows[0]);
+      const playing = owner.selection.play();assert.equal(lifetime?.isCurrent?.(), true);
+      if (navigate) owner.navigation.abort();else {owner.selection.clear();owner.selection.toggle(rows[0]);}
+      assert.equal(lifetime?.signal?.aborted, true);assert.equal(lifetime?.isCurrent?.(), false);
+      owner.authority(true);held.resolve(queue);await assert.rejects(playing, {name: 'AbortError'});
+      if (navigate) {assert.equal(owner.selection.getSnapshot().phase, 'retired');assert.throws(() => owner.selection.toggle(rows[0]), {name: 'AbortError'});}
+    } finally {held.resolve(queue);owner.dispose();}
+  }
+});
+
+test('query and authority changes permanently retire the original model even if the same token returns', async () => {
+  for (const query of [false, true]) {
+    const owner = setup({playSegments: async () => queue});
+    try {
+      await owner.load();const rows = await owner.selection.registerWindow(0, 2);owner.selection.toggle(rows[0]);
+      if (query) owner.source.setQuery([], {field: 'title', direction: 'desc'});else owner.authority(false);
+      assert.equal(owner.selection.getSnapshot().phase, 'retired');owner.authority(true);
+      if (query) {await settle();owner.source.setQuery([], {field: 'title', direction: 'asc'});await settle();}
+      assert.equal(owner.selection.getSnapshot().phase, 'retired');assert.equal(owner.selection.getSnapshot().canPlay, false);
+      assert.throws(() => owner.selection.toggle(rows[0]), {name: 'AbortError'});
+    } finally {owner.dispose();}
+  }
+});
+
+test('an actual denied grant retires cached selections before any Play can be dispatched', async () => {
+  let denied = false, plays = 0;
+  const owner = setup({playSegments: async () => {plays++;return queue;}}, async id => {
+    if (denied) throw Object.assign(new Error('denied'), {status: 403, code: 'forbidden'});
+    return detail(id);
+  });
+  try {
+    await owner.load();const rows = await owner.selection.registerWindow(0, 1);owner.selection.toggle(rows[0]);
+    assert.equal(owner.selection.getSnapshot().canPlay, true);denied = true;
+    await assert.rejects(owner.selection.registerWindow(2, 3));
+    assert.equal(owner.selection.getSnapshot().phase, 'error');assert.equal(owner.selection.getSnapshot().canPlay, false);
+    await assert.rejects(owner.selection.play(), {name: 'AbortError'});assert.equal(plays, 0);
+  } finally {owner.dispose();}
+});
+
+test('the original navigation signal cancels all queued grant reads and admits no late rows', async () => {
+  const pending: {id: string; signal?: AbortSignal; result: ReturnType<typeof deferred<unknown>>}[] = [];
+  const owner = setup({playSegments: async () => queue}, async (id, signal) => {const result = deferred<unknown>();pending.push({id, signal, result});return result.promise;});
+  try {
+    await owner.load();const read = owner.selection.registerWindow(0, 9);await settle();assert.equal(owner.detailReads(), 4);
+    owner.navigation.abort();await assert.rejects(read, {name: 'AbortError'});assert(pending.every(value => value.signal?.aborted));
+    for (const value of pending) value.result.resolve(detail(value.id));await settle();
+    assert.equal(owner.detailReads(), 4);assert.deepEqual(owner.selection.getSnapshot().rows, []);
+  } finally {for (const value of pending) value.result.resolve(detail(value.id));owner.dispose();}
+});
