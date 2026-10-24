@@ -26,6 +26,8 @@ export type LiveChromeProps = Readonly<{
   onSkip: (seconds: number) => void;
   onSeek: (seconds: number) => void;
   onMore: (anchor: HTMLButtonElement) => void;
+  canPlayPause?: boolean;
+  canSeek?: boolean;
   /** The unchanged generic right cluster: volume, subtitles/audio, quality, PiP and full screen. */
   right: ReactNode;
   onMiniGuideOpenChange?: (open: boolean) => void;
@@ -37,7 +39,7 @@ export type LiveChromeProps = Readonly<{
  * programme-span seek rail, live edge and Go to live, channel surf, Guide mini guide and Record.
  * Presentation only: every fact is a genuine channel/guide/session fact supplied by the port,
  * and every action rechecks that port's exact channel fence before it runs. */
-export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, reportError}: LiveChromeProps) {
+export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
   const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
   const guide = useRef<HTMLElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef(false);
   const window = port.window, channel = port.channel, programme = port.programme;
@@ -121,8 +123,8 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
       <div className={styles.seek}>
         <div ref={rail} className={styles.rail} role="slider" tabIndex={0} aria-label={t('player.position')}
           aria-valuemin={Math.round(window.seekStartMs / 1000)} aria-valuemax={Math.round(window.liveEdgeMs / 1000)} aria-valuenow={Math.round(displayWindow.positionMs / 1000)}
-          aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
-          onPointerDown={event => {if (!port.isCurrent()) return;drag.current = true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
+          aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
+          onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
           onPointerMove={event => {if (drag.current) seekAt(event.clientX);}}
           onPointerUp={event => {if (!drag.current) return;drag.current = false;if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);if (scrub !== undefined && port.isCurrent()) onSeek(scrub / 1000);setScrub(undefined);}}
           onPointerCancel={() => {drag.current = false;setScrub(undefined);}}>
@@ -146,9 +148,9 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         <div className={styles.center}>
           <LiveControl icon="i-chdown" label={port.down ? t('next.live.channelDown', {channel: port.down.channel.name, number: port.down.channel.number}) : t('web.player.channelDown')}
             small={port.down?.channel.number} disabled={!port.down} onClick={() => act(() => port.tune(-1))}/>
-          <LiveControl icon="i-back" label={t('next.dock.back', {seconds: port.skipBackSeconds})} small={String(port.skipBackSeconds)} onClick={() => run(() => onSkip(-port.skipBackSeconds))}/>
-          <LiveControl main icon={playing ? 'i-pause' : 'i-play'} label={t(playing ? 'next.dock.pause' : 'next.dock.play')} onClick={() => run(onPlayPause)}/>
-          <LiveControl icon="i-fwd" label={t('next.dock.forward', {seconds: port.skipForwardSeconds})} small={String(port.skipForwardSeconds)} onClick={() => run(() => onSkip(port.skipForwardSeconds))}/>
+          <LiveControl icon="i-back" label={t('next.dock.back', {seconds: port.skipBackSeconds})} small={String(port.skipBackSeconds)} disabled={!canSeek} onClick={() => run(() => onSkip(-port.skipBackSeconds))}/>
+          <LiveControl main icon={playing ? 'i-pause' : 'i-play'} label={t(playing ? 'next.dock.pause' : 'next.dock.play')} disabled={!canPlayPause} onClick={() => run(onPlayPause)}/>
+          <LiveControl icon="i-fwd" label={t('next.dock.forward', {seconds: port.skipForwardSeconds})} small={String(port.skipForwardSeconds)} disabled={!canSeek} onClick={() => run(() => onSkip(port.skipForwardSeconds))}/>
           <LiveControl icon="i-chup" label={port.up ? t('next.live.channelUp', {channel: port.up.channel.name, number: port.up.channel.number}) : t('web.player.channelUp')}
             small={port.up?.channel.number} disabled={!port.up} onClick={() => act(() => port.tune(1))}/>
         </div>

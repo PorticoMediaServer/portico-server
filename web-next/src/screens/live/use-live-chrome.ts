@@ -103,7 +103,7 @@ export function useLiveChromePort(context: ShellAssemblyContext | undefined, run
   const currentGuideProgramme = !!facts && facts.fenceKey === fenceKey ? facts.programmes.get(fence.channelId) : undefined;
   const guideProgramme = !!facts && facts.fenceKey === fenceKey && linear.programme
     ? (currentGuideProgramme?.id === linear.programme.id ? currentGuideProgramme : facts.current.programmes.find(programme => programme.id === linear.programme!.id)) : undefined;
-  const authoritative: LiveChromeChannel = channel && currentGuide ? channel : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
+  const authoritative: LiveChromeChannel = channel && currentGuide ? {...channel, recordAvailable: channel.recordAvailable && !!guideProgramme} : {id: fence.channelId, sourceId: linear.channel.sourceId, kind: fence.channelKind, generation: fence.channelGeneration,
     number: '', name: linear.name, favorite: false, recordAvailable: false, tuneAvailable: true};
   const factsRecording = recordingState(guideProgramme);
   const localRecording = recorded && recorded.programmeId === linear.programme?.id ? recorded.state : undefined;

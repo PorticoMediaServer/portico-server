@@ -276,7 +276,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
-          right={liveRight} onMiniGuideOpenChange={setLiveGuideOpen} reportError={binding.reportError}/>
+          right={liveRight} onMiniGuideOpenChange={setLiveGuideOpen} canPlayPause={can(mainKind)} canSeek={can('seek')} reportError={binding.reportError}/>
       </div> : <>
         <div className={styles.shade} />
         <div className={styles.top}>
