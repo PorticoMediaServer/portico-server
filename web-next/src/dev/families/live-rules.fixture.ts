@@ -2,7 +2,7 @@ import {defaultI18n} from '@i18n';
 import type {SeriesRulesView, SeriesRule, RuleAiring} from '../../screens/live/series-rules-model';
 const t = defaultI18n.t;
 const atlas = t('next.live.example.atlas'), news = t('next.live.example.northwind');
-const airing = (id: string, time: string, season: number, episode: number, title: string, isNew: boolean): RuleAiring => ({id, time, day: t('guide.today'), channelId: 'atlas', channel: atlas, episode: t('downloads.title.episode', {season, episode}), title, isNew});
+const airing = (id: string, time: string, season: number, episode: number, title: string, isNew: boolean): RuleAiring => ({id, time, day: t('guide.today'), channelId: 'atlas', channel: atlas, episode: t('downloads.title.episode', {season, episode}), title, isNew, scheduled: true});
 const clockAirings = [airing('clock-1', '4:15 PM', 5, 9, t('next.live.example.crossed'), false), airing('clock-2', '6:45 PM', 4, 5, t('next.live.example.doors'), false), airing('clock-3', '7:30 PM', 6, 7, t('next.live.example.crossed'), true)];
 const base = {enabled: true, episodes: 'all', channel: 'any', keep: 'all', startEarly: 2, endLate: 0} as const;
 const rules: readonly SeriesRule[] = [
