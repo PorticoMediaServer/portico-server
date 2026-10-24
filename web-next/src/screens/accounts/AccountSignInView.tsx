@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
-import type {MoveCodeLink} from '@core/account-move.ts';
+import type {TakeAccountMove} from '../../route-registry-arrival';
 import type {TakeAccountReturn} from '../../route-registry-return';
 import {router} from '../../router';
 import type {BrowserAccountEntry} from '../../platform/account-entry';
@@ -14,7 +14,7 @@ import {AccountSignInForm} from './sign-in-form';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
 
-export function AccountSignInView({entry, form, takeReturn, takeMove, initialize = true, initialOrigin, onCancel}: {entry: BrowserAccountEntry; form: AccountSignInForm; takeReturn?: TakeAccountReturn; takeMove?: () => MoveCodeLink | undefined; initialize?: boolean; initialOrigin?: string; onCancel?: () => void}) {
+export function AccountSignInView({entry, form, takeReturn, takeMove, initialize = true, initialOrigin, onCancel}: {entry: BrowserAccountEntry; form: AccountSignInForm; takeReturn?: TakeAccountReturn; takeMove?: TakeAccountMove; initialize?: boolean; initialOrigin?: string; onCancel?: () => void}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), started = useRef(false), alive = useRef(true);
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;

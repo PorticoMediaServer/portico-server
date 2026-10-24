@@ -6,13 +6,13 @@ import {AccountSignInForm} from './sign-in-form';
 import {AccountSignInView} from './AccountSignInView';
 
 function SignInScreen() {
-  const {takeAccountReturn} = useWebScreenContext();
+  const {takeAccountReturn, takeAccountMove} = useWebScreenContext();
   const [instance, setInstance] = useState<Readonly<{entry: BrowserAccountEntry; form: AccountSignInForm}>>();
   useEffect(() => {
     const entry = createBrowserAccountEntry(), form = new AccountSignInForm(entry);
     setInstance({entry, form});
     return () => {form.dispose(); entry.dispose();};
   }, []);
-  return instance ? <AccountSignInView {...instance} takeReturn={takeAccountReturn} /> : null;
+  return instance ? <AccountSignInView {...instance} takeReturn={takeAccountReturn} takeMove={takeAccountMove} /> : null;
 }
 export default defineWebScreen({id: 'signIn', component: SignInScreen, chrome: 'standalone'});
