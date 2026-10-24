@@ -66,11 +66,28 @@ func TestSonicActualRetryVerifiesCPUWithoutPublishingSyntheticSong(t *testing.T)
 	if err := s.RetrySonic(context.Background(), "music", func(*sql.Tx) error { checks++; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if checks != 2 || !s.SonicCanAttempt() || s.sonicRuntime().Availability().State != "ready" || sup.Active() != 0 {
+	if checks != 2 || !s.SonicCanAttempt() || !s.SonicRuntimeAvailable() || s.sonicRuntime().Availability().State != "ready" || sup.Active() != 0 {
 		t.Fatal("not an actual retired loader probe", checks, s.sonicRuntime().Availability(), sup.Active())
 	}
 	var count int
 	if err := c.DB.QueryRow(`SELECT count(*) FROM music_sonic_embeddings`).Scan(&count); err != nil || count != 0 || len(s.sonicProgress) != 0 {
 		t.Fatal("synthetic probe counted as a song", count, err)
+	}
+}
+
+func TestSonicRuntimeAvailableReadsOnlyVerifiedCachedState(t *testing.T) {
+	var absent *Service
+	if absent.SonicRuntimeAvailable() {
+		t.Fatal("nil service claimed a verified engine")
+	}
+	s := &Service{options: Options{OpenSonic: func() (*sonic.Runtime, error) { t.Fatal("availability invoked loader"); return nil, nil }}}
+	if s.SonicRuntimeAvailable() {
+		t.Fatal("missing runtime claimed available")
+	}
+	// An unverified object permits an attempt, but has no successful numeric
+	// probe. With no DB installed this read must still work without any SQL.
+	s.options.Sonic = &sonic.Runtime{}
+	if !s.SonicCanAttempt() || s.SonicRuntimeAvailable() {
+		t.Fatal("admission substituted for verified readiness")
 	}
 }
