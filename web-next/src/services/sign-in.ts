@@ -1,5 +1,5 @@
 import {ApiError} from '@core/index.ts';
-import {parseHostedSignInStartURL, verifyHostedSignInStart} from '@core/hosted-sign-in-start.ts';
+import {buildHostedSignInStartURL, parseHostedSignInStartURL, verifyHostedSignInStart} from '@core/hosted-sign-in-start.ts';
 import {completeRegisteredReturn} from '@core/same-tab-return.ts';
 import {BrowserProtectedStore} from '../platform/server-connections';
 import {servicesTab} from './intake';
@@ -48,12 +48,12 @@ export async function continueHostedSignIn(account: ServicesAccount, pending: Ho
   store: SignInStore, signal: AbortSignal, navigate: (location: string) => void) {
   const {handoff} = pending;
   if (account.api.origin !== handoff.hostedOrigin) throw invalid();
+  const href = buildHostedSignInStartURL(handoff);
   const current = async () => {
     signal.throwIfAborted();
     const saved = await store.read();
     const parsed = saved && parseHostedSignInStartURL(saved.href, handoff.hostedOrigin);
-    if (!parsed || parsed.context.payload !== handoff.context.payload || parsed.start.state !== handoff.start.state ||
-        parsed.start.codeChallenge !== handoff.start.codeChallenge || parsed.context.signature !== handoff.context.signature) throw invalid();
+    if (!parsed || saved?.version !== 1 || saved.href !== href) throw invalid();
     await verifyHostedSignInStart(parsed);
     signal.throwIfAborted();
   };
@@ -66,11 +66,12 @@ export async function continueHostedSignIn(account: ServicesAccount, pending: Ho
   await currentAccountWork(account, async () => {signal.throwIfAborted();}, expected);
   let cleared = false;
   await store.change(saved => {
-    if (saved && parseHostedSignInStartURL(saved.href, handoff.hostedOrigin)?.start.state === handoff.start.state) {cleared = true; return undefined;}
+    if (saved?.version === 1 && saved.href === href) {cleared = true; return undefined;}
     return saved;
   });
   if (!cleared) throw invalid();
   signal.throwIfAborted();
+  if (Date.parse(handoff.expiresAt) <= Date.now()) throw invalid();
   // No await between the final live-family check and same-tab navigation.
   const session = account.service.getSnapshot().session;
   if (!session || session.account.id !== expected.accountId || session.familyId !== expected.familyId) throw invalid();

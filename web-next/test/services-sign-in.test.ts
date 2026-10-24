@@ -99,3 +99,20 @@ for (const invalidSignature of [false, true]) test(`a late ${invalidSignature ? 
   assert.equal((await restoreHostedSignIn(store, origin))?.handoff.context.payload, second.handoff.context.payload);
   assert.equal(first.calls.length + second.calls.length, 0, 'restoration never issues an account answer');
 });
+
+test('finishing a return cannot clear a successor which happens to carry the same state', async () => {
+  const first = fixture(), second = fixture();
+  assert.equal(first.handoff.start.state, second.handoff.start.state);
+  let replaceOnCommit = false;
+  const store: SignInStore = {read: first.store.read, change: async update => {
+    if (replaceOnCommit) {replaceOnCommit = false; await first.store.change(() => ({version: 1, href: second.href}));}
+    await first.store.change(update);
+  }};
+  const pending = await restoreHostedSignIn(store, origin, {href: first.href});
+  replaceOnCommit = true;
+  await assert.rejects(continueHostedSignIn(first.account, pending!, {accountId: 'account', familyId: 'family'}, store,
+    new AbortController().signal, value => first.navigations.push(value)));
+  assert.equal(first.calls.length, 2);
+  assert.equal(first.navigations.length, 0);
+  assert.equal(first.saved()?.href, second.href);
+});
