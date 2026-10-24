@@ -860,3 +860,132 @@ test('a second command while one is in flight is busy and sends nothing', async 
     assert.deepEqual(await first, {committed: true, refreshed: true, busy: false});
   } finally { controller.dispose(); }
 });
+
+// Step 2 — bound delete preview and confirm through the same private model.
+const deletePreviewFact = (id: string) => ({recordingId: id, revision: 7, bytes: 1234, keep: false,
+  activeReaders: false, result: 'Removes the recording and its file'});
+const rowId = (call: Call) => pathname(call).split('/')[4];
+
+test('delete is offered only by the actual page and its returned preview is the one confirmed', async () => {
+  let served = 0;
+  const {api, calls} = fixtureServer(call => {
+    const name = pathname(call);
+    if (call.method !== 'GET') return commandRecording(rowId(call), {revision: 9, state: 'deleted'});
+    if (name.endsWith('/delete-preview')) return deletePreviewFact(rowId(call));
+    if (name.startsWith('/v1/dvr/recordings/')) return detailFact(rowId(call));
+    served++;
+    return served === 1
+      ? pageOf([commandRecording(hex(64, '1'), {state: 'completed'}), commandRecording(hex(64, '2'), {state: 'recording'})], '', 1)
+      : pageOf([], '', 2);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const [completed, active] = controller.getSnapshot().page!.recordings;
+    assert.equal(await controller.deletePreview(active), undefined, 'an active recording is never offered');
+    assert.equal(calls.filter(call => pathname(call).endsWith('/delete-preview')).length, 0);
+
+    const preview = await controller.deletePreview(completed);
+    assert.deepEqual(preview, deletePreviewFact(hex(64, '1')), 'the exact returned preview is preserved');
+    assert.equal(preview!.revision, 7);
+    assert.equal(preview!.keep, false);
+    assert.equal(preview!.activeReaders, false);
+    assert.equal(preview!.result, deletePreviewFact(hex(64, '1')).result);
+
+    const held = controller.confirmDelete(completed);
+    held.catch(() => {});
+    await tick();
+    const command = calls.filter(call => call.method === 'DELETE').at(-1)!;
+    assert.equal(pathname(command), '/v1/dvr/recordings/' + hex(64, '1'));
+    assert.equal((command.body as {expectedRevision: number}).expectedRevision, 7, 'the preview revision is sent, not the row revision');
+    assert.equal(controller.getSnapshot().page?.recordings.length, 2, 'nothing is removed before the ACK');
+    assert.equal(controller.getSnapshot().mutating, true);
+
+    assert.deepEqual(await held, {committed: true, refreshed: true, busy: false});
+    assert.equal(controller.getSnapshot().page?.recordings.length, 0, 'the genuine reload removes the row');
+
+    await controller.load({view: 'recorded', recordingId: hex(64, '5')});
+    assert.equal(await controller.deletePreview(controller.getSnapshot().detail!.recording), undefined,
+      'a detail destination never invents a delete offer');
+  } finally { controller.dispose(); }
+});
+
+test('a cross-row, rebound or stale preview can never be confirmed', async () => {
+  const {api, calls} = fixtureServer(call => {
+    const name = pathname(call);
+    if (call.method !== 'GET') return commandRecording(rowId(call), {revision: 9, state: 'deleted'});
+    if (name.endsWith('/delete-preview')) return deletePreviewFact(rowId(call));
+    return commandPage();
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const [scheduled, completed, failed] = controller.getSnapshot().page!.recordings;
+    await controller.deletePreview(completed);
+    await assert.rejects(controller.confirmDelete(failed), /recordings-delete-preview-stale/, 'another row cannot use it');
+    await assert.rejects(controller.confirmDelete({...completed}), /recordings-row-stale/, 'a copy is not the resident row');
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
+
+    await controller.load({view: 'recorded'});
+    const reread = controller.getSnapshot().page!.recordings[1];
+    await assert.rejects(controller.confirmDelete(reread), /recordings-delete-preview-stale/,
+      'a page reload ends the preview generation');
+
+    await controller.deletePreview(reread);
+    await assert.rejects(controller.confirmDelete(scheduled), /recordings-delete-preview-stale/);
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 0);
+  } finally { controller.dispose(); }
+});
+
+test('a confirmed delete held before its ACK sends exactly one command', async () => {
+  const deleteReply = held<unknown>();
+  const {api, calls} = fixtureServer(call => {
+    const name = pathname(call);
+    if (call.method === 'DELETE') return deleteReply.promise;
+    if (name.endsWith('/delete-preview')) return deletePreviewFact(rowId(call));
+    return commandPage();
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[1];
+    await controller.deletePreview(row);
+    const first = controller.confirmDelete(row);
+    first.catch(() => {});
+    await assert.rejects(controller.confirmDelete(row), /recordings-delete-preview-stale/,
+      'the bound preview is single use');
+    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+    deleteReply.resolve(commandRecording(row.id, {revision: 9, state: 'deleted'}));
+    assert.deepEqual(await first, {committed: true, refreshed: true, busy: false});
+  } finally { controller.dispose(); }
+});
+
+test('an ACK with a failing reload is committed but not refreshed and removes nothing optimistically', async () => {
+  let failReload = false, served = 0;
+  const {api} = fixtureServer(call => {
+    const name = pathname(call);
+    if (call.method !== 'GET') return commandRecording(rowId(call), {revision: 9, state: 'deleted'});
+    if (name.endsWith('/delete-preview')) return deletePreviewFact(rowId(call));
+    served++;
+    if (failReload && served > 1) throw {status: 500};
+    return served === 1 ? pageOf([commandRecording(hex(64, '1'), {state: 'completed'})], '', 1) : pageOf([], '', 2);
+  });
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    await controller.deletePreview(row);
+    failReload = true;
+    assert.deepEqual(await controller.confirmDelete(row), {committed: true, refreshed: false, busy: false});
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.page?.recordings.length, 1, 'the ACK never removes the row optimistically');
+    assert.equal(snapshot.page?.recordings[0], row);
+    assert.equal(snapshot.commandError, '', 'the command committed');
+    assert.ok(snapshot.error.length > 0, 'the reload failure is a destination fact');
+    assert.equal(controller.contains(row), false, 'membership waits for a genuine reload');
+
+    failReload = false;
+    await controller.load({view: 'recorded'});
+    assert.equal(controller.getSnapshot().page?.recordings.length, 0);
+  } finally { controller.dispose(); }
+});

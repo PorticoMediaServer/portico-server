@@ -1,5 +1,5 @@
 import {DVRClient, DVRModel, activeRecording, dvrMessage, isAccessError, mutableRecording,
-  type DVRPage, type DVRSummary, type Recording, type RecordingDetail, type RecordingGroups, type RecordingStorage} from '@core/dvr.ts';
+  type DeletePreview, type DVRPage, type DVRSummary, type Recording, type RecordingDetail, type RecordingGroups, type RecordingStorage} from '@core/dvr.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
 
 /** The four Recording destinations this door reads. Series rules are a different
@@ -51,6 +51,7 @@ const cancelled = () => new DOMException('recordings-scope-closed', 'AbortError'
 const invalid = () => Object.assign(new Error('recordings-query-invalid'), {code: 'recordings-query-invalid'});
 const staleRow = () => Object.assign(new Error('recordings-row-stale'), {code: 'recordings-row-stale'});
 const notOffered = () => Object.assign(new Error('recordings-command-not-offered'), {code: 'recordings-command-not-offered'});
+const stalePreview = () => Object.assign(new Error('recordings-delete-preview-stale'), {code: 'recordings-delete-preview-stale'});
 /** The legacy keepable states: a failure that produced a file can still be kept. */
 const keepable: readonly string[] = ['completed', 'incomplete-playable', 'failed'];
 const isCancelled = (failure: unknown) => failure instanceof DOMException && failure.name === 'AbortError';
@@ -83,6 +84,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
    * destination change on the same lease; this fences them across actual retirement. */
   let epoch = 0, summarySerial = 0, groupsSerial = 0;
   let loading = false, accessDenied = false, errorText = '', commandError = '';
+  let deletion: Readonly<{recording: Recording; preview: DeletePreview; serial: number; epoch: number; query: RecordingsQuery}> | undefined;
   let query: RecordingsQuery = Object.freeze({view: 'upcoming'});
   let page: DVRPage | null = null, detail: RecordingDetail | null = null, storage: RecordingStorage | null = null;
   let summary: DVRSummary | null = null, groups: RecordingGroups | null = null, groupsSort: RecordingsSort = 'recent';
@@ -117,6 +119,11 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   function resident(recording: Recording): boolean {
     return (page?.recordings.includes(recording) ?? false) || detail?.recording === recording;
   }
+  /** Delete is offered only by the actual current page (its own deletion flag)
+   * and never for an active recording. */
+  function offersDelete(recording: Recording): boolean {
+    return page?.deletionAvailable === true && !activeRecording(recording);
+  }
   const sameDestination = (left: RecordingsQuery, right: RecordingsQuery) => left.view === right.view
     && (left.cursor ?? '') === (right.cursor ?? '') && (left.recordingId ?? '') === (right.recordingId ?? '');
   /** One authority change erases every private fact — page, detail, storage and
@@ -125,7 +132,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     if (closed) return;
     epoch++;summarySerial++;groupsSerial++;
     dropResident();summary = groups = null;groupsSort = 'recent';
-    accessDenied = denied;errorText = '';commandError = '';
+    deletion = undefined;accessDenied = denied;errorText = '';commandError = '';
     publish();
   }
   function recordFailure(failure: unknown) {
@@ -152,6 +159,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   async function command(work: () => Promise<unknown>): Promise<RecordingsCommandOutcome> {
     if (!current()) throw cancelled();
     if (model.getSnapshot().mutating) return Object.freeze({committed: false, refreshed: false, busy: true});
+    deletion = undefined;
     const committed = await model.act(work);
     if (!current()) throw cancelled();
     const snapshot = model.getSnapshot();
@@ -178,7 +186,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     signal.removeEventListener('abort', onAbort);stopModel?.();stopModel = undefined;
     loadSerial++;epoch++;summarySerial++;groupsSerial++;
     model.dispose();
-    page = detail = storage = null;summary = groups = null;groupsSort = 'recent';
+    page = detail = storage = null;summary = groups = null;groupsSort = 'recent';deletion = undefined;
     loading = false;accessDenied = false;errorText = '';commandError = '';
     state = Object.freeze({query, phase: 'retired', page: null, detail: null, storage: null, summary: null, groups: null,
       groupsSort: 'recent', accessDenied: false, error: '', mutating: false, commandError: ''});
@@ -243,7 +251,7 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
         // summary/group facts and the receipt lease are deliberately untouched.
         dropResident();
       }
-      query = captured;loading = true;errorText = '';commandError = '';
+      deletion = undefined;query = captured;loading = true;errorText = '';commandError = '';
       publish();
       try {
         await model.load(captured);
@@ -333,6 +341,35 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       const target = commandTarget(recording);
       if (!keepable.includes(target.state)) throw notOffered();
       return command(() => model.client.keep(target));
+    },
+    /** The server's own delete preview for the exact resident row, offered only by
+     * the actual current page for a non-active recording. The returned object is
+     * the only preview this door will confirm. */
+    async deletePreview(recording: Recording): Promise<DeletePreview | undefined> {
+      const target = commandTarget(recording);
+      if (!offersDelete(target)) return undefined;
+      start();
+      const serial = loadSerial, at = epoch, forQuery = query;
+      deletion = undefined;
+      const preview = await model.client.deletePreview(target);
+      if (!current()) throw cancelled();
+      if (serial !== loadSerial || at !== epoch || !sameDestination(forQuery, query) || !resident(target) || !offersDelete(target)) {
+        throw cancelled();
+      }
+      const bound = Object.freeze({recording: target, preview: Object.freeze({...preview}), serial, epoch: at, query: forQuery});
+      deletion = bound;
+      return bound.preview;
+    },
+    /** Confirm the exact bound preview for this row and generation through the same
+     * private model. There is no caller-supplied preview, no cross-row reuse and no
+     * optimistic removal: the genuine destination is reloaded only after the ACK. */
+    async confirmDelete(recording: Recording): Promise<RecordingsCommandOutcome> {
+      const target = commandTarget(recording);
+      const bound = deletion;
+      if (!bound || bound.recording !== target || bound.serial !== loadSerial || bound.epoch !== epoch
+        || !sameDestination(bound.query, query) || !offersDelete(target)) throw stalePreview();
+      deletion = undefined;
+      return command(() => model.client.delete(target, bound.preview));
     },
     dispose,
   };
