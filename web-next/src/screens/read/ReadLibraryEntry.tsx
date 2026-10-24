@@ -56,13 +56,18 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry}:
     return () => {observer.disconnect(); window.removeEventListener('resize', read);};
   }, [failed, reading.status]);
   useEffect(() => {resources.resume.collection.ensureRange(0, 11);}, [resources]);
-  /** phone-read 1: the server's own recently-added row. A failed or empty row leaves the library
-   *  without it; no date, count or membership is made up in its place. */
+  /** phone-read 1: the server's own recently-added row. An empty row draws nothing; a failed
+   *  request is reported through the screen's error channel rather than pretending the library
+   *  has no recently-added values (Root §3), and the Reading list stays reachable. */
   useEffect(() => {
     const operation = new AbortController();
     resources.bindings.client.discover({libraryId, limit: 20}, operation.signal)
       .then(response => {if (!operation.signal.aborted) setRecent(response.rows[0]?.items ?? []);})
-      .catch(() => {if (!operation.signal.aborted) setRecent([]);});
+      .catch(error => {
+        if (operation.signal.aborted) return;
+        setRecent([]);
+        if (resources.bindings.authority.isCurrent()) resources.reportError(error);
+      });
     return () => operation.abort();
   }, [resources, libraryId]);
   const cardWidth = width < 600 ? 108 : 190;
