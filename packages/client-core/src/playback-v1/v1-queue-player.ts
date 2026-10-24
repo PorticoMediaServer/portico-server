@@ -471,7 +471,9 @@ export class V1QueuePlayer implements QueueController {
         const p = this.playback.getSnapshot();
         await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices}, p.intent === 'paused' ? 'paused' : 'playing', true, context);
         requireSessionChangeCurrent(context);
-        return context ? this.session : undefined;
+        if (context && (this.disposed || sequence !== this.changeSequence || this.generation !== generation + 1
+          || this.header?.id !== session.queue?.queueId || this.header?.current?.entryId !== session.queue?.entryId)) throw new DOMException('Playback change retired', 'AbortError');
+        return context && this.session?.id !== session.id ? this.session : undefined;
       }
       throw e;
     }

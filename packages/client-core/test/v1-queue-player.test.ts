@@ -903,3 +903,18 @@ test('strict queue lifetime is checked before transport and is superseded by a n
   await f.player.changePlayback({audioTrackId:'a2'});const actual=f.player.currentSession();release();await rejected;assert.equal(f.player.currentSession(),actual);
  }finally{f.stop();}
 });
+
+
+test('a lifetime-scoped ended recovery cannot return an unrelated newer Play as its result',async()=>{
+ let retiredSession='',hold=true,entered!:()=>void,release!:()=>void;
+ const reached=new Promise<void>(resolve=>{entered=resolve}),gate=new Promise<void>(resolve=>{release=resolve});
+ const f=setup({afterResponse:async(request,response)=>{
+  if(retiredSession&&request.method==='GET'&&request.path===`/v1/playback/sessions/${retiredSession}`)return {status:410,headers:{},body:{error:{code:'session_ended',retry:'never'}}};
+  if(retiredSession&&hold&&request.method==='POST'&&request.path==='/v1/playback/sessions'){hold=false;entered();await gate;}
+  return response;
+ }});
+ try{await f.player.playItem('movie');retiredSession=f.player.currentSession()!.id;
+  const pending=f.player.changePlayback({subtitleTrackId:'s1'},{isCurrent:()=>true});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
+  await f.player.playItem('other');const current=f.player.currentSession();release();await rejected;assert.equal(f.player.currentSession(),current);
+ }finally{f.stop();}
+});
