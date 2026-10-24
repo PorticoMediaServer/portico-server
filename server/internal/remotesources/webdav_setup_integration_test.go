@@ -4,6 +4,7 @@ package remotesources
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ import (
 	"time"
 
 	"portico.local/server/internal/childprocess"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotemedia"
 )
@@ -32,8 +35,9 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 	}
 	digest := hex.EncodeToString(sha256Sum(binary))
 	clear(binary)
-	for _, mode := range []string{"imported/supported", "imported/ignored", "imported/wrong", "crypt/supported", "crypt/ignored", "crypt/wrong", "imported/unknown", "union/supported", "union/partial"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, test := range []string{"imported/supported", "imported/ignored", "imported/wrong", "crypt/supported", "crypt/ignored", "crypt/wrong", "imported/unknown", "union/supported", "union/partial", "save/imported/supported", "save/imported/ignored", "save/imported/unknown", "save/crypt/supported", "save/union/supported"} {
+		t.Run(test, func(t *testing.T) {
+			mode := strings.TrimPrefix(test, "save/")
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
 			payload := []byte(strings.Repeat("fixture", 16))
@@ -119,13 +123,17 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 			profile.Limits.RequestsPerSecond = 50
 			check := func(ctx context.Context) error { return ctx.Err() }
 			var observations []webDAVSetupObservation
-			observe, err := candidateWebDAVObserver([]byte(raw), remote, profile, policy, check, &observations)
-			if err != nil {
-				t.Fatal(err)
-			}
-			service := &Service{private: t.TempDir()}
-			if err = service.runCandidateServe(ctx, "", "1", profile, []byte(raw), remote, rcloneprogram.Program{Path: program}, digest, policy, check, observe); err != nil {
-				t.Fatal("retained setup component failed", err)
+			if strings.HasPrefix(test, "save/") {
+				observations = publishActualWebDAVSetup(t, ctx, program, raw, remote, mode, &gets)
+			} else {
+				observe, err := candidateWebDAVObserver([]byte(raw), remote, profile, policy, check, &observations)
+				if err != nil {
+					t.Fatal(err)
+				}
+				service := &Service{private: t.TempDir()}
+				if err = service.runCandidateServe(ctx, "", "1", profile, []byte(raw), remote, rcloneprogram.Program{Path: program}, digest, policy, check, observe); err != nil {
+					t.Fatal("retained setup component failed", err)
+				}
 			}
 			want, count := remotemedia.SetupRangeSupported, int32(3)
 			if strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/wrong") {
@@ -153,6 +161,62 @@ func TestResolvedWebDAVSetupUsesActualRetainedProcess(t *testing.T) {
 			}
 		})
 	}
+}
+
+func publishActualWebDAVSetup(t *testing.T, ctx context.Context, program, config, remote, mode string, gets *atomic.Int32) []webDAVSetupObservation {
+	t.Helper()
+	f, managed, identities, owner, family, _ := nativeSaveFixture(t)
+	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
+	receipt, err := managed.Command(ctx, "actual-owner-fixture", "", mounts.Command{OperationID: nativeSaveOperation(901), Action: "create", Name: "Actual WebDAV", Executable: program, Remote: remote, Config: config}, authorize)
+	if err != nil {
+		t.Fatal("actual owner save failed", err)
+	}
+	var observations []webDAVSetupObservation
+	rows, err := f.s.db.QueryContext(ctx, `SELECT source_generation,config_digest,leaf_remote,object_path,object_size,range_support,observed_ms FROM remote_source_webdav_tests WHERE source_id=? ORDER BY leaf_remote`, receipt.MountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var generation, digest string
+		var row webDAVSetupObservation
+		if err = rows.Scan(&generation, &digest, &row.Remote, &row.Object, &row.Size, &row.Support, &row.Observed); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		if generation != "1" || digest != hex.EncodeToString(sha256Sum([]byte(config))) || row.Observed < 1 {
+			rows.Close()
+			t.Fatal("published leaf facts lost source/config binding")
+		}
+		observations = append(observations, row)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	var count int
+	var support string
+	if err = f.s.db.QueryRowContext(ctx, `SELECT webdav_leaf_count,range_support FROM remote_sources WHERE id=? AND generation=1 AND removed=0`, receipt.MountID).Scan(&count, &support); err != nil || count != len(observations) || support != string(aggregateWebDAVSetup(observations)) {
+		t.Fatal("source and leaf publication diverged", err)
+	}
+	before := gets.Load()
+	view, err := dbwork.BeginSnapshot(ctx, f.s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequential, err := sourceSequentialTx(ctx, view.Tx(), receipt.MountID)
+	view.Rollback()
+	wantSequential := strings.HasSuffix(mode, "/ignored") || strings.HasSuffix(mode, "/unknown")
+	if err != nil || sequential != wantSequential || gets.Load() != before {
+		t.Fatal("published capability did not control DB-only range mode", sequential, err)
+	}
+	if _, err = f.s.db.ExecContext(ctx, `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = managed.Command(ctx, "actual-owner-fixture", receipt.MountID, mounts.Command{OperationID: nativeSaveOperation(902), Action: "configure", ExpectedRevision: receipt.ControlRevision, Config: config}, authorize); err == nil || gets.Load() != before {
+		t.Fatal("revoked owner reached setup I/O", err)
+	}
+	return observations
 }
 
 func actualCiphertextFixture(t *testing.T, ctx context.Context, program string) (string, []byte) {
