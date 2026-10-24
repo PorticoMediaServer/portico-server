@@ -3,6 +3,14 @@
 import os
 import pathlib
 import subprocess
+import hashlib
+import json
+# Reuse the public rights-verified source fixtures in place; do not copy or
+# regenerate older proprietary encoders just to exercise native playback.
+legacy=pathlib.Path(__file__).resolve().parents[3]/"server/internal/decoder/testdata/music-formats-r29"
+for item in json.loads((legacy/"manifest.json").read_text()):
+    assert item["Rights"]=="verified-free-fixture"
+    assert hashlib.sha256((legacy/item["Path"]).read_bytes()).hexdigest()==item["SHA256"]
 root=pathlib.Path(os.environ["TMPDIR"]).parent
 pcm=root/"owned-48000-stereo.wav"
 wavpack=root/"owned-48000-stereo.wv"
