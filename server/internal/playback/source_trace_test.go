@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -76,5 +77,40 @@ func TestAudioSourceTraceRetainsHDCarrierWithoutInventingObjects(t *testing.T) {
 	source.SampleRate = 48000
 	if trace.Profile != "DTS-HD MA" || trace.Layout != "7.1" || trace.SampleRate != 96000 {
 		t.Fatal("source refresh changed snapshot", trace)
+	}
+}
+
+func TestSourceTraceSurvivesActualDeliveryPlanStorage(t *testing.T) {
+	db, _, session := conversionOutputFixture(t)
+	var asset string
+	if err := db.QueryRow(`SELECT asset_id FROM playback_sessions WHERE id=?`, session).Scan(&asset); err != nil {
+		t.Fatal(err)
+	}
+	source := &SourceVideo{Codec: "hevc", StreamDetail: assets.StreamDetail{Width: 3840, Height: 2160, BitDepth: 10, DynamicRange: assets.RangeHDR10, HDR10Plus: true, MasterDisplay: "observed mastering", MaxCLL: "1000,400", StreamBreadth: assets.StreamBreadth{InterlaceAnalysis: assets.InterlaceFieldOrderProgressive, FrameRateNumerator: 24000, FrameRateDenominator: 1001}}}
+	audio := &SourceAudio{Index: 2, Codec: "dts", Channels: 8, Layout: "7.1", StreamDetail: assets.StreamDetail{Profile: "DTS-HD MA", SampleRate: 96000, BitsPerSample: 24, StreamBreadth: assets.StreamBreadth{AudioVariant: "dts_hd_ma"}}}
+	trace := &DecisionTrace{Version: 1, Container: "matroska", Video: traceVideoSource(source), Audio: traceAudioSource(audio, "explicit", 2)}
+	plan := DeliveryPlan{Profile: DeliveryProfileLegacy, SourceID: asset, SourceSize: 1, SourceModifiedNS: 1, Mode: "hls", Strategy: DeliveryVideoConversion, SourceContainer: "matroska", SourceVideoCodec: "hevc", SourceAudioCodec: "dts", VideoAction: "convert", AudioAction: "convert", OutputVideoCodec: "h264", OutputAudioCodec: "aac", AudioChannels: 2, HardwareBackend: "software", AudioStream: 2, Trace: trace}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err = persistDeliveryPlan(tx, session, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	// A later catalogue enrichment leaves the same pinned source bytes. A read
+	// must use the committed source snapshot, not splice in the new stream rows.
+	if _, err = db.Exec(`UPDATE catalog_assets SET width=640,height=360 WHERE token=?`, asset); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadDeliveryPlan(db, session)
+	if err != nil || loaded == nil || !reflect.DeepEqual(trace, loaded.Trace) {
+		t.Fatalf("stored source snapshot changed: %+v %v", loaded, err)
+	}
+	if loaded.Trace.Video.Width != 3840 || loaded.Trace.Audio.SampleRate != 96000 || loaded.Trace.Audio.Profile != "DTS-HD MA" || loaded.Trace.Video.Interlaced == nil || *loaded.Trace.Video.Interlaced {
+		t.Fatal(loaded.Trace)
 	}
 }
