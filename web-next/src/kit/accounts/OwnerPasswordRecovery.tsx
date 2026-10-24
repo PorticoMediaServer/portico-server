@@ -21,6 +21,7 @@ export function OwnerResetFile({serverName, location, writtenAt, busy, error, on
   onVerify: (code: string) => void; onRewrite: () => void; onBack: () => void;
 }) {
   const [code, setCode] = useState(''), [copyError, setCopyError] = useState<unknown>();
+  const [expanded, setExpanded] = useState(() => typeof matchMedia === 'function' && matchMedia('(max-width: 700px)').matches);
   const [remaining, setRemaining] = useState(() => Math.max(0, Math.ceil((writtenAt + location.retryAfterSeconds * 1000 - Date.now()) / 1000)));
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {input.current?.focus();}, []);
@@ -36,7 +37,7 @@ export function OwnerResetFile({serverName, location, writtenAt, busy, error, on
     <AuthError error={error ?? copyError} />
     <div className={styles.resetFilePath}><div><small>{t('accounts.recovery.fileSystem', {system: location.systemKind})}</small><code>{path}</code></div>
       <button type="button" aria-label={t('web.twoStep.copy')} onClick={() => {void navigator.clipboard.writeText(path).catch(setCopyError);}}><Icon name="i-copy" size={20} /></button></div>
-    <details className={styles.resetFilePlatforms}><summary><Icon name="i-down" size={18} />{t('accounts.recovery.fileOtherSystems')}</summary>
+    <details className={styles.resetFilePlatforms} open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}><summary><Icon name="i-down" size={18} />{t('accounts.recovery.fileOtherSystems')}</summary>
       <dl><div><dt>{t('accounts.recovery.windows')}</dt><dd><code>{t('accounts.recovery.windowsPath')}</code></dd></div><div><dt>{t('accounts.recovery.macos')}</dt><dd><code>{t('accounts.recovery.macosPath')}</code></dd></div><div><dt>{t('accounts.recovery.docker')}</dt><dd><code>{t('accounts.recovery.dockerPath')}</code> {t('accounts.recovery.inContainer')}</dd></div></dl>
     </details>
     <form className={styles.form} onSubmit={event => {event.preventDefault(); if (code.trim() && !busy) onVerify(code);}}>
