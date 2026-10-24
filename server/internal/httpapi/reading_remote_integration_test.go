@@ -341,6 +341,44 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 			if w = readingHTTP(t, h, "POST", "/v1/reading/sessions", token, "", ReadingSessionRequest{item.ID, item.SourceID}); w.Code != 404 {
 				t.Fatal("revoked remote library still readable", w.Code, w.Body.String())
 			}
+			if kind == "comic" {
+				// Change the actual upstream file after a successful owner extent.
+				// An unchanged inventory row cannot authorize replacement bytes or
+				// retarget the already captured publication/session.
+				w = readingHTTP(t, h, "POST", "/v1/reading/sessions", f.owner.AccessToken, "", ReadingSessionRequest{item.ID, item.SourceID})
+				var original ReadingSessionResponse
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &original) != nil {
+					t.Fatal("owner before upstream replacement", w.Code, w.Body.String())
+				}
+				ownerPrincipal, err := f.id.Authenticate(f.owner.AccessToken)
+				if err != nil {
+					t.Fatal(err)
+				}
+				captured, err := d.Reading.OpenSession(context.Background(), ownerPrincipal, original.SessionID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer captured.Close()
+				if n, err := captured.ReadAt(extent[:], 0); n != len(extent) || err != nil {
+					t.Fatal("original owner extent", n, err)
+				}
+				upstream, err := os.OpenFile(filepath.Join(root, kind, "Original.cbz"), os.O_APPEND|os.O_WRONLY, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, writeErr := upstream.Write([]byte{0})
+				closeErr := upstream.Close()
+				if writeErr != nil || closeErr != nil {
+					t.Fatal("actual upstream replacement", writeErr, closeErr)
+				}
+				if n, err := captured.ReadAt(extent[:], 0); n != 0 || err == nil {
+					t.Fatal("replacement returned bytes through old session", n, err)
+				}
+				w = readingHTTP(t, h, "GET", "/v1/reading/sessions/"+original.SessionID+"/pages/0?width=32", f.owner.AccessToken, original.Revision, nil)
+				if w.Code != 403 {
+					t.Fatal("changed source session was reopened", w.Code, w.Body.String())
+				}
+			}
 			t.Log(fmt.Sprintf("real remote %s scan/member/source/location/close qualified", kind))
 		})
 	}
