@@ -28,6 +28,7 @@ export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 export * from './music-signal.ts';
 import {sessionEndMessage} from './session-end.ts';
+import {serviceText} from './presentation/service-text.ts';
 import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';
 import {readCertificateResponse, type CertificateAction} from './certificates.ts';
 import type {PlayerFailureCode} from './client-profile.ts';
@@ -105,6 +106,14 @@ export type MediaItem = {
 /** Whether a session's audio can go through the effects engine: a version 2 plan
  * the device decodes (`direct`/`converted`). */
 export const renderable=(s?:{audio?:AudioRenderV2}):boolean=>playableAudio(s?.audio);
+/** Caller lifetime for a local start, including Retry. It must describe the host/authority,
+ * not the output generation this start replaces. Cancellation ends admission, not accepted playback. */
+export type PlaybackLocalStartContext = Readonly<{signal?:AbortSignal;isCurrent?:()=>boolean}>;
+function localStartCurrent(context?:PlaybackLocalStartContext):boolean {
+  try{return !context?.signal?.aborted&&context?.isCurrent?.()!==false;}catch{return false;}
+}
+function localStartCancelled():Error{return Object.assign(new Error('cancelled'),{name:'AbortError'});}
+
 export type PlaybackSession = {
   preparedVersionId?: string;
   /** §18.1 version 2: the client decodes the original file (Plexamp's model); `mode` says how. */
@@ -765,7 +774,7 @@ export class PlaybackService {
   private failedRecovery?: { positionSeconds?: number; intent: "playing" | "paused" };
   /** The server's music preferences have been adopted: the device journal no longer overrides them. */
   private effectsFromServer = false;
-  private lastPlay?: { itemId: string; prepared?: PreparedChoice; quality?: string; audioStream?: number; choices?: PlaybackChoices; local?: () => PlaybackSession };
+  private lastPlay?: { itemId: string; prepared?: PreparedChoice; quality?: string; audioStream?: number; choices?: PlaybackChoices; local?: () => PlaybackSession; localContext?: PlaybackLocalStartContext };
   /** The session the engine-failure count belongs to. */
   private escalationSession?: string;
   private seekRearm?: () => void;
@@ -1341,41 +1350,80 @@ export class PlaybackService {
    * for a retry), and its progress and stop go to this service's PlaybackApi like any other, which
    * keeps them on the device (see the Apple app's offline playback).
    */
-  playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number): Promise<void> {
+  async playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number, context?: PlaybackLocalStartContext): Promise<void> {
+    if(!localStartCurrent(context))throw localStartCancelled();
     if(this.snapshot.listeningNotice)this.update({listeningNotice:undefined});
     this.escalations = 0;
-    this.lastPlay = { itemId, local: session };
+    const captured=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent}):undefined;
+    this.lastPlay = { itemId, local: session, localContext:captured };
     this.update({ playbackRun: this.snapshot.playbackRun + 1 });
-    return this.startLocal(itemId, session, startPosition, "playing");
+    return this.startLocal(itemId, session, startPosition, "playing", captured);
   }
-  private async startLocal(itemId: string, make: () => PlaybackSession, startPosition: number | undefined, intent: "playing" | "paused"): Promise<void> {
+  private async startLocal(itemId: string, make: () => PlaybackSession, startPosition: number | undefined, intent: "playing" | "paused", context?:PlaybackLocalStartContext): Promise<void> {
+    if(!localStartCurrent(context))throw localStartCancelled();
     this.endedSeekPosition = undefined;
     this.leave();
     this.failedRecovery = { positionSeconds: startPosition, intent };
     const intentId = this.snapshot.intentId;
+    const cancel=()=>{if(this.snapshot.intentId===intentId)this.leave();};
+    const check=()=>{
+      if(this.snapshot.intentId!==intentId||!localStartCurrent(context)){
+        cancel();throw localStartCancelled();
+      }
+    };
     this.update({ phase: "starting", intent, itemId, error: undefined });
-    // The journal is read first so an earlier session's cleanup is not lost; nothing here waits on
-    // the server.
-    await this.startRecovery();
-    if (this.snapshot.intentId !== intentId) return;
-    this.sequence = 0;
-    this.lastProgress = 0;
-    this.armStartup(() => {
-      if (this.snapshot.intentId !== intentId) return;
-      const session = this.snapshot.session;
-      this.clearSeek();
-      this.update({ audio: this.audioSelection.reset(), pendingSeek: undefined, failedSeek: undefined, phase: "error", intent: "paused", session: undefined, error: "This download did not start. Try again, or remove it and download it again." });
-      if (session) this.enqueueCleanup(session.id);
-    });
-    let base: PlaybackSession;
-    try { base = make(); } catch (error) {
-      this.clearStartup();
-      this.update({ phase: "error", intent: "paused", error: error instanceof Error ? error.message : "This download could not be played." });
-      return;
-    }
-    const session = { ...base, resumeSeconds: startPosition ?? base.resumeSeconds };
-    this.requestSeek(session.resumeSeconds, { session, duration: session.duration });
-    this.persist();
+    let detach:()=>void=()=>{};
+    try {
+      check();
+      // Recovery belongs to the service, so a canceled row stops waiting without canceling
+      // the shared journal read or losing cleanup for an earlier accepted session.
+      const recovery=this.startRecovery();
+      if(context?.signal){
+        const signal=context.signal;
+        await new Promise<void>((resolve,reject)=>{
+          const abort=()=>{cancel();reject(localStartCancelled());};
+          detach=()=>signal.removeEventListener('abort',abort);
+          signal.addEventListener('abort',abort,{once:true});
+          if(signal.aborted)abort();
+          recovery.then(resolve,reject);
+        });
+      }else await recovery;
+      check();
+      this.sequence = 0;
+      this.lastProgress = 0;
+      let session:PlaybackSession,base:PlaybackSession|undefined;
+      try {
+        base=make();
+        check();
+        session={...base,resumeSeconds:startPosition??base.resumeSeconds};
+        check();
+      } catch {
+        // A maker can synchronously retire its caller or start a replacement. Neither a
+        // late return nor an exception from that old maker may become the new UI's error.
+        try{check();}catch(error){
+          if(base&&this.snapshot.session?.id!==base.id)this.enqueueCleanup(base.id);
+          throw error;
+        }
+        this.clearStartup();
+        this.update({phase:"error",intent:"paused",error:serviceText('playback.message.internal_error')});
+        return;
+      }
+      this.armStartup(() => {
+        if (this.snapshot.intentId !== intentId) return;
+        const session = this.snapshot.session;
+        this.clearSeek();
+        this.update({ audio: this.audioSelection.reset(), pendingSeek: undefined, failedSeek: undefined, phase: "error", intent: "paused", session: undefined, error: serviceText('playback.message.timeout') });
+        if (session) this.enqueueCleanup(session.id);
+      });
+      check();
+      this.requestSeek(session.resumeSeconds, { session, duration: session.duration });
+      check();
+      this.persist();
+    } catch(error) {
+      // Existing three-argument callers quietly finish when another Play replaces them.
+      if(!context&&this.snapshot.intentId!==intentId&&error instanceof Error&&error.name==='AbortError')return;
+      throw error;
+    } finally {detach();}
   }
   private startupProbe?: () => Readonly<Record<string, unknown>>;
   /** Development aid (demo, 23 Sep: a start after a Metro reload never produced a frame): the
@@ -1414,7 +1462,7 @@ export class PlaybackService {
     const recovery = this.failedRecovery ?? { intent: this.snapshot.intent };
     if(this.nativeV1)return this.nativeV1.action('retry',recovery.positionSeconds??this.snapshot.positionSeconds);
     // A local title retries locally; it never belonged to the device queue or the server.
-    if(this.lastPlay?.local&&this.lastPlay.itemId===this.snapshot.itemId)return this.startLocal(this.snapshot.itemId, this.lastPlay.local, recovery.positionSeconds??this.snapshot.positionSeconds, recovery.intent);
+    if(this.lastPlay?.local&&this.lastPlay.itemId===this.snapshot.itemId)return this.startLocal(this.snapshot.itemId, this.lastPlay.local, recovery.positionSeconds??this.snapshot.positionSeconds, recovery.intent, this.lastPlay.localContext);
     if(this.queue||this.options.queueRequired){return this.queue?.check(true)??Promise.resolve();}
     return this.startPlayback(this.snapshot.itemId, recovery.positionSeconds, recovery.intent);
   }
@@ -2161,3 +2209,10 @@ export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
 export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
 export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';
+
+export {parsePlaybackInfo} from './playback-v1/playback-info.ts';
+export type {PlaybackInfo, PlaybackRoute, PlaybackPictureFacts, PlaybackSoundFacts, PlaybackSubtitleFacts, PlaybackMediaFacts, PlaybackReplacement} from './playback-v1/playback-info.ts';
+
+export {playbackInfoProjection} from './playback-info-projection.ts';
+export type {PlaybackInfoWords, PlaybackComparisonProjection, PlaybackInfoRow, PlaybackInfoField} from './playback-info-projection.ts';
+export {videoAudioChannelName} from './video-track-labels.ts';
