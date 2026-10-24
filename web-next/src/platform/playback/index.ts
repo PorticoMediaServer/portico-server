@@ -9,6 +9,7 @@ export type {VideoLike, HlsModule, WebPlayerTimers, SubtitleTimeline} from './we
 export {installPlaybackEnvironment} from './environment.ts';
 export type {PlaybackMediaPort, RenderEngine} from './web-playback.ts';
 export type {LocalPlayerSource, LocalPlayerLoadContext, LocalPlayerLoadReceipt} from '@core/playback-v1/port.ts';
+export type {WebLocalQueuePreparation, WebLocalQueueMember, WebLocalQueueResource, WebLocalQueueSnapshot} from './local-queue.ts';
 export type {WebMediaPlayerOptions, WebPlayerNotice} from './web-media-player.ts';
 export {eqFrequencies, flatEqualizer, parseEqualizer, equalizerResponse} from './audio/equalizer.ts';
 export type {EqualizerSettings} from './audio/equalizer.ts';
