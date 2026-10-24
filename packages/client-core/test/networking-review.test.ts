@@ -284,3 +284,97 @@ test('a Portico Account member’s server-local session is remembered with its P
   await assert.rejects(rememberNativeSession(a.api,legacy,{storage:store},hosted),/another account/);
  }finally{a.connection.dispose();}
 });
+
+function accountRestoreSnapshot(){
+ return {authority:'local',serverId:pin.serverId,account:{id:'owner',username:'owner',primaryProfileId:'profile',role:'owner',revision:1,disabled:false,allowedLibraries:[]},
+  profiles:[{id:'profile',name:'Main',primary:true,position:0,art:'blue',revision:1,pinRevision:1,pinRequired:false},{id:'second',name:'Second',primary:false,position:1,art:'blue',revision:1,pinRevision:1,pinRequired:false}],
+  canManage:false,capabilities:{manageAccount:false,managePeople:false,manageServer:false,manageSignIn:false}};
+}
+async function accountRestoreCase(answer:(snapshot:ReturnType<typeof accountRestoreSnapshot>)=>{status:number;body:unknown}){
+ const store=storage(),initial=await ready(),saved={...session(),viewer:{...session().viewer,role:'account'}};
+ const calls={proof:0,account:0,viewer:0,refresh:0,profile:0};
+ const json=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
+ await rememberNativeSession(initial.api,saved,{storage:store});
+ const fetcher:typeof fetch=async(input,init)=>{
+  const path=new URL(String(input)).pathname;
+  if(path==='/v1/networking/identity-proof'){
+   calls.proof++;assert.equal(new Headers(init?.headers).has('Authorization'),false);
+   const q=JSON.parse(String(init?.body));return json(200,signed({kind:'portico.route-proof',version:'1',...pin,...q,issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+29000).toISOString()}));
+  }
+  assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer '+saved.accessToken);
+  if(path==='/v1/direct'){calls.account++;const out=answer(accountRestoreSnapshot());return json(out.status,out.body);}
+  if(path==='/v1/me'){calls.viewer++;return json(401,{error:{code:'unauthorized'}});}
+  if(path==='/v1/auth/refresh')calls.refresh++;
+  if(path.endsWith('/select'))calls.profile++;
+  throw new Error('unexpected account restoration request');
+ };
+ return {calls,store,saved,initial,restore:()=>restoreNativeSession({storage:store,fetcher})};
+}
+test('restoration validates a live account grant without treating it as a selected viewer',async()=>{
+ const f=await accountRestoreCase(snapshot=>({status:200,body:snapshot}));
+ let restored:Awaited<ReturnType<typeof restoreNativeSession>>;
+ try{
+  restored=await f.restore();
+  assert.equal(restored?.session.viewer.role,'account');
+  assert.deepEqual(restored?.session.viewer,f.saved.viewer);
+  assert.deepEqual(f.calls,{proof:1,account:1,viewer:0,refresh:0,profile:0});
+  assert.equal((await f.store.read())?.session.sessionFamilyId,f.saved.sessionFamilyId);
+ }finally{restored?.api.getRouteConnection()?.dispose();f.initial.connection.dispose();}
+});
+test('account restoration rejects different account/server/primary profile and disabled facts without viewer fallback',async()=>{
+ for(const change of [
+  (s:ReturnType<typeof accountRestoreSnapshot>)=>({...s,account:{...s.account,id:'another'}}),
+  (s:ReturnType<typeof accountRestoreSnapshot>)=>({...s,serverId:'another'}),
+  (s:ReturnType<typeof accountRestoreSnapshot>)=>({...s,account:{...s.account,primaryProfileId:'second'},profiles:s.profiles.map(p=>({...p,primary:p.id==='second'}))}),
+  (s:ReturnType<typeof accountRestoreSnapshot>)=>({...s,account:{...s.account,disabled:true}}),
+ ]){
+  const f=await accountRestoreCase(s=>({status:200,body:change(s)}));
+  try{await assert.rejects(f.restore());assert.equal(f.calls.viewer,0);assert.equal(f.calls.refresh,0);assert.equal(f.calls.profile,0);assert.equal((await f.store.read())?.session.viewer.role,'account');}
+  finally{f.initial.connection.dispose();}
+ }
+});
+test('live account denial is not a reason to probe viewer authority or select a profile',async()=>{
+ const f=await accountRestoreCase(()=>({status:403,body:{error:{code:'not_permitted'}}}));
+ try{await assert.rejects(f.restore(),{code:'access_refused'});assert.deepEqual(f.calls,{proof:1,account:1,viewer:0,refresh:0,profile:0});assert.equal((await f.store.read())?.session.viewer.role,'account');}
+ finally{f.initial.connection.dispose();}
+});
+
+test('account-only restoration rotates once within account scope and refuses an implicit viewer upgrade',async t=>{
+ const {setInstallationIdentity}=await import('../src/installation.ts');
+ setInstallationIdentity({installationId:'account_restore_installation_00000001',name:'Test browser',platform:'web',app:'portico',appVersion:'1'});
+ t.after(()=>setInstallationIdentity(undefined));
+ for(const mode of ['account','upgrade','refused','revoked'] as const){
+  const store=storage(),initial=await ready();
+  const base=session(),saved={...base,refreshToken:'account_refresh_original',viewer:{...base.viewer,role:'account'}};
+  const renewed={...saved,accessToken:'account_access_next',refreshToken:'account_refresh_next',tokenGeneration:'2',viewer:{...saved.viewer,role:mode==='upgrade'?'owner':'account'}};
+  const calls={account:0,refresh:0,viewer:0,profile:0};
+  const json=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
+  await rememberNativeSession(initial.api,saved,{storage:store});
+  const fetcher:typeof fetch=async(input,init)=>{
+   const path=new URL(String(input)).pathname;
+   if(path==='/v1/networking/identity-proof'){
+    const q=JSON.parse(String(init?.body));return json(200,signed({kind:'portico.route-proof',version:'1',...pin,...q,issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+29000).toISOString()}));
+   }
+   if(path==='/v1/auth/refresh'){calls.refresh++;return mode==='revoked'?json(401,{error:{code:'unauthorized'}}):json(200,renewed);}
+   if(path==='/v1/direct'){
+    calls.account++;
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer '+(calls.account===1?saved.accessToken:renewed.accessToken));
+    return calls.account===1||mode==='refused'?json(401,{error:{code:'unauthorized'}}):json(200,accountRestoreSnapshot());
+   }
+   if(path==='/v1/me')calls.viewer++;
+   if(path.endsWith('/select'))calls.profile++;
+   throw new Error('unexpected account rotation request');
+  };
+  let restored:Awaited<ReturnType<typeof restoreNativeSession>>;
+  try{
+   const pending=restoreNativeSession({storage:store,fetcher});
+   if(mode==='account'){restored=await pending;assert.equal(restored?.session.viewer.role,'account');assert.equal(restored?.session.tokenGeneration,'2');}
+   else await assert.rejects(pending,{code:mode==='upgrade'?'refresh_invalid':mode==='revoked'?'refresh_refused':'access_refused'});
+   assert.equal(calls.refresh,1);assert.equal(calls.viewer,0);assert.equal(calls.profile,0);
+   assert.equal(calls.account,mode==='upgrade'||mode==='revoked'?1:2);
+   const current=await store.read();
+   if(mode==='revoked')assert.equal(current,undefined);
+   else assert.equal(current?.session.viewer.role,'account');
+  }finally{restored?.api.getRouteConnection()?.dispose();initial.connection.dispose();}
+ }
+});
