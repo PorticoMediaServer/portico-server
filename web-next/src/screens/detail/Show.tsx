@@ -59,7 +59,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   // The pinned bar carries the drawn Resume Sx Ey and My List controls once the hero is gone.
   const pinAction = primary.data?.actions.find(action => action.enabled && action.playback && action.id !== 'start_over'), nextUp = data.nextUp;
   const pinProgress = nextUp?.duration && nextUp.duration > 0 ? Math.min(1, Math.max(0, (nextUp.progressSeconds ?? 0) / nextUp.duration)) : 0;
-  const playNext = () => { const held = primary.data; if (held) void binding.primary.play(held, pinAction.id).catch(binding.context.effects.reportError); };
+  const playNext = () => { const held = primary.data; if (held && pinAction) void binding.primary.play(held, pinAction.id).catch(binding.context.effects.reportError); };
   const pin = nextUp?.seasonNumber !== undefined && nextUp.episodeNumber !== undefined && primary.data && pinAction
     ? pinProgress > 0
       ? <ResumeButton size="small" progress={pinProgress} onClick={playNext}>{t('next.home.resumeEpisode', {season: nextUp.seasonNumber, episode: nextUp.episodeNumber})}</ResumeButton>
