@@ -77,6 +77,7 @@ func TestDAVConnectionFailureDoesNotRetainCredentialsOrTransportText(t *testing.
 		{fmt.Errorf("https://fixture:private-secret@nas.example/media/: dial failed"), "internal"},
 		{fmt.Errorf("private-secret: %w", storage.ErrRemoteCredentials), "source_credentials_required"},
 		{fmt.Errorf("private-secret: %w", storage.ErrRemoteConfig), "invalid_request"},
+		{fmt.Errorf("private-secret: %w", mounts.ErrUnavailable), "administration_unavailable"},
 		{fmt.Errorf("private-secret: %w", identity.ErrUnauthorized), "unauthorized"},
 		{fmt.Errorf("private-secret: %w", identity.ErrForbidden), "not_permitted"},
 	} {
