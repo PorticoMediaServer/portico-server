@@ -9,7 +9,8 @@ import (
 
 // PlaybackSourceFacts are captured by Select after current viewer/session
 // authorization. These are server-private facts, not authority by context.
-// SessionGeneration is never a physical-source or presentation generation.
+// SessionID/SessionGeneration name playback_sessions and its exact generation,
+// not a V1 session, physical source, queue occurrence or mapping generation.
 // Size/ModifiedNS are the actual playback source pin, not an inventory revision.
 type PlaybackSourceFacts struct {
 	Principal         identity.Principal `json:"-"`
