@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackv1"
@@ -182,5 +183,27 @@ func TestMusicRadioHTTPOneSongPreparedCommitKeepsARealNextOccurrence(t *testing.
 		if err := f.db.QueryRow(`SELECT count(*) FROM playback_v1_sessions WHERE ended_ms=0`).Scan(&active); err != nil || active != 1 {
 			t.Fatal("parallel active session", active, err)
 		}
+	}
+}
+
+func TestMusicRadioHTTPCreditedArtistSeedStartsAnActualCreditedSong(t *testing.T) {
+	f, items := radioHTTPFixture(t)
+	guest := f.catalogTest.Artist(f.catalogTest.Handle("radio-music"), "Guest artist")
+	f.catalogTest.Write(func(ctx context.Context, tx *sql.Tx) error {
+		var main int64
+		if err := tx.QueryRowContext(ctx, `SELECT album.artist_id FROM catalog_songs song JOIN catalog_albums album ON album.entity_id=song.album_id WHERE song.entity_id=?`, items[1].ID).Scan(&main); err != nil {
+			return err
+		}
+		return compactcatalog.SetSongArtistsTx(ctx, tx, items[1].ID, []int64{main, guest.ID})
+	})
+	f.catalogTest.Drain()
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "radio-guest-000000001"}, map[string]any{"selector": map[string]any{"container": map[string]any{"kind": "radio", "id": guest.Public}}}, 201, &q)
+	if len(q.Window) == 0 || q.Window[0].ItemID != items[1].Public {
+		t.Fatal("guest radio substituted an album artist's other song", q.Window)
+	}
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":advance", map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"reason": "next"}, 200, &q)
+	if q.Queue.Current == nil || q.Queue.Current.Position != 1 {
+		t.Fatal(q.Queue)
 	}
 }
