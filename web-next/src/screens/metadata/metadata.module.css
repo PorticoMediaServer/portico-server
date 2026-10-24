@@ -47,3 +47,5 @@
 .historyRow small { color: var(--color-text-tertiary); }
 
 .fieldError { color: var(--color-danger) !important; }
+
+.candidatesOnly { margin: 0; padding: 0 0 0 18px; font-size: 13px; color: var(--color-text-tertiary); }
