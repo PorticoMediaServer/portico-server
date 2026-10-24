@@ -1400,12 +1400,13 @@ export class PlaybackService {
       this.lastProgress = 0;
       let session:PlaybackSession;
       try {
+        const localOwner=this.api.localPlayback;
         base=make();
         if(base.mode==='local'&&base.protocol===undefined){
           // Capture custody before checking cancellation: even a late maker's actual local
           // resource must retire through its local owner, never a server session route.
           if(this.cleanup.has(base.id)||this.progressPending.has(base.id)||this.localSessions.has(base.id))throw new Error('local_session_identity_reused');
-          this.localSessions.set(base.id,this.api.localPlayback);
+          this.localSessions.set(base.id,localOwner);
         }
         check();
         session={...base,resumeSeconds:startPosition??base.resumeSeconds};
