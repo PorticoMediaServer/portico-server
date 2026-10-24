@@ -34,6 +34,7 @@ func TestExclusiveSourceTestDrainsWithoutRetiringReaderAndQueuesNewWork(t *testi
 			time.Sleep(time.Millisecond)
 		}
 	}
+	gateObserved := time.Now()
 	// The in-flight operation's actual reconnect/metadata fence can still finish.
 	_, nested, err := budget.enter(reader)
 	if err != nil {
@@ -62,6 +63,9 @@ func TestExclusiveSourceTestDrainsWithoutRetiringReaderAndQueuesNewWork(t *testi
 		t.Fatal(err)
 	}
 	defer hold.Close()
+	if deadline, ok := hold.Context().Deadline(); !ok || deadline.After(gateObserved.Add(15*time.Second)) {
+		t.Fatal("exclusive bound omitted drain time", deadline)
+	}
 	if _, err := budget.AcquireTest(life); !errors.Is(err, ErrBusy) {
 		t.Fatal("overlapping tests acquired independent hold", err)
 	}

@@ -3,6 +3,8 @@ package remotesources
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"portico.local/server/internal/dbwork"
 	"strings"
 	"testing"
 
@@ -55,5 +57,49 @@ func TestImportedSavePublishesOnlyTestedLeafOriginsWithConfigReceipt(t *testing.
 				}
 			}
 		})
+	}
+}
+
+func TestCandidatePublicationRefusesProfileChangeAfterSuccessfulTest(t *testing.T) {
+	ctx := context.Background()
+	f, managed, identities, owner, _, binary := nativeSaveFixture(t)
+	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
+	config := "[network]\ntype=http\nurl=http://192.168.42.7:8080/\n"
+	first, err := managed.Command(ctx, "actual-owner-fixture", "", mounts.Command{OperationID: nativeSaveOperation(60), Action: "create", Name: "Imported", Executable: binary, Remote: "network:", Config: config}, authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := managed.PrepareSourceCandidate
+	managed.PrepareSourceCandidate = func(ctx context.Context, input mounts.SourceCandidateInput, authorize func(*sql.Tx) error) (*mounts.SourceCandidatePublication, error) {
+		publication, err := actual(ctx, input, authorize)
+		if err != nil {
+			return nil, err
+		}
+		after := publication.CheckAfterTest
+		publication.CheckAfterTest = func(ctx context.Context) error {
+			if err := after(ctx); err != nil {
+				return err
+			}
+			// The genuine saved profile CAS wins after the network test and before
+			// the config/receipt writer; publication must not reuse old tested limits.
+			tx, err := dbwork.Begin(ctx, f.s.db, dbwork.ClassInteractive)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			profile, _ := SourceReadPreset("once")
+			if _, err = f.s.ApplySourceReadProfileTx(ctx, tx.Tx(), identities, owner, SourceReadProfileChange{SourceID: first.MountID, Generation: "1", Profile: profile}); err != nil {
+				return err
+			}
+			return tx.Commit()
+		}
+		return publication, nil
+	}
+	if _, err = managed.Command(ctx, "actual-owner-fixture", first.MountID, mounts.Command{OperationID: nativeSaveOperation(61), Action: "configure", ExpectedRevision: first.ControlRevision, Config: config}, authorize); !errors.Is(err, storage.ErrRemoteChanged) {
+		t.Fatal("old limits authorized publication", err)
+	}
+	var generation int64
+	if err = f.s.db.QueryRow(`SELECT generation FROM remote_sources WHERE id=?`, first.MountID).Scan(&generation); err != nil || generation != 1 {
+		t.Fatal("failed publication changed source", generation, err)
 	}
 }
