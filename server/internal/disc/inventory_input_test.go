@@ -74,8 +74,12 @@ func TestDiscISOProbeUsesActualConfinedInventoryInput(t *testing.T) {
 	if selected.Playlist == nil {
 		t.Fatal("checked Blu-ray title has no playlist")
 	}
+	direct, err := (Tool{Binary: binary}).SeekLocal(context.Background(), path, *selected.Playlist, 37500)
+	if err != nil || direct.TitleTimeMs != 37000 || direct.ByteOffset <= 0 {
+		t.Fatal("checked fixture entry point", direct, err)
+	}
 	seek, err := (Tool{Binary: binary}).SeekLocal(ctx, path, *selected.Playlist, 37500)
-	if err != nil || seek.ByteOffset != 1346304 || seek.TitleTimeMs != 37000 || reads != 2 {
+	if err != nil || !reflect.DeepEqual(seek, direct) || reads != 2 {
 		t.Fatal("confined cross-clip entry point", seek, reads, err)
 	}
 	revoked := errors.New("inventory invocation revoked")
