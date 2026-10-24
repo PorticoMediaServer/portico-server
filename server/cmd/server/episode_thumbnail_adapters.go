@@ -102,15 +102,17 @@ func (s *retainedEpisodeSource) Close() error {
 }
 
 func episodeThumbnailRuntime(meta *metadata.Service, sources *remotesources.Service, identities *identity.Service, local *storage.Client, inputs *subtitlevideo.Runtime) *metadata.EpisodeThumbnailRuntime {
+	if meta == nil || sources == nil || identities == nil || inputs == nil {
+		return nil
+	}
 	resolver := remotesources.EpisodeAuthorityResolver{
 		Sources: sources, Identities: identities, LocalStorage: local,
 		Episodes: episodeMetadataState{service: meta}, Analysis: episodeAnalysisSchedule{},
 	}
 	return &metadata.EpisodeThumbnailRuntime{
-		Sources: episodeSourceAdapter{resolver: resolver},
-		Decoder: func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) },
-		// The genuine current-size producer must supply ArtworkContext. Leaving
-		// it absent keeps both automatic generation and the owner command closed.
+		Sources:        episodeSourceAdapter{resolver: resolver},
+		Decoder:        func(input mediaanalysis.Input) mediaanalysis.Decode { return inputs.AnalysisDecoder(input) },
+		ArtworkContext: meta.CaptureArtworkContext,
 	}
 }
 

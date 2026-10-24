@@ -86,8 +86,8 @@ export function parseOptions(v: unknown): PlaybackOptions {
       id: id(x.id, 'version id'), label: str(x.label), edition: typeof x.edition === 'string' ? x.edition : undefined, container: typeof x.container === 'string' ? x.container : undefined,
       sizeBytes: optNum(x.sizeBytes), durationMs: num(x.durationMs), bitrateKbps: optNum(x.bitrateKbps),
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
-      video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
-      audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined,
+      video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, ...(typeof s.interlaced === 'boolean' ? {interlaced: s.interlaced} : {}), ...(typeof s.hdr10Plus === 'boolean' ? {hdr10Plus: s.hdr10Plus} : {}), bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
+      audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), ...(typeof s.profile === 'string' ? {profile: s.profile} : {}), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined,
         sampleRate: Number.isSafeInteger(s.sampleRate) && Number(s.sampleRate) > 0 ? s.sampleRate as number : undefined, bitDepth: Number.isSafeInteger(s.bitDepth) && Number(s.bitDepth) > 0 ? s.bitDepth as number : undefined,
         variant: typeof s.variant === 'string' ? s.variant : undefined, objectAudio: typeof s.objectAudio === 'string' ? s.objectAudio : undefined, dtsx: typeof s.dtsx === 'boolean' ? s.dtsx : undefined,
         atmos: bool(s.atmos), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, default: bool(s.default), commentary: bool(s.commentary), visualImpaired: bool(s.visualImpaired)}))),
@@ -125,7 +125,7 @@ export type Presentation = Readonly<{
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
   /** The player engine the device must play this presentation with. */
   engine: PlaybackEngine;
-  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string}>[];
+  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string; timeDomain?: 'source-relative'; offsetMs?: number}>[];
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>;
   bitrateKbps?: number;
   /** The quality in force (what was asked for, or the saved default for this network). */
@@ -192,7 +192,7 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
     audioTrackId: typeof p.audioTrackId === 'string' && p.audioTrackId ? p.audioTrackId : undefined,
     subtitle: obj(p.subtitle) && typeof p.subtitle.trackId === 'string' && p.subtitle.trackId ? Object.freeze({trackId: p.subtitle.trackId, kind: oneOf(p.subtitle.kind, ['text', 'ass', 'pgs', 'vobsub', 'dvb'] as const, 'other' as never), delivery: oneOf(p.subtitle.delivery, ['sidecar', 'device', 'burn'] as const, 'other' as never)}) : undefined,
     container: typeof p.container === 'string' && p.container ? p.container : undefined,
-    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')}), ...(s.linesUrl===undefined?{}:{linesUrl:url(s.linesUrl,'subtitle lines url')})}))),
+    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.timeDomain === 'source-relative' ? {timeDomain: 'source-relative' as const} : {}), ...(typeof s.offsetMs === 'number' && Number.isFinite(s.offsetMs) ? {offsetMs: s.offsetMs} : {}), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')}), ...(s.linesUrl===undefined?{}:{linesUrl:url(s.linesUrl,'subtitle lines url')})}))),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(p.bitrateKbps),
     hdr: obj(p.hdr) ? Object.freeze({source: typeof p.hdr.source === 'string' ? p.hdr.source : undefined, delivered: typeof p.hdr.delivered === 'string' ? p.hdr.delivered : undefined, toneMapped: bool(p.hdr.toneMapped)}) : undefined,

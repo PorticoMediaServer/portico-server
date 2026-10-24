@@ -26,6 +26,13 @@ func movieFileReadingTx(ctx context.Context, tx *sql.Tx, library string, asset i
 	if err != nil {
 		return MovieFile{}, err
 	}
+	prefs, err := LibraryPreferencesTx(ctx, tx, library)
+	if err != nil {
+		return MovieFile{}, err
+	}
+	if prefs.TitleSource == "names" {
+		embedded = naming.Embedded{}
+	}
 	r := naming.ReadWithEmbedded(relative, "movie", embedded)
 	title, year := r.PreferredTitle()
 	f := MovieFile{Library: library, Asset: asset, Path: path, Title: title, Year: year, Provider: nameProviderIDs(r, "movie")}

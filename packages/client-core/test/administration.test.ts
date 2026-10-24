@@ -4,7 +4,8 @@ import {AdministrationError,analysisSelectionComplete,backupProgressFraction,del
 
 const matrix={costClasses:[{id:'metadata-only',name:'Metadata only',description:'One read.',order:1},{id:'decode',name:'Decodes the video',description:'Expensive.',order:3}],operations:[{id:'probe',name:'Media probe',costClass:'metadata-only',description:'Reads facts.',mediaKinds:['movie'],defaultEnabled:true,requires:null,producesArtifacts:false,network:false},{id:'trickplay',name:'Trickplay tiles',costClass:'decode',description:'Decodes frames.',mediaKinds:['movie'],defaultEnabled:false,requires:['probe'],producesArtifacts:true,network:false}]};
 const navigation={trickplayIntervalMs:10000,trickplayTileWidth:320,trickplayMaxTiles:400,chapterThumbnailMode:'generated',videoPreviewEnabled:false,videoPreviewMs:30000};
-function libraryDocument(overrides:Record<string,unknown>={}){return {libraryId:'lib',libraryName:'Films',libraryKind:'movie',revision:2,digest:'d',settings:{allowMediaDeletion:true,monitorChanges:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe','trickplay'],navigation},analysisMatrix:matrix,availableProviders:[{id:'tmdb',name:'TMDB',mediaKinds:['movie'],supportsApiKey:true,supportsLocale:true,attributionNote:'Metadata provided by TMDB.'}],enumerations:{chapterThumbnailMode:['none','embedded','generated']},sources:[{id:'src',name:'Films',root:'/mnt/media/Films',classification:'local',enabled:true}],...overrides};}
+const newLibraryFields={scanDepth:'basic',groupCollections:true,localTags:'prefer',lyricsSource:'files',titleSource:'tags',episodeNumbering:'season',findExtras:true,sortIgnoreArticles:true,refreshMode:'replace_unlocked',acoustidEnabled:false,continueWatching:{weeks:16,maximumItems:40,includeSeasonPremieres:true,videoPlayedThreshold:95,videoCompletion:'earliest'}};
+function libraryDocument(overrides:Record<string,unknown>={}){return {audience:{everyone:true,accounts:1},actions:['rename','scan','remove'],eligibleControls:['libraries.name'],libraryId:'lib',libraryName:'Films',libraryKind:'movie',revision:2,digest:'d',defaults:{...newLibraryFields,allowMediaDeletion:false,monitorChanges:true,providers:[],analysis:['probe','local_metadata','subtitle_discovery'],navigation},settings:{...newLibraryFields,allowMediaDeletion:true,monitorChanges:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe','trickplay'],navigation},analysisMatrix:matrix,availableProviders:[{id:'tmdb',name:'TMDB',mediaKinds:['movie'],supportsApiKey:true,supportsLocale:true,attributionNote:'Metadata provided by TMDB.'}],enumerations:{chapterThumbnailMode:['none','embedded','generated']},sources:[{id:'src',libraryId:'lib',kind:'local',name:'Films',path:'/mnt/media/Films',resolvedPath:'/mnt/media/Films',classification:'local',enabled:true,generation:1,health:'ready',followSymlinks:false,identityConfirmed:true,intervalMs:3600000,nextScanAt:'',lastCompleteAt:'',lastProgressAt:''}],...overrides};}
 
 test('the envelope is checked and a response from another server is refused',()=>{
  const value=parseEnvelope({protocolVersion:'1.0',serverId:'srv-1',result:libraryDocument()},'srv-1',parseLibraryDocument);
@@ -20,7 +21,7 @@ test('a validation refusal keeps the fields the server named',()=>{
 });
 
 test('a returned provider API key is refused rather than held',()=>{
- const leaking=libraryDocument({settings:{allowMediaDeletion:true,monitorChanges:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'secret',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe'],navigation}});
+ const leaking=libraryDocument({settings:{...newLibraryFields,allowMediaDeletion:true,monitorChanges:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'secret',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe'],navigation}});
  assert.throws(()=>parseLibraryDocument(leaking),(e:unknown)=>e instanceof AdministrationError&&e.code==='provider_key_disclosed');
 });
 
@@ -50,6 +51,19 @@ test('a library document keeps its settings exact and leaves out a folder, a pro
  assert.throws(()=>parseLibraryDocument(libraryDocument({digest:''})));
  assert.throws(()=>parseLibraryDocument(libraryDocument({sources:Array.from({length:257},(_,i)=>({id:'s'+i,name:'',root:'/',classification:'local',enabled:true}))})));
  assert.throws(()=>parseLibraryDocument(libraryDocument({enumerations:{long:new Array(257).fill('x')}})));
+});
+
+test('stored library choices and producer defaults keep closed enums independently',()=>{
+ const doc=libraryDocument();
+ for(const key of ['scanDepth','localTags','lyricsSource','titleSource','episodeNumbering','refreshMode']){
+  assert.throws(()=>parseLibraryDocument({...doc,settings:{...doc.settings,[key]:'unknown'}}));
+  assert.throws(()=>parseLibraryDocument({...doc,defaults:{...doc.defaults,[key]:'unknown'}}));
+ }
+ const parsed=parseLibraryDocument(doc);
+ assert.equal(parsed.defaults.continueWatching.videoPlayedThreshold,95);
+ assert.equal(parsed.settings.allowMediaDeletion,true);
+ assert.equal(parsed.defaults.allowMediaDeletion,false);
+ assert.throws(()=>parseLibraryDocument({...doc,defaults:undefined}));
 });
 
 test('a delete preview confirms by title for one target and by count for several',()=>{
