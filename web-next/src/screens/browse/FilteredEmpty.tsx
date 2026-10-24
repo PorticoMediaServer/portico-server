@@ -46,7 +46,7 @@ export function BrowseFilteredEmpty({controller, model, labels, predicates, libr
     const stop = new AbortController();
     let current = true;
     const timer = setTimeout(() => {
-      void Promise.all(parts.map((part, index) => controller.count(predicates.filter((_node, at) => at !== index), stop.signal)
+      void Promise.all(parts.map((part, index): Promise<RelaxSuggestion | undefined> => controller.count(predicates.filter((_node, at) => at !== index), stop.signal)
         .then(count => {
           const kept = parts.filter((_other, at) => at !== index).map(other => other.phrase).join(' and ');
           const relaxesYear = part.field === 'decade' || part.field === 'year';
@@ -55,7 +55,7 @@ export function BrowseFilteredEmpty({controller, model, labels, predicates, libr
             onSelect: () => onDrop(predicates.filter((_node, at) => at !== index))};
         })
         .catch(() => undefined))).then(items => {
-        if (current && !stop.signal.aborted) setSuggestions(items.filter((item): item is RelaxSuggestion => item !== undefined && item.count > 0));
+        if (current && !stop.signal.aborted) setSuggestions(items.filter((item): item is RelaxSuggestion => item !== undefined && (item.count ?? 0) > 0));
       });
     }, 220);
     return () => {current = false; clearTimeout(timer); stop.abort();};
