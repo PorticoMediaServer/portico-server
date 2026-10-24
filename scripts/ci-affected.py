@@ -98,10 +98,19 @@ def go_checks(module, group):
             "./internal/identity": test_names((ROOT / module / "internal/identity").glob("*_test.go")),
             "./internal/egress": test_names((ROOT / module / "internal/egress").glob("*_test.go")),
             "./internal/security": test_names((ROOT / module / "internal/security").glob("*_test.go")),
+            "./internal/contract": {"TestHostedSessionsContainIdentityOnly"},
+            "./internal/postgres": {
+                "TestRefreshRotationInputOutputRetryAndReuseRevocation",
+                "TestRefreshExpirySupersessionAndLogoutAll",
+                "TestAccountSessionReviewOwnershipFactsAndRevocation",
+                "TestBrowserExpectedFamilyCannotMutateNewLogin",
+                "TestRegisteredReturnSignInNeedsNoMembershipAndCannotClaim",
+            },
             "./internal/httpapi": {
                 "TestBrowserCookieOriginsAndFamilyIntentAreIsolated",
                 "TestIdentityContinuationReadIsNotMediaOriginAuthority",
                 "TestSessionReviewQueryAllowlist",
+                "TestBrowserRefreshCSRF",
             },
         }
     else:
