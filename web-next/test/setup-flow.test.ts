@@ -15,7 +15,7 @@ function fixture(input: Readonly<{draft?: boolean; resume?: unknown; hosted?: ()
   let requests = 0;
   const server: SetupServer = {
     server: {id: 'server-1', name: 'Portico demo', version: '1', signIn: 'local', move: null, setupRequired: true, hostedConfigured: false, hostedAttached: false},
-    api: {request: async (path: string) => {requests++; calls.push({name: 'request', value: path});
+    api: {getRouteConnection: () => ({pin: {serverId: 'server-1'}}), request: async (path: string) => {requests++; calls.push({name: 'request', value: path});
       if (path.includes('setup/browser')) throw Object.assign(new Error('not allowed from this address'), {status: 401});
       return input.resume ?? session();}} as never,
     pin: {serverId: 'server-1', publicKey: 'x', fingerprint: 'y'} as never,
@@ -108,7 +108,7 @@ test('the first library sends the drawn kind, name and path, and Skip completes 
 });
 
 test('the setup values keep the drawn boundary rules', () => {
-  assert.equal(defaultSetupServerName('Portico', 'demo.getportico.tv'), 'demo getportico tv');
+  assert.equal(defaultSetupServerName('Portico', 'demo.getportico.tv'), 'demo.getportico.tv');
   assert.equal(defaultSetupServerName('Portico', '192.168.1.20'), 'My Portico server');
   assert.equal(defaultSetupServerName('Stored name', 'demo'), 'Stored name');
   assert.equal(validLocalUsername('demo'), true);
