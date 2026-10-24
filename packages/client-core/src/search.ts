@@ -222,9 +222,9 @@ export class SearchService{
  /** Stop reads when a retained Search view is hidden. Only a page that actually
   * arrived may remain ready, with that page's own query/cursor/history. A pending
   * replacement never supplies facts, and the caller still owns route authority. */
- pause(){this.active();const data=this.state.data,op=this.displayedOperation;this.stop();
+ pause(){this.active();const data=this.state.data,op=this.displayedOperation,phase=this.state.phase==='error'||this.state.phase==='refresh-required'?this.state.phase:'ready',error=phase==='ready'?null:this.state.error;this.stop();
   if(!data||!op){this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());return;}
-  this.operation=op;this.publish({generation:this.generation,query:op.query,phase:'ready',data,groups:data.groups,error:null,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
+  this.operation=op;this.publish({generation:this.generation,query:op.query,phase,data,groups:data.groups,error,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
  }
  cancel(){this.active();this.stop();this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());}
  setScope(scope:ContentScope,api:LibraryContentApi){this.active();const checked=bound(scope);this.stop();this.scope=checked;this.api=api;this.operation=undefined;this.displayedOperation=undefined;this.publish(this.empty());}

@@ -86,6 +86,18 @@ test('terminal authorization failure cannot be made ready again by pause',async(
  }finally{s.dispose();}
 });
 
+test('pause retains a transient read failure rather than presenting its cached page as a successful retry',async()=>{
+ let fail=false;
+ const s=service(async path=>{if(fail)throw new TypeError('Connection lost');return result(path,{groups:[group('movies',['shown'],'next-cursor')]});});
+ try{
+  await s.select('harbor',{group:'movies'});const shown=s.getSnapshot().data;
+  fail=true;await s.next('movies');const error=s.getSnapshot().error;assert.equal(s.getSnapshot().phase,'error');
+  s.pause();assert.equal(s.getSnapshot().phase,'error');assert.equal(s.getSnapshot().error,error);assert.equal(s.getSnapshot().data,shown);
+  assert.equal(s.getSnapshot().pagination.cursor,null);
+  fail=false;await s.retry();assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().error,null);
+ }finally{s.dispose();}
+});
+
 test('disposal erases the actual private Search snapshot and stops subsequent work',async()=>{
  const s=service(async path=>result(path));await s.select('harbor');assert(s.getSnapshot().data);
  s.dispose();assert.equal(s.getSnapshot().data,null);assert.equal(s.getSnapshot().query,null);assert.deepEqual(s.getSnapshot().groups,[]);
