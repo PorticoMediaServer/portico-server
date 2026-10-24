@@ -81,6 +81,11 @@ impl MeasurementState{
         let state=MeasurementState::open(&input,&output,&root.join("data"),route).unwrap();
         assert!(MeasurementState::open(&input,&input,&root.join("data"),route).is_err());
         assert!(MeasurementState::open(&input,&output,&root.join("data"),"/sign-in").is_err());
+        assert!(MeasurementState::open(&input,&output,&root.join("data"),&format!("{route}&capture=true")).is_err());
+        assert!(MeasurementState::open(&input,&output,&root.join("data"),&route.replace("width=1200","width=1300")).is_err());
+        assert!(MeasurementState::open(&input,&output,&root,route).is_ok());
+        std::fs::write(root.join("bad.json"),r##"{"selector":"#root","script":"no","expectedViewport":{"width":1200,"height":800}}"##).unwrap();
+        assert!(MeasurementState::open(&root.join("bad.json"),&output,&root.join("data"),route).is_err());
         assert!(state.options("http://127.0.0.1:14229/sign-in").is_err());
         assert!(state.options("https://external.example/dev/kit").is_err());
         assert!(state.options("tauri://localhost/dev/kit").is_err());
