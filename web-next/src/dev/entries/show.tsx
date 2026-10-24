@@ -10,6 +10,7 @@ import {createArtworkRuntime} from '../../kit/artwork/source';
 import {router} from '../../router';
 import {WebScreenProvider} from '../../route-registry-view';
 import {ShellBindingsProvider, type ShellBindings} from '../../shell/bindings';
+import {FreshnessProvider} from '../../platform/freshness';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {createOwnerActivity} from '../../shell/Activity';
 import type {ShellIdentity} from '../../shell/Shell';
@@ -318,12 +319,14 @@ const binding: ShellBindings = {api, events, scopeKey: 'show-specimen', shell: {
 
 router.update({history: createMemoryHistory({initialEntries: [`/library/${libraryId}?view=show&entityId=${activeShowId}`]})});
 createRoot(document.getElementById('root')!).render(
-  <WebScreenProvider value={{binding, context: contextBase}}>
-    <IconSprite />
-    <ShellBindingsProvider value={binding}>
-      <RouterProvider router={router} />
-    </ShellBindingsProvider>
-  </WebScreenProvider>,
+  <FreshnessProvider api={api} viewerId={viewerFence} serverId={serverId} events={events}>
+    <WebScreenProvider value={{binding, context: contextBase}}>
+      <IconSprite />
+      <ShellBindingsProvider value={binding}>
+        <RouterProvider router={router} />
+      </ShellBindingsProvider>
+    </WebScreenProvider>
+  </FreshnessProvider>,
 );
 
 /** Frame 4 is the scrolled Details tab; frame 5 opens the third episode in place. */
