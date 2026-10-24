@@ -37,7 +37,7 @@ export const savedMessages = {
   'next.saved.loadFailedBody': 'What your server is preparing couldn’t load.',
   'next.saved.qualitySize': '{quality}, about {size}',
   'next.saved.expiredHelp': 'The server stopped keeping this ready because it wasn’t fetched in time.',
-  'next.saved.phone.emptyBody': "Press and hold a title and choose Download. It's kept here to watch without a connection.",
+  'next.saved.phone.emptyBody': "Open a title and choose Download. It's kept here to watch without a connection.",
   'next.saved.phone.storageLimitHelp': 'The most space downloads may use on this phone',
   'next.saved.phone.free': '{size} free on this phone',
   'next.saved.phone.remove': 'Remove from this phone',
