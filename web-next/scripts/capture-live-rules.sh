@@ -63,7 +63,7 @@ PY
 shot() {
   local url=$1 file=$2 profile=$3
   "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars \
-    --force-device-scale-factor=1 --window-size=1440,950 --virtual-time-budget=15000 \
+    --force-prefers-reduced-motion --force-device-scale-factor=1 --window-size=1440,950 --virtual-time-budget=15000 \
     --user-data-dir="$tmp/$profile" --screenshot="$file" "$url" > "$out/$profile.log" 2>&1
   [ -s "$file" ] || { echo "capture failed: $file" >&2; exit 1; }
 }

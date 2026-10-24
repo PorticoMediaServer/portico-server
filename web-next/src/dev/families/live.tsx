@@ -84,6 +84,8 @@ function FrameChrome() {
 }
 
 function SeriesRulesFrame() {
+  // A capture shows the frame's settled state, never the panel's entry animation.
+  if (new URLSearchParams(window.location.search).get('capture') === 'true') document.documentElement.dataset.reduceMotion = 'true';
   return <div style={{'--shell-gutter': 'var(--gutter-desktop)'} as CSSProperties}>
     <FrameChrome />
     <SeriesRulesScreen model={model} initialOpenRuleId="clockmakers" />
