@@ -56,6 +56,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   current.current = {binding, snapshot, expanded};
   const presentation = snapshot.presentation, fence = snapshot.fence;
   const playbackKey = fence ? JSON.stringify(fence.playback) : '', itemKey = fence?.itemId ?? '';
+  const settledItem = useRef<string | undefined>(undefined);
   const sourceKey = fence ? JSON.stringify(fence) : '';
   const valid = !snapshot.disposed && !!presentation && !!fence && sameFence(fence, presentation.fence)
     && snapshot.authority === binding.runtime.getSnapshot().authority && sameFence(binding.runtime.getSnapshot().fence, fence);
@@ -112,7 +113,14 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     return clearTimer;
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
-  useLayoutEffect(() => { setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true); }, [binding.runtime, itemKey]);
+  useLayoutEffect(() => {
+    // A fence replacement blanks the item for a frame; only a settled, different title
+    // starts the screen state over (an options panel survives a quality change).
+    const item = fence?.itemId;
+    if (!item || settledItem.current === item) return;
+    settledItem.current = item;
+    setPanel(null); setMore(false); setShortcuts(false); setFullWindow(false); setVisible(true);
+  }, [binding.runtime, itemKey]);
   const focusEdge = useRef(false), expandedNow = useRef(expanded); expandedNow.current = expanded;
   useLayoutEffect(() => {
     const wasOpen = focusEdge.current; focusEdge.current = open;
