@@ -25,7 +25,7 @@ test('connectivity retains only the identity and listener facts actually reporte
 });
 
 test('canonical connectivity facts are optional nonnull strings', () => {
-  const shape = schemas.GetAdminConnectivityResponse;
+  const shape = schemas.GetConnectivityStatusResponse;
   for (const field of ['identityCode', 'localUrl'] as const) {
     assert.equal(shape.properties[field].type, 'string');
     assert.equal(new Set<string>(shape.required).has(field), false);
