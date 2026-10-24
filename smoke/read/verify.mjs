@@ -60,7 +60,8 @@ page.on('response', async response => {
   if (!isReaderResource) return;
   const entry = {
     at: new Date().toISOString(), status: response.status(), method: response.request().method(),
-    pathPrefix: path.split('/').slice(0, 4).join('/'),
+    pathPrefix: path.split('/').map((segment, index, all) =>
+      (all[index - 1] === 'sessions' && segment !== 'current') ? '{id}' : segment).join('/'),
     mime: response.headers()['content-type'] || null,
     length: response.headers()['content-length'] || null,
   };
@@ -119,6 +120,9 @@ const surface = await page.evaluate(() => ({
   urlPath: location.pathname,
   textLength: (document.body.innerText || '').trim().length,
   errorPage: /Something didn't load|ran into a problem/i.test(document.body.innerText || ''),
+  readerRoot: !!document.querySelector('[data-reader-root]'),
+  drawnTextHead: (document.body.innerText || '').replace(/\n{2,}/g, ' | ').trim().slice(0, 220),
+  backControl: !!([...document.querySelectorAll('button,a[href]')].find(e => /^(Back|Go to Home|Try again)$/i.test((e.innerText || '').trim()))),
   iframes: [...document.querySelectorAll('iframe')].map(frame => (frame.getAttribute('src') || '').split(':')[0]),
   canvases: document.querySelectorAll('canvas').length,
   images: [...document.querySelectorAll('img')].map(img => ({srcScheme: (img.currentSrc || '').split(':')[0], naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, complete: img.complete})).slice(0, 6),
