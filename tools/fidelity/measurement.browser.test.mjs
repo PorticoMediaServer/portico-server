@@ -53,6 +53,14 @@ test('real browser measures the whole viewport and protects source, secret and n
       assert.deepEqual(browser.blocked, [{kind: 'api', method: 'GET'}]);
       assert.equal(apiRequests, 0, 'no auth API request reaches even the disposable fixture');
       assert.deepEqual(browser.pageErrors, []);
+      await browser.evaluate(`document.querySelector('main').insertAdjacentHTML('beforeend', '<section><div data-auth-content><div><button><span>A</span>First</button><button><span>B</span>Second</button></div><form><button type="submit"><span>Synthetic submit</span></button></form><div><button>Link one</button><button>Link two</button></div></div></section>')`);
+      const grouped = await browser.measure('main', {
+        first: '[data-auth-content] > div:first-of-type > button:nth-child(1)', second: '[data-auth-content] > div:first-of-type > button:nth-child(2)',
+        submit: 'button[type=submit]', label: 'button[type=submit] > span',
+      });
+      assert.deepEqual(grouped.anchorIssues, []);
+      assert.equal(grouped.elements.find(value => value.frame === 'submit').ownText, '', 'do not duplicate descendant label in its container');
+      assert.equal(grouped.elements.find(value => value.frame === 'label').ownText, 'Synthetic submit');
       return screen;
     });
     assert.ok(measured.elements.length > 8);

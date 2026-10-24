@@ -80,6 +80,8 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
     for (const property of textStyles.filter(property => !slot.nativeInput || !['lineHeight', 'textShadow', 'textAlign'].includes(property))) {
       if (a.style[property] !== b.style[property]) differences.push({kind: 'measured-difference', label: slot.reference, property, expected: a.style[property], actual: b.style[property]});
     }
+    const color = colorDifference(a.style.color, b.style.color);
+    if (a.style.color !== b.style.color && (!color || color.deltaE2000 > policy.deltaE2000 || color.alpha > policy.colorAlpha)) differences.push({kind: 'measured-difference', label: slot.reference, property: 'color', expected: a.style.color, actual: b.style.color, detail: color});
     if (slot.nativeInput) diagnostics.push({label: slot.reference, property: 'native-input-glyph-rectangles/lineHeight', scored: false, reason: 'Native input exposes host/value/font facts, not glyph rectangles; never substitute host width for text width.'});
   }
   for (const item of ambiguous) differences.push({kind: 'ambiguous-match', ...item});

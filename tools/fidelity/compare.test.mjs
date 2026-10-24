@@ -33,3 +33,13 @@ test('image slot geometry and fit are checked without artwork contents', () => {
   assert.equal(compareScreens(spec([image]), spec([{...image}])).verdict, 'PASS');
   assert.ok(compareScreens(spec([image]), spec([{...image, style: {objectFit: 'cover'}}])).differences.some(value => value.property === 'objectFit'));
 });
+
+test('wrapped control label is a separate measured text part without descendant text hoisting', () => {
+  const button = node('submit', {tag: 'button', ownText: 'Public action'});
+  const shell = {...button, ownText: ''}, label = {...button, id: 'submit-label', frame: 'submit-label', tag: 'span'};
+  const adapter = {textHandledBySlots: ['submit'], actualContentOnly: ['submit-label'], contentSlots: [{reference: 'submit', actual: 'submit-label'}]};
+  const result = compareScreens(spec([button]), spec([shell, label]), adapter);
+  assert.equal(result.verdict, 'PASS');
+  const changed = {...label, style: {...label.style, fontSize: '34px'}};
+  assert.ok(compareScreens(spec([button]), spec([shell, changed]), adapter).differences.some(value => value.property === 'fontSize'));
+});
