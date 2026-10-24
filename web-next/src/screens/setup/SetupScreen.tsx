@@ -25,7 +25,7 @@ export function SetupScreen({ports}: {ports: SetupPorts}) {
       {state.phase === 'error' && <>
         <h1>{t('web.setup.welcome')}</h1>
         {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
-        <Button variant="primary" size="lg" onClick={() => void flow.retry()}>{t('action.tryAgain')}</Button>
+        <Button variant="primary" size="hero" onClick={() => void flow.retry()}>{t('action.tryAgain')}</Button>
       </>}
       {state.phase === 'form' && <SetupForm flow={flow} state={state} local={local}/>}
     </AuthStage>}
@@ -70,7 +70,7 @@ function SetupForm({flow, state, local}: {flow: SetupFlow; state: SetupSnapshot;
     </>}
     {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
     <div className={[styles.btnRow, local ? styles.btnRowTight : ''].filter(Boolean).join(' ')}>
-      <Button variant="primary" size="lg" type="submit" loading={state.busy} disabled={!canSubmit}>
+      <Button variant="primary" size="hero" type="submit" loading={state.busy} disabled={!canSubmit}>
         {hosted ? t('accounts.signIn.handoff') : t('web.setup.createOwner')}
       </Button>
     </div>
@@ -106,8 +106,8 @@ function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
       autoComplete="off" spellCheck={false} onChange={event => flow.setPath(event.currentTarget.value)}/></div>
     {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
     <div className={styles.btnRow}>
-      <Button variant="primary" size="lg" loading={state.busy} disabled={!ready} onClick={() => void flow.addLibrary()}>{t('web.setup.addLibraryScan')}</Button>
-      <Button variant="glass" size="lg" disabled={state.busy} onClick={flow.skip}>{t('web.setup.skip')}</Button>
+      <Button variant="primary" size="hero" loading={state.busy} disabled={!ready} onClick={() => void flow.addLibrary()}>{t('web.setup.addLibraryScan')}</Button>
+      <Button variant="glass" size="hero" disabled={state.busy} onClick={flow.skip}>{t('web.setup.skip')}</Button>
     </div>
   </AuthStage>;
 }
