@@ -27,7 +27,7 @@ async function fixture(move:'to_portico'|null='to_portico'){
   restore:async()=>{throw new Error('No generic restore for move proof');},inspect:async()=>pin,
   connect:(async()=>({api,connection})) as never,remember:async()=>{remembers++;},
   registered:()=>({controller,installationId:()=>installation}),
- },{inspect:async()=>system} as never);
+ },{inspect:async()=>system,cancel:()=>{},dispose:()=>{}} as never);
  await entry.inspect(origin);assert.equal(entry.getSnapshot().phase,'portico');
  return {entry,store,calls,prepares,system,get cancels(){return cancels;},get remembers(){return remembers;},
   expire:()=>{expiresAt='2000-01-01T00:00:00Z';},
@@ -74,4 +74,15 @@ test('a selected revision changed after code preview refuses before creating pro
 test('a selection change during protected prepare cancels that attempt and returns no navigation',async()=>{
  const f=await fixture();await f.entry.previewMoveCode(code);const started=f.holdPrepare(),pending=f.entry.preparePorticoSignIn(hostedOrigin);await started;
  await f.store.signOutServer(serverId);f.releasePrepare();assert.equal(await pending,undefined);assert.equal(f.cancels,1);assert.equal(f.remembers,0);f.entry.dispose();
+});
+
+test('a stored old-password ticket expires without falling back to ordinary sign-in',async t=>{
+ const f=await fixture();assert.equal(await f.entry.proveLocalMovePassword('member','old-password'),true);
+ const future=Date.now()+120000;t.mock.method(Date,'now',()=>future);
+ assert.equal(await f.entry.preparePorticoSignIn(hostedOrigin),undefined);assert.equal(f.prepares.length,0);f.entry.dispose();
+});
+test('expiry during protected preparation cancels the attempt before returning a URL',async t=>{
+ const f=await fixture();await f.entry.previewMoveCode(code);const started=f.holdPrepare(),pending=f.entry.preparePorticoSignIn(hostedOrigin);await started;
+ const future=Date.now()+120000;t.mock.method(Date,'now',()=>future);f.releasePrepare();
+ assert.equal(await pending,undefined);assert.equal(f.cancels,1);f.entry.dispose();
 });
