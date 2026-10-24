@@ -39,3 +39,24 @@ func TestSonicOwnerViewUsesPolicyAndCodesWithoutFabricatedProgress(t *testing.T)
 		t.Fatal(view)
 	}
 }
+
+func TestSonicOwnerAvailabilityIsVerifiedAndIndependentOfLibraryChoice(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, policyAllows := range []bool{false, true} {
+			for _, runtime := range []sonic.Availability{
+				{State: "ready"},
+				{State: "unavailable", Reason: "inference_not_verified", Model: &sonic.Identity{ID: sonic.ModelID}},
+				{State: "unavailable", Reason: "inference_failed", Model: &sonic.Identity{ID: sonic.ModelID}},
+				{State: "unavailable", Reason: "runtime_or_model_missing"},
+			} {
+				status := SonicStatus{Settings: catalog.SonicSettings{Enabled: enabled, Revision: 1}, PolicyAllows: policyAllows,
+					CanAnalyze: true, Runtime: runtime, Total: 10, Analyzed: 10,
+					Work: workpolicy.HeavyWorkFacts{ObservedAt: time.Now(), WindowOpen: true}}
+				view := status.OwnerView("music")
+				if view.Available != (runtime.State == "ready") || view.Enabled != enabled || view.PolicyAllows != policyAllows {
+					t.Fatalf("enabled=%v policy=%v runtime=%+v view=%+v", enabled, policyAllows, runtime, view)
+				}
+			}
+		}
+	}
+}
