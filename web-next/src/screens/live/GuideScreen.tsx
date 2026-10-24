@@ -189,8 +189,8 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
       <div className={styles.guideRight}>
         <Select className={styles.guideSort} aria-label={t('channels.sort')} value={sort.value} options={sort.options} onValueChange={sort.onChange}/>
         <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
-          items={[{value: 'guide', label: t('channels.viewGuide'), icon: 'i-timeline', accessibleLabel: t('channels.viewGuide')},
-            {value: 'list', label: t('channels.viewList'), icon: 'i-list', accessibleLabel: t('channels.viewList')}]}/>
+          items={[{value: 'guide', label: t('title.viewGrid'), icon: 'i-timeline', accessibleLabel: t('title.viewGrid')},
+            {value: 'list', label: t('title.viewList'), icon: 'i-list', accessibleLabel: t('title.viewList')}]}/>
       </div>
     </div>
     {problem && <div className={styles.guideProblem}>{problem}</div>}

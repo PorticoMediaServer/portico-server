@@ -16,9 +16,9 @@
 /* ---- Guide screen: desktop-live.html#live-guide ---- */
 .guideScreen { position: relative; min-height: 100vh; }
 .guideAmbient { position: absolute; z-index: -1; inset: 0 0 auto 0; height: 620px; pointer-events: none;
-  background: radial-gradient(40% 70% at 6% 0%, color-mix(in srgb, var(--color-ambient) 78%, transparent), transparent 72%),
-    radial-gradient(34% 60% at 44% 0%, color-mix(in srgb, var(--color-record) 30%, transparent), transparent 72%),
-    radial-gradient(40% 70% at 94% 0%, color-mix(in srgb, var(--color-healthy) 34%, transparent), transparent 72%); }
+  background: radial-gradient(40% 70% at 6% 0%, color-mix(in srgb, var(--profile-art-blue) 50%, transparent), transparent 72%),
+    radial-gradient(34% 60% at 44% 0%, color-mix(in srgb, color-mix(in srgb, var(--color-record) 50%, var(--color-shadow)) 30%, transparent), transparent 72%),
+    radial-gradient(40% 70% at 94% 0%, color-mix(in srgb, var(--profile-art-mint) 34%, transparent), transparent 72%); }
 .guideState { padding: 122px var(--shell-gutter, var(--gutter-desktop)) 72px; }
 .guideProblem { padding: 16px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .guideHeader { position: relative; padding: 122px var(--shell-gutter, var(--gutter-desktop)) 0; display: flex; align-items: flex-end; gap: 20px; }
@@ -26,11 +26,11 @@
 .guideHeader .guideSwitcher { min-width: 0; height: 40px; padding: 0 12px 0 16px; gap: 8px; border-radius: 10px; margin-bottom: 2px;
   background: color-mix(in srgb, var(--color-text) 12%, transparent); backdrop-filter: blur(var(--glass-blur)); font-size: calc(var(--type-body-size) - 0px); }
 .guideHeader .guideSwitcher:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 20%, transparent); }
-.guideSource { margin: 0 0 10px auto; display: flex; gap: 12px; font-size: calc(var(--type-body-size) - 1px); color: var(--color-text-tertiary); }
+.guideSource { line-height: normal; margin: 0 0 10px auto; display: flex; gap: 12px; font-size: calc(var(--type-body-size) - 1px); color: var(--color-text-tertiary); }
 .guideSource strong { color: var(--color-text-secondary); font-weight: var(--type-row-heading-weight); }
 .guideTabs { margin-top: 26px; }
 .guideTabList { padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
-.guideTabs .guideTabList button { font-size: calc(var(--type-tab-size) + 1.5px); }
+.guideTabs .guideTabList button { font-size: var(--type-tab-size); }
 .guideTabNote { margin-left: 10px; font-size: var(--type-caption-size); font-weight: var(--type-row-heading-weight); color: var(--color-record); }
 .guideChips { position: relative; display: flex; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; overflow-x: auto; scrollbar-width: none; }
 .guideChips::-webkit-scrollbar { display: none; }
@@ -68,10 +68,10 @@
 .guideChannel .guideChannelMark { border-radius: 9px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-white) 7%, transparent); }
 .guideChannelMarkEmpty { width: 40px; height: 40px; flex: none; border-radius: 9px; background: var(--color-raised); }
 .guideChannelText { min-width: 0; }
-.guideChannelText b { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }
+.guideChannelText b { line-height: normal; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }
 .guideChannelText b > svg { flex: none; }
 .guideFavorite { color: var(--color-accent-strong); }
-.guideChannelText small { display: block; margin-top: 2px; font-size: calc(var(--type-caption-size) - .5px); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.guideChannelText small { line-height: normal; display: block; margin-top: 2px; font-size: calc(var(--type-caption-size) - .5px); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .guideChannelText small span { margin-left: 12px; }
 .guideLaneNow { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--color-accent-strong); box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent-strong) 55%, transparent); pointer-events: none; z-index: var(--layer-row-arrow); }
 .guideCell { position: absolute; top: 4px; bottom: 4px; padding: 0 14px; border: 0; border-radius: 9px; background: var(--color-raised); display: flex; flex-direction: column; justify-content: center; gap: 5px; overflow: hidden; color: var(--color-text); text-align: left; font-family: var(--font); cursor: pointer;
@@ -86,10 +86,10 @@
 .guideCell:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; z-index: var(--layer-content); }
 .guideCell[data-kind='gap'] { cursor: default; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-text) 3.5%, transparent) 0 7px, transparent 7px 14px); box-shadow: inset 0 0 0 1px var(--color-line); }
 .guideCell[data-wide-gap] { padding-left: 18px; }
-.guideCellTitle { position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }
+.guideCellTitle { line-height: normal; position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-row-heading-weight); }
 .guideCell[data-kind='gap'] .guideCellTitle { font-size: calc(var(--type-caption-size) + .5px); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); white-space: nowrap; }
 .guideCellName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.guideCellDetail { position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: calc(var(--type-caption-size) - .5px); color: var(--color-text-tertiary); }
+.guideCellDetail { line-height: normal; position: relative; z-index: var(--layer-hero-navigation); display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: calc(var(--type-caption-size) - .5px); color: var(--color-text-tertiary); }
 .guideCell[data-state='now'] .guideCellDetail { color: var(--color-text-secondary); }
 .guideCellDetail > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .guideClip { flex: none; color: var(--color-text-tertiary); margin: 0 -3px 0 -6px; }
@@ -103,7 +103,7 @@
 .guideProgress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .guideProgress i { display: block; height: 100%; background: var(--color-accent-strong); }
 .guideNowLine { position: absolute; top: -6px; bottom: 0; width: 2px; margin-left: -1px; background: var(--color-accent-strong); box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent-strong) 55%, transparent); pointer-events: none; z-index: -1; }
-.guideKbd { margin: 0; padding: 18px var(--shell-gutter, var(--gutter-desktop)) 44px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.guideKbd { line-height: normal; margin: 0; padding: 18px var(--shell-gutter, var(--gutter-desktop)) 44px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .guideList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; height: 100%; }
 .guideList button { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px; padding: 0 12px; border: 0; background: transparent; color: var(--color-text); overflow: hidden; text-align: left; cursor: pointer; }
 .guideList b { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

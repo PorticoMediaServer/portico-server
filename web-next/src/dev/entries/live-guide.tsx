@@ -162,4 +162,4 @@ function Specimen() {
     onVisibleWindow={onVisibleWindow}/>;
 }
 
-createRoot(document.getElementById('root')!).render(<><IconSprite /><main data-guide-specimen><GuideNavigation /><Specimen /></main></>);
+createRoot(document.getElementById('root')!).render(<><IconSprite /><main data-guide-specimen><div className={shell.shell} data-desktop="true"><GuideNavigation /><Specimen /></div></main></>);
