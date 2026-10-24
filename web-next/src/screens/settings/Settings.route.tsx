@@ -20,6 +20,8 @@ import {SettingsScreen, type SettingsBindings} from './Settings';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
+import {LibraryManagementService} from '@core/library-management.ts';
+import {LibrariesPanel} from './libraries/LibrariesPanel';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {PeopleScreen, type PeopleBindings} from './People';
@@ -106,8 +108,12 @@ export function SettingsEntry() {
         artwork: (id, kind, revision) => revision ? context.artwork.foreground(encodedRoutePath('get_items_id_art_kind', {id: encodeURIComponent(id), kind}) + '?' + new URLSearchParams({v: revision}), kind === 'backdrop' ? 800 : 400, kind === 'poster' ? 2 / 3 : kind === 'backdrop' ? 16 / 9 : 1) : undefined,
         effects: {openHome, openSettings, reportError, openHistory: report => {if (current()) {historyContexts.set(context, report);openSettings('history');}}}});
     }
+    // The owner's Libraries page owns its own bounded directory read and scan
+    // commands; the settings controller keeps the per-library panel only.
+    const libraries = route.section === 'libraries' && identity.primaryProfile === true && identity.capabilities?.manageServer === true && (role === 'owner' || role === 'admin')
+      ? new LibraryManagementService({api: context.api, scope: {serverId: viewer.serverId, viewerId: options.viewerId}}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
-      special: (row, state, rowContext) => {
+      special: (row, state, rowContext, openPanel) => {
         const languageKind = preferredLanguageKind(row.id);
         if (languageKind) return <AudioSubtitleLanguageList row={row} state={state} locale={uiLocale} appLocale={appLocale}
           onChange={value => {if (current()) controller.change(row, value, rowContext);}} onError={reportError} />;
@@ -119,6 +125,8 @@ export function SettingsEntry() {
         }
         if (isDeviceSyntheticRow(row.id)) return <DeviceRowControl row={row} onSwitchServer={() => {if (current()) void router.navigate({to: '/servers'});}}/>;
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
+        if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
+          onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
       section: selected => selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : undefined,
@@ -133,7 +141,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();controller.dispose();};
   }, [context, retry, route.section, reportTimeZone]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};

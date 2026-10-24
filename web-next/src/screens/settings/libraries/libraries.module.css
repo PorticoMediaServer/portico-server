@@ -1,0 +1,55 @@
+/* The owner's Libraries list. Rows use the settings panel's own type and line
+   treatment: a 60px row with the library's name over its folder, one glass
+   action and the row menu. Nothing here draws scan progress. */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-line-soft);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.folder {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.scanning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.loading,
+.empty {
+  padding: 16px 2px;
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+}

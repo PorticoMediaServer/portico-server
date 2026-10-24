@@ -15,6 +15,8 @@ export const settingsMessages = {
   'next.settings.clear': 'Clear',
   'next.settings.clearFilters': 'Clear search and filters',
   'next.settings.actions': 'Actions',
+  'next.settings.libraries.scanning': 'Scanning',
+  'next.settings.libraries.empty': 'No libraries yet.',
   'next.settings.loading': 'Loading…',
   'next.settings.loadMore': 'Show more',
   'next.settings.saved': 'Saved',
