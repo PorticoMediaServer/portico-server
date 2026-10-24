@@ -19,6 +19,35 @@ test('EPUB ZIP range loader checks actual CRC/content and closes/cancels determi
   assert.deepEqual([...await archive.read('missing.xhtml',abort.signal)],[]);
   await archive.dispose();await assert.rejects(archive.read('chapter.xhtml',abort.signal));
 });
+test('authored EPUB preserves exact OPF and navigation resources for the package parser',async()=>{
+  const opf=`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:uuid:5c1f6f0e-6f6a-4f3e-9d2a-2f4f6c0d9e21</dc:identifier>
+    <dc:title>Authored OPF &amp; Navigation</dc:title>
+    <dc:creator>Ada Lovelace</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:language>fr</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine page-progression-direction="rtl"><itemref idref="chapter1"/></spine>
+</package>`;
+  const nav=`<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Contents</title></head>
+  <body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">Chapter &amp; One</a></li></ol></nav></body>
+</html>`;
+  const bytes=await zip({'book.opf':opf,'nav.xhtml':nav,'chapter1.xhtml':'<html xmlns="http://www.w3.org/1999/xhtml"><body>Authored chapter</body></html>'});
+  const archive=await openEpubArchive(sourceFromBlob(new Blob([bytes]),'authored-opf','revision-1'),new AbortController().signal);
+  try {
+    assert.deepEqual(archive.entries.filter(entry=>entry.path==='book.opf'||entry.path==='nav.xhtml').map(entry=>entry.path),['book.opf','nav.xhtml']);
+    assert.equal(new TextDecoder().decode(await archive.read('book.opf',new AbortController().signal)),opf);
+    assert.equal(new TextDecoder().decode(await archive.read('nav.xhtml',new AbortController().signal)),nav);
+  }finally{await archive.dispose();}
+});
 test('EPUB rejects traversal/aliases, encrypted entries, truncated ZIP and declared bombs',async()=>{
   for(const path of ['../outside','/absolute','a\\b','a//b','a/./b','a/%2e%2e/b','a?token=x'])assert.throws(()=>safeArchivePath(path));
   const hostile=await zip({'../outside':'unsafe'});

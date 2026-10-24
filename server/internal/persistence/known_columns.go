@@ -1396,6 +1396,7 @@ catalog_shows.network
 catalog_shows.original_title
 catalog_shows.overview
 catalog_shows.provider_match_status
+catalog_shows.source_edition
 catalog_shows.studio
 catalog_shows.tagline
 catalog_shows.tags
@@ -4424,6 +4425,7 @@ queue_v1_snapshots.hint_ordinal
 queue_v1_snapshots.id
 queue_v1_snapshots.kind
 queue_v1_snapshots.label
+queue_v1_snapshots.music_only
 queue_v1_snapshots.queue_id
 queue_v1_snapshots.seen
 queue_v1_snapshots.selector
@@ -4431,6 +4433,16 @@ queue_v1_snapshots.source_revision
 queue_v1_snapshots.start
 queue_v1_snapshots.state
 queue_v1_snapshots.width
+queue_v1_sonic_windows.contents
+queue_v1_sonic_windows.count
+queue_v1_sonic_windows.lap
+queue_v1_sonic_windows.model_id
+queue_v1_sonic_windows.model_sha256
+queue_v1_sonic_windows.model_version
+queue_v1_sonic_windows.ordinals
+queue_v1_sonic_windows.queue_id
+queue_v1_sonic_windows.seed
+queue_v1_sonic_windows.window_index
 queues_v1.account_id
 queues_v1.authority
 queues_v1.automatic_advances

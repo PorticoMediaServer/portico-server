@@ -211,7 +211,11 @@ func oneSpellingDifference(a, b string) bool {
 // them). Only loose files, and files an owner assigns by hand, find their show
 // by title and year.
 func resolveShowTx(ctx context.Context, tx *sql.Tx, library string, handle, asset int64, plan EpisodeNaming, manual bool) (int64, string, error) {
-	titleKey := compactcatalog.ShowTitleKey(plan.ShowTitle, plan.Year)
+	edition := plan.ShowEdition
+	if manual {
+		edition = ""
+	}
+	titleKey := compactcatalog.ShowEditionIdentityKey(compactcatalog.ShowTitleKey(plan.ShowTitle, plan.Year), edition)
 	primary := titleKey
 	if !manual {
 		source, relative, err := assetSourceTx(ctx, tx, library, asset)
@@ -222,7 +226,7 @@ func resolveShowTx(ctx context.Context, tx *sql.Tx, library string, handle, asse
 			primary = "folder:" + source + ":" + filepath.ToSlash(folder)
 		}
 	}
-	show, created, err := compactcatalog.ResolveTitleTx(ctx, tx, compactcatalog.TitleClaim{Library: handle, Kind: compactcatalog.Show, Provider: plan.Provider, Keys: []string{compactcatalog.ShowKey(primary)}, Title: plan.ShowTitle, Year: plan.Year})
+	show, created, err := compactcatalog.ResolveTitleTx(ctx, tx, compactcatalog.TitleClaim{Library: handle, Kind: compactcatalog.Show, SourceEdition: edition, Provider: plan.Provider, Keys: []string{compactcatalog.ShowKey(primary)}, Title: plan.ShowTitle, Year: plan.Year})
 	if err != nil {
 		return 0, "", err
 	}

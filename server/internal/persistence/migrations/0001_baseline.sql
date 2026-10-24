@@ -240,6 +240,7 @@ CREATE TABLE retained_reading_progress(
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,
+ source_edition TEXT NOT NULL DEFAULT '',
  provider_match_status TEXT NOT NULL DEFAULT 'unmatched',
  original_title TEXT NOT NULL DEFAULT '',
  tagline TEXT NOT NULL DEFAULT '',
@@ -3359,6 +3360,7 @@ CREATE TABLE queues_v1(
 CREATE TABLE queue_v1_snapshots(
  id TEXT PRIMARY KEY,
  queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
+ music_only INTEGER NOT NULL DEFAULT 0 CHECK(music_only IN(0,1)),
  kind TEXT NOT NULL,
  selector TEXT NOT NULL,
  label TEXT NOT NULL,
@@ -3371,6 +3373,23 @@ CREATE TABLE queue_v1_chunks(
  keys BLOB NOT NULL,
  PRIMARY KEY(snapshot_id,chunk_no)
 ) WITHOUT ROWID, STRICT;
+CREATE TABLE queue_v1_sonic_windows(
+ queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
+ seed INTEGER NOT NULL CHECK(seed>=0),
+ lap INTEGER NOT NULL CHECK(lap>=0),
+ window_index INTEGER NOT NULL CHECK(window_index>=0),
+ contents BLOB NOT NULL CHECK(length(contents)=32),
+ model_id TEXT NOT NULL DEFAULT '',
+ model_version TEXT NOT NULL DEFAULT '',
+ model_sha256 TEXT NOT NULL DEFAULT '',
+ count INTEGER NOT NULL CHECK(count BETWEEN 1 AND 256),
+ ordinals BLOB NOT NULL CHECK(length(ordinals)=count*8),
+ PRIMARY KEY(queue_id,seed,lap,window_index,contents),
+ CHECK((model_id='' AND model_version='' AND model_sha256='') OR
+       (length(model_id) BETWEEN 1 AND 128 AND length(model_version) BETWEEN 1 AND 128 AND length(model_sha256)=64))
+) WITHOUT ROWID, STRICT;
+CREATE TRIGGER queue_v1_sonic_windows_immutable BEFORE UPDATE ON queue_v1_sonic_windows
+BEGIN SELECT RAISE(ABORT,'captured Sonic windows are immutable'); END;
 CREATE TABLE queue_v1_segments(
  id TEXT PRIMARY KEY,
  queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,

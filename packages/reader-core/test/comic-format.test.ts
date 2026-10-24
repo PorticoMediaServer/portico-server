@@ -82,6 +82,9 @@ test('central directory CRC, local name, truncation and overlapping data fail cl
   const corrupt=Buffer.from(good);corrupt[35]^=1;let s=source(corrupt);const [entry]=await readDirectory(s,signal());await assert.rejects(readEntry(s,entry,signal()),{code:'archive_invalid'});
   const renamed=Buffer.from(good);renamed[30]=120;s=source(renamed);await assert.rejects(readEntry(s,(await readDirectory(s,signal()))[0],signal()),{code:'archive_invalid'});
   await assert.rejects(readDirectory(source(good.subarray(0,-1)),signal()),{code:'archive_invalid'});
+  await assert.rejects(readDirectory(source(Buffer.concat([good,Buffer.from([0])])),signal()),{code:'archive_invalid'});
+  const inexact=source(good),read=inexact.read;inexact.read=async(range,sig)=>Buffer.concat([await read(range,sig),Buffer.from([0])]);
+  await assert.rejects(readDirectory(inexact,signal()),{code:'archive_invalid'});
   const overlap=Buffer.from(good);overlap.writeUInt16LE(65000,28);s=source(overlap);await assert.rejects(readEntry(s,(await readDirectory(s,signal()))[0],signal()),{code:'archive_invalid'});
 });
 test('path traversal, duplicate normalized names, encryption and ZIP64 are refused',async()=>{
@@ -107,6 +110,19 @@ test('image sniffing and XML metadata reject active markup, bad signatures and h
   assert.throws(()=>rasterInfo(Buffer.from('<svg onload="alert(1)"/>')),{code:'image_invalid'});
   const huge=Buffer.from(png);huge.writeUInt32BE(100000,16);assert.throws(()=>rasterInfo(huge),{code:'image_limit'});
   assert.throws(()=>comicInfo(Buffer.from('<!DOCTYPE ComicInfo [<!ENTITY x SYSTEM "file:///secret">]><ComicInfo/>')),{code:'archive_invalid'});
+});
+test('source retirement between directory and metadata cannot publish stale archive identity',async()=>{
+  const input=source(zip([{name:'page.png',bytes:png},{name:'ComicInfo.xml',bytes:Buffer.from('<ComicInfo><Title>Old</Title></ComicInfo>')}])),read=input.read;let calls=0;
+  input.read=(range,sig)=>{if(++calls!==1)return read(range,sig);
+    return new Promise((resolve,reject)=>read(range,sig).then(bytes=>{resolve(bytes);queueMicrotask(()=>{input.revision='changed';});},reject));
+  };
+  await assert.rejects(openComicArchive(input,signal()),{code:'archive_invalid'});
+});
+test('independent comic archive readers retain separate retirement lifecycles',async()=>{
+  const input=source(zip([{name:'page.png',bytes:png}])),a=await openComicArchive(input,signal()),b=await openComicArchive(input,signal());
+  a.dispose();a.dispose();await assert.rejects(a.page(0,{width:300,signal:signal()}),{code:'closed'});
+  assert.deepEqual(Buffer.from((await b.page(0,{width:300,signal:signal()})).bytes),png);
+  b.dispose();await assert.rejects(b.page(0,{width:300,signal:signal()}),{code:'closed'});
 });
 test('changed source revision and an absent binary reader cannot splice CBZ pages',async()=>{
   const input=source(zip([{name:'a.png',bytes:png}])),archive=await openComicArchive(input,signal());input.revision='changed';await assert.rejects(archive.page(0,{width:300,signal:signal()}),{code:'archive_invalid'});archive.dispose();

@@ -22,6 +22,12 @@ type Selector struct {
 	Query     *catalog.QueueQuery `json:"query,omitempty"`
 	Saved     *SavedRef           `json:"saved,omitempty"`
 	Items     *ItemList           `json:"items,omitempty"`
+	Journey   *JourneySelector    `json:"journey,omitempty"`
+}
+type JourneySelector struct {
+	From   string `json:"from" ref:"title"`
+	To     string `json:"to" ref:"title"`
+	Length int    `json:"length"`
 }
 type SavedRef struct {
 	ID string `json:"id"`
@@ -119,6 +125,13 @@ var itemIDPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)
 
 func (s Selector) validate(path string) error {
 	n := 0
+	if s.Journey != nil {
+		n++
+		j := s.Journey
+		if !itemIDPattern.MatchString(j.From) || !itemIDPattern.MatchString(j.To) || j.From == j.To || j.Length < 2 || j.Length > 128 {
+			return &FieldError{Path: path + ".journey"}
+		}
+	}
 	if s.Container != nil {
 		n++
 		if !itemIDPattern.MatchString(s.Container.ID) || s.Container.Kind == "" || len(s.Container.Kind) > 32 {
@@ -264,12 +277,12 @@ func (s *Service) queueKeyLimit() int64 {
 // small one, the last chunks, the count and label) inside the queue command.
 func storeSnapshot(ctx context.Context, tx *sql.Tx, queue string, snap *snapshot) error {
 	if !snap.stored {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width) VALUES(?,?,?,?,?,0,0)`, snap.id, queue, snap.kind, snap.selector, ""); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,?,?,?,0,0,1)`, snap.id, queue, snap.kind, snap.selector, ""); err != nil {
 			return err
 		}
 	}
 	for _, c := range snap.pending {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, snap.id, c.no, c.keys); err != nil {
+		if err := writeQueueChunkTx(ctx, tx, snap.id, c.no, c.keys, false); err != nil {
 			return err
 		}
 	}

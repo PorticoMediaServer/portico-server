@@ -89,6 +89,8 @@ type selectorKeys struct {
 // its key query (see openKeys).
 func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput) (selectorKeys, error) {
 	switch {
+	case in.Source.Journey != nil:
+		return s.journeyKeysQuery(ctx, tx, p, *in.Source.Journey)
 	case in.Source.Container != nil && in.Source.Container.Kind == "mix":
 		if s.MixKeys == nil {
 			return selectorKeys{}, ErrUnsupportedSelector
@@ -185,6 +187,8 @@ func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principa
 // statement: an inaccessible item is absent, counts nowhere, and never reaches
 // a window (SEC-02, P11/P12).
 type snapshotScan struct {
+	// A finite Journey must fail before staging if any captured key is refused.
+	exact bool
 	s     *Service
 	ctx   context.Context
 	snap  *snapshot
@@ -219,12 +223,12 @@ func (sc *snapshotScan) writeBatch() error {
 					return err
 				}
 			}
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width) VALUES(?,?,?,?,'',0,0)`, snap.id, sc.queue, snap.kind, snap.selector); err != nil {
+			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_snapshots(id,queue_id,kind,selector,label,count,width,music_only) VALUES(?,?,?,?,'',0,0,1)`, snap.id, sc.queue, snap.kind, snap.selector); err != nil {
 				return err
 			}
 		}
 		for _, c := range snap.pending {
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, snap.id, c.no, c.keys); err != nil {
+			if err := writeQueueChunkTx(ctx, w, snap.id, c.no, c.keys, false); err != nil {
 				return err
 			}
 		}
@@ -272,6 +276,9 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 		allowed, err := visible(pending)
 		if err != nil {
 			return err
+		}
+		if sc.exact && len(allowed) != len(pending) {
+			return ErrUnsupportedSelector
 		}
 		// allowed is pending in order with the hidden keys left out: each kept
 		// key is the next pending occurrence of that id.
@@ -390,7 +397,7 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	defer keys.Close()
 	kind, specials := k.kind, k.specials
 	snap.kind, snap.sourceRevision, snap.label = kind, k.revision, k.label
-	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: limit, keep: true, budget: budget, stage: stage, anchorAt: -1, anchor: -1}
+	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: limit, keep: true, budget: budget, stage: stage, anchorAt: -1, anchor: -1, exact: in.Source.Journey != nil}
 	if in.Anchor != nil {
 		sc.anchorItem = in.Anchor.ItemID
 		if in.Anchor.Resume && in.Source.Container != nil && in.Source.Container.Kind == "show" {
@@ -404,11 +411,14 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 			}
 		}
 	}
-	if kind == "items" {
-		sc.budget = scanBudget{} // at most 500 keys
+	if kind == "items" || in.Source.Journey != nil {
+		sc.budget = scanBudget{} // at most 500 explicit keys or 128 Journey keys
 	}
 	if err = sc.scan(tx, keys, p); err != nil {
 		return snap, err
+	}
+	if in.Source.Journey != nil && snap.count != int64(in.Source.Journey.Length) {
+		return snap, ErrUnsupportedSelector
 	}
 	snap.anchor = sc.anchor
 	if snap.partial && snap.anchor < 0 && sc.anchorItem != "" {
@@ -449,6 +459,9 @@ func occurrencePosition(ctx context.Context, tx *sql.Tx, playlist, entry string)
 }
 
 func (s *Service) snapshotLabel(ctx context.Context, tx *sql.Tx, in SegmentInput, snap snapshot) string {
+	if in.Source.Journey != nil {
+		return ""
+	}
 	if in.Source.isQuery() {
 		return snap.label
 	}
@@ -798,7 +811,7 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	// Finish: the last chunks, the final count, ready; and the start that waited.
 	return dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassBackgroundMedia, func(ctx context.Context, w *sql.Tx) error {
 		for _, c := range snap.pending {
-			if _, err := w.ExecContext(ctx, `INSERT INTO queue_v1_chunks(snapshot_id,chunk_no,keys) VALUES(?,?,?)`, id, c.no, c.keys); err != nil {
+			if err := writeQueueChunkTx(ctx, w, id, c.no, c.keys, false); err != nil {
 				return err
 			}
 		}
