@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyControlledState, checkControlledState} from './controlled-state.mjs';
 
+test('keyboard focus uses one ordinary Tab and refuses a different reached target', async () => {
+  const calls = [], browser = {evaluate: async expression => expression.startsWith('document.activeElement') ? true :
+    {count: 1, visible: true, disabled: false, focused: false}, call: async (...args) => calls.push(args)};
+  await applyControlledState(browser, [{action: 'tab', selector: 'button'}]);
+  assert.deepEqual(calls.map(value => [value[0], value[1].type, value[1].key]),
+    [['Input.dispatchKeyEvent', 'keyDown', 'Tab'], ['Input.dispatchKeyEvent', 'keyUp', 'Tab']]);
+  await assert.rejects(applyControlledState({...browser, evaluate: async expression => expression.startsWith('document.activeElement') ? false :
+    {count: 1, visible: true, disabled: false}}, [{action: 'tab', selector: 'button'}]), /did not focus/);
+});
+
 test('public fixture state uses real click/text events and never rewrites DOM or invokes focus', async () => {
   const calls = [];
   const browser = {evaluate: async expression => {assert.ok(!expression.includes('.focus(')); return {count: 1, visible: true, disabled: false, focused: true, x: 5, y: 8};}, call: async (...args) => calls.push(args)};
