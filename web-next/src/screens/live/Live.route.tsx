@@ -18,6 +18,8 @@ import {Skeleton, StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
+import {LiveRecordingTabs} from './SeriesRules';
+import {SeriesRulesEntry} from './SeriesRulesEntry';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
@@ -138,6 +140,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
           else if (value === 'all') navigate({sourceId: undefined, kind: undefined, channelId: undefined, group: undefined});}}/>}
       {hasSources && <p className={styles.sourceFacts}><strong>{t('next.live.sources', {count: selectedSources.length})}</strong>{through !== undefined && <span>{t('next.live.guideThrough', {day: new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(through - 1)})}</span>}</p>}
     </header>
+    <LiveRecordingTabs view="guide" onChange={tab => {if (tab === 'recordings') navigate({tab});}}/>
     {failed === owner ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setAttempt(value => value + 1)}}/>
       : sources && !sources.length ? <StateView title={t('channels.noSourcesTitle')} body={t(context.identity?.viewer.role === 'owner' ? 'channels.noSourcesOwner' : 'channels.noSourcesMember')}/>
         : <>
@@ -200,6 +203,7 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
 }
 function LiveRouteScreen() {
   const captured = useProtectedWebScreenContext();
-  return captured ? <BoundLive captured={captured}/> : null;
+  const search = parseLiveScreenSearch(useSearch({from: '/live'}));
+  return captured ? search.tab === 'recordings' ? <SeriesRulesEntry captured={captured}/> : <BoundLive captured={captured}/> : null;
 }
 export default defineWebScreen({id: 'live', component: LiveRouteScreen, validateSearch: parseLiveScreenSearch});

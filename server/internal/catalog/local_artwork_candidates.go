@@ -31,7 +31,9 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		if err != nil || len(raw) != 32 {
 			return errors.New("invalid local artwork candidate key")
 		}
-		before := len(carriers)
+		if !validVideoArtworkCandidateSlot(kind, candidate.Slot) {
+			return errors.New("invalid local artwork candidate slot")
+		}
 		err = s.visitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, map[string]string{candidate.Slot: candidate.Key}, func(_ context.Context, _ *sql.Tx, _ string, found []sidecarCarrier) error {
 			carriers = append(carriers, found...)
 			return nil
@@ -39,9 +41,9 @@ func (s *Service) commitInventoryArtworkCandidatesTx(ctx context.Context, tx *sq
 		if err != nil {
 			return err
 		}
-		if len(carriers) == before {
-			return errors.New("local artwork candidate has no asset-bound slot")
-		}
+		// Unmatched episodes have no show/season link yet. Keep their media
+		// facts and omit the unattached image; never invent a parent or fail
+		// the whole import merely because the filename did not match.
 	}
 	// Only a complete image observation reaches this method. The transaction's
 	// current inventory/policy fence remains the authority for replacement.
@@ -69,6 +71,11 @@ func ReadLocalArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, kind string, 
  WHERE c.entity_id=? AND c.kind=? AND c.role=? AND c.art_key>?
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed')
+ AND (
+ (c.kind='item' AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=c.asset_id AND l.entity_id=c.entity_id)) OR
+ (c.kind='show' AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=c.asset_id AND ep.show_id=c.entity_id)) OR
+ (c.kind='season' AND EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id JOIN catalog_seasons se ON se.show_id=ep.show_id WHERE a.token=c.asset_id AND se.entity_id=c.entity_id))
+ )
  ORDER BY c.art_key LIMIT ?`, entity, kind, role, after, limit)
 	if err != nil {
 		return nil, err
@@ -83,4 +90,18 @@ func ReadLocalArtworkCandidatesTx(ctx context.Context, tx *sql.Tx, kind string, 
 		keys = append(keys, key)
 	}
 	return keys, rows.Err()
+}
+
+func validVideoArtworkCandidateSlot(kind, slot string) bool {
+	if kind == "movie" {
+		return slot == "item/poster" || slot == "item/backdrop" || slot == "item/logo"
+	}
+	if kind != "tv" && kind != "anime" {
+		return false
+	}
+	if slot == "show/poster" || slot == "show/backdrop" || slot == "show/logo" {
+		return true
+	}
+	_, ok := sidecarSeasonNumber(slot)
+	return ok
 }

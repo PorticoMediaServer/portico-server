@@ -40,5 +40,6 @@ export function comicInfo(bytes:Uint8Array):Readonly<{title?:string;author?:stri
     return match?.[1].replace(/&(?:amp|lt|gt|quot|apos);/g,s=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'"}[s]!)).trim()||undefined;
   };
   const title=value('Title')??value('Series'),author=value('Writer'),manga=value('Manga');
-  return Object.freeze({...title?{title}:{},...author?{author}:{},...manga?{direction:/^(Yes|YesAndRightToLeft)$/i.test(manga)?'rtl' as const:'ltr' as const}:{}});
+  // Anansi ComicInfo: Manga=Yes alone keeps the default; only YesAndRightToLeft defines RTL.
+  return Object.freeze({...title?{title}:{},...author?{author}:{},...manga?{direction:/^YesAndRightToLeft$/i.test(manga)?'rtl' as const:'ltr' as const}:{}});
 }
