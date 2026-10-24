@@ -73,6 +73,10 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 			CaptureTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed) error {
 				return networkingOwnerStartError(id.CaptureOwnerClaimTx(ctx, tx, p, original, start, audience))
 			},
+			CaptureWithCountTx: func(ctx context.Context, tx *sql.Tx, audience string, original, start claimweb.Signed, sign networking.OwnerSwitchCountSign) (*claimweb.Signed, error) {
+				proof, err := id.CaptureOwnerClaimWithCountTx(ctx, tx, p, original, start, audience, identity.OwnerSwitchCountSigner(sign))
+				return proof, networkingOwnerStartError(err)
+			},
 			BindTx: func(ctx context.Context, tx *sql.Tx, operation, transaction string) error {
 				return networkingOwnerStartError(id.BindOwnerClaimTransactionTx(ctx, tx, p, operation, transaction))
 			},

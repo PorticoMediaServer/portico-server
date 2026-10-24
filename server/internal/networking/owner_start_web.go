@@ -18,14 +18,22 @@ import (
 // OwnerStartAuthority is supplied only by the local HTTP identity edge. It
 // closes over its exact current owner/main-profile/family/generation and token
 // expiry; neither the browser nor a Hosted approval can construct this guard.
+type OwnerSwitchCountSign func(context.Context, *sql.Tx, string, int64, int) (claimweb.Signed, error)
+
 type OwnerStartAuthority struct {
 	ExpiresAt time.Time
 	CaptureTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed) error
+	CaptureWithCountTx func(context.Context, *sql.Tx, string, claimweb.Signed, claimweb.Signed, OwnerSwitchCountSign) (*claimweb.Signed, error)
 	BindTx    func(context.Context, *sql.Tx, string, string) error
 }
 
 type ownerStartSigner interface {
 	SignOwnerStart(context.Context, Binding, claimweb.Signed, claimweb.OwnerStart) (claimweb.Signed, error)
+}
+
+
+type ownerSwitchCountSigner interface {
+	SignOwnerSwitchCountTx(context.Context, *sql.Tx, Binding, string, claimweb.Signed, claimweb.Signed, claimweb.OwnerSwitchCount) (claimweb.Signed, error)
 }
 
 func ownerRandom32(value string) bool {
@@ -49,9 +57,9 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 	if err := checkClaimRequest(ctx); err != nil {
 		return out, err
 	}
-	var claimPayload, claimSignature, startPayload, startSignature []byte
+	var claimPayload, claimSignature, startPayload, startSignature, countPayload, countSignature []byte
 	var phase string
-	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase)
+	err := h.store.db.QueryRowContext(ctx, `SELECT claim_payload,claim_signature,start_payload,start_signature,phase,switch_count_payload,switch_count_signature FROM identity_owner_completions WHERE operation_id=?`, v.OperationID).Scan(&claimPayload, &claimSignature, &startPayload, &startSignature, &phase, &countPayload, &countSignature)
 	var start claimweb.OwnerStart
 	var original claimweb.Request
 	if err == nil {
@@ -65,6 +73,9 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 			return localWebClaim{}, ErrStale
 		}
 		out.OwnerStart = &proof
+		if len(countPayload) != 0 && len(countSignature) != 0 {
+			out.ownerSwitchCount = &claimweb.Signed{Payload: base64.RawURLEncoding.EncodeToString(countPayload), Signature: base64.RawURLEncoding.EncodeToString(countSignature)}
+		}
 	} else if errors.Is(err, sql.ErrNoRows) {
 		if v.Stage != Prepared || v.AccountID != UnboundAccount {
 			return out, ErrStale
@@ -106,7 +117,22 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 	if err != nil {
 		return localWebClaim{}, err
 	}
-	err = authority.CaptureTx(ctx, g.Tx(), transport.origin, out.Signed, *out.OwnerStart)
+	if authority.CaptureWithCountTx != nil {
+		var signCount OwnerSwitchCountSign
+		if countSigner, ok := h.signer.(ownerSwitchCountSigner); ok {
+			signCount = func(ctx context.Context, tx *sql.Tx, preview string, revision int64, people int) (claimweb.Signed, error) {
+				now := time.Now().UTC()
+				expires := now.Add(claimweb.OwnerStartLifetime)
+				if original.ExpiresAt.Before(expires) { expires = original.ExpiresAt }
+				if start.ExpiresAt.Before(expires) { expires = start.ExpiresAt }
+				count := claimweb.OwnerSwitchCount{Kind: claimweb.OwnerSwitchCountKind, ServerID: original.ServerID, PublicKey: original.PublicKey, OperationID: original.OperationID, Purpose: "switch", PreviewID: preview, PreviewRevision: revision, LocalGeneration: original.LocalGeneration, ClaimHash: start.ClaimHash, OtherPeopleCount: people, IssuedAt: now, ExpiresAt: expires}
+				return countSigner.SignOwnerSwitchCountTx(ctx, tx, v.Binding, transport.origin, out.Signed, *out.OwnerStart, count)
+			}
+		}
+		out.ownerSwitchCount, err = authority.CaptureWithCountTx(ctx, g.Tx(), transport.origin, out.Signed, *out.OwnerStart, signCount)
+	} else {
+		err = authority.CaptureTx(ctx, g.Tx(), transport.origin, out.Signed, *out.OwnerStart)
+	}
 	if err == nil {
 		err = commitClaimDatabaseTx(ctx, g)
 	}
@@ -118,7 +144,7 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 	// typed capture must still wake expiry reconciliation and survive restart.
 	h.wakeClaimRecovery()
 	var pending claimweb.Pending
-	if err = transport.call(ctx, "pending", claimweb.PendingRequest{Payload: out.Signed.Payload, Signature: out.Signed.Signature, OwnerStart: out.OwnerStart}, &pending, nil); err != nil {
+	if err = transport.call(ctx, "pending", claimweb.PendingRequest{Payload: out.Signed.Payload, Signature: out.Signed.Signature, OwnerStart: out.OwnerStart, OwnerSwitchCount: out.ownerSwitchCount}, &pending, nil); err != nil {
 		return localWebClaim{}, err
 	}
 	if !validID(pending.OwnerTransactionID) || pending.Code == "" || len(pending.Code) > 128 || pending.ServerID != v.ServerID || pending.Purpose != "switch" || pending.Address != address || !pending.ExpiresAt.After(time.Now()) || pending.ExpiresAt.After(original.ExpiresAt) {
