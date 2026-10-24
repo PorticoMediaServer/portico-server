@@ -515,14 +515,27 @@ func (s *Service) PruneSetup(ctx context.Context) error {
 	return gated5.Commit()
 }
 
-// RunSetupMaintenance prunes expired sign-in codes, renewal records and
-// identity proofs. All three only ever have something to prune after a write,
-// so the loop is woken by commits: an idle server prunes nothing and asks
-// nothing, where before it issued three delete transactions every thirty
-// seconds whether or not a single row had been created since it started.
-func (s *Service) RunSetupMaintenance(ctx context.Context) {
+// setupMaintenanceWake follows the durable inputs read by the pruning pass.
+// Unrelated persistence (for example telemetry) must not make identity query
+// again. The worker's safety tick still handles expiry without another write.
+func setupMaintenanceWake() (*worker.Signal, func()) {
 	wake := worker.NewSignal()
-	dbwork.WakeOnCommit(wake)
+	stop := dbwork.WakeOnTables(wake,
+		"quick_connect_v1", "onboarding_state_v1", "setup_rate_limits_v1",
+		"authorization_session_families", "authorization_family_tokens",
+		"authorization_family_grants", "authorization_family_renewals",
+		"identity_refresh_receipts", "identity_refresh_predecessors",
+		"identity_device_families", "identity_sign_in_policy",
+		"identity_factor_challenges", "topshelf_tokens",
+	)
+	return wake, stop
+}
+
+// RunSetupMaintenance prunes expired sign-in codes, renewal records and
+// identity proofs after relevant commits and on the expiry safety tick.
+func (s *Service) RunSetupMaintenance(ctx context.Context) {
+	wake, stop := setupMaintenanceWake()
+	defer stop()
 	lastSessionPrune := time.Time{}
 	worker.Run(ctx, "identity.setup-maintenance", wake, func(ctx context.Context) time.Duration {
 		step, cancel := context.WithTimeout(ctx, 5*time.Second)
