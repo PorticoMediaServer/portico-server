@@ -148,3 +148,14 @@ test('capturing and reopening a saved view preserves relative dates verbatim', a
  assert.deepEqual(s.getSnapshot().browse?.applied.query,definition.query);
  s.dispose();
 });
+
+test('a saved view keeps the relative date operator verbatim through capture and reopen',async()=>{
+ const definition={libraryId:'library',pivot:'movies',query:{all:[{field:'dateAdded',operator:'within-last-days',value:30}]},sort:[{field:'added',direction:'desc'}],presentation:'grid'};
+ let written:any;
+ const s=setup(async(p,m,b)=>{if(m==='GET')return p.includes('/content')?content(resource({id:'query',kind:'view',definition,actions:['pin','update','delete']})):directory([resource({id:'query',kind:'view',definition})]);written=b;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'query',revision:2,deleted:false}};});
+ await s.select({view:'views'});
+ assert.deepEqual(s.getSnapshot().resources[0]?.definition,definition);
+ await s.mutate({action:'create',kind:'view',name:'New albums',definition:definition as never});
+ assert.deepEqual(written.definition,definition);
+ s.dispose();
+});

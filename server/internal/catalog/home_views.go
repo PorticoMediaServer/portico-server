@@ -34,8 +34,13 @@ func (s *Service) homeViewSpecs(r HomeRequest) []homeRowSpec {
 		if err != nil {
 			continue
 		}
+		// Relative saved rows must be read again within their freshness window.
+		ttl := 60
+		if browseRelative(view.Definition.Query) {
+			ttl = 30
+		}
 		out = append(out, homeRowSpec{ID: id, Title: view.Name, Kind: "saved_view", ArtworkShape: homeArtwork(lib.Kind), LibraryID: view.Definition.LibraryID,
-			SeeAll: &HomeSeeAll{Type: "saved_view", ResourceID: view.ID}, Priority: 90 + i, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
+			SeeAll: &HomeSeeAll{Type: "saved_view", ResourceID: view.ID}, Priority: 90 + i, CacheTTL: ttl, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
 	}
 	return out
 }
