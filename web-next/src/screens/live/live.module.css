@@ -152,3 +152,9 @@
 .guideListActions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
 .guideListRow:hover .guideListActions, .guideListRow:focus-within .guideListActions { opacity: 1; }
 .guideListCount { margin: 0; display: flex; gap: 12px; font-size: calc(var(--type-body-size) - .5px); color: var(--color-text-tertiary); }
+.guideListChannel { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.guideSortField { display: inline-flex; align-items: center; height: 40px; padding: 0 12px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--color-line); }
+.guideSortField:focus-within { box-shadow: inset 0 0 0 1px var(--color-line), 0 0 0 2px var(--color-focus); }
+.guideSortPrefix { margin-right: 6px; font-size: calc(var(--type-body-size) - .5px); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+.guideSortField .guideSort { height: 40px; min-width: 0; padding: 0 0 0 0; gap: 8px; border-radius: 0; background: none; box-shadow: none; }
+.guideSortField .guideSort:hover:not(:disabled) { background: none; }
