@@ -2,7 +2,7 @@ import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
-import {settingsBinding} from '@core/presentation/settings-bindings.ts';
+import {peopleStreamLimits, settingsBinding} from '@core/presentation/settings-bindings.ts';
 import {captureReportContext, type ReportContext} from '@core/report-context.ts';
 import {SettingsPeopleClient} from '@core/settings-people.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -68,7 +68,7 @@ export function SettingsEntry() {
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
-        actor: {accountId: viewer.accountId, role}, openHome, reportError,
+        actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits, openHome, reportError,
         authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
           isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
       } : undefined;
