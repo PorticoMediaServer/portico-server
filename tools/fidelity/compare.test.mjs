@@ -5,6 +5,14 @@ import {compareScreens} from './compare.mjs';
 const node = (frame, patch = {}) => ({id: frame, frame, tag: 'h1', ownText: 'Public heading', box: {x: 10, y: 20, width: 100, height: 40}, style: {fontFamily: 'Example', fontSize: '32px', fontWeight: '800', opacity: '.7', color: 'rgb(46, 63, 73)'}, ...patch});
 const spec = elements => ({scope: 'screen', fullViewport: true, root: {width: 200, height: 100}, viewport: {deviceScaleFactor: 1}, anchorIssues: [], elements});
 
+test('transform origin is inactive only when both observed transforms are identity', () => {
+  const left = node('title'); left.style.transform = 'none'; left.style.transformOrigin = '0px 0px';
+  const right = structuredClone(left); right.style.transformOrigin = '50px 20px';
+  assert.equal(compareScreens(spec([left]), spec([right])).verdict, 'PASS');
+  left.style.transform = right.style.transform = 'matrix(1, 0, 0, 1, 10, 0)';
+  assert.ok(compareScreens(spec([left]), spec([right])).differences.some(value => value.property === 'transformOrigin'));
+});
+
 test('control text and its run rectangles use the same descendant scope', () => {
   const runs = [{x: 10, y: 20, width: 100, height: 20}];
   const control = node(null, {id: 'action', tag: 'button', ownText: 'Save', normalizedText: 'Save', textRects: runs, descendantTextRects: runs});

@@ -16,6 +16,7 @@ import {fontReadiness} from './readiness.mjs';
 import {controlledEntry, verifyGalleryEntry, settleMotion} from './gallery-entry.mjs';
 import {extractReference} from './extract-reference.mjs';
 import {assessDifferences} from './assessment.mjs';
+import {componentMeasurement} from './component.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -28,7 +29,7 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
   // window. The shared extractor rejects scaled roots; no DOM/CSS is rewritten.
   const authoredReference = adapter.referenceWindowViewport ? await extractReference({url: referenceURL,
     selector: referenceSelector, windowViewport: adapter.referenceWindowViewport, viewport,
-    anchors: adapter.reference, repeats: adapter.repeats?.reference}) : undefined;
+    anchors: adapter.reference, repeats: adapter.repeats?.reference, component: adapter.component === true}) : undefined;
   const vite = await createServer({root: join(root, 'web-next'), configFile: join(root, 'web-next/vite.config.ts'),
     cacheDir: join(process.env.TMPDIR, 'fidelity-vite'), server: {host: '127.0.0.1', port: 0, strictPort: false}});
   try {
@@ -43,8 +44,12 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
       await verifyGalleryEntry(browser, entry, viewport);
       await applyControlledState(browser, adapter.stateSteps);
       if (adapter.motion === 'settled') await settleMotion(browser);
-      const actual = await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual);
-      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual));
+      const measureActual = async () => {
+        const measured = await browser.measure(actualSelector, adapter.actual, adapter.repeats?.actual);
+        return adapter.component ? componentMeasurement(measured) : measured;
+      };
+      const actual = await measureActual();
+      const deterministicActual = JSON.stringify(actual) === JSON.stringify(await measureActual());
       const comparison = compareScreens(reference, actual, adapter), strings = compareCatalogueStrings(reference, actual, enUS, adapter, comparison.cascadeRoots, (key, values) => defaultI18n.t(key, values)), textMetrics = compareTextMetrics(reference, actual);
       const differences = [...comparison.differences, ...strings.differences];
       const calibration = calibrateFrame(reference);
@@ -65,12 +70,12 @@ export async function compareWebScreen({referenceURL, adapter = auth4}) {
         else if (difference.kind === 'measured-difference') classification.computedStyle++;
         else classification.unmatchedElement++;
       }
-      return {version: 1, id: adapter.id, state: adapter.state, scope: 'screen', viewport, reference, actual,
+      return {version: 1, id: adapter.id, state: adapter.state, scope: adapter.component ? 'component' : 'screen', viewport, reference, actual,
         comparison, strings, textMetrics, nativeCaret, nativeCarets, calibration, differences, differenceCount: differences.length, classification,
         assessment: assessDifferences(differences, {reference, actual}),
         deterministic: {reference: deterministicReference, actual: deterministicActual},
         network: {blocked: browser.blocked}, pageErrors: browser.pageErrors,
-        verdict: differences.length ? 'FAIL' : 'PASS', qualification: 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};
+        verdict: differences.length ? 'FAIL' : 'PASS', qualification: adapter.component ? 'Genuine measured component subtree; never full-screen or application acceptance. Artwork contents excluded; no screenshot files or private source URLs.' : 'Controlled genuine full-screen state, not a complete authentication flow. Artwork contents excluded; image slot geometry/style included. No screenshot files or private source URLs.'};
     });
   } finally {await vite.close();}
 }
@@ -87,5 +92,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const adapter = args.adapter ? JSON.parse(await readFile(args.adapter, 'utf8')) : auth4;
   const result = await compareWebScreen({referenceURL: args['reference-url'], adapter});
   await writeFile(join(parent, basename(output)), JSON.stringify(result, null, 2) + '\n', {flag: 'wx', mode: 0o600});
-  console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification, assessment: result.assessment}));
+  console.log('FIDELITY_RESULT ' + JSON.stringify({id: result.id, state: result.state, scope: result.scope, verdict: result.verdict, differenceCount: result.differenceCount, classification: result.classification, assessment: result.assessment}));
 }

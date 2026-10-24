@@ -5,18 +5,23 @@ import {withMeasurementBrowser} from './browser.mjs';
 import {authoredReferenceScreen} from './reference-screen.mjs';
 import {fontReadiness} from './readiness.mjs';
 import {validateMeasurement} from './contract.mjs';
+import {componentMeasurement} from './component.mjs';
 
 /** Read a verified complete authored viewport without moving or rewriting its DOM. */
-export async function extractReference({url, selector, windowViewport, viewport, anchors = {}, repeats = [], resolvedFonts = false}) {
+export async function extractReference({url, selector, windowViewport, viewport, anchors = {}, repeats = [], resolvedFonts = false, component = false}) {
   return withMeasurementBrowser({scratch: process.env.TMPDIR, executable: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     viewport: windowViewport, allowedOrigins: [new URL(url).origin, 'https://fonts.googleapis.com', 'https://fonts.gstatic.com']}, async browser => {
     await browser.navigate(url, selector);
+    if (component) {
+      const natural = await browser.evaluate(`(()=>{let node=document.querySelector(${JSON.stringify(selector)});for(;node;node=node.parentElement){const style=getComputedStyle(node);if(Number(style.zoom)!==1||style.transform!=='none'&&style.transform.replaceAll(' ','')!=='matrix(1,0,0,1,0,0)')return false;}return true;})()`);
+      if (!natural) throw new Error('Reference component must be in its natural untransformed layout');
+    }
     const measure = async () => {const screen = await browser.measure(selector, anchors, repeats); return resolvedFonts ? browser.observeRenderedFonts(screen, selector) : screen;};
     const first = await measure(), second = await measure();
     if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('Reference extraction is nondeterministic');
     const readiness = {blocked: browser.blocked, pageErrors: browser.pageErrors, fonts: fontReadiness(first, 'reference')};
     if (readiness.blocked.length || readiness.pageErrors.length || readiness.fonts.length) throw new Error('Reference readiness: ' + JSON.stringify(readiness));
-    const screen = authoredReferenceScreen(first, viewport), errors = validateMeasurement(screen, {reference: true});
+    const screen = component ? componentMeasurement(first, {reference: true}) : authoredReferenceScreen(first, viewport), errors = validateMeasurement(screen, {reference: true});
     if (errors.length) throw new Error('Invalid reference measurement: ' + errors.join(', '));
     return screen;
   });

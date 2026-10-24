@@ -28,21 +28,39 @@ export function sameLogicalExtent(left, right, measurement) {
     (left === Math.fround(right) || right === Math.fround(left));
 }
 
+export function componentFitsViewport(screen) {
+  const box = screen?.componentPresentation?.windowBounds, viewport = screen?.viewport;
+  return rect(box) && box.x >= 0 && box.y >= 0 && finite(viewport?.width) && finite(viewport?.height) &&
+    box.x + box.width <= viewport.width && box.y + box.height <= viewport.height;
+}
+
 export function validateMeasurement(screen, {reference = false} = {}) {
   const errors = [];
   const need = (condition, path) => {if (!condition) errors.push(path);};
   need(screen?.version === contractVersion, 'version');
-  need(screen?.scope === 'screen', 'scope');
+  need(['screen', 'component'].includes(screen?.scope), 'scope');
   need(rect(screen?.root), 'root');
   const referenceFrame = screen?.measurement?.sourceRole === 'reference-frame';
-  need(screen?.fullViewport === true || reference && referenceFrame && screen?.fullViewport === false, 'fullViewport');
+  const component = screen?.scope === 'component', referenceComponent = screen?.measurement?.sourceRole === 'reference-component';
+  need(screen?.measurement?.sourceRole === undefined || referenceFrame || referenceComponent, 'measurement.sourceRole');
+  need(screen?.fullViewport === true || reference && referenceFrame && screen?.fullViewport === false || component && screen?.fullViewport === false, 'fullViewport');
+  if (referenceComponent) need(reference && component && screen.viewport?.deviceScaleFactor === 1, 'measurement.sourceRole');
   if (referenceFrame) {
     need(reference, 'measurement.sourceRole');
     const origin = screen.referencePresentation;
     need(rect(origin?.windowBounds) && origin.windowBounds.width === screen.root?.width && origin.windowBounds.height === screen.root?.height && origin.windowViewport?.deviceScaleFactor === 1 && screen.viewport?.deviceScaleFactor === 1 && typeof origin.fullWindowViewport === 'boolean', 'referencePresentation');
   }
   need(finite(screen?.viewport?.width) && screen.viewport.width > 0 && finite(screen?.viewport?.height) && screen.viewport.height > 0 && finite(screen?.viewport?.deviceScaleFactor) && screen.viewport.deviceScaleFactor > 0, 'viewport');
-  need(screen?.root?.x === 0 && screen?.root?.y === 0 && sameLogicalExtent(screen?.root?.width, screen?.viewport?.width, screen?.measurement) && sameLogicalExtent(screen?.root?.height, screen?.viewport?.height, screen?.measurement), 'root.viewport');
+  if (component) {
+    const presentation = screen.componentPresentation, bounds = presentation?.windowBounds;
+    need(screen.measurement?.renderer === 'dom' && screen.measurement.coordinateUnit === 'css-px' && !referenceFrame, 'component.coordinateMapping');
+    need(rect(bounds) && rect(presentation?.sourceRoot) && bounds.width === screen.root?.width && bounds.height === screen.root?.height, 'component.presentation');
+    need(screen.root?.x === 0 && screen.root?.y === 0, 'component.origin');
+    if (!referenceComponent) need(componentFitsViewport(screen), 'component.visibility');
+  } else {
+    need(screen?.componentPresentation === undefined, 'component.scope');
+    need(screen?.root?.x === 0 && screen?.root?.y === 0 && sameLogicalExtent(screen?.root?.width, screen?.viewport?.width, screen?.measurement) && sameLogicalExtent(screen?.root?.height, screen?.viewport?.height, screen?.measurement), 'root.viewport');
+  }
   if (screen?.measurement) {
     need(['dom', 'react-native'].includes(screen.measurement.renderer), 'measurement.renderer');
     need(['css-px', 'dp', 'pt'].includes(screen.measurement.coordinateUnit), 'measurement.coordinateUnit');

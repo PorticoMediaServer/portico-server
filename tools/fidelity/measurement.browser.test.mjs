@@ -6,6 +6,7 @@ import {readdir} from 'node:fs/promises';
 import {withMeasurementBrowser} from './browser.mjs';
 import {compareScreens} from './compare.mjs';
 import {applyControlledState} from './controlled-state.mjs';
+import {measureScreen} from './measure-screen.mjs';
 
 // Public synthetic measurement fixture, never a product screen or approved design.
 const html = `<!doctype html><html><style>
@@ -36,6 +37,10 @@ test('real browser measures the whole viewport and protects source, secret and n
       await applyControlledState(browser, [{action: 'click', selector: 'input[name=password]'}]);
       const screen = await browser.measure('main');
       assert.deepEqual(screen, await browser.measure('main'), 'same source/state extraction is deterministic');
+      await browser.evaluate(`document.body.append(document.querySelector('main').cloneNode(true))`);
+      const rootError = await browser.evaluate(`(async()=>{try{await (${measureScreen.toString()})({selector:'main'});return null;}catch(error){return error.message;}})()`);
+      assert.equal(rootError, 'Exactly one fidelity measurement root is required');
+      await browser.evaluate(`document.body.lastElementChild.remove()`);
       const activeFonts = await browser.observeRenderedFonts(screen, 'main');
       const heading = activeFonts.elements.find(node => node.tag === 'h1');
       assert.equal(typeof heading.style.resolvedFontFamily, 'string');

@@ -18,7 +18,17 @@ our machines, never public Actions. Public synthetic tests have no design data.
 The common top-level fields are `version:1`, `scope:'screen'`, `fullViewport`,
 `root:{x,y,width,height}`, `viewport:{width,height,deviceScaleFactor}`, `elements`,
 `strings`, `anchorIssues`, `repeatedLists`. The root is the whole selected screen,
-at zero origin, equal to the declared logical viewport; do not crop a component.
+at zero origin, equal to the declared logical viewport; screen measurements must
+not crop a component.
+
+An explicitly selected DOM Kit control may instead declare `scope:'component'`.
+The same extractor and comparator retain the true window viewport/DPR and measured
+subtree, translate only its measured origin, and record
+`componentPresentation:{windowBounds,sourceRoot}`. No scaling or restyling occurs.
+The actual subtree must be fully visible. References carry
+`measurement.sourceRole:'reference-component'`; they cannot be actual output.
+Component results never establish full-screen acceptance. The normal two-logical-unit
+geometry rule applies; native measurements remain whole-screen only.
 Native adds `measurement:{renderer:'react-native',platform:'android'|'ios'|'tvos',
 coordinateUnit:'dp'|'pt'}`. Keep actual physical deviceScaleFactor unchanged.
 DOM declares `measurement:{renderer:'dom',coordinateUnit:'css-px'}` and keeps

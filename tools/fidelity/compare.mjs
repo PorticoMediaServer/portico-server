@@ -1,5 +1,5 @@
 import {colorDifference} from './color.mjs';
-import {usesLogicalCoordinates, sameLogicalExtent} from './contract.mjs';
+import {usesLogicalCoordinates, sameLogicalExtent, componentFitsViewport} from './contract.mjs';
 
 export const policy = Object.freeze({boxPixels: 2, opacity: .02, deltaE2000: 2, colorAlpha: .02});
 const textStyles = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'textTransform', 'textDecorationLine', 'textShadow'];
@@ -62,8 +62,12 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
   const actualLogical = usesLogicalCoordinates(actual);
   const referenceSelfCanvas = referenceSelf && reference.measurement?.sourceRole === 'reference-frame' && actual.measurement?.sourceRole === 'reference-frame' &&
     JSON.stringify(reference.referencePresentation) === JSON.stringify(actual.referencePresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
-  if (reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || !sameLogicalExtent(reference.root.width, actual.root.width, actual.measurement) || !sameLogicalExtent(reference.root.height, actual.root.height, actual.measurement) || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
-    differences.push({kind: 'screen-state', label: 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
+  const component = reference.scope === 'component' && actual.scope === 'component';
+  const selfComponent = referenceSelf && component && reference.measurement?.sourceRole === 'reference-component' && actual.measurement?.sourceRole === 'reference-component' &&
+    JSON.stringify(reference.componentPresentation) === JSON.stringify(actual.componentPresentation) && JSON.stringify(reference.viewport) === JSON.stringify(actual.viewport);
+  if (component ? reference.viewport.deviceScaleFactor !== 1 || !selfComponent && (!componentFitsViewport(actual) || actual.measurement?.sourceRole?.startsWith('reference-')) :
+    reference.scope !== 'screen' || actual.scope !== 'screen' || !actual.fullViewport && !referenceSelfCanvas || !sameLogicalExtent(reference.root.width, actual.root.width, actual.measurement) || !sameLogicalExtent(reference.root.height, actual.root.height, actual.measurement) || reference.viewport.deviceScaleFactor !== 1 || (!actualLogical && actual.viewport.deviceScaleFactor !== 1))
+    differences.push({kind: 'screen-state', label: component ? 'Complete measured component' : 'Complete same-size measured logical screen', expected: reference.root, actual: actual.root});
   for (const [side, screen] of [['reference', reference], ['actual', actual]]) for (const fact of screen.unavailable ?? []) differences.push({kind: 'unavailable-measurement', label: `${side} ${fact.element ?? 'screen'}`, property: fact.property, reason: fact.reason});
   if (focus && !actual.elements.some(node => unavailable(actual, node, 'focused'))) {
     const focused = actual.elements.filter(node => node.focused === true), target = actual.elements.filter(node => node.frame === focus.frame);
@@ -129,6 +133,7 @@ export function compareScreens(reference, actual, {referenceOnly = [], actualCon
       }
     }
     for (const property of paintStyles) {
+      if (property === 'transformOrigin' && node.style?.transform !== undefined && other.style?.transform !== undefined && identityTransform(node.style.transform) && identityTransform(other.style.transform)) continue;
       if (unavailable(reference, node, property) || unavailable(actual, other, property)) continue;
       if (['transform', 'transformOrigin'].includes(property) && identityTransform(node.style?.transform) && identityTransform(other.style?.transform)) continue;
       if (node.style?.[property] !== other.style?.[property] && (node.style?.[property] == null || other.style?.[property] == null)) {

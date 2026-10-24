@@ -1,8 +1,9 @@
 /** Run inside the measured document. Returns measurements, never DOM/source/art bytes.
- * The caller supplies a full-screen root and records its controlled state separately. */
+ * The caller records state and selects full-screen or explicit component scope. */
 export async function measureScreen({selector, expectedViewport, anchors = {}, repeats = []} = {}) {
-  const root = document.querySelector(selector);
-  if (!root) throw new Error('Fidelity screen root is missing');
+  const roots = document.querySelectorAll(selector);
+  if (roots.length !== 1) throw new Error('Exactly one fidelity measurement root is required');
+  const root = roots[0];
   await document.fonts.ready;
   await Promise.allSettled([...root.querySelectorAll('img')].map(image => image.decode()));
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
