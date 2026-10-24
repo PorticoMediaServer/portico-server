@@ -273,7 +273,14 @@ def canonical_graph(model):
     return model
 
 
-def export(directory, output, check_only=False, conformance=None):
+def validate_export_pin(lock, version, data, candidate=False):
+    if version != lock["onnx"]["version"]:
+        raise ValueError("unapproved converted-model version")
+    if not candidate and (len(data) != lock["onnx"]["bytes"] or hashlib.sha256(data).hexdigest() != lock["onnx"]["sha256"]):
+        raise ValueError("ONNX bytes differ from the checked original-model conversion; no output published")
+
+
+def export(directory, output, check_only=False, conformance=None, candidate=False):
     lock = verify_checkpoint(directory)
     if output is not None and output.exists():
         raise ValueError("output already exists; never overwrite an installed model")
@@ -348,8 +355,7 @@ def export(directory, output, check_only=False, conformance=None):
                       "patches": 4, "maxAbsoluteError": {"embedding": errors[0], "tags": errors[1]}}))
     if check_only:
         return
-    if version != lock["onnx"]["version"] or len(data) != lock["onnx"]["bytes"] or hashlib.sha256(data).hexdigest() != lock["onnx"]["sha256"]:
-        raise ValueError("ONNX bytes differ from the checked original-model conversion; no output published")
+    validate_export_pin(lock, version, data, candidate)
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="musicnn-onnx-", dir=output.parent))
     try:
@@ -400,12 +406,16 @@ def main():
                         help="inspect the verified graph's actual inference boundaries")
     parser.add_argument("--conformance", type=Path,
                         help="write original-checkpoint reference outputs for native bundle checks")
+    parser.add_argument("--candidate", action="store_true",
+                        help="retain a parity-validated build artifact for a reviewed pin update; never enables inference")
     args = parser.parse_args()
+    if args.candidate and (not args.output or args.check_only):
+        parser.error("--candidate requires an output and the full conversion/parity check")
     check_versions()
     if args.inspect:
         inspect(args.checkpoint)
     if args.check_only or args.output:
-        export(args.checkpoint, args.output, args.check_only, args.conformance)
+        export(args.checkpoint, args.output, args.check_only, args.conformance, args.candidate)
     elif not args.inspect:
         parser.error("an output directory or --inspect is required")
 
