@@ -19,7 +19,7 @@ const envelope = (result: unknown) => ({protocolVersion: '1.0', serverId, result
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
 const status = (status: number) => Object.assign(new Error('unit request rejected'), {status});
 
-function setup(options: {total?: number; intercept?: (path: string, method: string, body: unknown, signal?: AbortSignal) => Promise<unknown | undefined>;
+function setup(options: {total?: number; defaultNonce?: boolean; intercept?: (path: string, method: string, body: unknown, signal?: AbortSignal) => Promise<unknown | undefined>;
   requestId?: () => Promise<string>} = {}) {
   const total = options.total ?? 1, rows = Array.from({length: total}, (_, index) => wireRule(index + 1));
   const calls: {path: string; method: string; body: unknown; signal?: AbortSignal}[] = [];
@@ -51,7 +51,7 @@ function setup(options: {total?: number; intercept?: (path: string, method: stri
   const context = {api, scope: {serverId, viewerId: 'actual-captured-viewer'}, isCurrent: () => active,
     identity: {serverName: 'Stored server'}, effects: {reportError() {}}} as unknown as ScreenContext;
   const binding = createSeriesRulesBindings(context, {timezone: 'UTC', locale: 'en-US', now: () => Date.parse('2026-10-24T12:00:00Z'),
-    requestId: options.requestId ?? (async () => {nonces++;return id(nonces, 48);})});
+    ...(options.defaultNonce ? {} : {requestId: options.requestId ?? (async () => {nonces++;return id(nonces, 48);})})});
   return {binding, calls, rows, nonces: () => nonces, authority: (value: boolean) => {active = value;}};
 }
 
@@ -78,6 +78,42 @@ test('preview uses server membership/count instead of locally filtering its boun
     assert.equal(preview.count, 40);assert.equal(preview.airings.length, 2);assert.equal(preview.airings[0].isNew, true);assert.equal(preview.airings[1].isNew, false);
     assert.equal(preview.airings[1].channel, undefined);assert.equal(preview.airings[0].channel, 'Stored channel');
     assert.equal(f.nonces(), 0, 'readonly preview is not a mutation receipt');
+  } finally {f.binding.dispose();}
+});
+
+test('a changed DVR cursor revision cannot mix rows or masquerade as a complete list', async () => {
+  const f = setup({total: 60, intercept: async path => {
+    const url = new URL(path, 'http://unit.invalid');
+    if (url.pathname === routePath('get_dvr') && url.searchParams.get('cursor')) return envelope({recordings: [], rules: [wireRule(51)], nextCursor: '', revision: 6,
+      captureAvailable: true, captureUnavailableReason: '', deletionAvailable: true, usage: {bytes: 0, pendingDeleteBytes: 0, recordings: 20}});
+  }});
+  try {
+    await f.binding.load();const previous = f.binding.getSnapshot().view!;await assert.rejects(f.binding.more());
+    const current = f.binding.getSnapshot();assert.strictEqual(current.view, previous);assert.equal(current.view?.rules.length, 50);
+    assert.equal(current.view?.ruleCount, 60);assert(current.error);assert.equal(current.nextCursor, '50');
+  } finally {f.binding.dispose();}
+});
+
+test('a newer draft aborts the old readonly preview and rejects its late sample', async () => {
+  const held = deferred<unknown>();let previews = 0;let signal: AbortSignal | undefined;
+  const f = setup({intercept: async (path, _method, _body, active) => {
+    if (path !== routePath('post_dvr_rules_preview')) return;
+    if (++previews === 1) {signal = active;return held.promise;}
+    return envelope({matches: 3, unknownNewEvidence: 0, sample: [], generation, capacity: {known: true, effective: 2}});
+  }});
+  try {
+    await f.binding.load();const row = f.binding.getSnapshot().view!.rules[0];const first = f.binding.preview(row, row.settings);
+    await f.binding.preview(row, {...row.settings, episodes: 'new'});assert.equal(signal?.aborted, true);assert.equal(f.binding.getSnapshot().preview?.count, 3);
+    held.resolve(envelope({matches: 99, unknownNewEvidence: 0, sample: [programme()], generation, capacity: {known: true, effective: 2}}));await first;
+    assert.equal(f.binding.getSnapshot().preview?.count, 3);assert.equal(f.binding.getSnapshot().preview?.airings.length, 0);
+  } finally {held.resolve(envelope({}));f.binding.dispose();}
+});
+
+test('the installed DVR receipt producer emits the actual 48-hex grammar without a UUID compatibility alias', async () => {
+  const f = setup({defaultNonce: true});
+  try {
+    await f.binding.load();const row = f.binding.getSnapshot().view!.rules[0];assert.equal(await f.binding.save(row, row.settings), true);
+    const request = f.calls.find(call => call.method === 'PUT')!.body as {requestId: string};assert.match(request.requestId, /^[a-f0-9]{48}$/);
   } finally {f.binding.dispose();}
 });
 

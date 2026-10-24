@@ -52,13 +52,13 @@ function BoundRules({binding, context}: {binding: SeriesRulesBindings; context: 
     onDelete={rule => new Promise<boolean>(resolve => {deleteResolve.current?.(false);deleteResolve.current = resolve;setDeleting({rule, resolve});setFuture('keep');})} preview={state.preview}
     error={state.error || state.previewError ? dvrMessage(state.error ?? state.previewError) : undefined}
     tail={<>{state.nextCursor && !state.error && <MoreRules binding={binding} cursor={state.nextCursor}/>}
-      {state.error && <Banner action={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {void binding.load().catch(() => {});}}}>{dvrMessage(state.error)}</Banner>}
+      {state.error !== undefined && <Banner action={{label: t('next.states.tryAgain'), onAction: () => {void binding.load().catch(() => {});}}}>{dvrMessage(state.error)}</Banner>}
       {!state.view.rules.length && <StateView title={t('web.dvr.empty.rules')} body={t('web.dvr.empty.rulesBody')} primary={{id: 'guide', label: t('web.dvr.openGuide'), onPress: onGuide}}/>}</>}/>
     <Dialog open={!!deleting} onOpenChange={open => {if (!open) closeDelete();}}
       title={t('web.dvr.deleteRuleTitle', {name: deleting?.rule.title ?? ''})} description={t('web.dvr.deleteRuleBody')} width={440}
       footer={<><Button variant="glass" disabled={busy} onClick={closeDelete}>{t('action.cancel')}</Button>
         <Button className={styles.delete} variant="ghost" loading={busy} onClick={() => {void remove();}}>{t('web.dvr.deleteRuleAction')}</Button></>}>
-      {state.error && <Banner>{dvrMessage(state.error)}</Banner>}<Segmented aria-label={t('web.dvr.upcomingChoice')} disabled={busy} value={future} onValueChange={value => {if (value === 'keep' || value === 'cancel') setFuture(value);}}
+      {state.error !== undefined && <Banner>{dvrMessage(state.error)}</Banner>}<Segmented aria-label={t('web.dvr.upcomingChoice')} disabled={busy} value={future} onValueChange={value => {if (value === 'keep' || value === 'cancel') setFuture(value);}}
         items={[{value: 'keep', label: t('web.dvr.keepUpcoming')}, {value: 'cancel', label: t('web.dvr.cancelUpcoming')}]}/>
     </Dialog></>;
 }
