@@ -52,7 +52,7 @@ const channels: readonly SpecimenChannel[] = [
     {id: 'lm3', title: 'The Long Road North', from: [17, 53], to: [20, 20], recording: 'scheduled'}]}, // lint-strings-allow
   {id: 'lc', number: '302', name: 'Lantern Classics', group: 'Movies', mark: 'LC', programmes: [  // lint-strings-allow
     {id: 'lc1', title: 'A Quiet Harbor', from: [14, 12], to: [15, 54]}, // lint-strings-allow
-    {id: 'lc2', title: 'The Lighthouse Keeper’s Daughter', from: [15, 54], to: [17, 52]}, // lint-strings-allow
+    {id: 'lc2', title: 'The Lighthouse Keeper's Daughter', from: [15, 54], to: [17, 52]}, // lint-strings-allow
     {id: 'lc3', title: 'Paper Moons', from: [17, 52], to: [19, 28]}]}, // lint-strings-allow
   {id: 'pk', number: '401', name: 'Pebble Kids', group: 'Kids', mark: 'PK', favorite: true, programmes: [  // lint-strings-allow
     {id: 'pk1', title: 'The Tiny Gardeners', from: [15, 15], to: [15, 45], episode: 'S4 E9', subtitle: 'The Long Night'}, // lint-strings-allow
@@ -133,8 +133,8 @@ function Specimen() {
   const onVisibleWindow = useCallback(() => {}, []);
   const onNow = <Row className={live.onNow} heading={t('web.live.onNow')} subtitle={t('next.live.favoritesFirst')}>
     <div className={live.nowViewport}>
-      <div className={live.nowSpace} style={{width: 5 * 364 - 20}}>
-        {[...channels.filter(channel => channel.favorite), ...channels.filter(channel => !channel.favorite)].slice(0, 5).map((channel, index) => {
+      <div className={live.nowSpace} style={{width: 14 * 364 - 20}}>
+        {[...channels.filter(channel => channel.favorite), ...channels.filter(channel => !channel.favorite)].map((channel, index) => {
           const programs = channel.programmes.map(item => program(channel, item));
           return <div className={live.nowSlot} style={{left: index * 364}} key={channel.id}>
             <LiveCard large channel={{id: channel.id, sourceId: 'synthetic', name: channel.name, number: channel.number, mark: mark(channel.mark), favorite: channel.favorite === true}}

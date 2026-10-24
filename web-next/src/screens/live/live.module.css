@@ -22,7 +22,7 @@
 .guideState { padding: 122px var(--shell-gutter, var(--gutter-desktop)) 72px; }
 .guideProblem { padding: 16px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .guideHeader { position: relative; padding: 122px var(--shell-gutter, var(--gutter-desktop)) 0; display: flex; align-items: flex-end; gap: 20px; }
-.guideHeader h1 { margin: 0; font-size: calc(var(--type-lockup-long-size) + var(--space-px-18)); line-height: calc(.95em); font-weight: var(--type-lockup-long-weight); letter-spacing: var(--type-lockup-long-tracking); }
+.guideHeader h1 { margin: 0; font-size: calc(var(--type-lockup-long-size) - 4px); line-height: calc(.95em); font-weight: var(--type-lockup-long-weight); letter-spacing: var(--type-lockup-long-tracking); }
 .guideHeader .guideSwitcher { min-width: 0; height: 40px; padding: 0 12px 0 16px; gap: 8px; border-radius: 10px; margin-bottom: 2px;
   background: color-mix(in srgb, var(--color-text) 12%, transparent); backdrop-filter: blur(var(--glass-blur)); font-size: calc(var(--type-body-size) - 0px); }
 .guideHeader .guideSwitcher:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 20%, transparent); }

@@ -215,9 +215,10 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
                   {nowX !== undefined && <i className={styles.guideLaneNow} style={{left: nowX}} aria-hidden="true"/>}
                   {layoutRow(row.programs, {viewStart: start, viewEnd: end, pxPerMs: scale, now, gapPx: 2, ...(phone ? {tiers: {full: 50, title2: 50, title: 24}} : {})})
                     .map(cell => cell.kind === 'gap'
-                      ? <div key={`gap:${cell.start}`} className={styles.guideCell} data-kind="gap" data-wide-gap={row.channel!.guide === 'none' || undefined}
+                      ? <div key={`gap:${cell.start}`} className={styles.guideCell} data-kind="gap" data-tier={cell.tier} data-wide-gap={row.channel!.guide === 'none' || undefined}
+                          role="note" aria-label={row.channel!.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}
                           style={{left: cell.x + (row.channel!.guide === 'none' ? 0 : GUIDE_CELL_INSET), width: Math.max(0, cell.width - (row.channel!.guide === 'none' ? 0 : GUIDE_CELL_INSET))}}>
-                          <span className={styles.guideCellTitle}>{row.channel!.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span>
+                          {cell.tier === 'full' && <span className={styles.guideCellTitle}>{row.channel!.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span>}
                         </div>
                       : <CellButton key={`cell:${cell.start}`} cell={cell} channel={row.channel!} now={now} timezone={timezone}
                           selected={selected?.channelId === row.channel!.id && (selected.programmeId === undefined || selected.programmeId === cell.program?.id)} onSelect={onSelect}/>)}
