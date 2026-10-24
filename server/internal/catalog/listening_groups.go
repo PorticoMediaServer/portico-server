@@ -23,7 +23,14 @@ var listeningGroupBatch = 256
 
 // listeningGroupPassGap coalesces a burst of audiobook commits (a scan) into
 // one follow-up pass instead of a pass per commit.
-var listeningGroupPassGap = 30 * time.Second
+const ListeningGroupPassGap = 30 * time.Second
+
+var listeningGroupPassGap = ListeningGroupPassGap
+
+// ListeningGroupPassSettled is replaced only by the isolated idle-budget test
+// process. It marks a pass that read its last batch, which is the point after
+// which only the documented coalescing gap can schedule one more pass.
+var ListeningGroupPassSettled = func() {}
 
 // RefreshListeningGroups advances the current pass over the books by one
 // bounded batch and publishes any author or series navigation identity the
@@ -184,6 +191,7 @@ func (s *Service) ListeningGroupStep(changed *worker.Signal) worker.Step {
 			return time.Millisecond
 		}
 		inPass, ended = false, time.Now()
+		ListeningGroupPassSettled()
 		if dirty {
 			return listeningGroupPassGap
 		}
