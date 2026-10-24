@@ -247,7 +247,8 @@ if (only !== 'reference') {
     return {heading:head?.querySelector('h2')?.textContent??'', top:Math.round(r.top), height:Math.round(r.height), headBox:head?Math.round(head.getBoundingClientRect().height):null, trackPadding:track?getComputedStyle(track).paddingLeft:null,
       firstCard:track?.firstElementChild?Math.round(track.firstElementChild.getBoundingClientRect().width):null, cards:track?.children.length??0, link:head?.querySelector('a,button')?.textContent??null, linkOpacity:head?.querySelector('a,button')?getComputedStyle(head.querySelector('a,button')).opacity:null}})`.replace(/\n/g, ' '));
   report.actual.hero = await evaluate(`(()=>{const h=document.querySelector('[data-home-document] section'),c=h.querySelector('div[class*="copy"]'),th=h.querySelector('div[class*="thumbnail"]');const r=n=>n?n.getBoundingClientRect().toJSON():null;
-    return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('[data-active="true"] [data-foreground-art]'))}})()`);
+    const wash=h.querySelector('[class*="washLayer"]'),ambient=h.querySelector('[class*="ambientImage"]');
+    return {hero:r(h),copy:r(c),thumbs:r(th),firstArt:r(h.querySelector('[data-active="true"] [data-foreground-art]')),washMask:wash?getComputedStyle(wash).maskImage:null,ambient:ambient?{status:ambient.closest('[data-artwork-status]')?.dataset.artworkStatus??null,hasImage:!!ambient.querySelector('img')}:null}})()`);
 }
 report.vite = viteLog.slice(-400);
 await writeFile(join(output, 'web-home-r46-capture.json'), JSON.stringify(report, null, 2) + '\n');

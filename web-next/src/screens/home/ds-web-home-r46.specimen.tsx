@@ -212,7 +212,7 @@ function useArtwork() {
     foreground: (url: string | undefined, _pixels: number, _aspect: number, request?: Parameters<typeof runtime.source>[1]) =>
       url ? runtime.source({url, cacheKey: url}, request) : undefined,
     ambient: (url: string | undefined, request?: Parameters<typeof runtime.source>[1]) => url
-      ? {...runtime.source({url, cacheKey: url}, request), version: '1', variant: 'ambient-v1' as const, maxEdge: 64 as const}
+      ? {...runtime.source({url, cacheKey: url}, request), version: '0'.repeat(64), variant: 'ambient-v1' as const, maxEdge: 64 as const}
       : undefined,
   } as unknown as ShellArtwork), [runtime]);
 }
