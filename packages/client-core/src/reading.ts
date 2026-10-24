@@ -272,14 +272,32 @@ export class ReadingClient {
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
     return out;
   }
-  async discover(options: Readonly<{libraryId?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
-    if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100)) fail('invalid_request');
-    const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 256 << 10);
-    if (out.rows.length !== 1 || out.rows[0].key !== 'recent' || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
+  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
+    if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100) || options.seriesLimit !== undefined && (!id(options.libraryId) || !integer(options.seriesLimit,1,20))) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 2 << 20);
+    if (out.rows.length < 1 || out.rows.length > 2 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
+    const checkItem = (item: ReadingItem, libraryId?: string) => {
+      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
+    };
     for (const item of out.rows[0].items) {
-      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || (options.libraryId !== undefined && item.libraryId !== options.libraryId)) fail('invalid_document');
+      checkItem(item,options.libraryId);
+      if(seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
+    }
+    const row=out.rows[1];
+    if(row!==undefined){
+      if(options.seriesLimit===undefined || row.key!=='series' || row.items.length!==0 || !row.series || row.series.length<1 || row.series.length>options.seriesLimit)fail('invalid_document');
+      const seriesIds=new Set<string>(), previews=new Set<string>();
+      for(const summary of row.series){
+        if(!/^[A-Za-z0-9_-]{43}$/.test(summary.id) || summary.libraryId!==options.libraryId || typeof summary.name!=='string' || summary.name.length<1 || !integer(summary.count,1,Number.MAX_SAFE_INTEGER) || !integer(summary.readCount,0,summary.count) || summary.preview.length<1 || summary.preview.length>Math.min(3,summary.count) || seriesIds.has(summary.id))fail('invalid_document');
+        seriesIds.add(summary.id);
+        for(const item of summary.preview){
+          checkItem(item,summary.libraryId);
+          if(item.series?.id!==summary.id || previews.has(item.id))fail('invalid_document');
+          previews.add(item.id);
+        }
+      }
     }
     return out;
   }

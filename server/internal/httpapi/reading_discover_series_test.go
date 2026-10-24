@@ -4,6 +4,7 @@ import (
  "context"
  "database/sql"
  "errors"
+ "encoding/json"
  "fmt"
  "testing"
 
@@ -75,4 +76,32 @@ func TestReadingDiscoverSeriesUsesCurrentProfilePolicyAndReadState(t *testing.T)
  if err!=nil||len(out.Series)!=0 {t.Fatalf("restricted series leaked %+v %v",out,err)}
  if _,err=r.f.id.EditDirectProfile(ctx,owner.AccountToken,child.ID,identity.DirectProfileEdit{ExpectedRevision:child.Revision,Policy:&identity.ProfilePolicy{AllowedLibraries:[]string{}}});err!=nil {t.Fatal(err)}
  if _,err=r.s.Discover(ctx,p,r.library,reading.DiscoverLimits{Series:1});err==nil||!errors.Is(err,sql.ErrNoRows)&&!errors.Is(err,identity.ErrForbidden) {t.Fatalf("revoked library series %v",err)}
+}
+
+func TestReadingDiscoverSeriesHTTPOptInAndActualAuthority(t *testing.T) {
+ r:=newReadingFixture(t,"book","pdf")
+ readingSeriesOwnerField(t,r,r.item,"series","Actual series")
+ readingSeriesDrain(t,r)
+ h:=New(r.d)
+ path:="/v1/reading/discover?libraryId="+r.library
+ w:=readingHTTP(t,h,"GET",path,r.f.owner.AccessToken,"",nil)
+ var ordinary ReadingDiscoverResponse
+ if w.Code!=200||json.Unmarshal(w.Body.Bytes(),&ordinary)!=nil||len(ordinary.Rows)!=1||ordinary.Rows[0].Series!=nil {t.Fatalf("legacy recent request %d %s",w.Code,w.Body.String())}
+ path+="&seriesLimit=1"
+ w=readingHTTP(t,h,"GET",path,r.f.owner.AccessToken,"",nil)
+ var out ReadingDiscoverResponse
+ if w.Code!=200||json.Unmarshal(w.Body.Bytes(),&out)!=nil||len(out.Rows)!=2||out.Rows[1].Key!="series"||len(out.Rows[1].Series)!=1 {t.Fatalf("series response %d %s",w.Code,w.Body.String())}
+ assertSpecResponse(t,"GET","/v1/reading/discover",w)
+ if out.Rows[1].Series[0].Count!=1||out.Rows[1].Series[0].Preview[0].ID!=r.item {t.Fatalf("actual summary %+v",out)}
+ for _,bad:=range []string{"/v1/reading/discover?seriesLimit=1",path+"&seriesLimit=2","/v1/reading/discover?libraryId="+r.library+"&seriesLimit=0","/v1/reading/discover?libraryId="+r.library+"&seriesLimit="} {
+  w=readingHTTP(t,h,"GET",bad,r.f.owner.AccessToken,"",nil)
+  if w.Code!=400 {t.Fatalf("invalid series query %d %s",w.Code,w.Body.String())}
+ }
+ readingSeriesOwnerField(t,r,r.item,"series","Changed")
+ w=readingHTTP(t,h,"GET",path,r.f.owner.AccessToken,"",nil)
+ if w.Code!=412||bodyErrorCode(w.Body.String())!="revision_mismatch" {t.Fatalf("unready series %d %s",w.Code,w.Body.String())}
+ readingSeriesDrain(t,r)
+ if err:=r.f.id.LogoutToken(context.Background(),r.f.owner.AccessToken);err!=nil {t.Fatal(err)}
+ w=readingHTTP(t,h,"GET",path,r.f.owner.AccessToken,"",nil)
+ if w.Code!=401 {t.Fatalf("retired family %d %s",w.Code,w.Body.String())}
 }
