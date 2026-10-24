@@ -543,3 +543,125 @@ test('each controller keeps the API and receipt source it captured', async () =>
     assert.equal(second.getSnapshot().phase, 'idle');
   } finally { second.dispose(); }
 });
+
+// Reviewer lifecycle fix 1 — replacement clears resident membership before it publishes.
+test('a replacement destination retires resident membership before the new query publishes', async () => {
+  const pending: Record<string, ReturnType<typeof held<unknown>>> = {};
+  const reply = (call: Call) => {
+    const name = pathname(call) === '/v1/dvr/storage' ? 'storage'
+      : pathname(call).startsWith('/v1/dvr/recordings/') ? 'detail' : params(call).get('state') ?? '';
+    if (name === 'recorded') return pageOf([recording(hex(64, '1'))], '', 1);
+    pending[name] ??= held<unknown>();
+    return pending[name].promise;
+  };
+  const {api} = fixtureServer(reply);
+  const controller = controllerFor(api);
+  try {
+    await controller.load({view: 'recorded'});
+    const row = controller.getSnapshot().page!.recordings[0];
+    assert.equal(controller.contains(row), true);
+
+    const refreshing = controller.load({view: 'recorded'});
+    assert.equal(controller.contains(row), false, 'a refresh in flight is not a settled destination');
+    await refreshing;
+    assert.notEqual(controller.getSnapshot().page!.recordings[0], row);
+    assert.equal(controller.contains(row), false, 'a refresh republishes new resident objects');
+    assert.equal(controller.contains(controller.getSnapshot().page!.recordings[0]), true);
+
+    const history = controller.load({view: 'history'});
+    assert.equal(controller.contains(row), false, 'membership ends before the replacement publishes');
+    let snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.phase, 'loading');
+    assert.equal(snapshot.page, null, 'the old page cannot pose as the new destination');
+    assert.equal(snapshot.detail, null);
+    assert.equal(snapshot.storage, null);
+    pending['history'].reject(new Error('history read failed'));
+    await history;
+    assert.equal(controller.contains(row), false, 'a failed replacement cannot revive the old row');
+    assert.equal(controller.getSnapshot().page, null);
+    assert.equal(controller.getSnapshot().phase, 'error');
+
+    const storage = controller.load({view: 'storage'});
+    assert.equal(controller.getSnapshot().storage, null, 'the storage fact is not resident yet');
+    assert.equal(controller.contains(row), false);
+    pending['storage'].resolve(storageFact());
+    await storage;
+    assert.deepEqual(controller.getSnapshot().storage, storageFact());
+
+    const detailId = hex(64, '2');
+    const detail = controller.load({view: 'recorded', recordingId: detailId});
+    assert.equal(controller.getSnapshot().detail, null, 'the new detail is not resident yet');
+    assert.equal(controller.getSnapshot().storage, null, 'the previous destination storage is not resident');
+    assert.equal(controller.getSnapshot().page, null, 'no page belongs to a detail destination');
+    assert.equal(controller.contains(row), false);
+    pending['detail'].resolve(detailFact(detailId));
+    await detail;
+    assert.equal(controller.getSnapshot().detail?.recording.id, detailId);
+    assert.equal(controller.contains(controller.getSnapshot().detail!.recording), true);
+  } finally { controller.dispose(); }
+});
+
+// Reviewer finding 2 (narrowed) — profile-wide aggregates and the receipt are
+// fenced by the borrowed lease, not by a local destination change.
+test('profile-wide summary, groups and receipt finish across a local destination change on one lease', async () => {
+  const summaryReply = held<unknown>(), groupsReply = held<unknown>(), receiptReply = held<string>();
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryReply.promise;
+    if (pathname(call) === '/v1/dvr/groups') return groupsReply.promise;
+    return params(call).get('state') === 'recorded'
+      ? pageOf([recording(hex(64, '1'))], '', 1) : pageOf([recording(hex(64, '2'))], '', 2);
+  });
+  const controller = controllerFor(api, {requestId: () => receiptReply.promise});
+  try {
+    await controller.load({view: 'recorded'});
+    const summary = controller.readSummary();
+    const groups = controller.readGroups('recent');
+    const receipt = controller.requestReceipt();
+    await controller.load({view: 'history'});
+
+    summaryReply.resolve(summaryFact);
+    groupsReply.resolve(groupsFact('recent', 'profile-token'));
+    receiptReply.resolve(hex(48, 'a'));
+    assert.deepEqual(await summary, summaryFact, 'a profile-wide total is not tied to the tab');
+    assert.equal((await groups).nextCursor, 'profile-token');
+    assert.equal(await receipt, hex(48, 'a'));
+
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.query.view, 'history');
+    assert.equal(snapshot.page?.revision, 2);
+    assert.deepEqual(snapshot.summary, summaryFact);
+    assert.equal(snapshot.groups?.groups[0].recordings, 9);
+    assert.equal(snapshot.groupsSort, 'recent');
+  } finally { controller.dispose(); }
+});
+
+test('profile-wide summary, groups and receipt are refused when the borrowed lease retires', async () => {
+  const summaryReply = held<unknown>(), groupsReply = held<unknown>(), receiptReply = held<string>();
+  let live = true;
+  const {api} = fixtureServer(call => {
+    if (pathname(call) === '/v1/dvr/summary') return summaryReply.promise;
+    if (pathname(call) === '/v1/dvr/groups') return groupsReply.promise;
+    return pageOf([recording(hex(64, '1'))], '', 1);
+  });
+  const controller = controllerFor(api, {requestId: () => receiptReply.promise, isCurrent: () => live});
+  try {
+    await controller.load({view: 'recorded'});
+    const summary = controller.readSummary();
+    const groups = controller.readGroups('recent');
+    const receipt = controller.requestReceipt();
+    live = false;
+    summaryReply.resolve(summaryFact);
+    groupsReply.resolve(groupsFact('recent', 'late-token'));
+    receiptReply.resolve(hex(48, 'b'));
+    await assert.rejects(summary, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(groups, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    await assert.rejects(receipt, failure => failure instanceof DOMException && failure.name === 'AbortError');
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'retired');
+    assert.equal(snapshot.summary, null);
+    assert.equal(snapshot.groups, null);
+    assert.equal(snapshot.page, null);
+    assert.equal(snapshot.query.view, 'recorded');
+  } finally { controller.dispose(); }
+});

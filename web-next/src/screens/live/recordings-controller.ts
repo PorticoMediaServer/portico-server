@@ -67,7 +67,9 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
   let closed = false, started = false, stopModel: (() => void) | undefined;
   /** Bumped by a new page/detail/storage load and by disposal, so an older load cannot land. */
   let loadSerial = 0;
-  /** Bumped by an access change and by disposal; fences every aggregate read. */
+  /** Bumped by a lease change (navigation/authority) and disposal only. Summary,
+   * group and receipt reads are profile-wide and may finish across a local
+   * destination change on the same lease; this fences them across actual retirement. */
   let epoch = 0, summarySerial = 0, groupsSerial = 0;
   let loading = false, accessDenied = false, errorText = '';
   let query: RecordingsQuery = Object.freeze({view: 'upcoming'});
@@ -95,12 +97,18 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     state = derive();
     notify();
   }
+  /** The resident page/detail/storage objects of one destination generation. */
+  function dropResident() {
+    page = detail = storage = null;
+  }
+  const sameDestination = (left: RecordingsQuery, right: RecordingsQuery) => left.view === right.view
+    && (left.cursor ?? '') === (right.cursor ?? '') && (left.recordingId ?? '') === (right.recordingId ?? '');
   /** One authority change erases every private fact — page, detail, storage and
    * both aggregates — and fences anything already in flight. */
   function clearFacts(denied: boolean) {
     if (closed) return;
     epoch++;summarySerial++;groupsSerial++;
-    page = detail = storage = null;summary = groups = null;groupsSort = 'recent';
+    dropResident();summary = groups = null;groupsSort = 'recent';
     accessDenied = denied;errorText = '';
     publish();
   }
@@ -153,9 +161,11 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
     if (!sorts.includes(sort) || typeof cursor !== 'string' || cursor.length > 4096) throw invalid();
   }
   return {
-    /** The exact objects this generation holds — a copy with the same id is not resident. */
+    /** Only the exact resident objects of a settled destination generation pass.
+     * A replacement, a refresh in flight or a failed destination refuses them. */
     contains(recording: Recording): boolean {
       if (!current()) return false;
+      if (derive().phase !== 'ready') return false;
       return (page?.recordings.includes(recording) ?? false) || detail?.recording === recording;
     },
     getSnapshot(): RecordingsSnapshot {
@@ -174,6 +184,13 @@ export function createRecordingsController(input: RecordingsControllerOptions) {
       const captured = checked(next);
       start();
       const serial = ++loadSerial;
+      if (!sameDestination(captured, query)) {
+        // A replacement is a new destination generation: the previous page,
+        // detail and storage objects stop being resident before the new query is
+        // published, and a retained error page can never revive them. Profile-wide
+        // summary/group facts and the receipt lease are deliberately untouched.
+        dropResident();
+      }
       query = captured;loading = true;errorText = '';
       publish();
       try {
