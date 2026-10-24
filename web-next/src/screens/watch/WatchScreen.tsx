@@ -127,7 +127,9 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   useLayoutEffect(() => { pictureInput.cancel(); setTapFeedback(null); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); }, [binding.runtime, snapshot.authority, sourceKey, pictureInput]);
   useEffect(() => () => pictureInput.cancel(), [pictureInput]);
   useLayoutEffect(() => { setFullWindow(false); }, [shapePortrait]);
-  useEffect(() => { if (!open) { pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [open, clearTimer, pictureInput]);
+  // A source change while the player stays expanded may blink `open` (rebuffering);
+  // only a collapsed player clears an open options panel.
+  useEffect(() => { if (!expanded) { pictureInput.cancel(); setTapFeedback(null); clearTimer(); setPanel(null); setMore(false); setShortcuts(false); scrubDrag.current = null; setScrub(null); setHoverSeconds(null); } }, [expanded, clearTimer, pictureInput]);
   useEffect(() => { if (panel || more || shortcuts) pictureInput.cancel(); }, [panel, more, shortcuts, pictureInput]);
   const showPanel = (next: WatchPanel, anchor?: HTMLButtonElement) => {
     if (!surfaces?.available.includes(next)) return;
