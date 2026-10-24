@@ -192,7 +192,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   };
   const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
   const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
-  const effects = binding.context.effects, target: EntryActionTarget = {libraryId: data.scope.libraryId, itemId: data.item.id, kind: data.item.kind, title: data.item.title};
+  const effects = binding.context.effects, target: EntryActionTarget = {libraryId: data.scope.libraryId, itemId: data.item.id, kind: data.item.kind as EntryActionTarget['kind'], title: data.item.title};
   const organize = !!effects.addToPlaylist || !!effects.addToCollection;
   const ownerRows = !!refreshPath || !!effects.editMetadata || !!effects.deleteTitle;
   const ownerEffect = (effect?: (item: EntryActionTarget, anchor: HTMLElement) => Promise<void>) => {
