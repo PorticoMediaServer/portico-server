@@ -3,6 +3,9 @@ package httpapi
 import "portico.local/apikit"
 
 func registerReadingHTTPContracts(registry *apikit.Registry) error {
+	if err := registerReadingDiscoverHTTPContract(registry); err != nil {
+		return err
+	}
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
 	metadata := func(id, method, path, summary string, scope apikit.Scope) apikit.Metadata {
 		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Device, Requires: scope, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors}
