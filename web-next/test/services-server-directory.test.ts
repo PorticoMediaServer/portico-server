@@ -18,7 +18,8 @@ test('the actual owner fact retains its Owner badge independently of other displ
   assert.deepEqual(servicesServerDirectoryCopy(server({ownedByMe:true,role:'owner'}),i18n).badge,{label:i18n.t('web.hostedAccount.serverOwner'),tone:'accent'});
 });
 test('member and unfamiliar role values never invent an Administrator or Owner badge',()=>{
-  for(const role of ['member','owner','administrator','operator','future'])assert.equal(servicesServerDirectoryCopy(server({role}),i18n).badge,undefined);
+  for(const role of ['member','owner'])assert.equal(servicesServerDirectoryCopy(server({role}),i18n).badge,undefined);
+  for(const role of ['administrator','operator','future'])assert.throws(()=>server({role}),'the canonical decoder refuses unknown membership roles');
 });
 test('quiet/dormant presence retains the drawn absolute last-seen date',()=>{
   for(const status of ['quiet','dormant'])assert.equal(servicesServerDirectoryCopy(server({status}),i18n).presence,
