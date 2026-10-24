@@ -181,8 +181,10 @@ export function SettingsEntry() {
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
   // controller instead of leaving the old section set on screen.
-  }, [context, retry, route.section, reportTimeZone, identity.primaryProfile, identity.capabilities?.manageServer,
-    identity.capabilities?.managePeople, identity.capabilities?.manageSignIn, identity.signIn, role, viewer.serverId, viewer.profileId]);
+  }, [context, retry, route.section, reportTimeZone, context?.facts.identity.primaryProfile,
+    context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
+    context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
+    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.profileId]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
   const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
