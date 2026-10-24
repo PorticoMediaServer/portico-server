@@ -14,7 +14,7 @@ docker image inspect "$image" --format '{{.Id}} {{json .RepoDigests}} {{json .Co
 # archive is writable, with the runner uid so its final cleanup can remove every file.
 mkdir -p "$TMPDIR/native-work/home"
 scope="${1:-engine}"
-case "$scope" in shell|engine|retirement) ;; *) exit 64 ;; esac
+case "$scope" in shell|engine|retirement|observed-audio) ;; *) exit 64 ;; esac
 docker_user=(--user "$(id -u):$(id -g)")
 case "$(docker info --format '{{json .SecurityOptions}}')" in *name=rootless*) docker_user=(--user 0:0) ;; esac
 docker run --rm --name "$job" --network=host "${docker_user[@]}" --label portico=desktop-r29 --cpus=1 --memory=3g --memory-swap=3g \
@@ -34,6 +34,12 @@ export PORTICO_TEST_PCM_FIXTURE=/work/owned-48000-stereo.wav PORTICO_TEST_VIDEO_
 if [ "$PORTICO_NATIVE_CHECK" = retirement ]; then
   # Actual GTK object ownership, without a WebView, media engine or screen dump.
   xvfb-run -a -s "-screen 0 800x600x24" cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features shell --lib shell::surface::tests -- --test-threads=1
+elif [ "$PORTICO_NATIVE_CHECK" = observed-audio ]; then
+  python3 apps/desktop/test/native-fixtures.py
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib renderer_output_tests
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib boundary::tests
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/storage/Cargo.toml --lib download_receipt::tests
+  cargo test --quiet --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib mpv::local_source_tests -- --ignored --test-threads=1
 elif [ "$PORTICO_NATIVE_CHECK" = engine ]; then
   python3 apps/desktop/test/native-fixtures.py
   cargo test --locked --manifest-path apps/desktop/src-tauri/engine/Cargo.toml --lib -- --test-threads=1
