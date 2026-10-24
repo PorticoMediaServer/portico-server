@@ -75,7 +75,7 @@ export function SavedResourceScreen({bindings}: {bindings: SavedViewBindings}) {
       </div>
     </div></header>
     <div className={styles.toolbar}>{bindings.selection?.toolbar}<div className={styles.toolbarEnd}><span>{kind === 'playlist' ? t('web.saved.items', {count: resource.entryCount}) : t('lib.count', {count: resource.entryCount, pivot: 'other'})}</span><ViewToggle value={bindings.presentation.view} onValueChange={bindings.presentation.setView} /></div></div>
-    {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.saved} section={section} heading={false} onMore={(entry, anchor) => {
+    {isPlaylist ? playlist.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.saved} section={section} onMore={(entry, anchor) => {
       if (entry.kind !== 'playlist_entry' || entry.hidden || !bindings.operations.current) return;
       rowAnchor.current = anchor; setRowMenu({entryId: entry.id, media: entry.media});
     }} />)

@@ -1,13 +1,15 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
-import type {SavedEntry, SavedProjection, SavedRoute, SavedService} from '@core/saved.ts';
+import type {SavedEntry, SavedListFilter, SavedProjection, SavedRoute, SavedService} from '@core/saved.ts';
+import type {PlaylistListFilter} from '@core/saved.ts';
 import type {PersonalResource, PersonalResourceEntry, PersonalSavedService} from '@core/personal-saved.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {shapeFor} from '@core/presentation/card-shape.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
-import {Button, Select, Tabs, Switch} from '../../kit/controls';
-import {ViewToggle} from '../../kit/browse';
+import {Button, Chip, Select, Tabs, Switch} from '../../kit/controls';
+import {FiltersButton, SortMenu, ViewToggle} from '../../kit/browse';
+import {MenuRow, Popover} from '../../kit/overlays';
 import {PlaylistMosaic, PosterCard, SquareCard, NewPlaylistCard, type CardSelection} from '../../kit/cards';
 import {AmbientArt, type AmbientArtSource, type ArtworkSource} from '../../kit/artwork';
 import {WindowedGrid} from '../../kit/layout';
@@ -109,40 +111,97 @@ const noSubscribe = () => () => {};
 const noLocalSnapshot = () => undefined;
 
 function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
-  const {runtime, route, presentation, effects} = bindings;
+  const {runtime, route, presentation, effects, artwork} = bindings;
   const first = route.view === 'watchlist' || route.view === 'favorites' ? runtime.posters : runtime.saved;
   const primary = useSyncExternalStore(first.subscribe, first.getSnapshot, first.getSnapshot), squares = useSyncExternalStore(runtime.squares.subscribe, runtime.squares.getSnapshot, runtime.squares.getSnapshot);
   const routeMatches = route.view === 'watchlist' || route.view === 'favorites'
     ? sameSavedRoute(primary.route, {...route, shape: 'posters'}) && sameSavedRoute(squares.route, {...route, shape: 'squares'}) : sameSavedRoute(primary.route, route);
-  if (!routeMatches) return null;
   const split = route.view === 'watchlist' || route.view === 'favorites', projection = primary.projection ?? (split ? squares.projection : null);
-  const label = serverTextLabel(defaultI18n, projection?.heading), list = route.view === 'favorites' ? 'favorites' : route.view === 'playlists' ? 'playlists' : 'watchlist';
+  // The frame's wash comes from the list's own first titles. The canonical
+  // library treatment carries it; no separate artwork request or tint is made.
+  const wash = useMemo(() => {
+    if (!presentation.backdrops) return [];
+    if (presentation.backdrop) return [presentation.backdrop];
+    const urls = (projection?.sections ?? []).flatMap(section => section.entries).flatMap(entry => {
+      const media = mediaEntry(entry), url = media && (media.backdropUrl ?? media.posterUrl);
+      return url ? [url] : [];
+    });
+    return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = artwork.ambient(url); return source ? [source] : []; });
+  }, [presentation.backdrops, presentation.backdrop, projection, artwork]);
+  if (!routeMatches) return null;
+  const list = route.view === 'favorites' ? 'favorites' : route.view === 'playlists' ? 'playlists' : 'watchlist';
   const total = split ? primary.phase === 'ready' && squares.phase === 'ready' ? [...(primary.projection?.sections ?? []), ...(squares.projection?.sections ?? [])].reduce((sum, section) => sum + section.totalCount, 0) : undefined : projection?.sections.reduce((sum, section) => sum + section.totalCount, 0);
   const hasContent = !!primary.projection?.sections.some(section => section.entries.length) || split && !!squares.projection?.sections.some(section => section.entries.length);
   if (!projection && primary.phase === 'error') return <StateView title={t('saved.loadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void runtime.select(route); }}} />;
   return <>
-    <div className={styles.toolbar}>
-      {projection?.filters.map(filter => <Select key={filter.id} aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}
-        value={'filter' in route ? route.filter ?? 'all' : 'all'} options={filter.options.map(option => ({value: option.id, label: option.label}))}
-        onValueChange={filter => { if (route.view === 'watchlist' || route.view === 'favorites' || route.view === 'playlists') effects.selectRoute({...route, filter: filter as 'all' | 'unwatched' | 'inProgress'}); }} />)}
-      {bindings.selection?.toolbar}
-      <div className={styles.toolbarEnd}>
-        {total !== undefined && <span>{t(list === 'playlists' ? 'web.saved.items' : 'lib.count', list === 'playlists' ? {count: total} : {count: total, pivot: 'other'})}</span>}
-        {projection?.sorts.length ? <Select aria-label={t('saved.sort')} value={'sort' in route ? route.sort ?? projection.query.sort : projection.query.sort}
-          options={projection.sorts.map(sort => ({value: sort.id, label: defaultI18n.has(sort.labelKey) ? t(sort.labelKey) : t('web.saved.sort.other')}))}
-          onValueChange={sort => { if (route.view !== 'playlist' && route.view !== 'downloads') effects.selectRoute({...route, sort}); }} /> : null}
-        {list !== 'playlists' && <ViewToggle value={presentation.view} onValueChange={presentation.setView} />}
-        {list === 'playlists' && projection?.actions?.includes('create_playlist') && <Button icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
-      </div>
-    </div>
+    {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
+    {list === 'playlists'
+      ? <div className={styles.toolbar}>
+          {projection?.filters.map(filter => <Select key={filter.id} aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}
+            value={'filter' in route ? route.filter ?? 'all' : 'all'} options={filter.options.map(option => ({value: option.id, label: option.label}))}
+            onValueChange={filter => { if (route.view === 'playlists') effects.selectRoute({...route, filter: filter as PlaylistListFilter}); }} />)}
+          {bindings.selection?.toolbar}
+          <div className={styles.toolbarEnd}>
+            {total !== undefined && <span>{t('web.saved.items', {count: total})}</span>}
+            {projection?.sorts.length ? <Select aria-label={t('saved.sort')} value={'sort' in route ? route.sort ?? projection.query.sort : projection.query.sort}
+              options={projection.sorts.map(sort => ({value: sort.id, label: savedSortName(sort)}))}
+              onValueChange={sort => { if (route.view === 'playlists') effects.selectRoute({...route, sort}); }} /> : null}
+            {projection?.actions?.includes('create_playlist') && <Button icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
+          </div>
+        </div>
+      : <SavedListToolbar bindings={bindings} projection={projection} total={total} />}
     {!hasContent && primary.phase === 'ready' && (!split || squares.phase === 'ready') ? <StateView title={t(`web.saved.empty.${list}`)} body={t(`web.saved.empty.${list}Body`)} /> : null}
-    {primary.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={first} section={section} heading={false} />)}
-    {split && squares.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.squares} section={section} heading />)}
+    {primary.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={first} section={section} />)}
+    {split && squares.projection?.sections.map(section => <SavedSection key={section.id} {...bindings} service={runtime.squares} section={section} heading={{label: s('next.saved.musicAndAudiobooks'), count: section.totalCount}} />)}
     {list === 'playlists' && projection?.actions?.includes('create_playlist') && <div className={styles.newTile}><NewPlaylistCard model={{title: t('web.saved.newPlaylist'), caption: []}} onCreate={bindings.onCreate} /></div>}
   </>;
 }
 
-export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading: boolean; onMore?: (entry: SavedEntry, anchor: HTMLButtonElement) => void}) {
+/** The catalogue names the server's saved sorts; an unknown one keeps the fallback. */
+const savedSortKeys = {title: 'web.saved.sort.title', added: 'web.saved.sort.added', updated: 'web.saved.sort.recent', year: 'web.saved.sort.year', duration: 'web.saved.sort.duration', progress: 'web.saved.sort.progress'} as const;
+function savedSortName(sort: Readonly<{id: string; labelKey: string}>): string {
+  const key = savedSortKeys[sort.id as keyof typeof savedSortKeys];
+  return key ? t(key) : defaultI18n.has(sort.labelKey) ? t(sort.labelKey) : t('web.saved.sort.other');
+}
+/** The saved list's own order, as the server published it. */
+function savedSortSelection(route: SavedViewBindings['route'], projection: SavedProjection | null) {
+  const field = ('sort' in route ? route.sort : undefined) ?? projection?.query.sort ?? 'title';
+  const direction = (('direction' in route ? route.direction : undefined) ?? projection?.query.direction) === 'desc' ? 'desc' as const : 'asc' as const;
+  const selected = projection?.sorts.find(sort => sort.id === field);
+  return {field, direction, flippable: (selected?.directions.length ?? 0) > 1, reshufflable: false};
+}
+
+/** My List and Favorites: the library toolbar the frame draws, over the saved
+ * list's published sorts and filter. The rows in the frame that the saved
+ * contract does not publish (Watched, Favorites as a quick filter) are absent
+ * rather than faked; the Filters menu carries the same published options. */
+function SavedListToolbar({bindings, projection, total}: {bindings: SavedViewBindings; projection: SavedProjection | null; total: number | undefined}) {
+  const {route, effects, presentation} = bindings;
+  const listRoute = route.view === 'watchlist' || route.view === 'favorites' ? route : undefined;
+  const filter = listRoute?.filter ?? 'all', [open, setOpen] = useState(false);
+  const filters = projection?.filters ?? [], quick = filters.flatMap(entry => entry.options.filter(option => option.id !== 'all'));
+  const sorts = projection?.sorts ?? [], sort = savedSortSelection(route, projection);
+  const sortLabel = (value: Readonly<{id: string; labelKey: string}>) => savedSortName(value);
+  return <div className={styles.toolbar}>
+    {filters.length ? <>
+      <Popover open={open} onOpenChange={setOpen} title={t('next.browse.filters')} accessibilityLabel={t('next.browse.filters')} placement="bottom-start" width={260}
+        trigger={<FiltersButton count={filter === 'all' ? 0 : 1} />}>
+        {quick.map(option => <MenuRow key={option.id} selected={filter === option.id} onClick={() => { setOpen(false); if (listRoute) effects.selectRoute({...listRoute, filter: filter === option.id ? 'all' : option.id as SavedListFilter}); }}>{option.label}</MenuRow>)}
+      </Popover>
+      <span className={styles.separator} aria-hidden="true" />
+      {quick.map(option => <Chip key={option.id} variant="toolbar" selected={filter === option.id} onClick={() => { if (listRoute) effects.selectRoute({...listRoute, filter: filter === option.id ? 'all' : option.id as SavedListFilter}); }}>{option.label}</Chip>)}
+    </> : null}
+    {bindings.selection?.toolbar}
+    <div className={styles.toolbarEnd}>
+      {total !== undefined && <span className={styles.resultCount}>{t('lib.count', {count: total, pivot: 'other'})}</span>}
+      {sorts.length ? <SortMenu sorts={sorts.map(value => ({...value, defaultDirection: value.directions[0] ?? 'asc', expensive: false, applicableKinds: []}))} value={sort} label={sortLabel}
+        onValueChange={value => { if (listRoute) effects.selectRoute({...listRoute, sort: value.field, direction: value.direction}); }} /> : null}
+      <ViewToggle value={presentation.view} onValueChange={presentation.setView} />
+    </div>
+  </div>;
+}
+
+export function SavedSection(bindings: SavedViewBindings & {service: SavedService; section: SavedProjection['sections'][number]; heading?: Readonly<{label: string; count?: number}>; onMore?: (entry: SavedEntry, anchor: HTMLButtonElement) => void}) {
   const {service, section, artwork, effects, presentation, selection} = bindings;
   const collection = useMemo(() => savedSectionWindow(service, section.id), [service, section.id]);
   const cleanup = useRef<(() => void) | undefined>(undefined);
@@ -158,10 +217,10 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   const first = section.entries[0], media = first && mediaEntry(first), square = first?.kind === 'playlist' || media && shapeFor(media.kind) === 'square';
   const ratio = square ? 1 : 2 / 3, rowHeight = presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
   const columns = presentation.view === 'list' ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
-  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(section.entries.length / columns) * (rowHeight + 30)));
+  const height = Math.max(rowHeight, Math.min(window.innerHeight, Math.ceil(section.entries.length / columns) * (rowHeight + 16)));
   return <section className={styles.savedSection} ref={root}>
-    {bindings.heading && <h2>{serverTextLabel(defaultI18n, section.heading)}</h2>}
-    <WindowedGrid collection={collection} label={serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 30} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
+    {bindings.heading && <div className={styles.sectionHeading}><h2>{bindings.heading.label}</h2>{bindings.heading.count !== undefined && <span>{defaultI18n.number(bindings.heading.count)}</span>}</div>}
+    <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 16} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
       renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
         const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
