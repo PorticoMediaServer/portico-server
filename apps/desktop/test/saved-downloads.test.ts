@@ -70,3 +70,13 @@ test('native queue callbacks receive only exact native IDs/revisions and group P
   await assert.rejects(h.port.playGroup!({kind:'songs',parentId:'other',groupId:'disc'},groupRevision,signal),/^Error: play$/);assert.equal(selections.length,2);
  }finally{h.close()}
 });
+test('unreported volume capacity stays absent without erasing genuine local files and rules',async()=>{
+ const h=await harness();
+ h.command(async(_,operation)=>{
+  if(operation.action==='capacity')throw 'unsupported';
+  if(operation.action==='list')return{kind:'page',value:{items:[row],nextCursor:null}};
+  if(operation.action==='groups')return{kind:'groups',value:[group]};
+  return{kind:'rules',value:{revision:7,rules:flat}};
+ });
+ try{await h.port.refresh(new AbortController().signal);const snapshot=h.port.getSnapshot();assert.equal(snapshot.phase,'ready');assert.equal(snapshot.items.length,1);assert.equal(snapshot.rules?.revision,7);assert.equal(snapshot.storage,undefined);}finally{h.close()}
+});

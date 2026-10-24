@@ -41,15 +41,27 @@ func TestPlannerRanksOnlyMeasuredHardwareOutputsAheadOfSoftware(t *testing.T) {
 		t.Fatalf("measured hardware H264 lost to software AV1: %+v", p)
 	}
 	for _, unqualified := range []decoder.HardwareProbe{{}, {Backend: probe.Backend, Available: true, OutputEncoders: probe.OutputEncoders}, {Backend: probe.Backend, Available: true, Identity: probe.Identity}} {
-		if p := plan(unqualified, "auto"); p.OutputVideoCodec != "av1" {
-			t.Fatalf("unmeasured hardware changed codec ranking: %+v", p)
+		if p := plan(unqualified, "auto"); p.OutputVideoCodec != "av1" || p.HardwareBackend != string(decoder.BackendSoftware) || p.HardwareNative || containsString(p.ReasonCodes, ReasonHardwareBackend) || !containsString(p.ReasonCodes, ReasonSoftwareFallback) {
+			t.Fatalf("unmeasured hardware changed codec ranking or execution explanation: %+v", p)
 		}
 	}
 	mismatched := probe
 	mismatched.Identity = "different-selected-toolchain"
-	if p := plan(mismatched, "auto"); p.OutputVideoCodec != "av1" {
-		t.Fatalf("another toolchain's measured output changed codec ranking: %+v", p)
+	if p := plan(mismatched, "auto"); p.OutputVideoCodec != "av1" || p.HardwareBackend != string(decoder.BackendSoftware) || p.HardwareNative || containsString(p.ReasonCodes, ReasonHardwareBackend) {
+		t.Fatalf("another toolchain's measured output changed ranking or execution explanation: %+v", p)
 	}
+	wrongCell := probe
+	wrongCell.NativeFilters, wrongCell.ScaleFilters = true, true
+	wrongCell.OutputEncoders = map[string]bool{"hevc:10": true, "h264:10": true}
+	if p := plan(wrongCell, "h264"); p.HardwareBackend != string(decoder.BackendSoftware) || p.HardwareNative || containsString(p.ReasonCodes, ReasonHardwareBackend) || p.ConversionProbe != nil {
+		t.Fatalf("unmeasured H2648 retained hardware execution: %+v", p)
+	}
+	unknownBundle := probe
+	facts.Identity = ""
+	if p := plan(unknownBundle, "h264"); p.HardwareBackend != string(decoder.BackendSoftware) || p.HardwareNative || p.ConversionProbe != nil {
+		t.Fatalf("unknown toolchain inherited hardware: %+v", p)
+	}
+	facts.Identity = probe.Identity
 	if p := plan(decoder.HardwareProbe{}, "h264"); p.OutputVideoCodec != "h264" {
 		t.Fatal("owner H264-only conversion format lost", p)
 	}

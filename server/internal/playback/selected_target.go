@@ -43,6 +43,19 @@ func bestAudioConversionTransport(transports []ClientTransport, client ClientPro
 	return name, nil
 }
 
+// measuredConversionProbe uses the same selected-bundle/device codec cell as
+// output ranking. A generic available backend cannot label or execute an
+// unmeasured output as hardware. This reads cached facts, never probes a device.
+func measuredConversionProbe(facts *decoder.ToolchainFacts, probe decoder.HardwareProbe, codec string, depth int) decoder.HardwareProbe {
+	for _, output := range decoder.AvailableConversionOutputsForHardware(facts, probe).Video {
+		if output.Codec == codec && output.BitDepth == depth && output.Hardware {
+			return probe
+		}
+	}
+	probe.Available = false
+	return probe
+}
+
 // Complete and validate the contract before persisting it for the producer.
 func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAudio, client ClientProfile, probe decoder.HardwareProbe, facts *decoder.ToolchainFacts) error {
 	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
@@ -126,6 +139,9 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			}
 		}
 	}
+	if p.VideoAction == "convert" {
+		probe = measuredConversionProbe(facts, probe, t.VideoCodec, t.BitDepth)
+	}
 	if probe.Available {
 		copy := probe
 		p.ConversionProbe = &copy
@@ -135,6 +151,9 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 		return err
 	}
 	p.HardwareBackend = string(graph.Backend)
+	if graph.Backend == decoder.BackendSoftware {
+		p.HardwareNative = false
+	}
 	if p.VideoAction == "convert" {
 		reasons := p.ReasonCodes[:0]
 		for _, reason := range p.ReasonCodes {
