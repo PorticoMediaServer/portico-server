@@ -6,6 +6,7 @@ import type {PlayerOffersData} from '@core/player-offers.ts';
 import type {SubtitlePlan,SubtitleResource} from '@core/subtitles.ts';
 import type {WebPlaybackRuntimeSnapshot,WebShellPlaybackRuntime} from '../src/platform/playback';
 import {phoneOptionRows,watchPanelModel} from '../src/screens/watch/panel-model.ts';
+import {settledPlaybackChanged} from '../src/screens/watch/screen-state.ts';
 import {roomActionAllowed} from '../src/screens/watch/room-guard.ts';
 const scope={serverId:'server',authority:'local' as const,accountId:'account',profileId:'profile',controllerId:'controller',controllerEpoch:'epoch',commandLaneId:'lane'};
 const fence={kind:'queue' as const,playback:{scope,run:1},sessionId:'session',itemId:'movie',sourceId:'source',entryId:'entry',generation:1};
@@ -130,4 +131,13 @@ test('the quality panel names only the real current conversion',()=>{
  assert.equal(f.model()!.qualityNote,'Converting to 720p');
  f.set({...f.live,session:{...f.live.session!,presentation:{...f.live.session!.presentation,decision:{video:{action:'direct'}}}}});
  assert.equal(f.model()!.qualityNote,'Playing the original file');
+});
+
+test('screen state resets on a settled runtime or playback run, never a blank frame',()=>{
+ const runtime={},settled={runtime,key:JSON.stringify({scope:'s',run:1})};
+ assert.equal(settledPlaybackChanged(undefined,runtime,{scope:'s',run:1}),true);
+ assert.equal(settledPlaybackChanged(settled,runtime,undefined),false,'a temporary missing fence keeps the panel');
+ assert.equal(settledPlaybackChanged(settled,runtime,{scope:'s',run:1}),false,'a quality generation change keeps the panel');
+ assert.equal(settledPlaybackChanged(settled,runtime,{scope:'s',run:2}),true,'a new playback run resets even for the same title');
+ assert.equal(settledPlaybackChanged(settled,{}, {scope:'s',run:1}),true,'a new runtime resets even for the same item and run');
 });
