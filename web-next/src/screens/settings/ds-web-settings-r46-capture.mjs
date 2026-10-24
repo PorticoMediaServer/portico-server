@@ -131,6 +131,14 @@ try {
     username: credentials.username, password: credentials.password, name: 'Portico demo', authMode: 'local', interactive: true}});
   if (created.status !== 201) throw new Error('owner creation refused: ' + JSON.stringify(created.body));
   note('setup ok: local owner, name "Portico demo"');
+  // The frame's top bar is data-derived. Create the same five empty libraries so
+  // the shell's drawn destinations exist; no scan or media is claimed.
+  for (const [kind, name] of [['movie', 'Movies'], ['tv', 'TV Shows'], ['anime', 'Anime'], ['music', 'Music'], ['audiobook', 'Audiobooks']]) {
+    const directory = join(state, 'media', kind); await mkdir(directory, {recursive: true});
+    const response = await fetch(base + '/v1/libraries', {method: 'POST', headers: {Authorization: 'Bearer ' + created.body.accessToken, 'Content-Type': 'application/json'},
+      body: JSON.stringify({kind, name, path: directory, metadataAgent: 'local'})});
+    if (response.status !== 201) note(`library ${name} refused: ${response.status} ${(await response.text()).slice(0, 160)}`);
+  }
 
   browser = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking',
     '--disable-component-update', '--disable-sync', '--disable-default-apps', '--no-first-run', '--no-default-browser-check', '--remote-allow-origins=*',
@@ -141,6 +149,10 @@ try {
   driver = await Driver.connect(chromePort);
   await driver.send('Page.enable'); await driver.send('Runtime.enable');
   await driver.viewport(1440, 1000);
+  // The approved mock scales its 1440 stage to the document client width. A
+  // classic scrollbar would shrink that to 1425 and make the pair incomparable;
+  // hide scrollbars so both sides use the same 1440 logical layout.
+  await driver.send('Emulation.setScrollbarsHidden', {hidden: true});
   await driver.navigate(base);
   await driver.waitFor(`document.querySelector('input[autocomplete="username"]')`, 30000);
   const setValue = async (selector, value) => driver.evaluate(`(() => {const element = document.querySelector(${JSON.stringify(selector)});
@@ -171,9 +183,9 @@ try {
   await driver.screenshot(buildShot);
   const buildFacts = await driver.evaluate(`(() => {
     const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
-    const main = document.querySelector('main');
+    const style = element => {const s = getComputedStyle(element); return {fontSize: s.fontSize, lineHeight: s.lineHeight, fontFamily: s.fontFamily, fontWeight: s.fontWeight, color: s.color};};
     return {url: location.href, viewport: {width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight},
-      headings: [...document.querySelectorAll('main h1, main h2, main h3')].map(element => ({text: element.textContent, box: box(element)})),
+      headings: [...document.querySelectorAll('main h1, main h2, main h3')].map(element => ({text: element.textContent, box: box(element), style: style(element)})),
       groups: [...document.querySelectorAll('main section')].map(element => ({title: element.querySelector('h3')?.textContent ?? '', box: box(element)})),
       rows: [...document.querySelectorAll('main [id^="playback."]')].map(element => ({id: element.id, text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
       nav: [...document.querySelectorAll('nav[aria-label] button')].map(element => ({text: element.textContent.trim(), current: element.getAttribute('aria-current'), box: box(element)})),
@@ -188,18 +200,19 @@ try {
   await driver.waitFor(`document.querySelector('.mx')`, 30000);
   await driver.evaluate(`document.fonts.ready`);
   await sleep(450);
-  await driver.evaluate(`(() => {const groups = [...document.querySelectorAll('.mx [role="radiogroup"]')];
-    const group = groups.find(item => item.querySelector('.lab')?.textContent.trim().startsWith('Recaps')); if (!group) throw new Error('Recaps group missing');
-    group.querySelectorAll('button')[1].click(); return true;})()`);
-  await driver.waitFor(`[...document.querySelectorAll('.saved')].some(node => node.textContent.trim().endsWith('Saved'))`, 8000);
+  // The row is tagged changed with start {recap:auto}: its initial drawn state is
+  // already the frame's state, so the mock is not clicked (Reset is a button too).
+  await driver.waitFor(`(() => {const group = [...document.querySelectorAll('.mx [role="radiogroup"]')].find(item => item.querySelector('.lab')?.textContent.trim().startsWith('Recaps'));
+    return !!group && group.querySelector('[data-val="auto"]')?.getAttribute('aria-checked') === 'true' && !!group.querySelector('.chg:not([hidden])');})()`, 8000);
   await driver.evaluate(`new Promise(resolve => {const settled = document.getAnimations().map(animation => animation.finished.catch(() => {})); Promise.allSettled(settled).then(() => requestAnimationFrame(() => requestAnimationFrame(resolve)));})`);
   await sleep(300);
   const referenceShot = resolve(output, 'reference.png');
   await driver.screenshot(referenceShot);
   const referenceFacts = await driver.evaluate(`(() => {
     const box = element => {const r = element.getBoundingClientRect(); return {x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, w: Math.round(r.width * 100) / 100, h: Math.round(r.height * 100) / 100};};
+    const style = element => {const s = getComputedStyle(element); return {fontSize: s.fontSize, lineHeight: s.lineHeight, fontFamily: s.fontFamily, fontWeight: s.fontWeight, color: s.color};};
     return {url: location.href, viewport: {width: innerWidth, height: innerHeight, scrollHeight: document.documentElement.scrollHeight},
-      headings: [...document.querySelectorAll('#page .pg-h h2, #page .sec-h h3')].map(element => ({text: element.textContent, box: box(element)})),
+      headings: [...document.querySelectorAll('#page .pg-h h2, #page .sec-h h3')].map(element => ({text: element.textContent, box: box(element), style: style(element)})),
       groups: [...document.querySelectorAll('#page .sec')].map(element => ({title: element.querySelector('h3')?.textContent ?? '', box: box(element)})),
       rows: [...document.querySelectorAll('#page .r')].map(element => ({text: element.innerText.replace(/\\n+/g, ' | '), box: box(element)})),
       nav: [...document.querySelectorAll('#aside .it')].map(element => ({text: element.textContent.trim(), current: element.getAttribute('aria-current'), box: box(element)})),
