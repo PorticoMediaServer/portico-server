@@ -62,7 +62,7 @@ const effective = {'search.rememberHistory': true, 'appearance.cardSizePercent':
 const preferenceSnapshot = {effective} as never;
 const preferences = {getSnapshot: () => preferenceSnapshot, subscribe: () => () => {}};
 const api = {
-  request: async <T>(path: string) => await fixture(path) as T,
+  request: async <T,>(path: string) => await fixture(path) as T,
   requestRaw: async () => { throw new Error('No specimen transport.'); },
   getRouteSnapshot: () => ({phase: 'ready', origin: 'https://fixture.invalid', revision: 1, network: 'online', message: '', discovery: 'available'}),
   subscribeRoute: () => () => {},
