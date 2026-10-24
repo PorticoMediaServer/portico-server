@@ -6,6 +6,26 @@ import {WebCastSender} from '../../platform/cast';
 import {PlayOnController, mediaAirPlayPort} from '../../platform/playback/play-on';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WatchBindings} from './types';
+import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
+
+/** Only current source facts can prove a caption survives a video-only transport.
+ * A missing plan is unknown; older no-plan offers may prove off, and the current
+ * session itself can prove that the chosen caption was already burned. */
+export function remotePictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot): boolean {
+  const fence=snapshot.fence,offers=snapshot.offers,current=offers?.current,session=snapshot.session;
+  if(snapshot.disposed||!fence||fence.kind==='local'||!current||!session)return false;
+  if(current.sessionId!==fence.sessionId||current.generation!==fence.generation||current.sourceId!==fence.sourceId
+    ||session.id!==fence.sessionId||session.presentation.generation!==fence.generation)return false;
+  const plan=offers.subtitlePlan;
+  if(plan){
+    if(plan.sessionId!==fence.sessionId||plan.generation!==fence.generation||plan.sourceId!==fence.sourceId)return false;
+    return plan.mode==='off'||plan.renderer==='burn_in';
+  }
+  const selected=session.presentation.subtitle;
+  if(selected?.delivery==='burn'&&session.presentation.subtitles.length===0)return true;
+  return !selected&&session.presentation.subtitles.length===0
+    &&(current.subtitleSelection==='off'||current.subtitleSelection==='disabled');
+}
 
 export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' | 'isCurrent' | 'epoch'>;
 /** Created only by the mounted persistent host. The same real video owns AirPlay. */
@@ -34,7 +54,7 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
   const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
   const controller = new PlayOnController({sender, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
-    isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && binding.runtime.browserMediaReady(shown.fence);},
+    isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && remotePictureKeepsCaptions(shown) && binding.runtime.browserMediaReady(shown.fence);},
     subscribe: binding.runtime.subscribe,
   }), isCurrent, describeItem, reportError: binding.reportError});
   return {controller, item: (id: string) => isCurrent() ? items.get(id) : undefined,

@@ -1,6 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
+import {sameFence, type PlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import {itemSubject} from '../../platform/playback/subject';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
 import type {PlayOnSnapshot} from '../../platform/playback/play-on';
@@ -11,7 +12,7 @@ import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
-import {createWatchPlayOn, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
+import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
 import {router} from '../../router';
 import {settingsPlatform} from '../../platform/settings-platform';
@@ -29,6 +30,97 @@ const noPresentations: readonly DockPresentation[] = Object.freeze([]);
 const subscribeFullscreen = (changed: () => void) => {document.addEventListener('fullscreenchange', changed);return () => document.removeEventListener('fullscreenchange', changed);};
 const fullscreenSnapshot = () => !!document.fullscreenElement;
 const noFullscreen = () => false;
+
+/** The browser's Picture-in-Picture surface, structurally, so the retained element is the only picture. */
+export type PictureInPictureDocument = Readonly<{
+  pictureInPictureEnabled: boolean;
+  pictureInPictureElement: Element | null;
+  exitPictureInPicture?: () => Promise<void>;
+}>;
+
+/** The floating picture belongs to this browser's ordinary video, never to another installed
+ * platform: Desktop's native media owner draws its own presentation and has no browser transport. */
+export function browserPictureInPictureSupported(host: PictureInPictureDocument | undefined, platform: string | undefined): boolean {
+  if (!host || platform !== undefined && platform !== 'web') return false;
+  return host.pictureInPictureEnabled === true && typeof host.exitPictureInPicture === 'function';
+}
+
+export {remotePictureKeepsCaptions} from './play-on-binding';
+
+/** A genuine current full source: the runtime's own loaded, non-native, non-remote media
+ * readiness for this exact fence, and no page-drawn caption that the floating picture would drop. */
+export function pictureInPictureReady(runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined): boolean {
+  const fence = snapshot?.fence;
+  if (!runtime || !snapshot || snapshot.disposed || !fence || snapshot.nativeVideoSurfaceActive) return false;
+  if (snapshot.dock.remote?.phase === 'playing' || !remotePictureKeepsCaptions(snapshot)) return false;
+  try { return runtime.browserMediaReady(fence); } catch { return false; }
+}
+
+/** After an awaited browser dispatch, the original runtime must still show the original full
+ * fence and still permit the floating picture; a late request never keeps a retired picture. */
+export function pictureInPictureCurrent(runtime: WebShellPlaybackRuntime, fence: PlaybackFence): boolean {
+  const live = runtime.getSnapshot();
+  return !!live.fence && sameFence(live.fence, fence) && pictureInPictureReady(runtime,live);
+}
+
+/** While the picture floats, a source that retires or turns native/remote, or a track that the
+ * page can no longer draw into it, returns the one retained video to the page. */
+export function pictureInPictureRetained(runtime: WebShellPlaybackRuntime | undefined, snapshot: WebPlaybackRuntimeSnapshot | undefined, owner: WebShellPlaybackRuntime | undefined): boolean {
+  return !!owner && owner === runtime && !!snapshot && !snapshot.disposed && !!snapshot.fence
+    && !snapshot.nativeVideoSurfaceActive && snapshot.dock.remote?.phase !== 'playing' && remotePictureKeepsCaptions(snapshot);
+}
+
+export type PictureInPictureOperations = Readonly<{toggle: () => Promise<void>; release: () => Promise<void>}>;
+
+/** Enter/leave the floating picture on the one retained element. A request is serialized so a
+ * browser dispatch that finishes after a replacement or a newer command cannot mutate the new
+ * source's picture: only the newest command owns the result, and a revoked enter exits on arrival. */
+export function createPictureInPictureOperations(input: Readonly<{
+  document: PictureInPictureDocument;
+  element: () => HTMLVideoElement | null;
+  target: () => Readonly<{runtime: WebShellPlaybackRuntime; fence: PlaybackFence}> | null;
+  current: (runtime: WebShellPlaybackRuntime, fence: PlaybackFence) => boolean;
+}>): PictureInPictureOperations {
+  type Operation={kind:'enter'|'exit';element:HTMLVideoElement;revoked:boolean};
+  let pending:Operation|undefined,retained:HTMLVideoElement|null=null;
+  const exitOwn=async(element:HTMLVideoElement)=>{
+    if(input.document.pictureInPictureElement===element&&typeof input.document.exitPictureInPicture==='function')await input.document.exitPictureInPicture();
+  };
+  const exit=async(element:HTMLVideoElement)=>{
+    const operation:Operation={kind:'exit',element,revoked:true};pending=operation;
+    try{await exitOwn(element);}finally{if(pending===operation)pending=undefined;}
+  };
+  return {
+    toggle:async()=>{
+      // Coalesce while an enter/exit is awaiting the browser. An additional enter gesture
+      // cancels the pending enter; it can never erase that request's revocation or dispatch
+      // a competing request whose rejection would leave the first result unqualified.
+      if(pending){if(pending.kind==='enter')pending.revoked=true;return;}
+      const element=input.element();if(!element)return;retained=element;
+      if(input.document.pictureInPictureElement===element){await exit(element);return;}
+      if(input.document.pictureInPictureElement)throw new DOMException('Another picture source is active','InvalidStateError');
+      const source=input.target();
+      if(!source||!element.isConnected||typeof element.requestPictureInPicture!=='function')return;
+      const operation:Operation={kind:'enter',element,revoked:false};pending=operation;
+      let acknowledged=false;
+      try{await element.requestPictureInPicture();acknowledged=true;}
+      finally{
+        try{
+          let current=false;
+          try{current=element.isConnected&&input.current(source.runtime,source.fence);}catch{/* retired */}
+          if(!acknowledged||operation.revoked||!current)await exitOwn(element);
+        }finally{if(pending===operation)pending=undefined;}
+      }
+    },
+    release:async()=>{
+      // The accepted request keeps custody until its own acknowledgement/retirement settles.
+      // Never race an early exit against a late enter or a newer picture on this element.
+      if(pending){pending.revoked=true;return;}
+      const element=input.element()??retained;if(element)await exit(element);
+    },
+  };
+}
+
 
 /** This parent and its one video stay mounted through routes AND authority handovers. */
 export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlaybackProps) {
@@ -50,6 +142,7 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   }, [binding, context]);
   const cast = castOwner && castOwner.runtime === runtime && castOwner.context === context ? castOwner.value : undefined;
   const remoteState = useSyncExternalStore<PlayOnSnapshot | undefined>(cast?.controller.subscribe ?? noSubscription, cast?.controller.getSnapshot ?? noSnapshot, noSnapshot);
+  // AirPlay also lifts only the video; page-drawn captions keep the picture on the page.
   const castAvailable = !!cast && (remoteState?.airPlayAvailable || remoteState?.cast.available && snapshot?.fence?.kind === 'queue');
   const remotePlaying = remoteState?.remote?.phase === 'playing';
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
@@ -70,6 +163,43 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const expanded = !!snapshot?.dock.local?.expanded;
   const activeVideo = localVideoSurfaceActive(snapshot) && !remotePlaying;
   const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenSnapshot, noFullscreen);
+  const [pipActive, setPipActive] = useState(false);
+  const pipOwner = useRef<WebShellPlaybackRuntime | undefined>(undefined);
+  const pipLive = useRef<{runtime?: WebShellPlaybackRuntime; snapshot?: WebPlaybackRuntimeSnapshot}>({});
+  pipLive.current = {runtime, snapshot};
+  const pipDocument = typeof document === 'undefined' ? undefined : document as PictureInPictureDocument;
+  const pipSupported = browserPictureInPictureSupported(pipDocument, settingsPlatform()?.environment.platform);
+  const pipReady = pipSupported && pictureInPictureReady(runtime, snapshot);
+  const pipOperations = useMemo(() => pipDocument && pipSupported ? createPictureInPictureOperations({
+    document: pipDocument,
+    element: () => video.current,
+    // The gesture reads the live full source, not a render that may predate this frame.
+    target: () => {
+      const liveRuntime = pipLive.current.runtime, live = liveRuntime?.getSnapshot(), element = video.current;
+      if (!liveRuntime || !live?.fence || !element || !element.isConnected || element.disablePictureInPicture || typeof element.requestPictureInPicture !== 'function') return null;
+      if (!pictureInPictureReady(liveRuntime, live)) return null;
+      return {runtime: liveRuntime, fence: live.fence};
+    },
+    current: (liveRuntime, fence) => pictureInPictureCurrent(liveRuntime, fence),
+  }) : undefined, [pipDocument, pipSupported]);
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    const entered = () => { pipOwner.current = runtime; setPipActive(document.pictureInPictureElement === element); };
+    const left = () => { pipOwner.current = undefined; setPipActive(false); };
+    element.addEventListener('enterpictureinpicture', entered);
+    element.addEventListener('leavepictureinpicture', left);
+    return () => { element.removeEventListener('enterpictureinpicture', entered); element.removeEventListener('leavepictureinpicture', left); };
+  }, [runtime]);
+  useLayoutEffect(()=>()=>{void pipOperations?.release().catch(()=>{});},[pipOperations,runtime]);
+  useEffect(() => {
+    const liveRuntime=pipLive.current.runtime,live=liveRuntime?.getSnapshot();
+    if (!pipActive || !pipOperations || pictureInPictureRetained(liveRuntime, live, pipOwner.current)) return;
+    // Drawn captions, a native/remote takeover or a retired source cannot follow the floating
+    // picture; return the one retained video to the page rather than dropping them.
+    pipOwner.current = undefined;
+    void pipOperations.release().catch(binding?.reportError ?? (() => {}));
+  }, [binding, pipActive, pipOperations, runtime, snapshot]);
   const [controlsVisible, setControlsVisible] = useState(true), chrome = useRef<WindowChromePublisher | undefined>(undefined);
   useLayoutEffect(() => {
     if (!expanded || !activeVideo) return;
@@ -150,6 +280,10 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
   const visuals = binding ? {itemId: subject ? visualId : undefined, identity: subject ? playbackIdentity(subject, 'full', binding.environment) : undefined,
     artwork: subject ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
     skipBackSeconds: binding.skips.back, skipForwardSeconds: binding.skips.forward} : undefined;
+  const windowPort = typeof document !== 'undefined' ? {
+    ...(document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : {}),
+    ...(pipOperations && (pipReady || pipActive) ? {pictureInPicture: {active: pipActive, toggle: () => pipOperations.toggle()}} : {}),
+  } : undefined;
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host>
     {snapshot && dockBinding && <div className={styles.localDock} data-covered={!!remote}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
@@ -158,7 +292,7 @@ export function WatchPlayback({binding, context, surfaces, geometry}: WatchPlayb
     </MediaSurface>
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry}
-      windowPort={typeof document !== 'undefined' && document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : undefined} />}
+      windowPort={windowPort} />}
     {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} /></div>}
   </div>;
 }
