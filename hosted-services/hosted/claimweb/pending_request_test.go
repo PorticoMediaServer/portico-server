@@ -3,6 +3,7 @@ package claimweb
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,11 @@ func TestPendingRequestRejectsAmbiguousProofTransport(t *testing.T) {
 		`{` + base + `,"Payload":"replacement"}`,
 		`{` + base + `,"claimHash":"digest-only"}`,
 		`{` + base + `,"ownerStart":null}`,
+		`{` + base + `,"setupStart":null}`,
+		`{` + base + `,"setupStart":{}}`,
+		`{` + base + `,"setupStart":{"payload":"start"}}`,
+		`{` + base + `,"setupStart":{"payload":"start","signature":"signature"},"ownerStart":{"payload":"owner","signature":"signature"}}`,
+		`{` + base + `,"setupStart":{"payload":"start","signature":"signature"},"ownerSwitchCount":{"payload":"count","signature":"signature"}}`,
 		`{` + base + `,"ownerStart":{}}`,
 		`{` + base + `,"ownerStart":{"payload":"start"}}`,
 		`{` + base + `,"ownerStart":{"payload":null,"signature":"signature"}}`,
@@ -52,11 +58,11 @@ func TestPendingRequestRejectsAmbiguousProofTransport(t *testing.T) {
 	}
 	for i, raw := range cases {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			q := PendingRequest{Payload: "old", Signature: "old", OwnerStart: &Signed{Payload: "old", Signature: "old"}}
+			q := PendingRequest{Payload: "old", Signature: "old", OwnerStart: &Signed{Payload: "old", Signature: "old"}, SetupStart: &Signed{Payload: "old", Signature: "old"}}
 			if q.UnmarshalJSON([]byte(raw)) == nil {
 				t.Fatal("ambiguous proof transport accepted")
 			}
-			if q.Payload != "" || q.Signature != "" || q.OwnerStart != nil {
+			if q.Payload != "" || q.Signature != "" || q.OwnerStart != nil || q.SetupStart != nil {
 				t.Fatal("failed decode retained predecessor proof")
 			}
 		})
@@ -65,17 +71,48 @@ func TestPendingRequestRejectsAmbiguousProofTransport(t *testing.T) {
 
 func TestPendingRequestSchemaRequiresNonNullFullStart(t *testing.T) {
 	variants := (PendingRequest{}).JSONSchema()["oneOf"].([]any)
-	if len(variants) != 2 {
-		t.Fatal("pending variants are not distinct")
+	if len(variants) != 3 {
+		t.Fatal("ordinary, owner and setup pending variants must stay distinct")
 	}
-	for _, v := range variants {
-		if v.(map[string]any)["additionalProperties"] != false {
-			t.Fatal("pending variant is not closed")
+	required := func(shape map[string]any) string {
+		keys := append([]string{}, shape["required"].([]string)...)
+		sort.Strings(keys)
+		return strings.Join(keys, ",")
+	}
+	envelope := func(shape map[string]any) {
+		t.Helper()
+		props := shape["properties"].(map[string]any)
+		if shape["type"] != "object" || shape["additionalProperties"] != false || required(shape) != "payload,signature" || len(props) != 2 {
+			t.Fatal("start must be a full closed nonnull signed envelope")
+		}
+		for _, key := range []string{"payload", "signature"} {
+			field := props[key].(map[string]any)
+			if field["type"] != "string" || field["minLength"] != 1 {
+				t.Fatal("empty or null signed envelope scalar admitted")
+			}
 		}
 	}
-	owner := variants[1].(map[string]any)
-	if len(owner["required"].([]string)) != 3 || owner["properties"].(map[string]any)["ownerStart"].(map[string]any)["type"] != "object" {
-		t.Fatal("owner start can be omitted or normalized from null")
+	for i, value := range variants {
+		shape := value.(map[string]any)
+		props := shape["properties"].(map[string]any)
+		if shape["type"] != "object" || shape["additionalProperties"] != false {
+			t.Fatal("pending variant is not closed")
+		}
+		switch i {
+		case 0:
+			envelope(shape)
+		case 1:
+			if required(shape) != "ownerStart,payload,signature" || len(props) != 4 || props["setupStart"] != nil {
+				t.Fatal("owner pending schema is not disjoint")
+			}
+			envelope(props["ownerStart"].(map[string]any))
+			envelope(props["ownerSwitchCount"].(map[string]any))
+		case 2:
+			if required(shape) != "payload,setupStart,signature" || len(props) != 3 || props["ownerStart"] != nil || props["ownerSwitchCount"] != nil {
+				t.Fatal("setup pending schema is not disjoint")
+			}
+			envelope(props["setupStart"].(map[string]any))
+		}
 	}
 }
 
