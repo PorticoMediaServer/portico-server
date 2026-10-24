@@ -16,7 +16,7 @@ import type {LiveChromeChannel, LiveChromeGuideChannel, LiveChromeGuideTarget, L
 const randomHex = async () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
 const recordingStates: ReadonlySet<string> = new Set(['scheduled', 'conflicted', 'waiting-source', 'waiting-guide', 'preparing', 'recording', 'finalizing', 'completed', 'incomplete-playable', 'failed', 'cancelled', 'pending-delete', 'deleted']);
 const recordingState = (programme: GuideProgramme | undefined): LiveChromeProgramme['recording'] => {
-  if (!programme?.recordingId || !recordingStates.has(programme.recordingState)) return undefined;
+  if (!programme?.recordingId || programme.recordingState === undefined || !recordingStates.has(programme.recordingState)) return undefined;
   return programme.recordingState as LiveChromeProgramme['recording'];
 };
 const asChromeChannel = (channel: GuideChannel): LiveChromeChannel => ({id: channel.id, sourceId: channel.sourceId, kind: channel.provenance,

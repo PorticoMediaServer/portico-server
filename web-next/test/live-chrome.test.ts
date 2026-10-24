@@ -52,7 +52,8 @@ test('the rail display is wall clock, the seek command subtracts the captured me
 });
 
 test('a replaced fence, channel generation or channel association is not current', () => {
-  const fence = {kind: 'channel', playback: {}, sessionId: 's', channelId: 'c', channelGeneration: 'g', generation: 1, channelKind: 'live-source', sourceId: 'src'} as never;
+  const playback = {scope: {serverId: 'server'}, run: 1} as never;
+  const fence = {kind: 'channel', playback, sessionId: 's', channelId: 'c', channelGeneration: 'g', generation: 1, channelKind: 'live-source', sourceId: 'src'} as never;
   const authority = {serverId: 'server'} as never;
   const live = {disposed: false, authority, fence,
     playback: {channel: {kind: 'live-source', sourceId: 'src', channelId: 'c', generation: 'g'}, linear: {channel: {generation: 'g'}}}} as never;
