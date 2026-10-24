@@ -86,9 +86,16 @@ type ClaimHandler struct {
 	signer              Signer
 	authorize           ClaimRequestAuthorizer
 	managementAuthorize func(*http.Request) (ClaimRequestGuard, error)
+	setupReturnResolver func(context.Context, string, string) error
 	name                func() string
 	endpoints           endpointRegistrations
 	failures            *failureLog
+}
+
+// UseSetupReturnResolver is root composition, set before serving/recovery. Its
+// opaque note is the original persisted setup capture, never request input.
+func (h *ClaimHandler) UseSetupReturnResolver(resolve func(context.Context, string, string) error) {
+	h.setupReturnResolver = resolve
 }
 
 type ClaimPrepareRequest struct {

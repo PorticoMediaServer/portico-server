@@ -203,7 +203,7 @@ func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected
 			// the request's own expiry a new web approval starts a new watch.
 			time.AfterFunc(time.Until(local.ExpiresAt)+time.Minute, func() { h.webWatches.CompareAndDelete(expected.OperationID, watch) })
 		}()
-		watch.answer, decided = h.runWebClaimWatch(expected, guard, local)
+		watch.answer, decided = h.runWebClaimWatch(expected, guard, local, resume)
 	})
 	return watch, nil
 }
@@ -264,7 +264,7 @@ func webClaimAnswer(state string) []byte {
 // runWebClaimWatch waits on Hosted's decision stream for one signed web claim
 // and, when it is approved, installs the claim and wakes the certificate and
 // remote-access work at once.
-func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimRequestGuard, local localWebClaim) ([]byte, bool) {
+func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimRequestGuard, local localWebClaim, resume string) ([]byte, bool) {
 	ctx, cancel := context.WithDeadline(context.Background(), local.ExpiresAt)
 	defer cancel()
 	withdraw := func() {
@@ -333,6 +333,14 @@ func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimReque
 				return e
 			}
 			if next.Stage == Installed && next.InstallationAcknowledged {
+				if next.Purpose == "setup" && local.SetupStart != nil && h.setupReturnResolver != nil {
+					// Installation alone is not a return registration. Resolve only
+					// the original setup capture, under the same current guard.
+					if e = h.setupReturnResolver(ctx, resume, next.OperationID); e != nil && !errors.Is(e, ErrUnavailable) {
+						return e
+					}
+					h.wakeClaimRecovery()
+				}
 				status, e = h.snapshot(ctx)
 				return e
 			}
