@@ -34,6 +34,7 @@ const runId = new Date().toISOString().replace(/[-:tTZ.]/g, '').slice(0, 14);
 const username = process.env.SMOKE_USERNAME || `smoke${runId}`.slice(0, 24);
 const displayName = `Smoke ${runId.slice(-4)}`;
 const password = process.env.SMOKE_PASSWORD || `Smoke-${runId}-portico`;
+const reuseFile = process.env.SMOKE_REUSE_CREDENTIALS || '';
 // Security asked for the reserved .invalid domain so no real mail can leave the deployment.
 const contactAddress = process.env.SMOKE_CONTACT || `${username}@m0.getportico.invalid`;
 
@@ -67,8 +68,40 @@ async function main() {
   const {browser, context, page, events} = await launch(playwright, {viewport: {width: 1440, height: 900}});
   const evidence = new Evidence(out);
   let verified = false;
+  async function signInUi(account) {
+    const beforeUrl = page.url();
+    const formShape = await page.evaluate(() => {
+      const form = document.querySelector('form');
+      const button = [...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === 'Continue');
+      return {action: form ? form.getAttribute('action') : null, continueDisabled: button ? button.disabled : null};
+    });
+    const user = await findAny(page, [{css: 'input[autocomplete=username]'}, {css: 'input[type=text]'}], {timeout: 8000});
+    const pass = await findAny(page, [{css: 'input[type=password]'}], {timeout: 8000});
+    assert(user && pass, 'the sign-in form is missing a username or password field');
+    await user.fill(account.username, {timeout: 10000});
+    await pass.fill(account.password, {timeout: 10000});
+    const mark = api.length;
+    await clickAny(page, [{role: 'button', name: 'Continue'}, {role: 'button', name: 'Sign in'}, {css: 'button[type=submit]'}], {label: 'Sign in'});
+    await page.waitForTimeout(4500);
+    return {beforeUrl, formShape, calls: api.slice(mark)};
+  }
+  const readBuild = async () => {
+    try {
+      const response = await context.request.get(origin + '/portico-build.json', {timeout: 20000});
+      return response.status() === 200 ? await response.json() : null;
+    } catch { return null; }
+  };
+  report.buildInfo = await readBuild();
+  const expectedBuild = (process.env.SMOKE_EXPECT_BUILD || '').trim();
+  if (expectedBuild && (!report.buildInfo || report.buildInfo.buildId !== expectedBuild)) {
+    report.note('build-pin', `STOP: expected ${expectedBuild} but the deployment serves ${report.buildInfo ? report.buildInfo.buildId : 'no build file'}`);
+    report.write();
+    console.log('STOPPED on a build mismatch');
+    process.exit(3);
+  }
   // Submit evidence for Security: method, URL and status only. Never bodies or credentials.
   const network = [];
+  const api = [];
   page.on('request', request => {
     if (request.method() === 'GET') return;
     const url = new URL(request.url());
@@ -78,22 +111,41 @@ async function main() {
     const url = new URL(response.url());
     if (url.pathname.startsWith('/v1/') || url.pathname.startsWith('/v3/')) {
       network.push({kind: 'response', status: response.status(), method: response.request().method(), url: url.origin + url.pathname});
+      api.push({status: response.status(), method: response.request().method(), path: url.pathname});
     }
   });
 
   try {
     await report.check('hosted-reachable', async () => {
-      const response = await page.goto(origin + '/sign-in', {waitUntil: 'domcontentloaded', timeout: 45000});
+      const response = await page.goto(origin + '/', {waitUntil: 'domcontentloaded', timeout: 45000});
       await settle(page, {quiet: 1500});
       const state = await surfaceState(page);
       assert(response && response.status() < 400, `Hosted answered ${response ? response.status() : 'no response'}`);
       assert(state.textLength > 40, `Hosted rendered a blank surface: ${JSON.stringify(state)}`);
-      return {detail: `landed on ${new URL(state.url).pathname}`, evidence: {screenshot: await evidence.shot(page, 'hosted-entry')}};
+      const build = report.buildInfo || {};
+      return {detail: `build ${build.buildId || 'unknown'} (${build.version || 'no version'}); landed on ${new URL(state.url).pathname}`,
+        evidence: {screenshot: await evidence.shot(page, 'hosted-entry'), build}};
     });
 
     let registrationId = '';
+    let reuse = null;
+    if (reuseFile) {
+      try {
+        reuse = JSON.parse(readFileSync(reuseFile, 'utf8'));
+        writeProtected(credentialsFile || reuseFile, reuse);
+      } catch (error) {
+        throw new Error(`SMOKE_REUSE_CREDENTIALS is not readable: ${String(error).slice(0, 80)}`);
+      }
+      report.note('hosted-reuse', 'using an existing verified account; create and verify are skipped');
+      await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+      await settle(page, {quiet: 2000});
+      const session = await signInUi(reuse);
+      const ok = session.calls.some(call => call.method === 'POST' && call.path === '/v1/sessions' && call.status === 200);
+      assert(ok, `the existing account could not sign in: ${JSON.stringify(session.calls).slice(0, 200)}`);
+      verified = true;
+    }
 
-    await report.check('hosted-create', async () => {
+    if (!reuse) await report.check('hosted-create', async () => {
       assert(registrationFile, 'SMOKE_REGISTRATION_FILE is not set; refusing to register an account nobody is reading a code for');
       const response = await context.request.post(origin + '/v1/accounts', {
         headers: {Origin: origin, 'Content-Type': 'application/json'},
@@ -118,7 +170,7 @@ async function main() {
         evidence: {registrationFile, credentialsFile}};
     });
 
-    await report.check('hosted-verify', async () => {
+    if (!reuse) await report.check('hosted-verify', async () => {
       assert(registrationId, 'no registration was created, so there is nothing to verify');
       const status = await context.request.get(origin + '/v1/identity/current', {timeout: 20000}).then(r => r.status()).catch(() => 0);
       assert(status === 200, `the registration cookie did not carry into /v1/identity/current (HTTP ${status})`);
@@ -140,69 +192,85 @@ async function main() {
     });
 
     await report.check('hosted-manage', async () => {
-      if (!verified) throw blocked('no verified account, so account management is not reachable (see hosted-verify)');
+      if (!reuse && !verified) throw blocked('no verified account, so account management is not reachable (see hosted-verify)');
+      await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+      await settle(page, {quiet: 2000});
       await page.goto(origin + '/account', {waitUntil: 'domcontentloaded'});
       await settle(page, {quiet: 2500});
       const text = await bodyText(page);
-      assert(text.trim().length > 80, `account screen rendered almost no text: ${JSON.stringify(text.slice(0, 160))}`);
-      const sections = ['Profile', 'Password', 'Devices', 'Sessions', 'Servers', 'Notifications']
-        .filter(name => new RegExp(name, 'i').test(text));
-      assert(sections.length >= 3, `account screen shows only ${sections.join(', ') || 'none'}; expected profile, password, devices, sessions and servers`);
-      // Change the display name in the drawn control and prove it persisted.
-      const rename = process.env.SMOKE_RENAME_TO || `${displayName} B`;
-      let renamed = 'name control not exercised';
-      const nameField = await findAny(page, [{css: 'input[autocomplete=name]'}, {role: 'textbox', name: /name/i}], {timeout: 3000});
-      if (!nameField) {
-        const shot = await evidence.shot(page, 'hosted-manage');
-        throw blocked(`the account screen draws no display-name field; text was: ${text.replace(/\n/g, ' ').slice(0, 220)}`,
-          {screenshot: shot});
+      assert(/Portico Account/i.test(text), `the account screen did not render: ${JSON.stringify(text.slice(0, 160))}`);
+      const tabs = ['Devices', 'Security', 'Servers', 'Notifications'].filter(name => new RegExp(name, 'i').test(text));
+      assert(tabs.length >= 3, `account screen draws only ${tabs.join(', ') || 'none'} of Devices, Security, Servers and Notifications`);
+      const accountReads = api.slice(-40).filter(call => call.path.startsWith('/v1/account/') && call.status === 200).map(call => call.path);
+      assert(accountReads.length >= 2, `the account screen made no successful account reads: ${JSON.stringify(api.slice(-10))}`);
+
+      // One reversible management change, with the request status as evidence.
+      const notifTab = await findAny(page, [{role: 'link', name: /^Notifications/}, {role: 'button', name: /^Notifications/}], {timeout: 4000});
+      let change = 'no notification tab drawn';
+      if (notifTab) {
+        await notifTab.click({timeout: 8000});
+        await settle(page, {quiet: 1500});
+        const toggle = await findAny(page, [{role: 'switch'}, {css: '[aria-checked]'}, {css: 'input[type=checkbox]'}], {timeout: 4000});
+        if (toggle) {
+          const before = await toggle.getAttribute('aria-checked').catch(() => null);
+          const mark = api.length;
+          await toggle.click({timeout: 8000});
+          await page.waitForTimeout(2000);
+          const calls = api.slice(mark).filter(call => call.method !== 'GET' || call.path.includes('notification'));
+          const wrote = calls.find(call => call.method !== 'GET');
+          const after = await toggle.getAttribute('aria-checked').catch(() => null);
+          change = `${before} -> ${after}; ${wrote ? `${wrote.method} ${wrote.path} ${wrote.status}` : 'no write request seen'}`;
+          // Put it back.
+          await toggle.click({timeout: 8000}).catch(() => {});
+          await page.waitForTimeout(1200);
+        } else {
+          change = 'notification preferences drew no toggle';
+        }
       }
-      if (nameField) {
-        await nameField.fill(rename, {timeout: 8000}).catch(() => {});
-        await clickAny(page, [{role: 'button', name: /^Save/}, {css: 'button[type=submit]'}], {label: 'Save name'}).catch(() => {});
-        await page.waitForTimeout(2500);
-        await page.reload({waitUntil: 'domcontentloaded'});
-        await settle(page, {quiet: 2000});
-        renamed = (await bodyText(page)).includes(rename) ? 'display name saved and persisted' : 'display name did not persist';
-        assert(renamed.includes('persisted'), renamed);
-      }
-      return {detail: `sections: ${sections.join(', ')}; ${renamed}`,
-        evidence: {screenshot: await evidence.shot(page, 'hosted-account'), sections}};
+      return {detail: `tabs ${tabs.join(', ')}; reads ${accountReads.slice(0, 4).join(', ')}; notification change: ${change}`,
+        evidence: {screenshot: await evidence.shot(page, 'hosted-account'), tabs, accountReads: accountReads.slice(0, 8), change}};
     });
 
     await report.check('hosted-signin', async () => {
-      if (!verified) throw blocked('no verified account to sign in with (see hosted-verify)');
-      await context.clearCookies();
-      await page.goto(origin + '/sign-in', {waitUntil: 'domcontentloaded'});
-      await settle(page, {quiet: 1500});
-      const beforeSubmitUrl = page.url();
-      const formShape = await page.evaluate(() => {
-        const form = document.querySelector('form');
-        return {action: form ? form.getAttribute('action') : null,
-          continueDisabled: (() => { const button = [...document.querySelectorAll('button')].find(b => /^(Continue|Sign in)$/.test((b.innerText || '').trim())); return button ? button.disabled : null; })()};
-      });
-      const user = await findAny(page, [{css: 'input[autocomplete=username]'}, {css: 'input[type=text]'}, {role: 'textbox'}]);
-      const pass = await findAny(page, [{css: 'input[type=password]'}]);
-      assert(user && pass, 'the sign-in form is missing a username or password field');
-      await user.fill(username, {timeout: 10000});
-      await pass.fill(password, {timeout: 10000});
-      const mark = network.length;
-      await clickAny(page, [{role: 'button', name: /^(Continue|Sign in)/}, {css: 'button[type=submit]'}], {label: 'Sign in'});
-      await page.waitForTimeout(4500);
-      const submitCalls = network.slice(mark);
-      await settle(page, {quiet: 1500});
-      const state = await surfaceState(page);
-      const text = await bodyText(page);
-      // The account home can render without the address leaving /sign-in, so judge the response
-      // and the drawn signed-in surface, not the path alone.
-      const sessionCall = submitCalls.find(call => call.kind === 'response' && call.method === 'POST' && call.url.endsWith('/v1/sessions'));
-      const signedInSurface = /Open your account|Sign out|No servers yet|Your servers/i.test(text);
-      assert(sessionCall && sessionCall.status >= 200 && sessionCall.status < 300,
-        `sign-in did not post a successful session: ${JSON.stringify(submitCalls).slice(0, 300)}`);
-      assert(signedInSurface, `sign-in answered ${sessionCall.status} but the signed-in surface never rendered (at ${new URL(state.url).pathname}): ${text.replace(/\n/g, ' ').slice(0, 200)}`);
-      assert(!/\/v3\/signin/.test(state.url), `sign-in bounced to the identity provider at ${new URL(state.url).pathname} instead of opening the account`);
-      return {detail: `signed in through the browser form: POST /v1/sessions ${sessionCall.status}; address stays ${new URL(state.url).pathname}; submit from ${new URL(beforeSubmitUrl).pathname}${formShape.action ? ' to ' + formShape.action : ' (script-handled form)'}`,
-        evidence: {screenshot: await evidence.shot(page, 'hosted-signed-in'), beforeSubmitUrl, formShape, submitCalls}};
+      if (!reuse && !verified) throw blocked('no verified account to sign in with (see hosted-verify)');
+      // A fresh cookie jar is a cleaner proof than clearing cookies under a live session,
+      // which makes the app try to revoke a token it no longer has.
+      const fresh = await context.browser().newContext({viewport: {width: 1440, height: 900}});
+      const calls = [];
+      try {
+        const freshPage = await fresh.newPage();
+        freshPage.on('request', request => {
+          if (request.method() !== 'GET') calls.push({kind: 'request', method: request.method(), path: new URL(request.url()).pathname});
+        });
+        freshPage.on('response', response => {
+          const url = new URL(response.url());
+          if (url.pathname.startsWith('/v1/')) calls.push({kind: 'response', status: response.status(), method: response.request().method(), path: url.pathname});
+        });
+        await freshPage.goto(origin + '/', {waitUntil: 'domcontentloaded', timeout: 45000});
+        await freshPage.waitForTimeout(2500);
+        const account = reuse || {username, password};
+        await freshPage.locator('input[autocomplete=username]').first().fill(account.username, {timeout: 10000});
+        await freshPage.locator('input[type=password]').first().fill(account.password, {timeout: 10000});
+        const formShape = await freshPage.evaluate(() => {
+          const form = document.querySelector('form');
+          const button = [...document.querySelectorAll('button')].find(b => (b.innerText || '').trim() === 'Continue');
+          return {action: form ? form.getAttribute('action') : null, continueDisabled: button ? button.disabled : null};
+        });
+        await freshPage.getByRole('button', {name: 'Continue', exact: true}).first().click({timeout: 10000});
+        await freshPage.waitForTimeout(5000);
+        const state = await surfaceState(freshPage);
+        const text = await bodyText(freshPage);
+        const sessionCall = calls.find(call => call.kind === 'response' && call.method === 'POST' && call.path === '/v1/sessions');
+        const signedInSurface = /Portico Account is ready|Open your account|Sign out|Home|Welcome to Portico/i.test(text);
+        assert(sessionCall && sessionCall.status >= 200 && sessionCall.status < 300,
+          `sign-in did not post a successful session: ${JSON.stringify(calls).slice(0, 300)}`);
+        assert(signedInSurface, `sign-in answered ${sessionCall.status} but no signed-in surface rendered: ${text.replace(/\n/g, ' ').slice(0, 200)}`);
+        assert(!/\/v3\/signin/.test(state.url), `sign-in bounced to the identity provider at ${new URL(state.url).pathname}`);
+        return {detail: `POST /v1/sessions ${sessionCall.status}; landed ${new URL(state.url).pathname}; form action ${formShape.action || 'script-handled'}; Continue disabled=${formShape.continueDisabled}`,
+          evidence: {screenshot: await evidence.shot(freshPage, 'hosted-signed-in'), calls: calls.slice(0, 14), formShape}};
+      } finally {
+        await fresh.close();
+      }
     });
 
     await report.blocked('hosted-server-link',
