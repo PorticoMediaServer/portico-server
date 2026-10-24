@@ -22,7 +22,7 @@ function HomeRouteScreen() {
     setReading({context, binding});
     return () => {void binding.dispose().catch(() => {});};
   }, [context, supported]);
-  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} readingContinue={reading?.context === context && supported ? reading.binding : undefined}/> : null;
+  return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} readingContinue={reading && reading.context === context && supported ? reading.binding : undefined}/> : null;
 }
 
 export default defineWebScreen({id: 'home', component: HomeRouteScreen});

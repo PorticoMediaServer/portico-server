@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
 import {HttpLocalApi, type PreferenceSnapshot} from '@portico/client-core';
-import {routePath} from '@portico/contracts';
+import {routePath} from '../../packages/contracts/src/index.ts';
 import {createReadingContinueBindings} from '../src/screens/home/reading-continue.ts';
 
 async function settle(done: () => boolean) {
