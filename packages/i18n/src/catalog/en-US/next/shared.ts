@@ -190,4 +190,7 @@ export const shared = {
   'next.watch.wasSeason': 'was S{season} E{episode}',
   'next.watch.guestStars': 'Guest stars',
   'next.watch.asCharacter': 'as {character}',
+  'next.watch.andMore': 'and {count} more',
+  'next.watch.episodeOptions': 'Episode options',
+  'next.watch.seasonOptions': 'Season options',
 } as const;
