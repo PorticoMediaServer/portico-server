@@ -93,14 +93,15 @@ const fields = fieldRows.map(([id, labelKey, type, operators, controlHint, compl
   ...(extra.facet ? {facetSource: {endpoint: '/v1/browse/facets', field: extra.facet}} : {})}));
 const filterIds = fieldRows.map(([id]) => id);
 const sortRows = [
-  {id: 'title', labelKey: 'sort.title', defaultDirection: 'asc' as const}, {id: 'added', labelKey: 'sort.added', defaultDirection: 'desc' as const},
+  // The server's own movies menu: For you is expensive; Random is the seeded shuffle.
+  {id: 'forYou', labelKey: 'sort.forYou', defaultDirection: 'desc' as const}, {id: 'title', labelKey: 'sort.title', defaultDirection: 'asc' as const}, {id: 'added', labelKey: 'sort.added', defaultDirection: 'desc' as const},
   {id: 'year', labelKey: 'sort.year', defaultDirection: 'desc' as const}, {id: 'duration', labelKey: 'sort.duration', defaultDirection: 'desc' as const},
   {id: 'communityRating', labelKey: 'sort.communityRating', defaultDirection: 'desc' as const}, {id: 'criticRating', labelKey: 'sort.criticRating', defaultDirection: 'desc' as const},
   {id: 'personalRating', labelKey: 'sort.personalRating', defaultDirection: 'desc' as const}, {id: 'lastPlayed', labelKey: 'sort.lastPlayed', defaultDirection: 'desc' as const},
   {id: 'playCount', labelKey: 'sort.playCount', defaultDirection: 'desc' as const}, {id: 'resolution', labelKey: 'sort.resolution', defaultDirection: 'desc' as const},
   {id: 'releaseDate', labelKey: 'sort.releaseDate', defaultDirection: 'desc' as const}, {id: 'random', labelKey: 'sort.random', defaultDirection: 'asc' as const},
 ];
-const sorts = sortRows.map(row => Object.freeze({...row, directions: ['asc', 'desc'], expensive: row.id === 'random', seeded: row.id === 'random',
+const sorts = sortRows.map(row => Object.freeze({...row, directions: ['asc', 'desc'], expensive: row.id === 'forYou', seeded: row.id === 'random',
   requiresGroup: false, applicableKinds: allKinds}));
 const quickFilters = Object.freeze([
   {id: 'unwatched', labelKey: 'filter.unwatched', query: {field: 'playState', operator: 'equals', value: 'unplayed'}},
