@@ -136,6 +136,9 @@ func TestSourceSessionCurrentIdentityRevocationClosesLease(t *testing.T) {
 func TestServeTransportHasNoProxyCommandOrNativeFallback(t *testing.T) {
 	for _, backend := range []string{"s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http", "sftp", "smb"} {
 		raw := "[active]\ntype=" + backend + "\nhost=owner.example\nknown_hosts_file=/retained/owner-file\n"
+		if backend == "webdav" || backend == "http" {
+			raw += "url=https://owner.example/\n"
+		}
 		actual, host, port, err := serveTransport([]byte(raw), "active:path")
 		if err != nil || actual != backend {
 			t.Fatal(backend, actual, err)

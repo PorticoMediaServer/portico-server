@@ -26,6 +26,7 @@ type sourceNetwork struct {
 	Policy      remotemedia.Policy
 	Fingerprint string
 	Native      *nativeSourceAuthority
+	Imported    *importedSourceConfiguration
 }
 
 // sourceNetworkTx reuses durable owner network approvals. An absent record is
@@ -56,6 +57,18 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 			return out, err
 		}
 	}
+	if kind == "rclone" {
+		config, err := s.importedSourceConfig(config)
+		if err != nil {
+			return out, err
+		}
+		out.Imported = &config
+		for _, approval := range config.Approvals {
+			if strings.HasPrefix(approval.Root, "http://") || strings.HasPrefix(approval.Root, "https://") {
+				out.Policy.Approvals = append(out.Policy.Approvals, approval)
+			}
+		}
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.root,COALESCE(n.revision,0),COALESCE(n.approvals_json,'[]') FROM library_sources s LEFT JOIN library_network_policy n ON n.library_id=s.library_id WHERE s.kind='remote' AND s.enabled=1 ORDER BY s.id`)
 	if err != nil {
 		return out, err
@@ -80,7 +93,9 @@ func (s *Service) sourceNetworkTx(ctx context.Context, tx *sql.Tx, id, root stri
 		if json.Unmarshal([]byte(raw), &approvals) != nil || len(approvals) > 256 {
 			return out, storage.ErrRemoteConfig
 		}
-		out.Policy.Approvals = append(out.Policy.Approvals, approvals...)
+		if kind == "webdav" {
+			out.Policy.Approvals = append(out.Policy.Approvals, approvals...)
+		}
 		evidence = append(evidence, []any{id, directory, revision, raw})
 	}
 	if err = rows.Err(); err != nil {
@@ -127,6 +142,12 @@ func (s *Service) startReadRuntime(ctx context.Context) error {
 // config. Caller transactions must be closed before this method is reached.
 // The caller's real purpose/target check runs before and after this method.
 func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBinding, expectedEpoch string) (*rcloneprogram.ServeProcess, error) {
+	if waited, err := s.waitSourceTest(ctx, binding.Observation.SourceID); waited {
+		if err != nil {
+			return nil, err
+		}
+		return s.ensureSourceServe(ctx, binding, expectedEpoch)
+	}
 	s.serveMu.Lock()
 	life := s.serveLife
 	slot := s.serveLeases[binding.Observation.SourceID]
@@ -169,6 +190,14 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	slot, err := s.reserveSourceProcess(life, binding.Observation.SourceID, binding.Observation.Generation, binding.Profile.Revision)
 	if err != nil {
+		if errors.Is(err, storage.ErrBusy) {
+			if waited, e := s.waitSourceTest(ctx, binding.Observation.SourceID); waited {
+				if e != nil {
+					return nil, e
+				}
+				return s.ensureSourceServe(ctx, binding, expectedEpoch)
+			}
+		}
 		return nil, err
 	}
 	transferred := false
@@ -199,16 +228,23 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if err != nil {
 		return nil, err
 	}
-	slot.capabilities, err = sourceBackendCapabilities(backend, host)
+	slot.capabilities, err = configuredCapabilities(material.Configuration, material.Remote)
 	if err != nil {
 		return nil, err
+	}
+	if network.Imported != nil {
+		if err = s.checkImportedMaterial(ctx, *network.Imported, material.Configuration, material.Remote); err != nil {
+			return nil, err
+		}
 	}
 	var proxy *remotemedia.PolicyProxy
 	if backend == "sftp" || backend == "smb" {
 		// Direct native-scheme approval from this saved source only. Rechecks
 		// cannot pin rclone's later DNS lookup or see its hidden reconnects.
-		if err = s.checkNativeMaterial(ctx, network.Native, backend, host, port, material.Configuration); err != nil {
-			return nil, err
+		if network.Imported == nil {
+			if err = s.checkNativeMaterial(ctx, network.Native, backend, host, port, material.Configuration); err != nil {
+				return nil, err
+			}
 		}
 	} else {
 		proxy, err = remotemedia.StartPolicyProxy(slot.life, network.Policy, identity.Token(), identity.Token(), slot.Check)
@@ -341,78 +377,43 @@ func (s *Service) privateDAVConfig(stored []byte) (remotemedia.DAVConfig, error)
 	return c, err
 }
 
-// serveTransport follows only configured crypt members to the selected backend.
-// Unsupported command/socket/proxy escape hatches never become a native fallback.
+// serveTransport classifies the complete selected graph, never a native
+// provider replacement. Mixed graphs retain HTTP proxy and direct native checks.
 func serveTransport(raw []byte, remote string) (backend, host, port string, err error) {
-	if len(raw) == 0 || len(raw) > 64<<10 {
-		return "", "", "", storage.ErrRemoteConfig
+	leaves, err := configuredBackends(raw, remote)
+	if err != nil {
+		return "", "", "", err
 	}
-	sections := make(map[string]map[string]string)
-	section := ""
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-			continue
+	if len(leaves) == 1 {
+		leaf := leaves[0]
+		if leaf.Native.Scheme != "" {
+			return leaf.Kind, leaf.Native.Host, strconv.Itoa(leaf.Native.Port), nil
 		}
-		if strings.ContainsAny(line, "\r\x00") {
-			return "", "", "", storage.ErrRemoteConfig
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
-			if section == "" || sections[section] != nil {
-				return "", "", "", storage.ErrRemoteConfig
-			}
-			sections[section] = make(map[string]string)
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		key = strings.ToLower(strings.TrimSpace(key))
-		value = strings.TrimSpace(value)
-		if !ok || section == "" || key == "" {
-			return "", "", "", storage.ErrRemoteConfig
-		}
-		if _, duplicate := sections[section][key]; duplicate {
-			return "", "", "", storage.ErrRemoteConfig
-		}
-		sections[section][key] = value
+		return leaf.Kind, "", "", nil
 	}
-	seen := make(map[string]bool)
-	for range 8 {
-		name, _, ok := strings.Cut(remote, ":")
-		fields := sections[name]
-		if !ok || name == "" || seen[name] || fields == nil {
-			return "", "", "", storage.ErrRemoteConfig
-		}
-		seen[name] = true
-		for key, value := range fields {
-			if strings.HasPrefix(key, "override.") || strings.Contains(key, "command") || key == "ssh" && value != "" || key == "unix_socket" && value != "" || key == "http_proxy" && value != "" || key == "auth_redirect" && value != "false" && value != "" {
-				return "", "", "", storage.ErrRemoteConfig
-			}
-		}
-		backend = fields["type"]
-		switch backend {
-		case "crypt":
-			remote = fields["remote"]
-			continue
-		case "sftp", "smb":
-			host = fields["host"]
-			port = fields["port"]
-			if port == "" {
-				if backend == "sftp" {
-					port = "22"
-				} else {
-					port = "445"
-				}
-			}
-			n, e := strconv.Atoi(port)
-			if host == "" || len(host) > 255 || strings.ContainsAny(host, "/@\\\r\n\x00") || e != nil || n < 1 || n > 65535 {
-				return "", "", "", storage.ErrRemoteConfig
-			}
-		case "s3", "b2", "drive", "onedrive", "dropbox", "webdav", "http":
-		default:
-			return "", "", "", storage.ErrRemoteConfig
-		}
-		return backend, host, port, nil
+	return "compound", "", "", nil
+}
+
+func configuredCapabilities(raw []byte, remote string) (backendCapabilities, error) {
+	leaves, err := configuredBackends(raw, remote)
+	if err != nil {
+		return backendCapabilities{}, err
 	}
-	return "", "", "", storage.ErrRemoteConfig
+	if len(leaves) == 1 {
+		return sourceBackendCapabilities(leaves[0].Kind, leaves[0].Native.Host)
+	}
+	facts := backendCapabilities{Backend: "compound", AdmittedOperationsBounded: true, HiddenRetriesWithinOperation: true, ThrottleReportsAsynchronous: true}
+	for _, leaf := range leaves {
+		child, err := sourceBackendCapabilities(leaf.Kind, leaf.Native.Host)
+		if err != nil {
+			return backendCapabilities{}, err
+		}
+		facts.HTTPProxyConfigured = facts.HTTPProxyConfigured || child.HTTPProxyConfigured
+		facts.HTTPSOpaque = facts.HTTPSOpaque || child.HTTPSOpaque
+		facts.NativeDirect = facts.NativeDirect || child.NativeDirect
+		facts.NativeHostnameCheckConnectGap = facts.NativeHostnameCheckConnectGap || child.NativeHostnameCheckConnectGap
+		facts.SFTPConnectionPoolBounded = facts.SFTPConnectionPoolBounded || child.SFTPConnectionPoolBounded
+		facts.SMBIdlePoolMayExceedOperations = facts.SMBIdlePoolMayExceedOperations || child.SMBIdlePoolMayExceedOperations
+	}
+	return facts, nil
 }

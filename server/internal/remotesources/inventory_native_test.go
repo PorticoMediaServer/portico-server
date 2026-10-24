@@ -191,7 +191,7 @@ func runInventoryServeFixture() int {
 				w.WriteHeader(400)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]any{"item": map[string]any{"Path": input.Remote, "Size": 1, "ModTime": "2026-01-01T00:00:00Z", "ID": input.Remote}})
+			json.NewEncoder(w).Encode(map[string]any{"item": map[string]any{"Path": input.Remote, "Size": 1, "ModTime": "2026-01-01T00:00:00Z", "ID": input.Remote, "IsDir": input.Remote == ""}})
 		default:
 			w.WriteHeader(404)
 		}
@@ -239,12 +239,17 @@ func newNativeFixture(t *testing.T) nativeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mount, err := managed.Create(context.Background(), mounts.CreateInput{Name: "Fixture", Executable: binary, Remote: "fixture:" + control, Config: "[fixture]\ntype = s3\nprovider = AWS\naccess_key_id = fixture\nsecret_access_key = fixture\n"})
+	s, err := New(db, state, managed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(db, state, managed)
+	identities, owner, _ := observationOwner(t, observationFixture{s: s})
+	receipt, err := managed.Command(context.Background(), "actual-owner-fixture", "", mounts.Command{OperationID: nativeSaveOperation(20), Action: "create", Name: "Fixture", Executable: binary, Remote: "fixture:" + control, Config: "[fixture]\ntype = s3\nprovider = AWS\naccess_key_id = fixture\nsecret_access_key = fixture\n"}, func(tx *sql.Tx) error { return currentLocalOwnerTx(context.Background(), tx, identities, owner) })
 	if err != nil {
+		t.Fatal(err)
+	}
+	mount := *receipt.Mount
+	if err = s.RefreshMounts(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	life, cancel := context.WithCancel(context.Background())

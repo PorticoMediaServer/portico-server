@@ -45,7 +45,8 @@ func nativeSaveFixture(t *testing.T) (observationFixture, *mounts.Service, *iden
 		t.Fatal(err)
 	}
 	f.s.mounts = managed
-	managed.NativeSourceCandidate = f.s.nativeSourceCandidate
+	f.s.private = t.TempDir()
+	managed.PrepareSourceCandidate = f.s.prepareSourceCandidate
 	return f, managed, identities, owner, family, binary
 }
 
@@ -121,9 +122,9 @@ func TestNativeSaveSourceAndReceiptRollBackTogether(t *testing.T) {
 	f, managed, identities, owner, _, binary := nativeSaveFixture(t)
 	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
 	denied := errors.New("publication aborted after source write")
-	actual := managed.NativeSourceCandidate
-	managed.NativeSourceCandidate = func(ctx context.Context, raw []byte, remote string, authorize func(*sql.Tx) error) (*mounts.SourceCandidatePublication, error) {
-		publication, err := actual(ctx, raw, remote, authorize)
+	actual := managed.PrepareSourceCandidate
+	managed.PrepareSourceCandidate = func(ctx context.Context, input mounts.SourceCandidateInput, authorize func(*sql.Tx) error) (*mounts.SourceCandidatePublication, error) {
+		publication, err := actual(ctx, input, authorize)
 		if err != nil {
 			return nil, err
 		}
