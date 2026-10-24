@@ -81,6 +81,7 @@ func TestMusicRadioHTTPRefillsPastChunkBoundaryAndReopens(t *testing.T) {
 		t.Fatal("old occurrence identity changed", page)
 	}
 	before := q.Queue
+	beforePosition := q.Queue.Current.Position
 	if w := f.raw("POST", base+":advance", f.owner.AccessToken, map[string]string{"If-Match": stale}, map[string]any{"reason": "next"}); w.Code != 412 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -89,7 +90,7 @@ func TestMusicRadioHTTPRefillsPastChunkBoundaryAndReopens(t *testing.T) {
 	f.handler = New(f.deps)
 	f.v1 = f.deps.PlaybackV1
 	f.call("POST", base+":advance", map[string]string{"If-Match": before.Revision}, map[string]any{"reason": "next"}, 200, &q)
-	if q.Queue.Current.Position != before.Current.Position+1 {
+	if q.Queue.Current.Position != beforePosition+1 {
 		t.Fatal("reopen reset radio", q.Queue)
 	}
 	if w := f.raw("PATCH", base, f.owner.AccessToken, map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"shuffle": map[string]any{"on": true}}); w.Code < 400 {
