@@ -133,7 +133,7 @@ function Preview() {
     reportError(error) { console.error(error); },
   };
   return <SavedScreen runtime={runtime} route={route} online downloadsOffered={false} artwork={artwork} preparationArtwork={() => undefined}
-    presentation={{view, cardWidth: 174, backdrops: true, reducedMotion: true, setView}} effects={effects} />;
+    presentation={{view, cardWidth: 173, backdrops: true, reducedMotion: true, setView}} effects={effects} />;
 }
 
 // The screen's quiet refresh reads the shell's freshness runtime; this is the

@@ -23,10 +23,10 @@ const state = process.env.PORTICO_SAVED_STATE ?? 'view=watchlist&sort=added&dire
 const scope = process.env.PORTICO_SAVED_SCOPE ?? 'saved';
 const mime = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp'};
 
-const server = await createServer({root, configFile: path.join(root, 'vite.config.ts'), cacheDir: path.join(process.env.TMPDIR ?? output, 'saved-r46-vite'),
-  server: {host: '127.0.0.1', port: 0, strictPort: false}});
-// Serves only the design's pool artwork to the two controlled pages. Nothing is copied or committed.
-server.middlewares.use(async (request, response, next) => {
+// Serves only the design's pool artwork to the two controlled pages. Nothing is
+// copied or committed. A plugin's configureServer hook registers before Vite's
+// own static/SPA middlewares, so the frame's relative asset paths resolve.
+const assetMiddleware = async (request, response, next) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://127.0.0.1').pathname);
   const prefix = pathname.startsWith('/__design-assets__/assets/') ? '/__design-assets__/assets/' : pathname.startsWith('/assets/') ? '/assets/' : undefined;
   if (!prefix) return next();
@@ -37,7 +37,10 @@ server.middlewares.use(async (request, response, next) => {
     response.setHeader('Content-Type', mime[path.extname(relative).toLowerCase()] ?? 'application/octet-stream');
     response.end(body);
   } catch { response.statusCode = 404; response.end(); }
-});
+};
+const server = await createServer({root, configFile: path.join(root, 'vite.config.ts'), cacheDir: path.join(process.env.TMPDIR ?? output, 'saved-r46-vite'),
+  plugins: [{name: 'ds-web-saved-r46-design-assets', configureServer(context) { context.middlewares.use(assetMiddleware); }}],
+  server: {host: '127.0.0.1', port: 0, strictPort: false}});
 
 const referenceSelectors = {
   screen: '#saved', title: '#saved .phd h1', tabs: '#saved .tabs', tabSelected: '#saved .tab[aria-selected="true"]',
@@ -71,7 +74,7 @@ const buildMeasure = () => {
 };
 
 let browser;
-const report = {version: 1, scope, state, viewport, generatedAt: new Date().toISOString(), reference: {}, build: {}, files: {}, differences: [], pixel: null, errors: []};
+const report = {version: 1, scope, state, viewport, generatedAt: new Date().toISOString(), reference: {}, build: {}, files: {}, differences: [], pixel: null, errors: [], assets: [], artwork: []};
 try {
   await server.listen();
   const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
@@ -81,12 +84,14 @@ try {
   page.on('pageerror', error => report.errors.push('pageerror: ' + error.message));
   page.on('console', message => { if (message.type() === 'error') report.errors.push('console: ' + message.text()); });
   page.on('requestfailed', request => report.errors.push('requestfailed: ' + request.url().replace(/^https?:\/\/[^/]+/, '') + ' ' + (request.failure()?.errorText ?? '')));
+  page.on('response', response => { const url = response.url(); if (url.includes('/__design-assets__/') || /\/assets\//.test(url)) report.assets.push({path: url.replace(/^https?:\/\/[^/]+/, ''), status: response.status()}); });
 
   const settle = async (selector, minimum, tag) => {
     await page.evaluate(() => document.fonts.ready);
     try {
       await page.waitForFunction(([selector, count]) => document.querySelectorAll(selector).length >= count, [selector, minimum], {timeout: 20000});
       await page.waitForFunction(() => [...document.images].every(image => image.complete), null, {timeout: 20000});
+      await page.waitForFunction(() => [...document.querySelectorAll('[data-artwork-status]')].every(element => ['ready', 'error'].includes(element.dataset.artworkStatus)), null, {timeout: 20000});
     } catch (error) {
       await page.screenshot({path: `${output}/saved-${tag}-failure.png`, fullPage: true}).catch(() => {});
       throw new Error(`${tag} did not settle: ${error.message}; text=${JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 400))}; fixture=${JSON.stringify(await page.evaluate(() => { const fixture = window.__savedFixture; return fixture ? {posters: fixture.runtime.posters.getSnapshot().error, squares: fixture.runtime.squares.getSnapshot().error, route: fixture.runtime.posters.getSnapshot().route} : 'none'; }))}; errors=${JSON.stringify(report.errors.slice(0, 6))}`);
@@ -109,6 +114,7 @@ try {
   await page.goto(`${origin}/src/screens/saved/ds-web-saved-r46-preview.html?${state}`, {waitUntil: 'domcontentloaded'});
   await settle('article[data-card-kind]', 14, 'build');
   report.build = await page.evaluate(buildMeasure);
+  report.artwork = await page.evaluate(() => [...document.querySelectorAll('[data-artwork-status]')].map(element => element.dataset.artworkStatus));
   report.buildText = (await page.evaluate(() => document.body.innerText)).split('\n').map(line => line.trim()).filter(Boolean);
   report.files.build = 'saved-build.png';
   await page.screenshot({path: `${output}/saved-build.png`, fullPage: true});
@@ -160,7 +166,8 @@ try {
     if (reference && build) report.differences.push({name, dx: +(build.x - reference.x).toFixed(2), dy: +(build.y - reference.y).toFixed(2), dw: +(build.width - reference.width).toFixed(2), dh: +(build.height - reference.height).toFixed(2)});
   }
   await writeFile(`${output}/saved-capture.json`, JSON.stringify(report, null, 2) + '\n');
-  console.log(JSON.stringify({verdict: 'CAPTURED', scope, state, pixel: report.pixel, differences: report.differences.length, errors: report.errors.length}));
+  const captured = {verdict: 'CAPTURED', scope, state, pixel: report.pixel, differences: report.differences, artwork: report.artwork, assets: report.assets.filter(asset => asset.status !== 200).slice(0, 8), assetCount: report.assets.length, errors: report.errors.slice(0, 6)};
+  console.log('SAVED-CAPTURE ' + JSON.stringify(captured));
 } finally {
   await browser?.close();
   await server.close();
