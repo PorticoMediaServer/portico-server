@@ -25,7 +25,7 @@ with urllib.request.urlopen(asset["url"], timeout=60) as response:
 assert len(data) == asset["size"] and hashlib.sha256(data).hexdigest() == asset["digests"]["sha256"]
 with zipfile.ZipFile(io.BytesIO(data)) as archive:
     member = next(i for i in archive.infolist() if i.filename.endswith("/scripts/uv"))
-    assert 0 < member.file_size < 50 << 20
+    assert 0 < member.file_size <= 128 << 20, (member.filename, member.file_size)
     (root / "uv").write_bytes(archive.read(member))
     (root / "uv").chmod(0o700)
 print("Verified job-local uv 0.9.3 ready")
