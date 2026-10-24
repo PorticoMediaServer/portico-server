@@ -152,7 +152,7 @@ export function MobileServerChooser({rows, initial, attempt, busy = false, notic
         <div className={styles.stateActions}>
           {state === 'refused' ? <>
             <Button variant="primary" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
-            <Button variant="glass" className={styles.stateButton} onClick={onRefresh}>{t('web.servers.refresh')}</Button>
+            <Button variant="glass" className={styles.stateButton} onClick={onRefresh}>{t('accounts.servers.refresh')}</Button>
           </> : <>
             {primaryLabel && <Button variant="primary" className={styles.stateButton} icon={state === 'unreachable' || state === 'unconfirmed' || state === 'loadFailed' ? 'i-retry' : undefined} onClick={onPrimary}>{primaryLabel}</Button>}
             {state === 'waiting' || state === 'unreachable' || state === 'unconfirmed' ? <Button variant="glass" className={styles.stateButton} onClick={onOther}>{t('web.chooser.otherServer')}</Button>
