@@ -31,6 +31,9 @@ func TestReaderLifetimesCoverSnapshotHelpersAndDirectTransactions(t *testing.T) 
 	scope := readerScopeForTest(t, db)
 	ctx := context.Background()
 	baseline := scope.stats().Snapshots
+	if baseline != 0 {
+		t.Fatalf("fixture scope began with%d snapshots", baseline)
+	}
 	defer func() {
 		if t.Failed() {
 			t.Logf("reader lifetime baseline=%d final=%+v", baseline, scope.stats())
