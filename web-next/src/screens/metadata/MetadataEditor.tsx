@@ -1,20 +1,24 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
-import {Button} from '../../kit/controls';
+import {Button, TextField} from '../../kit/controls';
+import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
 
 const t = defaultI18n.t;
 type Api = Readonly<{request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T>}>;
 type Draft = Readonly<Record<string, {value: string; locked: boolean}>>;
-type Tab = 'general' | 'artwork' | 'tags' | 'history';
+type Tab = 'general' | 'artwork' | 'tags' | 'matching' | 'history';
 
 /** Only the tabs this type really has: no list fields means no Tags tab, no roles means no Artwork. */
 function tabsFor(data: RepairData | undefined): readonly Tab[] {
   const tabs: Tab[] = ['general'];
   if (!data || data.artworkRoles.length) tabs.push('artwork');
   if (!data || data.schema.some(spec => spec.type === 'list')) tabs.push('tags');
+  // Only a type the server actually matches online has a Matching tab (frame 10); a local-only
+  // book has none because there is nothing to match against (frame 13).
+  if (data && (data.snapshot.identity || data.candidates.length)) tabs.push('matching');
   tabs.push('history');
   return tabs;
 }
@@ -73,6 +77,8 @@ export function MetadataEditor({api, scope, target, onClose}: {
     {data && state.phase !== 'loading' ? <>
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
+      {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
+        onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
@@ -176,5 +182,35 @@ function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; 
       <span>{row.trigger}</span><small>{row.observedAt}</small>
       <Button size="small" disabled={busy} onClick={() => onUndo(row.id)}>{t('web.metadata.undo')}</Button>
     </div>) : <p className={styles.working}>{t('web.metadata.noHistory')}</p>}
+  </div>;
+}
+
+
+/** Frame 10: the current match, a search, and the server's own candidates. The identity
+ * lock has no supported repair command in this service, so it is not drawn as a dead control. */
+function Matching({data, busy, onSearch, onUse}: {
+  data: RepairData; busy: boolean; onSearch: (query: string) => void;
+  onUse: (provider: string, candidateId: string, order?: string) => void;
+}) {
+  const [query, setQuery] = useState(''), [order, setOrder] = useState<string>();
+  const identity = data.snapshot.identity;
+  return <div className={styles.fields}>
+    <section className={styles.candidate}>
+      <div><b>{t('web.metadata.currentMatch')}</b>
+        <small>{identity ? `${providerName(identity.provider)} · ${identity.type} · ${identity.id} · ${identity.status}` : t('web.metadata.matchStatus.unmatched')}</small></div>
+    </section>
+    <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (query.trim() && !busy) onSearch(query.trim());}}>
+      <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
+      <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
+    </form>
+    {data.candidates.map(candidate => {
+      const chosen = order ?? candidate.orders?.[0]?.id;
+      return <div key={candidate.id} className={styles.candidate}>
+        <div><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
+          {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
+            <select value={chosen} onChange={event => setOrder(event.currentTarget.value)}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>
+        <Button size="small" disabled={busy} onClick={() => onUse(candidate.provider, candidate.id, candidate.orders?.length ? chosen : undefined)}>{t('web.liveSource.useThis')}</Button>
+      </div>;
+    })}
   </div>;
 }

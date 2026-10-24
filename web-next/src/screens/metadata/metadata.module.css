@@ -49,3 +49,6 @@
 .fieldError { color: var(--color-danger) !important; }
 
 .candidatesOnly { margin: 0; padding: 0 0 0 18px; font-size: 13px; color: var(--color-text-tertiary); }
+
+.matchSearch { display: flex; align-items: flex-end; gap: 10px; }
+.matchSearch > :first-child { flex: 1; }
