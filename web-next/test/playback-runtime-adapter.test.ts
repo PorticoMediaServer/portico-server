@@ -2610,7 +2610,8 @@ test('runtime exposes only its actual loaded media observations, clears on repla
   await f.runtime.play('movie');assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);await f.arrive();
   facts={audio:{handling:'pcm',sampleRate:48000,channels:2}};f.video.advance(10);await settle();
   const first=f.runtime.getSnapshot();assert.deepEqual(first.observedPlayback,facts);assert.ok(Object.isFrozen(first.observedPlayback!.audio));
-  facts={};f.video.advance(11);await settle();assert.deepEqual(f.runtime.getSnapshot().observedPlayback,{});
+  await f.runtime.pause(f.runtime.getSnapshot().fence!);await settle();
+  facts={};f.video.fire('timeupdate');await settle();assert.deepEqual(f.runtime.getSnapshot().observedPlayback,{},'paused same-clock fact change clears');
   facts={audio:{sampleRate:96000}};await f.runtime.play('movie_replacement');assert.equal(f.runtime.getSnapshot().observedPlayback,undefined);await f.arrive();
   assert.equal(f.runtime.getSnapshot().observedPlayback,undefined,'new load has no measurements until its own producer reports');
   facts={audio:{sampleRate:44100}};f.video.advance(12);await settle();assert.equal(f.runtime.getSnapshot().observedPlayback?.audio?.sampleRate,44100);
