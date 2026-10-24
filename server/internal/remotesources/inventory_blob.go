@@ -16,6 +16,8 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+var _ storage.RemoteInventoryBlobReader = (*Service)(nil)
+
 // inventoryBlobCapture binds a candidate metadata/configuration file separately
 // from the actual analysis target. Ignore candidates can precede catalogue
 // publication, so their evidence is the exact closed listing, never a fabricated
@@ -28,17 +30,18 @@ type inventoryBlobCapture struct {
 	file       string
 	binding    SourceReadBinding
 	scan       ScanObservation
+	mediaRef   ObservationRef
 	listingRaw string
 }
 
 func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source string, request storage.InventoryRequest, a storage.InventoryBlobAdmission, limit int64) (*inventoryBlobCapture, error) {
-	if s == nil || tx == nil || source == "" || source != a.LibrarySourceID || a.JobID == "" || a.LibraryID == "" || a.SourceGeneration < 1 || a.RootIncarnation == "" || a.RootIdentity == "" || a.PolicyRevision < 1 || !filepath.IsAbs(request.Root) || filepath.Clean(request.Root) != request.Root || request.RootIdentity != a.RootIdentity || request.RelativePath == "." || !filepath.IsLocal(request.RelativePath) || limit < 1 {
+	if s == nil || tx == nil || source == "" || source != a.LibrarySourceID || a.JobID == "" || a.LibraryID == "" || a.SourceGeneration < 1 || a.RootIncarnation == "" || a.RootIdentity == "" || a.PolicyRevision < 1 || !filepath.IsAbs(request.Root) || filepath.Clean(request.Root) != request.Root || request.RootIdentity != a.RootIdentity || request.RelativePath == "." || filepath.Clean(request.RelativePath) != request.RelativePath || !filepath.IsLocal(request.RelativePath) || limit < 1 {
 		return nil, storage.ErrRemoteConfig
 	}
 	file := filepath.Join(request.Root, request.RelativePath)
 	switch a.Purpose {
 	case storage.InventoryBlobAnalysisSidecar:
-		if a.ObjectID == "" || a.SourceRevision == "" || a.ListingID != "" || a.Member != (storage.Snapshot{}) || limit > 8<<20 && (a.Operation != "subtitles" || limit > 512<<20 || !strings.EqualFold(filepath.Ext(file), ".sup") && !strings.EqualFold(filepath.Ext(file), ".sub")) {
+		if a.ObjectID == "" || a.SourceRevision == "" || a.ListingID != "" || a.Member != (storage.Snapshot{}) || !inventorySidecarCandidate(a.Operation, file) || limit > 8<<20 && (a.Operation != "subtitles" || limit > 512<<20 || !strings.EqualFold(filepath.Ext(file), ".sup") && !strings.EqualFold(filepath.Ext(file), ".sub")) {
 			return nil, storage.ErrRemoteConfig
 		}
 		switch a.Operation {
@@ -73,6 +76,18 @@ func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source
 			return nil, err
 		}
 		c.scan, c.binding.Observation = recorded.Observation, recorded.Ref
+		var relative string
+		if err = tx.QueryRowContext(ctx, `SELECT relative_path FROM inventory_objects WHERE id=? AND source_id=?`, a.ObjectID, a.LibrarySourceID).Scan(&relative); err != nil {
+			return nil, err
+		}
+		if !filepath.IsLocal(relative) || relative == "." {
+			return nil, storage.ErrRemoteConfig
+		}
+		media, _, err := s.ScanSnapshotTx(ctx, tx, filepath.Join(request.Root, relative))
+		if err != nil {
+			return nil, err
+		}
+		c.mediaRef = media.Ref
 	} else {
 		var directory string
 		var ready bool
@@ -102,6 +117,33 @@ func (s *Service) captureInventoryBlobTx(ctx context.Context, tx *sql.Tx, source
 		return nil, err
 	}
 	return c, nil
+}
+
+// These are the existing localmetadata and subtitle inventory readers' input
+// formats. An analysis operation cannot use a different media file as a
+// whole-file "sidecar", even when that file is smaller than the blob limit.
+func inventorySidecarCandidate(operation, file string) bool {
+	name := strings.ToLower(filepath.Base(file))
+	ext := strings.ToLower(filepath.Ext(file))
+	if operation == "subtitles" {
+		switch ext {
+		case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx", ".smi", ".sami", ".ttml", ".dfxp":
+			return true
+		}
+		return false
+	}
+	if operation != "probe" && operation != "local_metadata" {
+		return false
+	}
+	switch ext {
+	case ".nfo", ".opf", ".cue", ".jpg", ".jpeg", ".png", ".webp":
+		return true
+	case ".json":
+		return name == "metadata.json" || strings.HasSuffix(name, ".portico.json")
+	case ".txt":
+		return name == "desc.txt" || name == "reader.txt"
+	}
+	return false
 }
 
 // checkTx is DB/local-process-only. It never calls a storage read guard,
@@ -160,6 +202,14 @@ func (c *inventoryBlobCapture) checkTx(ctx context.Context, tx *sql.Tx) error {
 		}
 		if !filepath.IsLocal(relative) || relative == "." || filepath.Join(source.ResolvedPath, relative) == c.file {
 			return storage.ErrRemoteConfig // A bounded sidecar cannot read the media target wholesale.
+		}
+		media, snapshot, err := c.service.ScanSnapshotTx(ctx, tx, filepath.Join(source.ResolvedPath, relative))
+		if err != nil {
+			return err
+		}
+		revision, _, err := catalog.ObservationRevision(source, snapshot)
+		if err != nil || revision != a.SourceRevision || media.Ref != c.mediaRef {
+			return storage.ErrRemoteChanged
 		}
 		recorded, _, err := c.service.ScanSnapshotTx(ctx, tx, c.file)
 		if err != nil {

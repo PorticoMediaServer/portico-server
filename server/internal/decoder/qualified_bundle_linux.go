@@ -23,7 +23,7 @@ type qualifiedBundleCohort struct {
 	manifest, ffmpeg, ffprobe string
 }
 
-// This is product admission data for the actual MAIN f3ef43fa Linux build,
+// This is product admission data for the actual MAIN Linux builds,
 // not a capability inferred from a version, name, or operator-written report.
 // Each future target/cohort needs its own successful canonical bundle gates.
 func qualifiedLinuxCohorts() []qualifiedBundleCohort {
@@ -34,6 +34,12 @@ func qualifiedLinuxCohorts() []qualifiedBundleCohort {
 		manifest: "ec9305343d192a338721a8ba73468712644bc76ab027c1891a684a87009bb307",
 		ffmpeg:   "e45b768839cb9d169196f6b94845b334b7bfc439e6cf6b301efe769c5f3b5b2e",
 		ffprobe:  "b83289e34eda99fbc3950f2765819b915befbcc9e7fb8e4c352a06e977a2158d",
+	}, {
+		// 8b357b18 adds the protocol playlist minimum; its own packet,
+		// encoded-video, join and short-disc decode gates all passed.
+		manifest: "0752536dae07409853b1655dd491305b63824e17fae36abb6f8248e3758e07de",
+		ffmpeg:   "3358b4460db76c75bf7c16a56dda3a5530d4275eadbcfd5405287f110dd2c1de",
+		ffprobe:  "7fd702192189b604f7f8fb80f6f1bf1a87aa5bb357c5ee88e5cdcb5e2932c1f2",
 	}}
 }
 
