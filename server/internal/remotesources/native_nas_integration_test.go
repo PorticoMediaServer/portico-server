@@ -400,7 +400,10 @@ func exerciseNativeListedIgnore(t *testing.T, ctx context.Context, sources *Serv
 	}
 	admission := storage.InventoryBlobAdmission{Purpose: storage.InventoryBlobIgnore, JobID: job, LibraryID: library, LibrarySourceID: folder.ID, RootIncarnation: folder.Incarnation, RootIdentity: folder.RootIdentity, SourceGeneration: folder.Generation, PolicyRevision: policy.Revision, ListingID: page.ID, Member: member}
 	request := storage.InventoryRequest{Root: folder.ResolvedPath, RootIdentity: folder.RootIdentity, RelativePath: ".ignore", FollowSymlinks: folder.FollowSymlinks}
-	got, err := sources.ReadInventoryBlob(ctx, folder.ID, request, admission, 65536)
+	client := storage.New("")
+	client.Remote = sources
+	readContext := storage.WithScanInput(ctx, client, folder.ID, request, admission)
+	got, err := client.ReadSmall(readContext, folder.ID, member.Path, 65536)
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatal("admitted native listing configuration", len(got), err)
 	}
@@ -409,7 +412,8 @@ func exerciseNativeListedIgnore(t *testing.T, ctx context.Context, sources *Serv
 	}
 	forged := admission
 	forged.Member.ChangeToken += "-replacement"
-	if got, err := sources.ReadInventoryBlob(ctx, folder.ID, request, forged, 65536); err == nil || len(got) != 0 {
+	forgedContext := storage.WithScanInput(ctx, client, folder.ID, request, forged)
+	if got, err := client.ReadSmall(forgedContext, folder.ID, member.Path, 65536); err == nil || len(got) != 0 {
 		t.Fatal("caller replacement of exact listed member admitted", err)
 	}
 }

@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// readRemoteSmall uses a single retained/conditional acquisition. The path stays
-// server-private, rooted scan policy is checked before acquisition and after the
-// bounded read, and native sources never fall through to their empty mount path.
+// readRemoteSmall keeps the path server-private and the read bounded. Inventory
+// invocations use their typed current-job producer; rooted scan checks surround
+// the read, and native sources never fall through to an empty mount path.
 func (c *Client) readRemoteSmall(ctx context.Context, path string, limit int64) ([]byte, error) {
 	return c.readRemoteBlob(ctx, path, limit, 8<<20)
 }

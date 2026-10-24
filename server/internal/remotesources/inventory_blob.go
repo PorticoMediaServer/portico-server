@@ -16,6 +16,8 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+var _ storage.RemoteInventoryBlobReader = (*Service)(nil)
+
 // inventoryBlobCapture binds a candidate metadata/configuration file separately
 // from the actual analysis target. Ignore candidates can precede catalogue
 // publication, so their evidence is the exact closed listing, never a fabricated
