@@ -1,8 +1,9 @@
 import {useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {HostedRequestApi} from '@core/portico-servers.ts';
+import {formatShortInvitationCode} from '@core/short-invitation-code.ts';
 import {AuthError, AuthLinks, AuthStage} from '../../kit/accounts/AuthStage';
-import {InvitationUnavailable, LocalInvitationForm, PorticoInvitation} from '../../kit/accounts/Invitation';
+import {LocalInvitationForm, PorticoInvitation} from '../../kit/accounts/Invitation';
 import {Button, TextField} from '../../kit/controls';
 import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platform/account-entry';
 import styles from '../../kit/accounts/short-invitation-entry.module.css';
@@ -10,19 +11,22 @@ import styles from '../../kit/accounts/short-invitation-entry.module.css';
 const t = defaultI18n.t;
 const CODE_PLACEHOLDER = t('web.directJoin.codePlaceholder');
 export const shortInvitationCodePlaceholder = CODE_PLACEHOLDER;
-const compact = (value: string): string => value.replace(/[\s-]/g, '').slice(0, 16);
-const grouped = (value: string): string => compact(value).replace(/(.{4})(?=.)/g, '$1 ');
-export const shortInvitationCodeValue = (value: string): string => compact(value);
-export const shortInvitationCodeDisplay = (value: string): string => grouped(value);
+/** The field is submitted verbatim. The checked codec decides case, separators,
+ * ambiguous symbols and long-link refusal; this UI never truncates or rewrites. */
+export const shortInvitationCodeForSubmit = (value: string): string => value;
+/** Presentation only, and only after the complete value passed the codec. */
+export const shortInvitationCodeAfterBlur = (value: string): string => formatShortInvitationCode(value) ?? value;
+const REFUSAL_CODES: ReadonlySet<string> = new Set(['invitation_not_found', 'invalid_request', 'invitation_expired', 'invitation_used', 'invitation_for_another_account']);
+export function shortInvitationRefusal(error: unknown): boolean {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+  return typeof code === 'string' && REFUSAL_CODES.has(code);
+}
 /** The two approved generic sentences; everything else keeps the typed error presentation. */
 export function shortInvitationFormErrorKind(phase: string, error: unknown, invitation: unknown, busy: boolean): 'invalid' | 'unavailable' | 'typed' | undefined {
   if (!error || busy) return undefined;
-  const code = typeof error === 'object' && 'code' in error ? error.code : undefined;
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
   if (phase === 'address') return code === 'invitation_incomplete' ? 'invalid' : 'typed';
-  if ((phase === 'password' || phase === 'portico') && !invitation) {
-    const status = typeof error === 'object' && 'status' in error ? error.status : undefined;
-    return typeof status === 'number' && status >= 400 && status < 500 && status !== 429 ? 'unavailable' : 'typed';
-  }
+  if ((phase === 'password' || phase === 'portico') && !invitation) return shortInvitationRefusal(error) ? 'unavailable' : 'typed';
   return undefined;
 }
 
@@ -61,22 +65,20 @@ function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutCo
   }, [state.phase, state.joined, onJoined]);
   const busy = state.busy || state.phase === 'checking';
   const back = () => {if (busy) return; entry.cancel(); onBack();};
+  const refusal = shortInvitationRefusal(state.error);
+  const refusalNotice = refusal ? <p className={styles.error} role="alert">{t('web.directJoin.entryUnavailable')}</p> : undefined;
   const errorKind = shortInvitationFormErrorKind(state.phase, state.error, state.invitation, busy);
   const formError = errorKind === 'invalid' ? <p className={styles.error} role="alert">{t('web.directJoin.entryInvalid')}</p>
-    : errorKind === 'unavailable' ? <p className={styles.error} role="alert">{t('web.directJoin.entryUnavailable')}</p>
+    : errorKind === 'unavailable' ? refusalNotice
     : errorKind === 'typed' ? <AuthError error={state.error} /> : undefined;
   if (state.phase === 'joined') return null;
-  const codeStatus = state.error && typeof state.error === 'object' && 'code' in state.error ? state.error.code : undefined;
-  if (codeStatus === 'invitation_expired' || codeStatus === 'invitation_used' || codeStatus === 'invitation_for_another_account') {
-    return <InvitationUnavailable otherAccount={codeStatus === 'invitation_for_another_account'} onBack={back} onDifferentAccount={() => {if (busy) return;entry.cancel();onDifferentAccount?.();}} />;
-  }
   if (state.invitation && state.server) {
     const returnBack = () => {if (state.busy) return;entry.cancel();};
     if (state.invitation.signInMethod === 'local') return <LocalInvitationForm serverName={state.server.name} inviter={state.invitation.inviterUsername}
-      libraries={state.invitation.libraries.map(library => library.name)} busy={state.busy} error={state.error}
+      libraries={state.invitation.libraries.map(library => library.name)} busy={state.busy} error={refusal ? undefined : state.error} errorContent={refusalNotice}
       onJoin={(username, password, name) => void entry.joinLocal(username, password, name)} onBack={returnBack} />;
     return <PorticoInvitation serverName={state.server.name} libraries={state.invitation.libraries} member={state.invitation.role === 'member'}
-      account={account?.isCurrent() ? account : undefined} signedOutContent={signedOutContent} busy={state.busy} error={state.error}
+      account={account?.isCurrent() ? account : undefined} signedOutContent={signedOutContent} busy={state.busy} error={refusal ? undefined : state.error} errorContent={refusalNotice}
       onJoin={() => {if (account?.isCurrent()) void entry.joinPortico(account);}} onDifferentAccount={() => {if (state.busy) return;entry.cancel();onDifferentAccount?.();}} />;
   }
   const change = (apply: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => {
@@ -90,13 +92,12 @@ function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutCo
     <form className={styles.form} onSubmit={event => {
       event.preventDefault();
       if (busy || !address.trim() || !code) return;
-      void entry.inspectShortInvitation(address.trim(), code);
+      void entry.inspectShortInvitation(address.trim(), shortInvitationCodeForSubmit(code));
     }}>
       <TextField variant="auth" label={t('web.direct.serverAddress')} name="server" autoComplete="url" inputMode="url" autoCapitalize="none" spellCheck={false}
         value={address} onChange={change(setAddress)} disabled={busy} required />
       <TextField variant="auth" label={t('web.directJoin.code')} name="code" autoComplete="off" inputMode="text" autoCapitalize="characters" spellCheck={false}
-        placeholder={CODE_PLACEHOLDER} maxLength={19} value={shortInvitationCodeDisplay(code)} onChange={change(value => setCode(shortInvitationCodeValue(value)))} disabled={busy}
-        required />
+        placeholder={CODE_PLACEHOLDER} value={code} onChange={change(setCode)} onBlur={() => {if (!busy) setCode(shortInvitationCodeAfterBlur(code));}} disabled={busy} required />
       <Button className={styles.submit} variant="primary" type="submit" loading={busy} disabled={!address.trim() || !code}>{t('action.continue')}</Button>
       {busy && <p className={styles.checking} role="status">{t('web.directJoin.checking')}</p>}
     </form>
