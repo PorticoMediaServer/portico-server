@@ -35,8 +35,8 @@ func TestMusicOriginalDLNAUsesRealCAFAndWave64ContainerFacts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if facts.Container != row.format || len(facts.Streams) != 1 || facts.Streams[0].Detail.SampleRate != 48000 || facts.Streams[0].Detail.BitDepth != 24 || facts.Streams[0].Channels != 2 {
-				t.Fatalf("unexpected real fixture: %+v", facts)
+			if facts.Container != row.format || len(facts.Streams) != 1 || facts.Streams[0].Detail.SampleRate != 48000 || facts.Streams[0].Detail.BitsPerSample != 24 || facts.Streams[0].Channels != 2 {
+				t.Fatalf("unexpected real fixture: container=%s streams=%d", facts.Container, len(facts.Streams))
 			}
 			info, err := os.Stat(path)
 			if err != nil {
@@ -44,7 +44,7 @@ func TestMusicOriginalDLNAUsesRealCAFAndWave64ContainerFacts(t *testing.T) {
 			}
 			f.c.Exec(`UPDATE catalog_assets SET path=?,size=?,modified_ns=?,container=?,audio_codec=?,video_codec='',duration=? WHERE token=?`, path, info.Size(), info.ModTime().UnixNano(), facts.Container, facts.AudioCodec, facts.Duration, song.Token)
 			stream := facts.Streams[0]
-			f.c.Exec(`INSERT INTO music_technical_facts(asset_id,size,modified_ns,codec,sample_rate,bit_depth,channels,lossless) VALUES(?,?,?,?,?,?,?,1)`, song.Token, info.Size(), info.ModTime().UnixNano(), stream.Codec, stream.Detail.SampleRate, stream.Detail.BitDepth, stream.Channels)
+			f.c.Exec(`INSERT INTO music_technical_facts(asset_id,size,modified_ns,codec,sample_rate,bit_depth,channels,lossless) VALUES(?,?,?,?,?,?,?,1)`, song.Token, info.Size(), info.ModTime().UnixNano(), stream.Codec, stream.Detail.SampleRate, stream.Detail.BitsPerSample, stream.Channels)
 			got := f.browse("e"+song.Public, "BrowseMetadata", 0, 1)
 			if len(got.objects) != 1 || len(got.objects[0].Res) != 1 {
 				t.Fatal(got)
