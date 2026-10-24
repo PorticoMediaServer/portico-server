@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,11 +21,12 @@ func mixesHTTPFixture(t *testing.T) (*v1Fixture, []catalogtest.Item) {
 	t.Helper()
 	f := newV1Fixture(t, 0)
 	c := f.catalogTest
-	library := c.Library("mix-music", "Music", "music", f.root)
+	root := filepath.Join(f.root, "mix-music")
+	library := c.Library("mix-music", "Music", "music", root)
 	album := c.Album(c.Artist(library, "Actual artist"), "Actual album", 2026)
 	items := []catalogtest.Item{}
 	for n := 0; n < 6; n++ {
-		item := c.Song(album, n+1, fmt.Sprintf("%s/mix-%d.flac", f.root, n), fmt.Sprintf("Mix song %d", n))
+		item := c.Song(album, n+1, fmt.Sprintf("%s/mix-%d.flac", root, n), fmt.Sprintf("Mix song %d", n))
 		c.SonicEmbedding(item, float32(6-n), float32(n+1))
 		items = append(items, item)
 	}
