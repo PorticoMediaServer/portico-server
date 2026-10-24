@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,16 +27,22 @@ import (
 // owned copy/mux -> private publisher path beyond the configured startup
 // buffer. A finite three-second probe cannot establish this continuation.
 func TestOwnedRollingLiveCaptureAdvancesPastStartupBuffer(t *testing.T) {
-	t.Run("mpegts", func(t *testing.T) { rollingLiveCapture(t, false) })
-	t.Run("fragmented-mp4", func(t *testing.T) { rollingLiveCapture(t, true) })
+	t.Run("mpegts", func(t *testing.T) { rollingLiveCapture(t, false, 0) })
+	t.Run("fragmented-mp4", func(t *testing.T) { rollingLiveCapture(t, true, 0) })
+	t.Run("pts-wrap", func(t *testing.T) { rollingLiveCapture(t, false, 95430) })
 }
 
-func rollingLiveCapture(t *testing.T, fragmented bool) {
+func rollingLiveCapture(t *testing.T, fragmented bool, sourceClockSeconds int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
 	defer cancel()
 	ffmpeg, ffprobe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
 	ffmpeg, _ = filepath.EvalSymlinks(ffmpeg)
 	ffprobe, _ = filepath.EvalSymlinks(ffprobe)
+	version, err := exec.CommandContext(ctx, ffmpeg, "-version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(strings.SplitN(string(version), "\n", 2)[0])
 	// The production media owner selects the execution posture. Do not skip a
 	// valid baseline host or force a required sandbox off to run this test.
 	if err := decoder.RequiredConfinement(ffmpeg); err != nil {
@@ -52,7 +59,15 @@ func rollingLiveCapture(t *testing.T, fragmented bool) {
 	if output, err := generate.CombinedOutput(); err != nil {
 		t.Fatalf("generate procedural source: %v: %s", err, output)
 	}
-	origin := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error", "-re", "-stream_loop", "-1", "-i", pattern, "-c", "copy", "-f", "hls", "-hls_time", "2", "-hls_list_size", "12", "-hls_delete_threshold", "4", "-hls_flags", "delete_segments+omit_endlist+temp_file", "-hls_segment_filename", filepath.Join(dir, "segment-%09d.ts"), filepath.Join(dir, "index.m3u8"))
+	originArgs := []string{"-nostdin", "-v", "error", "-re", "-stream_loop", "-1", "-i", pattern, "-c", "copy"}
+	if sourceClockSeconds != 0 {
+		// A long-running MPEG-TS source wraps its 33-bit 90kHz clock. Start
+		// near that real boundary without waiting twenty-six hours.
+		originArgs = append(originArgs, "-output_ts_offset", strconv.Itoa(sourceClockSeconds))
+	}
+	originArgs = append(originArgs, "-f", "hls", "-hls_time", "2", "-hls_list_size", "12", "-hls_delete_threshold", "4", "-hls_flags", "delete_segments+omit_endlist+temp_file", "-hls_segment_filename", filepath.Join(dir, "segment-%09d.ts"), filepath.Join(dir, "index.m3u8"))
+	origin := exec.CommandContext(ctx, ffmpeg, originArgs...)
+
 	if err = origin.Start(); err != nil {
 		t.Fatal(err)
 	}
