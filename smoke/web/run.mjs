@@ -456,9 +456,18 @@ async function main() {
 
     if (signedIn && want('detail')) {
       await check('detail', async () => {
-        await openItem(page, FIXTURES.movie);
+        // The catalogue is re-provisioned between runs, so resolve a title through the library
+        // rather than pinning an item id that will go stale.
+        await openLibrary('Movies');
+        const firstMovie = page.locator('article[data-card-kind] button[aria-label]').first();
+        assert(await firstMovie.count(), 'the Movies library lists no card to open');
+        await firstMovie.click({timeout: 10000, force: true});
+        await page.waitForURL(/\/item\//, {timeout: 20000}).catch(() => {});
+        await settle(page, {quiet: 2000});
         const state = await surfaceState(page);
         assert(/\/item\//.test(state.url), `movie detail did not open (at ${state.url})`);
+        const detailText = await bodyText(page);
+        assert(!/That page isn't here|isn't available|no longer/i.test(detailText), `the movie detail showed a missing-item page: ${detailText.replace(/\n/g, ' ').slice(0, 120)}`);
         assert(state.textLength > 80, `movie detail rendered almost no text: ${JSON.stringify(state)}`);
         const play = await findAny(page, [{css: '[data-size=hero][data-variant=primary]'}, {role: 'button', name: /^Play/}]);
         assert(play, 'movie detail draws no Play control');
@@ -469,21 +478,43 @@ async function main() {
 
     if (signedIn && want('detail-show')) {
       await check('detail-show', async () => {
-        await openLibrary('TV Shows').catch(() => openLibrary('Anime'));
+        const showLibrary = (await page.locator('nav a[href]').filter({hasText: /^TV Shows$/}).count()) ? 'TV Shows' : 'Anime';
+        await openLibrary(showLibrary).catch(() => openLibrary('Anime'));
         const showsTab = await findAny(page, [{role: 'button', name: /^Shows/}, {role: 'tab', name: /^Shows/}, {text: /^Shows$/}]);
         if (showsTab) { await showsTab.click({timeout: 6000}).catch(() => {}); await settle(page, {quiet: 1500}); }
-        const card = page.locator('article[data-card-kind] button[aria-label]').first();
-        assert(await card.count() > 0, `the Anime library lists no show to open (Shows tab ${showsTab ? 'present' : 'absent'})`);
-        const title = await card.getAttribute('aria-label');
-        await card.focus();
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(3500);
-        await settle(page, {quiet: 1200});
+        const cards = page.locator('article[data-card-kind] button[aria-label]');
+        const count = await cards.count();
+        assert(count > 0, `the Anime library lists no show to open (Shows tab ${showsTab ? 'present' : 'absent'})`);
+        const stale = [];
+        let title = null;
+        for (let index = 0; index < Math.min(count, 4); index++) {
+          if (index > 0) { await openLibrary(showLibrary).catch(() => {}); await settle(page, {quiet: 1200}); }
+          const cardsNow = page.locator('article[data-card-kind] button[aria-label]');
+          if (await cardsNow.count() <= index) break;
+          const card = cardsNow.nth(index);
+          const name = await card.getAttribute('aria-label');
+          await card.click({timeout: 8000, force: true});
+          await page.waitForURL(/\/item\//, {timeout: 15000}).catch(() => {});
+          await settle(page, {quiet: 1500});
+          const opened = await bodyText(page);
+          if (/That page isn't here|isn't available|no longer/i.test(opened)) { stale.push(name); continue; }
+          title = name;
+          break;
+        }
+        assert(title, `every show card opened a missing-item page (stale catalogue entries: ${stale.join(', ')})`);
         const state = await surfaceState(page);
         assert(/\/item\//.test(state.url), `opening show ${title} did not reach a detail screen (at ${state.url})`);
+        const showText = await bodyText(page);
+        assert(!/That page isn't here|isn't available|no longer/i.test(showText), `show ${title} opened a missing-item page: ${showText.replace(/\n/g, ' ').slice(0, 120)}`);
         assert(state.textLength > 80, 'show detail rendered almost no text');
+        // Core flow 4 asks for the episodes, so the drawn screen must show them.
+        const seasonMarkers = (showText.match(/Season \d+/gi) || []);
+        const episodeMarkers = (showText.match(/S\d+\s*E\d+/gi) || []);
+        const episodes = await page.locator('[data-episode], a[href*="episode"], [role=listitem]').count();
+        assert(seasonMarkers.length > 0 || episodeMarkers.length > 0 || episodes > 0,
+          `show ${title} draws no episodes: ${showText.replace(/\n/g, ' ').slice(0, 200)}`);
         const playControl = await findAny(page, [{css: '[data-size=hero][data-variant=primary]'}, {role: 'button', name: /^(Play|Resume)/}]);
-        return {detail: `${title}: ${state.textLength} chars at ${new URL(state.url).pathname}; hero control ${playControl ? 'present' : 'missing'}`,
+        return {detail: `${title}: ${state.textLength} chars at ${new URL(state.url).pathname}; episodes ${Math.max(seasonMarkers.length, episodeMarkers.length, episodes)}; hero control ${playControl ? 'present' : 'missing'}${stale.length ? `; stale cards skipped: ${stale.join(', ')}` : ''}`,
           evidence: {screenshot: await evidence.shot(page, 'detail-show')}};
       });
     }
