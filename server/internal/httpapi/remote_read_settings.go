@@ -32,6 +32,8 @@ func sourceReadSettingsError(err error) error {
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	case errors.Is(err, mounts.ErrCommandConflict):
 		return &apierror.Error{Code: "idempotency_key_reused", Cause: err}
+	case errors.Is(err, mounts.ErrUnavailable):
+		return &apierror.Error{Code: "administration_unavailable", Cause: err}
 	case errors.Is(err, storage.ErrRemoteConfig), errors.Is(err, mounts.ErrInvalid), errors.Is(err, mounts.ErrCommandExpired):
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	case errors.Is(err, sql.ErrNoRows), errors.Is(err, storage.ErrRemoteOffline):
@@ -44,13 +46,16 @@ func sourceReadSettingsError(err error) error {
 }
 
 func registerSourceReadSettings(registry *apikit.Registry, d Dependencies) {
-	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "internal"}
+	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "internal"}
 	v1Route(registry, apikit.Metadata{ID: "get_storage_source_read_profile", Method: "GET", Path: "/v1/storage/sources/{id}/settings/read-profile", Summary: "Read one source's normalized reading profile and current revisions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceReadSettingsResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceReadSettingsResponse{}, sourceReadSettingsError(err)
 		}
-		if d.RemoteSources == nil || r.URL.RawQuery != "" {
+		if d.RemoteSources == nil {
+			return SourceReadSettingsResponse{}, sourceReadSettingsError(mounts.ErrUnavailable)
+		}
+		if r.URL.RawQuery != "" {
 			return SourceReadSettingsResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
 		out, err := d.RemoteSources.ReadSourceReadSettings(ctx, d.Identity, p, r.PathValue("id"))
@@ -67,7 +72,10 @@ func registerSourceReadSettings(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(err)
 		}
-		if d.RemoteSources == nil || r.URL.RawQuery != "" {
+		if d.RemoteSources == nil {
+			return SourceReadSettingsReceiptResponse{}, sourceReadSettingsError(mounts.ErrUnavailable)
+		}
+		if r.URL.RawQuery != "" {
 			return SourceReadSettingsReceiptResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
 		out, err := d.RemoteSources.SaveSourceReadSettings(ctx, d.Identity, p, r.PathValue("id"), in)

@@ -8109,6 +8109,7 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "request_in_progress",
+      "administration_unavailable",
       "internal"
     ],
     "status": 200,
@@ -15206,6 +15207,7 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "request_in_progress",
+      "administration_unavailable",
       "internal",
       "revision_required"
     ],
@@ -18234,6 +18236,7 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "source_credentials_required",
+      "administration_unavailable",
       "internal"
     ],
     "status": 200,
