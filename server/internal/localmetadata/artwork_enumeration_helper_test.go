@@ -110,6 +110,9 @@ func TestArtworkEnumerationFailedOldReaderCannotPoisonNewStampCache(t *testing.T
 	if !complete || len(fresh) != 1 {
 		t.Fatal("new observed image failed", fresh, complete)
 	}
+	if fresh[0].SourceName != "poster-1.png" || fresh[0].SourceRank != 1025 {
+		t.Fatal("admitted basename/rank lost", fresh[0])
+	}
 	unblock()
 	select {
 	case complete := <-oldDone:
@@ -120,7 +123,47 @@ func TestArtworkEnumerationFailedOldReaderCannotPoisonNewStampCache(t *testing.T
 		t.Fatal(ctx.Err())
 	}
 	again, complete := read(storage.InventoryRevision(current))
-	if !complete || len(again) != 1 || again[0].Key != fresh[0].Key {
+	if !complete || len(again) != 1 || again[0] != fresh[0] {
 		t.Fatal("failed old reader poisoned current image cache", fresh, again, complete)
+	}
+}
+
+func TestArtworkEnumerationRetainsCanonicalNameAfterEarlierAlternate(t *testing.T) {
+	root := t.TempDir()
+	for i, name := range []string{"poster-7.png", "poster.jpg"} {
+		img := image.NewRGBA(image.Rect(0, 0, 8, 12))
+		img.SetRGBA(0, 0, color.RGBA{R: uint8(i + 1), G: 255, A: 255})
+		var raw bytes.Buffer
+		if err := png.Encode(&raw, img); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), raw.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := storage.LocalInventoryPage(storage.InventoryRequest{Root: root, RelativePath: ".", Limit: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := storage.New(binary)
+	s, err := New(t.TempDir(), "", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := storage.WithScanInput(context.Background(), store, "source", storage.InventoryRequest{Root: root, RootIdentity: page.RootIdentity})
+	ctx = WithArtworkListing(ctx, func(string) (ArtworkDirectoryListing, bool) {
+		listing := ArtworkDirectoryListing{SourceID: "source", RootIdentity: page.RootIdentity}
+		for _, entry := range page.Entries {
+			listing.Entries = append(listing.Entries, ArtworkListingEntry{Name: entry.Name, Revision: storage.InventoryRevision(entry)})
+		}
+		return listing, true
+	})
+	values, complete := s.ReadArtworkCandidates(ctx, "library", "movie", root, filepath.Join(root, "Film.mkv"), -1)
+	if !complete || len(values) != 2 || values[0].SourceName != "poster.jpg" || values[0].SourceRank != 16 || values[1].SourceName != "poster-7.png" || values[1].SourceRank != 1031 || values[0].Key == values[1].Key {
+		t.Fatal("actual admitted image names/ranks not retained in canonical order", values, complete)
 	}
 }
