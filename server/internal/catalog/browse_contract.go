@@ -290,6 +290,16 @@ type browsePivot struct {
 }
 
 var browsePivots = map[string][]browsePivot{
+	"book": {
+		{ID:"books",LabelKey:"library.books",EntityKinds:[]string{"ebook"},SupportedViews:[]string{"grid","list"},DefaultSort:titleAscending(),Browsable:true},
+		{ID:"authors",LabelKey:"library.authors",EntityKinds:[]string{},SupportedViews:[]string{"list"}},
+		{ID:"series",LabelKey:"library.series",EntityKinds:[]string{},SupportedViews:[]string{"list"}},
+	},
+	"comic": {
+		{ID:"comics",LabelKey:"library.comics",EntityKinds:[]string{"comic"},SupportedViews:[]string{"grid","list"},DefaultSort:titleAscending(),Browsable:true},
+		{ID:"authors",LabelKey:"library.authors",EntityKinds:[]string{},SupportedViews:[]string{"list"}},
+		{ID:"series",LabelKey:"library.series",EntityKinds:[]string{},SupportedViews:[]string{"list"}},
+	},
 	"movie": {
 		{ID: "discover", LabelKey: "library.discover", EntityKinds: []string{"movie"}, SupportedViews: []string{"rail"}, DefaultSort: titleAscending()},
 		{ID: "movies", LabelKey: "library.movies", EntityKinds: []string{"movie"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
@@ -401,6 +411,7 @@ type BrowseSortCapability struct {
 	ApplicableKinds []string `json:"applicableKinds"`
 }
 type BrowsePivotCapability struct {
+	FacetSource *BrowseFacetSource `json:"facetSource,omitempty"`
 	ID             string                `json:"id"`
 	LabelKey       string                `json:"labelKey"`
 	EntityKinds    []string              `json:"entityKinds"`
@@ -477,6 +488,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, err
 	}
 	out.Library = lib
+	if isReadingLibrary(lib.Kind) { return out,requestinput.New("Reading capabilities require an authorized viewer") }
 	online, err := s.browseOnlineLibrary(library)
 	if err != nil {
 		return out, err
@@ -595,6 +607,7 @@ func pivotFilterKinds(libraryKind string, pivot browsePivot) []string {
 	return entityKindMembers(pivot)
 }
 func pivotFieldIDs(libraryKind string, pivot browsePivot) []string {
+	if isReadingLibrary(libraryKind) { return []string{"title","year","dateAdded","author","series"} }
 	if !pivot.Browsable && pivot.Aggregate == "" {
 		return []string{}
 	}
@@ -611,6 +624,7 @@ func pivotFieldIDs(libraryKind string, pivot browsePivot) []string {
 	return out
 }
 func pivotSortIDs(libraryKind string, pivot browsePivot) []string {
+	if isReadingLibrary(libraryKind) { if !pivot.Browsable { return []string{} }; return []string{"title","added","year"} }
 	if !pivot.Browsable && pivot.Aggregate == "" {
 		return []string{}
 	}
