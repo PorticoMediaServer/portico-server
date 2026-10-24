@@ -209,6 +209,7 @@ if [[ "$TARGET" == linux-x64 ]]; then
   cp -a "$ROOT/third_party/ffmpeg/tests" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-profile.patch" "$WORK/provenance/contract/"
   cp "$ROOT/third_party/ffmpeg/portico-dovi-join.patch" "$WORK/provenance/contract/"
+  cp "$ROOT/third_party/ffmpeg/portico-bluray-playlist-minimum.patch" "$WORK/provenance/contract/"
   cp "$ROOT/scripts/qualify-linux-ffmpeg-hdr.py" "$ROOT/scripts/qualify-hdr-video.py" "$ROOT/scripts/qualify-dovi-join.py" "$WORK/provenance/scripts/"
 fi
 # Include dependency sources and exact recipe, excluding only output binaries and git metadata.
