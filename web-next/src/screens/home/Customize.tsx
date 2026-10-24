@@ -22,7 +22,8 @@ export type HomeCustomizeCopy = Readonly<{
 type Lift = {id: string; original: HomeLayoutDraft; pointer?: number; top?: number; left?: number; width?: number; offset?: number; target: number};
 const t = defaultI18n.t;
 const label = (draft: HomeLayoutDraft, id: string) => draft.added.get(id)?.name ?? serverTextLabel(defaultI18n, homeDraftRow(draft, id)?.titleText, homeDraftRow(draft, id)?.title);
-const homeCopy = (compact: boolean): HomeCustomizeCopy => ({
+/** Shared by Home's own entry and Settings' Appearance row, so both draw the same dialog words. */
+export const homeCopy = (compact: boolean): HomeCustomizeCopy => ({
   entryDescription: t('next.home.customizeDescription'),
   conflictBody: t(compact ? 'next.home.layoutChangedBodyCompact' : 'next.home.layoutChangedBody'),
   reloadLayout: t('next.home.reloadLayout'), keepEditing: t('next.home.keepEditing'),
