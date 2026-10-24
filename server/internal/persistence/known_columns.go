@@ -2154,6 +2154,7 @@ identity_moves.devices
 identity_moves.from_kind
 identity_moves.id
 identity_moves.invitations
+identity_moves.other_people_count
 identity_moves.owner_confirmed
 identity_moves.owner_id
 identity_moves.owner_revision
@@ -2190,6 +2191,8 @@ identity_owner_completions.server_challenge_hash
 identity_owner_completions.start_payload
 identity_owner_completions.start_signature
 identity_owner_completions.state_hash
+identity_owner_completions.switch_count_payload
+identity_owner_completions.switch_count_signature
 identity_owner_completions.token_generation
 identity_owner_completions.token_hash
 identity_owner_completions.transaction_id
